@@ -7,17 +7,25 @@
 s160_gcs_results_read(campaign_id, filename = NULL, ...)
 }
 \arguments{
-\item{campaign_id}{Campaign ID (numeric or character)}
+\item{campaign_id}{Campaign ID (numeric or character). Must be a single value.}
 
 \item{filename}{File name in the campaign folder. Defaults to
 \code{<campaign_id>_raw_data_download.csv} (the standard export filename).}
 
-\item{...}{Additional arguments passed to read.csv()}
+\item{...}{Additional arguments passed to \code{read.csv()}, e.g.
+\code{stringsAsFactors}, \code{na.strings}, \code{nrows}.}
 }
 \value{
-A data frame
+A data frame with one row per survey response.
 }
 \description{
 Downloads the CSV to the current working directory and reads it into R.
 GCS path: \code{gs://<bucket>/<campaign_id>/<filename>}
+}
+\examples{
+\dontrun{
+s160_gcs_init()
+df <- s160_gcs_results_read(1980)
+df <- s160_gcs_results_read(1980, filename = "custom_export.csv")
+}
 }

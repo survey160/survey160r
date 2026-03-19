@@ -7,11 +7,18 @@
 s160_gcs_results_files(campaign_id)
 }
 \arguments{
-\item{campaign_id}{Campaign ID (numeric or character)}
+\item{campaign_id}{Campaign ID (numeric or character). Must be a single value.}
 }
 \value{
-Character vector of file names (without the campaign_id prefix)
+Character vector of file names (without the campaign_id prefix).
 }
 \description{
-List files in a campaign's GCS folder
+Returns the file names inside a campaign's folder in the results bucket.
+Returns \code{character(0)} with a message if the campaign has no files.
+}
+\examples{
+\dontrun{
+s160_gcs_init()
+s160_gcs_results_files(1980)
+}
 }

@@ -19,7 +19,10 @@ check_gcs_ready <- function() {
 
 # Validate campaign_id is a non-empty scalar
 validate_campaign_id <- function(campaign_id) {
-  campaign_id <- as.character(campaign_id[[1]])
+  if (length(campaign_id) != 1) {
+    stop("campaign_id must be a single value, not a vector.", call. = FALSE)
+  }
+  campaign_id <- as.character(campaign_id)
   if (is.na(campaign_id) || !nzchar(trimws(campaign_id))) {
     stop("campaign_id must be a non-empty scalar value.", call. = FALSE)
   }
@@ -32,11 +35,20 @@ validate_campaign_id <- function(campaign_id) {
 #'
 #' Authenticates to GCS using the project's OAuth client and sets the global
 #' bucket. Opens a browser for Google sign-in on first run; subsequent runs
-#' use the cached token automatically.
+#' use the cached token automatically. Tokens are cached in
+#' \code{~/.config/gargle/} by default.
+#'
+#' The authenticated Google account needs Storage Object Viewer permission
+#' on the target bucket.
 #'
 #' @param bucket GCS bucket name. Defaults to S160_RESULTS_BUCKET env var,
 #'   falling back to "campaign_results_qa".
 #' @return Invisible NULL. Sets global bucket as side effect.
+#' @examples
+#' \dontrun{
+#' s160_gcs_init()
+#' s160_gcs_init(bucket = "campaign_results")
+#' }
 #' @importFrom googleCloudStorageR gcs_auth gcs_global_bucket
 #' @export
 s160_gcs_init <- function(bucket = Sys.getenv("S160_RESULTS_BUCKET", "campaign_results_qa")) {
@@ -77,11 +89,18 @@ s160_gcs_init <- function(bucket = Sys.getenv("S160_RESULTS_BUCKET", "campaign_r
 #' Downloads the CSV to the current working directory and reads it into R.
 #' GCS path: \code{gs://<bucket>/<campaign_id>/<filename>}
 #'
-#' @param campaign_id Campaign ID (numeric or character)
+#' @param campaign_id Campaign ID (numeric or character). Must be a single value.
 #' @param filename File name in the campaign folder. Defaults to
 #'   \code{<campaign_id>_raw_data_download.csv} (the standard export filename).
-#' @param ... Additional arguments passed to read.csv()
-#' @return A data frame
+#' @param ... Additional arguments passed to \code{read.csv()}, e.g.
+#'   \code{stringsAsFactors}, \code{na.strings}, \code{nrows}.
+#' @return A data frame with one row per survey response.
+#' @examples
+#' \dontrun{
+#' s160_gcs_init()
+#' df <- s160_gcs_results_read(1980)
+#' df <- s160_gcs_results_read(1980, filename = "custom_export.csv")
+#' }
 #' @importFrom googleCloudStorageR gcs_get_object gcs_list_objects gcs_get_global_bucket
 #' @importFrom utils read.csv
 #' @export
@@ -116,15 +135,28 @@ s160_gcs_results_read <- function(campaign_id, filename = NULL, ...) {
 
 #' List files in a campaign's GCS folder
 #'
-#' @param campaign_id Campaign ID (numeric or character)
-#' @return Character vector of file names (without the campaign_id prefix)
+#' Returns the file names inside a campaign's folder in the results bucket.
+#' Returns \code{character(0)} with a message if the campaign has no files.
+#'
+#' @param campaign_id Campaign ID (numeric or character). Must be a single value.
+#' @return Character vector of file names (without the campaign_id prefix).
+#' @examples
+#' \dontrun{
+#' s160_gcs_init()
+#' s160_gcs_results_files(1980)
+#' }
 #' @export
 s160_gcs_results_files <- function(campaign_id) {
   check_gcs_ready()
   campaign_id <- validate_campaign_id(campaign_id)
 
   prefix <- paste0(campaign_id, "/")
-  objects <- gcs_list_objects(prefix = prefix)
+  objects <- tryCatch(
+    gcs_list_objects(prefix = prefix),
+    error = function(e) {
+      stop(sprintf("Failed to list files for campaign %s: %s", campaign_id, conditionMessage(e)), call. = FALSE)
+    }
+  )
 
   if (nrow(objects) == 0) {
     message(sprintf("No files found for campaign %s", campaign_id))
@@ -137,11 +169,25 @@ s160_gcs_results_files <- function(campaign_id) {
 
 #' List all campaign IDs in the current bucket
 #'
-#' @return Character vector of campaign IDs (top-level folder names)
+#' Returns a sorted character vector of campaign IDs (top-level folder names)
+#' in the results bucket. Objects at the bucket root (not inside a folder) are
+#' excluded.
+#'
+#' @return Character vector of campaign IDs, sorted.
+#' @examples
+#' \dontrun{
+#' s160_gcs_init()
+#' s160_gcs_results_list()
+#' }
 #' @export
 s160_gcs_results_list <- function() {
   check_gcs_ready()
-  objects <- gcs_list_objects()
+  objects <- tryCatch(
+    gcs_list_objects(),
+    error = function(e) {
+      stop(sprintf("Failed to list campaigns: %s", conditionMessage(e)), call. = FALSE)
+    }
+  )
 
   if (nrow(objects) == 0) {
     message("No campaigns found in bucket")

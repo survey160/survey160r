@@ -42,6 +42,19 @@ campaigns <- s160_gcs_results_list()
 files <- s160_gcs_results_files(12345)
 ```
 
+## Authentication
+
+On first run, `s160_gcs_init()` opens a browser for Google sign-in. The
+token is cached in `~/.config/gargle/` so subsequent runs authenticate
+automatically.
+
+Your Google account needs **Storage Object Viewer** permission on the
+target bucket. Contact a sysadmin if you get 403 errors after
+authenticating.
+
+To clear cached tokens: `gargle::gargle_oauth_sitrep()` to list them,
+then delete from `~/.config/gargle/`.
+
 ## License
 
 MIT

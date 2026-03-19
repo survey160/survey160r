@@ -7,8 +7,16 @@
 s160_gcs_results_list()
 }
 \value{
-Character vector of campaign IDs (top-level folder names)
+Character vector of campaign IDs, sorted.
 }
 \description{
-List all campaign IDs in the current bucket
+Returns a sorted character vector of campaign IDs (top-level folder names)
+in the results bucket. Objects at the bucket root (not inside a folder) are
+excluded.
+}
+\examples{
+\dontrun{
+s160_gcs_init()
+s160_gcs_results_list()
+}
 }

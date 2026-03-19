@@ -18,5 +18,16 @@ Invisible NULL. Sets global bucket as side effect.
 \description{
 Authenticates to GCS using the project's OAuth client and sets the global
 bucket. Opens a browser for Google sign-in on first run; subsequent runs
-use the cached token automatically.
+use the cached token automatically. Tokens are cached in
+\code{~/.config/gargle/} by default.
+}
+\details{
+The authenticated Google account needs Storage Object Viewer permission
+on the target bucket.
+}
+\examples{
+\dontrun{
+s160_gcs_init()
+s160_gcs_init(bucket = "campaign_results")
+}
 }
