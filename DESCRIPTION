@@ -1,0 +1,19 @@
+Package: survey160r
+Title: R Client for Survey160 Data
+Version: 0.1.0
+Authors@R: c(
+    person("Lennon", "Shimokawa", email = "lshimokawa@survey160.com", role = c("aut", "cre"))
+    )
+Description: Access Survey160 campaign data from R. Currently supports
+    reading campaign results directly from Google Cloud Storage into data
+    frames. Survey160 API support is planned for a future release.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Imports:
+    googleCloudStorageR (>= 0.7.0)
+Suggests:
+    testthat (>= 3.0.0),
+    mockery,
+    withr
+Config/testthat/edition: 3
+RoxygenNote: 7.3.3
