@@ -4,3 +4,4 @@
 ^.*\.Rproj$
 ^CLAUDE\.md$
 ^\.claude$
+^Makefile$

@@ -13,6 +13,7 @@ Imports:
     googleCloudStorageR (>= 0.7.0)
 Suggests:
     testthat (>= 3.0.0),
-    mockery
+    mockery,
+    withr
 Config/testthat/edition: 3
 RoxygenNote: 7.3.3
