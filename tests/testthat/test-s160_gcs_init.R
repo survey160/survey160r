@@ -12,6 +12,7 @@ test_that("errors when bucket is not a string", {
 })
 
 test_that("errors in non-interactive mode when secret is missing", {
+  skip_if(interactive(), "would prompt for input in interactive sessions")
   withr::with_envvar(c(S160_GCS_CLIENT_SECRET = ""), {
     expect_error(s160_gcs_init(bucket = "campaign_results"), "S160_GCS_CLIENT_SECRET")
   })

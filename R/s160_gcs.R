@@ -44,7 +44,8 @@ validate_campaign_id <- function(campaign_id) {
 #' On first run, prompts for the client secret (get it from your team lead) and saves
 #' it to \code{~/.Renviron}. Subsequent runs read it automatically. Also
 #' opens a browser for Google sign-in on first use; the OAuth token is
-#' cached in \code{~/.config/gargle/}.
+#' cached in a platform-dependent directory (run
+#' \code{gargle::gargle_oauth_sitrep()} to locate it).
 #'
 #' The authenticated Google account needs Storage Object Viewer permission
 #' on the target bucket.
@@ -80,7 +81,7 @@ s160_gcs_init <- function(bucket) {
     if (!interactive()) {
       stop(
         "S160_GCS_CLIENT_SECRET not found in .Renviron.\n",
-        "Run s160_gcs_init() interactively to set it up, or add it manually to ~/.Renviron.",
+        "Run s160_gcs_init(bucket = \"campaign_results\") interactively to set it up, or add it manually to ~/.Renviron.",
         call. = FALSE
       )
     }

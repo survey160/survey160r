@@ -20,7 +20,8 @@ the global bucket.
 On first run, prompts for the client secret (get it from your team lead) and saves
 it to \code{~/.Renviron}. Subsequent runs read it automatically. Also
 opens a browser for Google sign-in on first use; the OAuth token is
-cached in \code{~/.config/gargle/}.
+cached in a platform-dependent directory (run
+\code{gargle::gargle_oauth_sitrep()} to locate it).
 
 The authenticated Google account needs Storage Object Viewer permission
 on the target bucket.

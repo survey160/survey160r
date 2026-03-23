@@ -37,9 +37,8 @@ one-time steps:
    secret (get it from your team lead). It's saved to `~/.Renviron`
    so you won't be asked again.
 2. **Google sign-in** -- a browser window opens for you to sign in
-   with your Google account. The token is cached in
-   `~/Library/Caches/gargle` (macOS) so subsequent runs authenticate
-   automatically.
+   with your Google account. The token is cached locally so subsequent
+   runs authenticate automatically.
 
 You may also be asked to allow OAuth token caching (say yes) and to
 install the `httpuv` package for a smoother auth experience (say yes).
@@ -59,8 +58,8 @@ file.edit("~/.Renviron")  # remove the S160_GCS_CLIENT_SECRET line, save, restar
 Clear cached OAuth tokens:
 
 ```r
-gargle::gargle_oauth_sitrep()  # list cached tokens
-unlink("~/Library/Caches/gargle", recursive = TRUE)  # delete all, restart R
+gargle::gargle_oauth_sitrep()  # list cached tokens and their location
+# delete the cache directory shown above, then restart R
 ```
 
 ## License
