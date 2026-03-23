@@ -24,7 +24,7 @@ GCS path: \code{gs://<bucket>/<campaign_id>/<filename>}
 }
 \examples{
 \dontrun{
-s160_gcs_init()
+s160_gcs_init(bucket = "campaign_results")
 df <- s160_gcs_results_read(1980)
 df <- s160_gcs_results_read(1980, filename = "custom_export.csv")
 }

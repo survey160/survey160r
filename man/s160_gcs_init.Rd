@@ -4,30 +4,29 @@
 \alias{s160_gcs_init}
 \title{Initialize GCS connection}
 \usage{
-s160_gcs_init(
-  bucket = Sys.getenv("S160_RESULTS_BUCKET", "campaign_results_qa")
-)
+s160_gcs_init(bucket)
 }
 \arguments{
-\item{bucket}{GCS bucket name. Defaults to S160_RESULTS_BUCKET env var,
-falling back to "campaign_results_qa".}
+\item{bucket}{GCS bucket name (e.g. \code{"campaign_results"}).}
 }
 \value{
 Invisible NULL. Sets global bucket as side effect.
 }
 \description{
-Authenticates to GCS using the project's OAuth client and sets the global
-bucket. Opens a browser for Google sign-in on first run; subsequent runs
-use the cached token automatically. Tokens are cached in
-\code{~/.config/gargle/} by default.
+Authenticates to GCS using the Survey160 Desktop OAuth client and sets
+the global bucket.
 }
 \details{
+On first run, prompts for the client secret (get it from your team lead) and saves
+it to \code{~/.Renviron}. Subsequent runs read it automatically. Also
+opens a browser for Google sign-in on first use; the OAuth token is
+cached in \code{~/.config/gargle/}.
+
 The authenticated Google account needs Storage Object Viewer permission
 on the target bucket.
 }
 \examples{
 \dontrun{
-s160_gcs_init()
 s160_gcs_init(bucket = "campaign_results")
 }
 }
