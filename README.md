@@ -1,5 +1,7 @@
 # survey160r
 
+[![R-CMD-check](https://github.com/survey160/survey160r/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/survey160/survey160r/actions/workflows/R-CMD-check.yaml)
+
 R package for reading Survey160 campaign results from Google Cloud Storage.
 
 ## Installation
