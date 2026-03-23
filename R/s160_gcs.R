@@ -1,11 +1,16 @@
 # GCS authentication and data access for Survey160
 #
-# Auth strategy: Browser OAuth via the project's own GCP OAuth client.
-# Client ID and secret are read from S160_GCS_CLIENT_ID / S160_GCS_CLIENT_SECRET
-# env vars (set in .Renviron). Tokens are cached between sessions so the
-# browser prompt only appears on first use or when the token expires.
+# Auth strategy: Browser OAuth via a GCP "Desktop" OAuth client.
 #
-# Bucket is read from S160_RESULTS_BUCKET env var (set in .Renviron).
+# The client ID is bundled in inst/oauth-client.json (public, not a secret).
+# The client secret is read from S160_GCS_CLIENT_SECRET in ~/.Renviron.
+# On first run, s160_gcs_init() prompts for the secret and saves it to
+# ~/.Renviron so analysts only need to paste it once.
+#
+# Tokens are cached between sessions so the browser prompt only appears on
+# first use or when the token expires.
+#
+# Bucket is passed as a required parameter to s160_gcs_init().
 
 # --- Internal helpers --------------------------------------------------------
 
@@ -33,42 +38,71 @@ validate_campaign_id <- function(campaign_id) {
 
 #' Initialize GCS connection
 #'
-#' Authenticates to GCS using the project's OAuth client and sets the global
-#' bucket. Opens a browser for Google sign-in on first run; subsequent runs
-#' use the cached token automatically. Tokens are cached in
-#' \code{~/.config/gargle/} by default.
+#' Authenticates to GCS using the Survey160 Desktop OAuth client and sets
+#' the global bucket.
+#'
+#' On first run, prompts for the client secret (get it from your team lead) and saves
+#' it to \code{~/.Renviron}. Subsequent runs read it automatically. Also
+#' opens a browser for Google sign-in on first use; the OAuth token is
+#' cached in a platform-dependent directory (run
+#' \code{gargle::gargle_oauth_sitrep()} to locate it).
 #'
 #' The authenticated Google account needs Storage Object Viewer permission
 #' on the target bucket.
 #'
-#' @param bucket GCS bucket name. Defaults to S160_RESULTS_BUCKET env var,
-#'   falling back to "campaign_results_qa".
+#' @param bucket GCS bucket name (e.g. \code{"campaign_results"}).
 #' @return Invisible NULL. Sets global bucket as side effect.
 #' @examples
 #' \dontrun{
-#' s160_gcs_init()
 #' s160_gcs_init(bucket = "campaign_results")
 #' }
 #' @importFrom googleCloudStorageR gcs_auth gcs_global_bucket
 #' @export
-s160_gcs_init <- function(bucket = Sys.getenv("S160_RESULTS_BUCKET", "campaign_results_qa")) {
-  if (bucket == "") {
-    bucket <- "campaign_results_qa"
+s160_gcs_init <- function(bucket) {
+  # Validate bucket
+  if (missing(bucket)) {
+    stop("'bucket' is required. Example: s160_gcs_init(bucket = \"campaign_results\")", call. = FALSE)
+  }
+  if (!is.character(bucket) || length(bucket) != 1 || !nzchar(trimws(bucket))) {
+    stop("'bucket' must be a non-empty string.", call. = FALSE)
   }
 
-  # Read project OAuth client from env vars
-  client_id <- Sys.getenv("S160_GCS_CLIENT_ID")
+  # Client ID from bundled JSON (public, not a secret)
+  client_json <- system.file("oauth-client.json", package = "survey160r")
+  if (client_json == "") {
+    stop("oauth-client.json not found. Is the survey160r package installed correctly?", call. = FALSE)
+  }
+  client_info <- jsonlite::fromJSON(client_json)
+  client_id <- client_info$installed$client_id
+
+  # Client secret from ~/.Renviron (prompted on first run)
   client_secret <- Sys.getenv("S160_GCS_CLIENT_SECRET")
-
-  if (client_id == "" || client_secret == "") {
-    stop(
-      "S160_GCS_CLIENT_ID and S160_GCS_CLIENT_SECRET must be set in .Renviron.\n",
-      "See ?s160_gcs_init for details, then restart your R session.",
-      call. = FALSE
-    )
+  if (client_secret == "") {
+    if (!interactive()) {
+      stop(
+        "S160_GCS_CLIENT_SECRET not found in .Renviron.\n",
+        "Run s160_gcs_init(bucket = \"campaign_results\") interactively to set it up, or add it manually to ~/.Renviron.",
+        call. = FALSE
+      )
+    }
+    message("First-time setup: paste the survey160r OAuth client secret (ask your team lead).")
+    client_secret <- readline("S160_GCS_CLIENT_SECRET: ")
+    if (client_secret == "") {
+      stop("Client secret cannot be empty.", call. = FALSE)
+    }
+    # Save to ~/.Renviron (replace existing entry if present)
+    renviron_path <- path.expand("~/.Renviron")
+    if (file.exists(renviron_path)) {
+      lines <- readLines(renviron_path, warn = FALSE)
+      lines <- lines[!grepl("^S160_GCS_CLIENT_SECRET=", lines)]
+      writeLines(lines, renviron_path)
+    }
+    cat(paste0("S160_GCS_CLIENT_SECRET=", client_secret, "\n"),
+        file = renviron_path, append = TRUE)
+    Sys.setenv(S160_GCS_CLIENT_SECRET = client_secret)
+    message("Saved to ~/.Renviron. You won't be asked again.")
   }
 
-  # Configure googleAuthR to use the project's OAuth client
   options(
     googleAuthR.client_id = client_id,
     googleAuthR.client_secret = client_secret
@@ -77,7 +111,7 @@ s160_gcs_init <- function(bucket = Sys.getenv("S160_RESULTS_BUCKET", "campaign_r
   # Browser OAuth via gargle -- opens Google sign-in page on first run.
   # email = TRUE tells gargle to reuse the cached email on subsequent runs.
   gcs_auth(email = TRUE)
-  message("Authenticated via browser OAuth (project client)")
+  message("Authenticated via browser OAuth")
 
   gcs_global_bucket(bucket)
   message(sprintf("GCS ready. Bucket: %s", bucket))
@@ -97,7 +131,7 @@ s160_gcs_init <- function(bucket = Sys.getenv("S160_RESULTS_BUCKET", "campaign_r
 #' @return A data frame with one row per survey response.
 #' @examples
 #' \dontrun{
-#' s160_gcs_init()
+#' s160_gcs_init(bucket = "campaign_results")
 #' df <- s160_gcs_results_read(1980)
 #' df <- s160_gcs_results_read(1980, filename = "custom_export.csv")
 #' }
@@ -142,7 +176,7 @@ s160_gcs_results_read <- function(campaign_id, filename = NULL, ...) {
 #' @return Character vector of file names (without the campaign_id prefix).
 #' @examples
 #' \dontrun{
-#' s160_gcs_init()
+#' s160_gcs_init(bucket = "campaign_results")
 #' s160_gcs_results_files(1980)
 #' }
 #' @export
@@ -176,7 +210,7 @@ s160_gcs_results_files <- function(campaign_id) {
 #' @return Character vector of campaign IDs, sorted.
 #' @examples
 #' \dontrun{
-#' s160_gcs_init()
+#' s160_gcs_init(bucket = "campaign_results")
 #' s160_gcs_results_list()
 #' }
 #' @export
