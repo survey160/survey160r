@@ -4,7 +4,7 @@ test_that("default filename uses campaign_id pattern", {
   mockery::stub(s160_gcs_results_read, "validate_campaign_id", "1980")
   mockery::stub(s160_gcs_results_read, "gcs_get_global_bucket", "test_bucket")
   tmp <- tempfile(fileext = ".csv")
-  writeLines("a,b\n1,2", tmp)
+  writeLines(c("a,b", "1,2"), tmp)
   mockery::stub(s160_gcs_results_read, "tempfile", tmp)
   mockery::stub(s160_gcs_results_read, "gcs_get_object", function(...) {
     captured_args <<- list(...)
@@ -21,7 +21,7 @@ test_that("custom filename overrides default", {
   mockery::stub(s160_gcs_results_read, "validate_campaign_id", "1980")
   mockery::stub(s160_gcs_results_read, "gcs_get_global_bucket", "test_bucket")
   tmp <- tempfile(fileext = ".csv")
-  writeLines("a,b\n1,2", tmp)
+  writeLines(c("a,b", "1,2"), tmp)
   mockery::stub(s160_gcs_results_read, "tempfile", tmp)
   mockery::stub(s160_gcs_results_read, "gcs_get_object", function(...) {
     captured_args <<- list(...)
@@ -91,13 +91,14 @@ test_that("destdir saves file and shows message", {
   mockery::stub(s160_gcs_results_read, "gcs_get_global_bucket", "test_bucket")
   tmp_dir <- tempdir()
   dest_file <- file.path(tmp_dir, "1980_raw_data_download.csv")
-  writeLines("a,b\n1,2", dest_file)
+  writeLines(c("a,b", "1,2"), dest_file)
   mockery::stub(s160_gcs_results_read, "gcs_get_object", function(...) TRUE)
 
   expect_message(
     s160_gcs_results_read(1980, destdir = tmp_dir),
     "Saved to:"
   )
+  expect_true(file.exists(dest_file))
 
   unlink(dest_file)
 })

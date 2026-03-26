@@ -142,7 +142,7 @@ s160_gcs_init <- function(bucket) {
 #' df <- s160_gcs_results_read(1980, destdir = ".")
 #' df <- s160_gcs_results_read(1980, destdir = "~/data")
 #' }
-#' @importFrom googleCloudStorageR gcs_get_object gcs_list_objects gcs_get_global_bucket
+#' @importFrom googleCloudStorageR gcs_get_object gcs_get_global_bucket
 #' @importFrom utils read.csv
 #' @export
 s160_gcs_results_read <- function(campaign_id, filename = NULL, destdir = NULL, ...) {
