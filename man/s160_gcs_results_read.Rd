@@ -4,13 +4,17 @@
 \alias{s160_gcs_results_read}
 \title{Read campaign results CSV from GCS into a data frame}
 \usage{
-s160_gcs_results_read(campaign_id, filename = NULL, ...)
+s160_gcs_results_read(campaign_id, filename = NULL, destdir = NULL, ...)
 }
 \arguments{
 \item{campaign_id}{Campaign ID (numeric or character). Must be a single value.}
 
 \item{filename}{File name in the campaign folder. Defaults to
 \code{<campaign_id>_raw_data_download.csv} (the standard export filename).}
+
+\item{destdir}{Directory to save the downloaded file. When \code{NULL}
+(default), a temporary file is used and cleaned up automatically. Use
+\code{"."} for the current directory.}
 
 \item{...}{Additional arguments passed to \code{read.csv()}, e.g.
 \code{stringsAsFactors}, \code{na.strings}, \code{nrows}.}
@@ -19,13 +23,18 @@ s160_gcs_results_read(campaign_id, filename = NULL, ...)
 A data frame with one row per survey response.
 }
 \description{
-Downloads the CSV to the current working directory and reads it into R.
+Downloads the CSV from GCS and reads it into R. By default, the file is
+downloaded to a temporary location and cleaned up automatically. Set
+\code{destdir} to keep a local copy.
+}
+\details{
 GCS path: \code{gs://<bucket>/<campaign_id>/<filename>}
 }
 \examples{
 \dontrun{
 s160_gcs_init()
 df <- s160_gcs_results_read(1980)
-df <- s160_gcs_results_read(1980, filename = "custom_export.csv")
+df <- s160_gcs_results_read(1980, destdir = ".")
+df <- s160_gcs_results_read(1980, destdir = "~/data")
 }
 }
