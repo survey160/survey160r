@@ -1,0 +1,9 @@
+{
+  "installed": {
+    "client_id": "529272333354-fs3b32beqjg1sb4rmh0epdbajuocafqe.apps.googleusercontent.com",
+    "project_id": "tranquil-rex-165720",
+    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+    "token_uri": "https://oauth2.googleapis.com/token",
+    "redirect_uris": ["http://localhost"]
+  }
+}

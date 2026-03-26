@@ -18,7 +18,7 @@ Returns \code{character(0)} with a message if the campaign has no files.
 }
 \examples{
 \dontrun{
-s160_gcs_init()
+s160_gcs_init(bucket = "campaign_results")
 s160_gcs_results_files(1980)
 }
 }

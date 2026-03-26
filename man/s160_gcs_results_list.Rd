@@ -16,7 +16,7 @@ excluded.
 }
 \examples{
 \dontrun{
-s160_gcs_init()
+s160_gcs_init(bucket = "campaign_results")
 s160_gcs_results_list()
 }
 }
