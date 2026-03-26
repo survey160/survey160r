@@ -13,6 +13,7 @@ test_that("default filename uses campaign_id pattern", {
 
   expect_message(s160_gcs_results_read(1980), "1980/1980_raw_data_download.csv")
   expect_equal(captured_args$object_name, "1980/1980_raw_data_download.csv")
+  expect_false(file.exists(tmp))
 })
 
 test_that("custom filename overrides default", {

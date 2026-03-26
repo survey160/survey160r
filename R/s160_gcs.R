@@ -129,6 +129,7 @@ s160_gcs_init <- function(bucket) {
 #' @param campaign_id Campaign ID (numeric or character). Must be a single value.
 #' @param filename File name in the campaign folder. Defaults to
 #'   \code{<campaign_id>_raw_data_download.csv} (the standard export filename).
+#'   Must not contain path separators.
 #' @param destdir Directory to save the downloaded file. When \code{NULL}
 #'   (default), a temporary file is used and cleaned up automatically. Use
 #'   \code{"."} for the current directory.
@@ -202,6 +203,7 @@ s160_gcs_results_read <- function(campaign_id, filename = NULL, destdir = NULL, 
 #' s160_gcs_init(bucket = "campaign_results")
 #' s160_gcs_results_files(1980)
 #' }
+#' @importFrom googleCloudStorageR gcs_list_objects
 #' @export
 s160_gcs_results_files <- function(campaign_id) {
   check_gcs_ready()

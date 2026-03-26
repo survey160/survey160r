@@ -10,7 +10,8 @@ s160_gcs_results_read(campaign_id, filename = NULL, destdir = NULL, ...)
 \item{campaign_id}{Campaign ID (numeric or character). Must be a single value.}
 
 \item{filename}{File name in the campaign folder. Defaults to
-\code{<campaign_id>_raw_data_download.csv} (the standard export filename).}
+\code{<campaign_id>_raw_data_download.csv} (the standard export filename).
+Must not contain path separators.}
 
 \item{destdir}{Directory to save the downloaded file. When \code{NULL}
 (default), a temporary file is used and cleaned up automatically. Use
