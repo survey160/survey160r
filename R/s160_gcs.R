@@ -162,10 +162,13 @@ s160_gcs_results_read <- function(campaign_id, filename = NULL, destdir = NULL, 
   message(sprintf("Reading: %s", gcs_path))
 
   if (is.null(destdir)) {
-    local_path <- tempfile(fileext = ".csv")
+    local_path <- tempfile(pattern = paste0("s160_", campaign_id, "_"), fileext = ".csv")
     on.exit(unlink(local_path), add = TRUE)
   } else {
-    destdir <- normalizePath(destdir, mustWork = TRUE)
+    destdir <- normalizePath(destdir, mustWork = FALSE)
+    if (!dir.exists(destdir)) {
+      stop(sprintf("destdir does not exist or is not a directory: %s", destdir), call. = FALSE)
+    }
     local_path <- file.path(destdir, filename)
   }
 
