@@ -27,8 +27,12 @@ jobs:
 
       - uses: r-lib/actions/setup-r-dependencies@v2
         with:
-          extra-packages: any::rcmdcheck
+          extra-packages: any::rcmdcheck, any::lintr
           needs: check
+
+      - name: Lint
+        run: lintr::lint_package()
+        shell: Rscript {0}
 
       - uses: r-lib/actions/check-r-package@v2
         with:

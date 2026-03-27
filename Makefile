@@ -11,7 +11,10 @@ install:
 test:
 	Rscript -e 'testthat::test_local()'
 
+lint:
+	Rscript -e 'lintr::lint_package()'
+
 clean:
 	rm -rf *.tar.gz *.Rcheck
 
-.PHONY: all check install test clean
+.PHONY: all check install test lint clean
