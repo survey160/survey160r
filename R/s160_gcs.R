@@ -56,7 +56,7 @@ validate_campaign_id <- function(campaign_id) {
 #' \dontrun{
 #' s160_gcs_init(bucket = "campaign_results")
 #' }
-#' @importFrom googleCloudStorageR gcs_auth gcs_global_bucket gcs_get_global_bucket gcs_get_object gcs_list_objects
+#' @importFrom googleCloudStorageR gcs_auth gcs_global_bucket
 #' @export
 s160_gcs_init <- function(bucket) {
   # Validate bucket
@@ -136,6 +136,7 @@ s160_gcs_init <- function(bucket) {
 #' df <- s160_gcs_results_read(1980)
 #' df <- s160_gcs_results_read(1980, filename = "custom_export.csv")
 #' }
+#' @importFrom googleCloudStorageR gcs_get_object gcs_list_objects gcs_get_global_bucket
 #' @importFrom utils read.csv
 #' @export
 s160_gcs_results_read <- function(campaign_id, filename = NULL, ...) {

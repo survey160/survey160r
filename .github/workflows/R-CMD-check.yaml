@@ -30,6 +30,9 @@ jobs:
           extra-packages: any::rcmdcheck, any::lintr
           needs: check
 
+      - name: Install package
+        run: R CMD INSTALL .
+
       - name: Lint
         run: |
           lints <- lintr::lint_package()
