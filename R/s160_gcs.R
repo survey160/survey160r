@@ -81,8 +81,8 @@ s160_gcs_init <- function(bucket) {
     if (!interactive()) {
       stop(
         "S160_GCS_CLIENT_SECRET not found in .Renviron.\n",
-        "Run s160_gcs_init() interactively to set it up, ",
-        "or add it manually to ~/.Renviron.",
+        "Run s160_gcs_init(bucket = \"campaign_results\") interactively to set it up, ",
+        "or add S160_GCS_CLIENT_SECRET manually to ~/.Renviron.",
         call. = FALSE
       )
     }

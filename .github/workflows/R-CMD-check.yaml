@@ -31,7 +31,12 @@ jobs:
           needs: check
 
       - name: Lint
-        run: lintr::lint_package()
+        run: |
+          lints <- lintr::lint_package()
+          if (length(lints) > 0L) {
+            print(lints)
+            quit(status = 1)
+          }
         shell: Rscript {0}
 
       - uses: r-lib/actions/check-r-package@v2

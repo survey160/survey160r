@@ -12,7 +12,7 @@ test:
 	Rscript -e 'testthat::test_local()'
 
 lint:
-	Rscript -e 'lintr::lint_package()'
+	Rscript -e 'l <- lintr::lint_package(); if (length(l) > 0L) { print(l); quit(status = 1) }'
 
 clean:
 	rm -rf *.tar.gz *.Rcheck
