@@ -22,7 +22,9 @@ test_that("sets global bucket and configures OAuth client", {
   captured_bucket <- NULL
   withr::with_envvar(c(S160_GCS_CLIENT_SECRET = "fake-secret"), {
     mockery::stub(s160_gcs_init, "gcs_auth", NULL)
-    mockery::stub(s160_gcs_init, "gcs_global_bucket", function(b) { captured_bucket <<- b })
+    mockery::stub(s160_gcs_init, "gcs_global_bucket", function(b) {
+      captured_bucket <<- b
+    })
     suppressMessages(s160_gcs_init(bucket = "campaign_results"))
   })
   expect_equal(captured_bucket, "campaign_results")
