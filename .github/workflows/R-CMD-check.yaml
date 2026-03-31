@@ -27,7 +27,7 @@ jobs:
 
       - uses: r-lib/actions/setup-r-dependencies@v2
         with:
-          extra-packages: any::rcmdcheck, any::lintr
+          extra-packages: any::rcmdcheck, any::lintr, any::covr
           needs: check
 
       - name: Install package
@@ -46,3 +46,40 @@ jobs:
         with:
           args: '"--no-manual"'
           error-on: '"warning"'
+
+      - name: Test coverage
+        run: |
+          cov <- covr::package_coverage()
+          pct <- covr::percent_coverage(cov)
+
+          # Per-function breakdown
+          df <- as.data.frame(cov)
+          df <- df[!is.na(df$value) & !is.na(df$functions) & nzchar(df$functions), ]
+          func_cov <- tapply(df$value > 0, df$functions, function(x) mean(x, na.rm = TRUE)) * 100
+          func_cov <- sort(func_cov)
+
+          # Build summary table
+          rows <- paste0("| ", names(func_cov), " | ", sprintf("%.0f%%", func_cov), " |")
+          if (pct >= 100) {
+            badge <- sprintf(":white_check_mark: **%.1f%%** (threshold: 100%%)", pct)
+          } else {
+            badge <- sprintf(":x: **%.1f%%** (threshold: 100%%)", pct)
+          }
+          summary <- c(
+            "## Test Coverage", "",
+            badge, "",
+            "| Function | Coverage |",
+            "|----------|----------|",
+            rows, ""
+          )
+
+          # Write to job summary
+          cat(paste(summary, collapse = "\n"), file = Sys.getenv("GITHUB_STEP_SUMMARY"))
+
+          # Also print to log
+          cat(sprintf("Coverage: %.1f%%\n", pct))
+
+          if (pct < 100) {
+            stop(sprintf("Coverage %.1f%% is below 100%% threshold", pct))
+          }
+        shell: Rscript {0}

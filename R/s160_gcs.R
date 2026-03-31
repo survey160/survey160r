@@ -22,6 +22,26 @@ check_gcs_ready <- function() {
   }
 }
 
+# Prompt for the client secret and persist it to ~/.Renviron
+prompt_and_save_secret <- function() { # nocov start
+  message("First-time setup: paste the survey160r OAuth client secret (ask your team lead).")
+  secret <- readline("S160_GCS_CLIENT_SECRET: ")
+  if (secret == "") {
+    stop("Client secret cannot be empty.", call. = FALSE)
+  }
+  renviron_path <- path.expand("~/.Renviron")
+  if (file.exists(renviron_path)) {
+    lines <- readLines(renviron_path, warn = FALSE)
+    lines <- lines[!grepl("^S160_GCS_CLIENT_SECRET=", lines)]
+    writeLines(lines, renviron_path)
+  }
+  cat(paste0("S160_GCS_CLIENT_SECRET=", secret, "\n"),
+      file = renviron_path, append = TRUE)
+  Sys.setenv(S160_GCS_CLIENT_SECRET = secret)
+  message("Saved to ~/.Renviron. You won't be asked again.")
+  secret
+} # nocov end
+
 # Validate campaign_id is a non-empty scalar
 validate_campaign_id <- function(campaign_id) {
   if (length(campaign_id) != 1) {
@@ -86,22 +106,7 @@ s160_gcs_init <- function(bucket) {
         call. = FALSE
       )
     }
-    message("First-time setup: paste the survey160r OAuth client secret (ask your team lead).")
-    client_secret <- readline("S160_GCS_CLIENT_SECRET: ")
-    if (client_secret == "") {
-      stop("Client secret cannot be empty.", call. = FALSE)
-    }
-    # Save to ~/.Renviron (replace existing entry if present)
-    renviron_path <- path.expand("~/.Renviron")
-    if (file.exists(renviron_path)) {
-      lines <- readLines(renviron_path, warn = FALSE)
-      lines <- lines[!grepl("^S160_GCS_CLIENT_SECRET=", lines)]
-      writeLines(lines, renviron_path)
-    }
-    cat(paste0("S160_GCS_CLIENT_SECRET=", client_secret, "\n"),
-        file = renviron_path, append = TRUE)
-    Sys.setenv(S160_GCS_CLIENT_SECRET = client_secret)
-    message("Saved to ~/.Renviron. You won't be asked again.")
+    client_secret <- prompt_and_save_secret()
   }
 
   options(
