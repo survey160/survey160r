@@ -59,10 +59,10 @@ jobs:
 
           # Build summary table
           rows <- paste0("| ", names(func_cov), " | ", sprintf("%.0f%%", func_cov), " |")
-          if (pct >= 85) {
-            badge <- sprintf(":white_check_mark: **%.1f%%** (threshold: 85%%)", pct)
+          if (pct >= 100) {
+            badge <- sprintf(":white_check_mark: **%.1f%%** (threshold: 100%%)", pct)
           } else {
-            badge <- sprintf(":x: **%.1f%%** (threshold: 85%%)", pct)
+            badge <- sprintf(":x: **%.1f%%** (threshold: 100%%)", pct)
           }
           summary <- c(
             "## Test Coverage", "",
@@ -78,7 +78,7 @@ jobs:
           # Also print to log
           cat(sprintf("Coverage: %.1f%%\n", pct))
 
-          if (pct < 85) {
-            stop(sprintf("Coverage %.1f%% is below 85%% threshold", pct))
+          if (pct < 100) {
+            stop(sprintf("Coverage %.1f%% is below 100%% threshold", pct))
           }
         shell: Rscript {0}
