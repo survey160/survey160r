@@ -1,11 +1,8 @@
 test_that("prompts for secret and appends to .Renviron when file does not exist", {
-  local_mocked_bindings(
-    readline = function(...) "prompted-secret",
-    file.exists = function(...) FALSE
-  )
-
   captured_cat <- NULL
   local_mocked_bindings(
+    readline = function(...) "prompted-secret",
+    file.exists = function(...) FALSE,
     cat = function(...) {
       captured_cat <<- list(...)
     }
