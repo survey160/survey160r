@@ -15,14 +15,11 @@ test_that("prompts for secret and appends to .Renviron when file does not exist"
 })
 
 test_that("strips existing secret from .Renviron before writing", {
+  written_lines <- NULL
   local_mocked_bindings(
     readline = function(...) "new-secret",
     file.exists = function(...) TRUE,
-    readLines = function(...) c("OTHER_VAR=keep", "S160_GCS_CLIENT_SECRET=old", "ANOTHER=also_keep")
-  )
-
-  written_lines <- NULL
-  local_mocked_bindings(
+    readLines = function(...) c("OTHER_VAR=keep", "S160_GCS_CLIENT_SECRET=old", "ANOTHER=also_keep"),
     writeLines = function(lines, ...) {
       written_lines <<- lines
     },
