@@ -15,13 +15,13 @@
 # --- Base R bindings for testability -----------------------------------------
 # Declaring these as package-level bindings allows local_mocked_bindings() to
 # intercept them in tests without needing mockery::stub.
-interactive <- NULL
-readline <- NULL
-file.exists <- NULL # nolint object_name_linter
-readLines <- NULL # nolint object_name_linter
-writeLines <- NULL # nolint object_name_linter
-cat <- NULL
-system.file <- NULL # nolint object_name_linter
+interactive <- base::interactive
+readline <- base::readline
+file.exists <- base::file.exists # nolint object_name_linter
+readLines <- base::readLines # nolint object_name_linter
+writeLines <- base::writeLines # nolint object_name_linter
+cat <- base::cat
+system.file <- base::system.file # nolint object_name_linter
 
 # --- Internal helpers --------------------------------------------------------
 

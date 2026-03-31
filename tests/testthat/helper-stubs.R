@@ -22,9 +22,19 @@ stub_gcs_download_ok <- function(capture_env = NULL, env = parent.frame()) {
   )
 }
 
+# Path to bundled oauth-client.json (works under both pkgload and R CMD check)
+oauth_client_path <- base::system.file("oauth-client.json", package = "survey160r")
+if (oauth_client_path == "") {
+  # pkgload::load_all() -- file is still in inst/
+  oauth_client_path <- file.path(
+    testthat::test_path("..", ".."), "inst", "oauth-client.json"
+  )
+}
+
 # Stub s160_gcs_init dependencies that would trigger real GCS auth
 stub_gcs_init_base <- function(env = parent.frame()) {
   testthat::local_mocked_bindings(
+    system.file = function(...) oauth_client_path,
     gcs_auth = function(...) NULL,
     gcs_global_bucket = function(...) NULL,
     .env = env

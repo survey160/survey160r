@@ -13,7 +13,10 @@ test_that("errors when bucket is not a string", {
 
 test_that("errors in non-interactive mode when secret is missing", {
   withr::with_envvar(c(S160_GCS_CLIENT_SECRET = ""), {
-    local_mocked_bindings(interactive = function() FALSE)
+    local_mocked_bindings(
+      system.file = function(...) oauth_client_path,
+      interactive = function() FALSE
+    )
     expect_error(s160_gcs_init(bucket = "campaign_results"), "S160_GCS_CLIENT_SECRET")
   })
 })
@@ -43,6 +46,7 @@ test_that("sets global bucket and configures OAuth client", {
   captured_bucket <- NULL
   withr::with_envvar(c(S160_GCS_CLIENT_SECRET = "fake-secret"), {
     local_mocked_bindings(
+      system.file = function(...) oauth_client_path,
       gcs_auth = function(...) NULL,
       gcs_global_bucket = function(b) {
         captured_bucket <<- b
