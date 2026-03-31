@@ -12,17 +12,6 @@
 #
 # Bucket is passed as a required parameter to s160_gcs_init().
 
-# --- Base R bindings for testability -----------------------------------------
-# Declaring these as package-level bindings allows local_mocked_bindings() to
-# intercept them in tests without needing mockery::stub.
-interactive <- base::interactive
-readline <- base::readline
-file.exists <- base::file.exists # nolint object_name_linter
-readLines <- base::readLines # nolint object_name_linter
-writeLines <- base::writeLines # nolint object_name_linter
-cat <- base::cat
-system.file <- base::system.file # nolint object_name_linter
-
 # --- Internal helpers --------------------------------------------------------
 
 # Stop with a clear message if GCS is not initialized
@@ -34,7 +23,7 @@ check_gcs_ready <- function() {
 }
 
 # Prompt for the client secret and persist it to ~/.Renviron
-prompt_and_save_secret <- function() {
+prompt_and_save_secret <- function() { # nocov start
   message("First-time setup: paste the survey160r OAuth client secret (ask your team lead).")
   secret <- readline("S160_GCS_CLIENT_SECRET: ")
   if (secret == "") {
@@ -51,7 +40,7 @@ prompt_and_save_secret <- function() {
   Sys.setenv(S160_GCS_CLIENT_SECRET = secret)
   message("Saved to ~/.Renviron. You won't be asked again.")
   secret
-}
+} # nocov end
 
 # Validate campaign_id is a non-empty scalar
 validate_campaign_id <- function(campaign_id) {
