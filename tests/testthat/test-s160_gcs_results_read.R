@@ -1,6 +1,6 @@
 # Shared stubs — every test needs these three at minimum
 stub_base <- function(env = parent.frame()) {
-  local_mocked_bindings(
+  testthat::local_mocked_bindings(
     check_gcs_ready = function() NULL,
     validate_campaign_id = function(id) as.character(id),
     gcs_get_global_bucket = function() "test_bucket",
@@ -10,8 +10,8 @@ stub_base <- function(env = parent.frame()) {
 
 # Stub a successful download that writes a minimal CSV to the target path
 stub_download_ok <- function(capture_env = NULL, env = parent.frame()) {
-  local_mocked_bindings(
-    gcs_get_object = function(object_name, saveToDisk, ...) {
+  testthat::local_mocked_bindings(
+    gcs_get_object = function(object_name, saveToDisk, ...) { # nolint object_name_linter
       writeLines(c("a,b", "1,2"), saveToDisk)
       if (!is.null(capture_env)) capture_env$args <- as.list(environment())
       TRUE
