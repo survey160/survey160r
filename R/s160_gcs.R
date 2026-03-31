@@ -121,12 +121,19 @@ s160_gcs_init <- function(bucket) {
 
 #' Read campaign results CSV from GCS into a data frame
 #'
-#' Downloads the CSV to the current working directory and reads it into R.
+#' Downloads the CSV from GCS and reads it into R. By default, the file is
+#' downloaded to a temporary location and cleaned up automatically. Set
+#' \code{destdir} to keep a local copy.
+#'
 #' GCS path: \code{gs://<bucket>/<campaign_id>/<filename>}
 #'
 #' @param campaign_id Campaign ID (numeric or character). Must be a single value.
 #' @param filename File name in the campaign folder. Defaults to
 #'   \code{<campaign_id>_raw_data_download.csv} (the standard export filename).
+#'   Must not contain path separators.
+#' @param destdir Directory to save the downloaded file. When \code{NULL}
+#'   (default), a temporary file is used and cleaned up automatically. Use
+#'   \code{"."} for the current directory.
 #' @param ... Additional arguments passed to \code{read.csv()}, e.g.
 #'   \code{stringsAsFactors}, \code{na.strings}, \code{nrows}.
 #' @return A data frame with one row per survey response.
@@ -134,17 +141,21 @@ s160_gcs_init <- function(bucket) {
 #' \dontrun{
 #' s160_gcs_init(bucket = "campaign_results")
 #' df <- s160_gcs_results_read(1980)
-#' df <- s160_gcs_results_read(1980, filename = "custom_export.csv")
+#' df <- s160_gcs_results_read(1980, destdir = ".")
+#' df <- s160_gcs_results_read(1980, destdir = "~/data")
 #' }
-#' @importFrom googleCloudStorageR gcs_get_object gcs_list_objects gcs_get_global_bucket
+#' @importFrom googleCloudStorageR gcs_get_object gcs_get_global_bucket
 #' @importFrom utils read.csv
 #' @export
-s160_gcs_results_read <- function(campaign_id, filename = NULL, ...) {
+s160_gcs_results_read <- function(campaign_id, filename = NULL, destdir = NULL, ...) {
   check_gcs_ready()
   campaign_id <- validate_campaign_id(campaign_id)
 
   if (is.null(filename)) {
     filename <- paste0(campaign_id, "_raw_data_download.csv")
+  }
+  if (filename != basename(filename)) {
+    stop("filename must not contain path separators.", call. = FALSE)
   }
   object_name <- paste0(campaign_id, "/", filename)
 
@@ -152,7 +163,18 @@ s160_gcs_results_read <- function(campaign_id, filename = NULL, ...) {
   gcs_path <- sprintf("gs://%s/%s", bucket, object_name)
   message(sprintf("Reading: %s", gcs_path))
 
-  local_path <- file.path(getwd(), filename)
+  if (is.null(destdir)) {
+    local_path <- tempfile(pattern = paste0("s160_", campaign_id, "_"), fileext = ".csv")
+    on.exit(unlink(local_path), add = TRUE)
+  } else if (!is.character(destdir) || length(destdir) != 1) {
+    stop("destdir must be a single character string.", call. = FALSE)
+  } else {
+    destdir <- normalizePath(destdir, mustWork = FALSE)
+    if (!dir.exists(destdir)) {
+      stop(sprintf("destdir does not exist or is not a directory: %s", destdir), call. = FALSE)
+    }
+    local_path <- file.path(destdir, filename)
+  }
 
   tryCatch(
     gcs_get_object(object_name = object_name, saveToDisk = local_path, overwrite = TRUE),
@@ -164,6 +186,10 @@ s160_gcs_results_read <- function(campaign_id, filename = NULL, ...) {
       stop(sprintf("Failed to download %s: %s", gcs_path, msg), call. = FALSE)
     }
   )
+
+  if (!is.null(destdir)) {
+    message(sprintf("Saved to: %s", local_path))
+  }
 
   read.csv(local_path, fileEncoding = "UTF-8", ...)
 }
@@ -180,6 +206,7 @@ s160_gcs_results_read <- function(campaign_id, filename = NULL, ...) {
 #' s160_gcs_init(bucket = "campaign_results")
 #' s160_gcs_results_files(1980)
 #' }
+#' @importFrom googleCloudStorageR gcs_list_objects
 #' @export
 s160_gcs_results_files <- function(campaign_id) {
   check_gcs_ready()

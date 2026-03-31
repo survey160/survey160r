@@ -1,49 +1,53 @@
-test_that("default filename uses campaign_id pattern", {
-  captured_args <- NULL
-  mockery::stub(s160_gcs_results_read, "check_gcs_ready", NULL)
-  mockery::stub(s160_gcs_results_read, "validate_campaign_id", "1980")
-  mockery::stub(s160_gcs_results_read, "gcs_get_global_bucket", "test_bucket")
-  mockery::stub(s160_gcs_results_read, "gcs_get_object", function(...) {
-    captured_args <<- list(...)
-    TRUE
-  })
-  # Create a fake CSV so read.csv succeeds
-  tmp <- file.path(tempdir(), "1980_raw_data_download.csv")
-  writeLines("a,b\n1,2", tmp)
-  mockery::stub(s160_gcs_results_read, "file.path", tmp)
+# Shared stubs — every test needs these three at minimum
+stub_base <- function(env = parent.frame()) {
+  testthat::local_mocked_bindings(
+    check_gcs_ready = function() NULL,
+    validate_campaign_id = function(id) as.character(id),
+    gcs_get_global_bucket = function() "test_bucket",
+    .env = env
+  )
+}
 
+# Stub a successful download that writes a minimal CSV to the target path
+stub_download_ok <- function(capture_env = NULL, env = parent.frame()) {
+  testthat::local_mocked_bindings(
+    gcs_get_object = function(object_name, saveToDisk, ...) { # nolint object_name_linter
+      writeLines(c("a,b", "1,2"), saveToDisk)
+      if (!is.null(capture_env)) capture_env$args <- as.list(environment())
+      TRUE
+    },
+    .env = env
+  )
+}
+
+test_that("default call uses campaign_id filename, cleans up temp, no working dir leak", {
+  stub_base()
+  captured <- new.env(parent = emptyenv())
+  stub_download_ok(capture_env = captured)
+
+  wd_before <- list.files(getwd(), pattern = "\\.csv$")
   expect_message(s160_gcs_results_read(1980), "1980/1980_raw_data_download.csv")
-  expect_equal(captured_args$object_name, "1980/1980_raw_data_download.csv")
+  wd_after <- list.files(getwd(), pattern = "\\.csv$")
 
-  unlink(tmp)
+  expect_equal(captured$args$object_name, "1980/1980_raw_data_download.csv")
+  expect_false(file.exists(captured$args$saveToDisk))
+  expect_equal(wd_after, wd_before)
 })
 
 test_that("custom filename overrides default", {
-  captured_args <- NULL
-  mockery::stub(s160_gcs_results_read, "check_gcs_ready", NULL)
-  mockery::stub(s160_gcs_results_read, "validate_campaign_id", "1980")
-  mockery::stub(s160_gcs_results_read, "gcs_get_global_bucket", "test_bucket")
-  mockery::stub(s160_gcs_results_read, "gcs_get_object", function(...) {
-    captured_args <<- list(...)
-    TRUE
-  })
-  tmp <- file.path(tempdir(), "custom.csv")
-  writeLines("a,b\n1,2", tmp)
-  mockery::stub(s160_gcs_results_read, "file.path", tmp)
+  stub_base()
+  captured <- new.env(parent = emptyenv())
+  stub_download_ok(capture_env = captured)
 
   expect_message(s160_gcs_results_read(1980, filename = "custom.csv"), "1980/custom.csv")
-  expect_equal(captured_args$object_name, "1980/custom.csv")
-
-  unlink(tmp)
+  expect_equal(captured$args$object_name, "1980/custom.csv")
 })
 
 test_that("404 error gives clear file not found message", {
-  mockery::stub(s160_gcs_results_read, "check_gcs_ready", NULL)
-  mockery::stub(s160_gcs_results_read, "validate_campaign_id", "9999")
-  mockery::stub(s160_gcs_results_read, "gcs_get_global_bucket", "test_bucket")
-  mockery::stub(s160_gcs_results_read, "gcs_get_object", function(...) {
-    stop("http_404 Unspecified error")
-  })
+  stub_base()
+  local_mocked_bindings(
+    gcs_get_object = function(...) stop("http_404 Unspecified error")
+  )
 
   expect_error(
     suppressMessages(s160_gcs_results_read(9999)),
@@ -52,15 +56,61 @@ test_that("404 error gives clear file not found message", {
 })
 
 test_that("non-404 error gives download failed message", {
-  mockery::stub(s160_gcs_results_read, "check_gcs_ready", NULL)
-  mockery::stub(s160_gcs_results_read, "validate_campaign_id", "1980")
-  mockery::stub(s160_gcs_results_read, "gcs_get_global_bucket", "test_bucket")
-  mockery::stub(s160_gcs_results_read, "gcs_get_object", function(...) {
-    stop("connection timeout")
-  })
+  stub_base()
+  local_mocked_bindings(
+    gcs_get_object = function(...) stop("connection timeout")
+  )
 
   expect_error(
     suppressMessages(s160_gcs_results_read(1980)),
     "Failed to download.*connection timeout"
   )
+})
+
+test_that("filename with path separator is rejected", {
+  stub_base()
+
+  expect_error(
+    s160_gcs_results_read(1980, filename = "../evil.csv"),
+    "path separators"
+  )
+  expect_error(
+    s160_gcs_results_read(1980, filename = "subdir/file.csv"),
+    "path separators"
+  )
+})
+
+test_that("non-string destdir is rejected", {
+  stub_base()
+
+  expect_error(s160_gcs_results_read(1980, destdir = 123), "single character string")
+  expect_error(s160_gcs_results_read(1980, destdir = TRUE), "single character string")
+  expect_error(s160_gcs_results_read(1980, destdir = c("a", "b")), "single character string")
+})
+
+test_that("nonexistent destdir is rejected", {
+  stub_base()
+
+  expect_error(
+    suppressMessages(s160_gcs_results_read(1980, destdir = "/nonexistent/path")),
+    "does not exist"
+  )
+})
+
+test_that("destdir saves file, prints path, and works with '.'", {
+  stub_base()
+  stub_download_ok()
+  tmp_dir <- tempdir()
+  dest_file <- file.path(tmp_dir, "1980_raw_data_download.csv")
+
+  expect_message(s160_gcs_results_read(1980, destdir = tmp_dir), "Saved to:")
+  expect_true(file.exists(dest_file))
+  unlink(dest_file)
+
+  # Same behavior when destdir is "." (relative)
+  withr::with_dir(tmp_dir, {
+    expect_message(s160_gcs_results_read(1980, destdir = "."), "Saved to:")
+    expect_true(file.exists("1980_raw_data_download.csv"))
+  })
+  unlink(dest_file)
 })
