@@ -54,7 +54,8 @@ jobs:
 
           # Per-function breakdown
           df <- as.data.frame(cov)
-          func_cov <- tapply(df$value > 0, df$functions, mean) * 100
+          df <- df[!is.na(df$value) & !is.na(df$functions) & nzchar(df$functions), ]
+          func_cov <- tapply(df$value > 0, df$functions, function(x) mean(x, na.rm = TRUE)) * 100
           func_cov <- sort(func_cov)
 
           # Build summary table
