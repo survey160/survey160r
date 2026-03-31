@@ -20,9 +20,60 @@ test_that("errors in non-interactive mode when secret is missing", {
 
 test_that("errors when oauth-client.json is not found", {
   withr::with_envvar(c(S160_GCS_CLIENT_SECRET = "fake-secret"), {
-    # system.file is from base, so local_mocked_bindings can't reach it
     mockery::stub(s160_gcs_init, "system.file", "")
     expect_error(s160_gcs_init(bucket = "campaign_results"), "oauth-client.json not found")
+  })
+})
+
+test_that("interactive flow prompts for secret and saves to .Renviron", {
+  mockery::stub(s160_gcs_init, "interactive", TRUE)
+  mockery::stub(s160_gcs_init, "readline", "prompted-secret")
+  mockery::stub(s160_gcs_init, "file.exists", FALSE)
+  mockery::stub(s160_gcs_init, "gcs_auth", NULL)
+  mockery::stub(s160_gcs_init, "gcs_global_bucket", NULL)
+
+  captured_cat <- NULL
+  mockery::stub(s160_gcs_init, "cat", function(...) { captured_cat <<- list(...) })
+
+  withr::with_envvar(c(S160_GCS_CLIENT_SECRET = ""), {
+    suppressMessages(s160_gcs_init(bucket = "campaign_results"))
+  })
+
+  expect_equal(getOption("googleAuthR.client_secret"), "prompted-secret")
+  expect_true(grepl("S160_GCS_CLIENT_SECRET=prompted-secret", captured_cat[[1]]))
+  expect_true(captured_cat$append)
+})
+
+test_that("interactive flow strips existing secret from .Renviron before writing", {
+  mockery::stub(s160_gcs_init, "interactive", TRUE)
+  mockery::stub(s160_gcs_init, "readline", "new-secret")
+  mockery::stub(s160_gcs_init, "file.exists", TRUE)
+  mockery::stub(s160_gcs_init, "readLines", c("OTHER_VAR=keep", "S160_GCS_CLIENT_SECRET=old", "ANOTHER=also_keep"))
+  mockery::stub(s160_gcs_init, "gcs_auth", NULL)
+  mockery::stub(s160_gcs_init, "gcs_global_bucket", NULL)
+
+  written_lines <- NULL
+  mockery::stub(s160_gcs_init, "writeLines", function(lines, ...) { written_lines <<- lines })
+  mockery::stub(s160_gcs_init, "cat", function(...) NULL)
+
+  withr::with_envvar(c(S160_GCS_CLIENT_SECRET = ""), {
+    suppressMessages(s160_gcs_init(bucket = "campaign_results"))
+  })
+
+  expect_equal(written_lines, c("OTHER_VAR=keep", "ANOTHER=also_keep"))
+})
+
+test_that("interactive flow errors when readline returns empty", {
+  mockery::stub(s160_gcs_init, "interactive", TRUE)
+  mockery::stub(s160_gcs_init, "readline", "")
+  mockery::stub(s160_gcs_init, "gcs_auth", NULL)
+  mockery::stub(s160_gcs_init, "gcs_global_bucket", NULL)
+
+  withr::with_envvar(c(S160_GCS_CLIENT_SECRET = ""), {
+    expect_error(
+      suppressMessages(s160_gcs_init(bucket = "campaign_results")),
+      "Client secret cannot be empty"
+    )
   })
 })
 
