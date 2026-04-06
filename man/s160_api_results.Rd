@@ -22,7 +22,8 @@ Default \code{FALSE}.}
 \item{timeout}{Timeout in seconds for export completion. Default 300.}
 
 \item{poll_interval}{Maximum polling interval in seconds. Default 5.
-Polling uses exponential backoff starting at 2s, capped at this value.}
+Polling uses exponential backoff starting at the smaller of 2s and
+this value, capped at this value.}
 
 \item{destdir}{Directory to save the downloaded CSV. \code{NULL} (default)
 uses a temporary file.}

@@ -50,8 +50,9 @@ s160_api_request <- function(method, path, body = NULL) {
   if (httr::http_error(resp)) {
     msg <- tryCatch(
       httr::content(resp, as = "parsed")$error,
-      error = function(e) httr::http_status(resp)$message
+      error = function(e) NULL
     )
+    if (is.null(msg) || !nzchar(msg)) msg <- httr::http_status(resp)$message
     stop(sprintf("API error (%s %s): %s", method, path, msg), call. = FALSE)
   }
 
@@ -90,8 +91,10 @@ s160_api_auth <- function(userid, api_key, base_url) {
     stop("base_url must be a non-empty string.", call. = FALSE)
   }
 
-  # Strip trailing slash
-  base_url <- sub("/$", "", base_url)
+  # Normalize inputs
+  userid <- trimws(userid)
+  api_key <- trimws(api_key)
+  base_url <- sub("/$", "", trimws(base_url))
 
   url <- paste0(base_url, "/auth/serviceAccount")
   resp <- httr::POST(
@@ -105,8 +108,9 @@ s160_api_auth <- function(userid, api_key, base_url) {
   if (httr::http_error(resp)) {
     msg <- tryCatch(
       httr::content(resp, as = "parsed")$error,
-      error = function(e) httr::http_status(resp)$message
+      error = function(e) NULL
     )
+    if (is.null(msg) || !nzchar(msg)) msg <- httr::http_status(resp)$message
     stop(sprintf("Authentication failed: %s", msg), call. = FALSE)
   }
 
@@ -136,7 +140,8 @@ s160_api_auth <- function(userid, api_key, base_url) {
 #'   Default \code{FALSE}.
 #' @param timeout Timeout in seconds for export completion. Default 300.
 #' @param poll_interval Maximum polling interval in seconds. Default 5.
-#'   Polling uses exponential backoff starting at 2s, capped at this value.
+#'   Polling uses exponential backoff starting at the smaller of 2s and
+#'   this value, capped at this value.
 #' @param destdir Directory to save the downloaded CSV. \code{NULL} (default)
 #'   uses a temporary file.
 #' @param ... Additional arguments passed to \code{read.csv()}.
@@ -156,6 +161,14 @@ s160_api_results <- function(campaign_id, filter_open = FALSE,
   check_api_ready()
   check_gcs_ready()
   campaign_id <- validate_campaign_id(campaign_id)
+
+  if (!is.numeric(timeout) || length(timeout) != 1 || timeout <= 0) {
+    stop("timeout must be a positive number.", call. = FALSE)
+  }
+  if (!is.numeric(poll_interval) || length(poll_interval) != 1 ||
+        poll_interval <= 0) {
+    stop("poll_interval must be a positive number.", call. = FALSE)
+  }
 
   export_filename <- paste0(campaign_id, "_raw_data_download.csv")
 

@@ -167,6 +167,37 @@ test_that("request raises error on HTTP failure", {
   )
 })
 
+test_that("request falls back to http_status when error field is NULL", {
+  stub_api_base()
+  local_mocked_bindings(
+    POST = function(url, ...) structure(list(status_code = 502L), class = "response"),
+    http_error = function(resp) TRUE,
+    content = function(resp, ...) list(message = "something else"),
+    http_status = function(resp) list(message = "Bad Gateway"),
+    .package = "httr"
+  )
+
+  expect_error(
+    survey160r:::s160_api_request("POST", "/fail", body = list(x = 1)),
+    "API error.*Bad Gateway"
+  )
+})
+
+test_that("auth falls back to http_status when error field is NULL", {
+  local_mocked_bindings(
+    POST = function(url, ...) structure(list(status_code = 503L), class = "response"),
+    http_error = function(resp) TRUE,
+    content = function(resp, ...) list(detail = "unavailable"),
+    http_status = function(resp) list(message = "Service Unavailable"),
+    .package = "httr"
+  )
+
+  expect_error(
+    s160_api_auth("svc", "key", "https://api.example.com"),
+    "Authentication failed.*Service Unavailable"
+  )
+})
+
 # --- s160_api_results ---------------------------------------------------------
 
 test_that("results triggers export and returns data frame after GCS update", {
@@ -239,6 +270,21 @@ test_that("results errors when API not authenticated", {
 test_that("results errors when GCS not initialized", {
   stub_api_base()
   expect_error(s160_api_results(1980), "Run s160_gcs_init")
+})
+
+test_that("results errors on invalid timeout", {
+  stub_api_base()
+  stub_gcs_base()
+  expect_error(s160_api_results(1980, timeout = 0), "positive number")
+  expect_error(s160_api_results(1980, timeout = -1), "positive number")
+  expect_error(s160_api_results(1980, timeout = "abc"), "positive number")
+})
+
+test_that("results errors on invalid poll_interval", {
+  stub_api_base()
+  stub_gcs_base()
+  expect_error(s160_api_results(1980, poll_interval = 0), "positive number")
+  expect_error(s160_api_results(1980, poll_interval = -5), "positive number")
 })
 
 # --- get_gcs_file_updated -----------------------------------------------------
