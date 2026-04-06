@@ -11,7 +11,7 @@ test_that("status returns metadata for existing export", {
     }
   )
 
-  result <- s160_gcs_results_status(1980)
+  result <- s160_gcs_campaign_results_status(1980)
   expect_equal(result$name, "1980_raw_data_download.csv")
   expect_equal(result$updated, "2024-06-15T10:00:00Z")
   expect_equal(result$size, 12345)
@@ -25,7 +25,7 @@ test_that("status returns NULL when no files exist", {
     }
   )
 
-  expect_null(s160_gcs_results_status(1980))
+  expect_null(s160_gcs_campaign_results_status(1980))
 })
 
 test_that("status errors on GCS failure", {
@@ -34,7 +34,7 @@ test_that("status errors on GCS failure", {
     gcs_list_objects = function(prefix, ...) stop("connection timeout")
   )
 
-  expect_error(s160_gcs_results_status(1980), "Failed to list files.*connection timeout")
+  expect_error(s160_gcs_campaign_results_status(1980), "Failed to list files.*connection timeout")
 })
 
 test_that("status returns NULL when export file not found among other files", {
@@ -50,5 +50,5 @@ test_that("status returns NULL when export file not found among other files", {
     }
   )
 
-  expect_null(s160_gcs_results_status(1980))
+  expect_null(s160_gcs_campaign_results_status(1980))
 })

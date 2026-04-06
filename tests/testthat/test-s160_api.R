@@ -198,7 +198,7 @@ test_that("auth falls back to http_status when error field is NULL", {
   )
 })
 
-# --- s160_api_results ---------------------------------------------------------
+# --- s160_api_campaign_results ---------------------------------------------------------
 
 test_that("results triggers export and returns data frame after GCS update", {
   stub_api_base()
@@ -213,12 +213,12 @@ test_that("results triggers export and returns data frame after GCS update", {
     s160_api_request = function(method, path, body = NULL) {
       list(status = "processing")
     },
-    s160_gcs_results_read = function(campaign_id, ...) {
+    s160_gcs_campaign_results_read = function(campaign_id, ...) {
       data.frame(campaignid = 1980, phone = "5551234567")
     }
   )
 
-  df <- suppressMessages(s160_api_results(1980, timeout = 10, poll_interval = 0.1))
+  df <- suppressMessages(s160_api_campaign_results(1980, timeout = 10, poll_interval = 0.1))
   expect_equal(df$campaignid, 1980)
   expect_equal(df$phone, "5551234567")
 })
@@ -236,12 +236,12 @@ test_that("results works when no prior export exists (baseline is NULL)", {
     s160_api_request = function(method, path, body = NULL) {
       list(status = "processing")
     },
-    s160_gcs_results_read = function(campaign_id, ...) {
+    s160_gcs_campaign_results_read = function(campaign_id, ...) {
       data.frame(campaignid = 42)
     }
   )
 
-  df <- suppressMessages(s160_api_results(42, timeout = 10, poll_interval = 0.1))
+  df <- suppressMessages(s160_api_campaign_results(42, timeout = 10, poll_interval = 0.1))
   expect_equal(df$campaignid, 42)
 })
 
@@ -257,34 +257,34 @@ test_that("results times out when GCS never updates", {
   )
 
   expect_error(
-    suppressMessages(s160_api_results(1980, timeout = 0.2, poll_interval = 0.1)),
+    suppressMessages(s160_api_campaign_results(1980, timeout = 0.2, poll_interval = 0.1)),
     "timed out"
   )
 })
 
 test_that("results errors when API not authenticated", {
   stub_gcs_base()
-  expect_error(s160_api_results(1980), "Run s160_api_auth")
+  expect_error(s160_api_campaign_results(1980), "Run s160_api_auth")
 })
 
 test_that("results errors when GCS not initialized", {
   stub_api_base()
-  expect_error(s160_api_results(1980), "Run s160_gcs_init")
+  expect_error(s160_api_campaign_results(1980), "Run s160_gcs_init")
 })
 
 test_that("results errors on invalid timeout", {
   stub_api_base()
   stub_gcs_base()
-  expect_error(s160_api_results(1980, timeout = 0), "positive number")
-  expect_error(s160_api_results(1980, timeout = -1), "positive number")
-  expect_error(s160_api_results(1980, timeout = "abc"), "positive number")
+  expect_error(s160_api_campaign_results(1980, timeout = 0), "positive number")
+  expect_error(s160_api_campaign_results(1980, timeout = -1), "positive number")
+  expect_error(s160_api_campaign_results(1980, timeout = "abc"), "positive number")
 })
 
 test_that("results errors on invalid poll_interval", {
   stub_api_base()
   stub_gcs_base()
-  expect_error(s160_api_results(1980, poll_interval = 0), "positive number")
-  expect_error(s160_api_results(1980, poll_interval = -5), "positive number")
+  expect_error(s160_api_campaign_results(1980, poll_interval = 0), "positive number")
+  expect_error(s160_api_campaign_results(1980, poll_interval = -5), "positive number")
 })
 
 # --- get_gcs_file_updated -----------------------------------------------------

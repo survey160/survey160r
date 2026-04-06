@@ -150,14 +150,14 @@ s160_api_auth <- function(userid, api_key, base_url) {
 #' \dontrun{
 #' s160_gcs_init(bucket = "campaign_results")
 #' s160_api_auth("svc-analytics", "key...", "https://qa-api.survey160.com")
-#' df <- s160_api_results(1980)
-#' df <- s160_api_results(1980, filter_open = TRUE, timeout = 600)
+#' df <- s160_api_campaign_results(1980)
+#' df <- s160_api_campaign_results(1980, filter_open = TRUE, timeout = 600)
 #' }
 #' @importFrom googleCloudStorageR gcs_list_objects
 #' @export
-s160_api_results <- function(campaign_id, filter_open = FALSE,
-                             timeout = 300, poll_interval = 5,
-                             destdir = NULL, ...) {
+s160_api_campaign_results <- function(campaign_id, filter_open = FALSE,
+                                      timeout = 300, poll_interval = 5,
+                                      destdir = NULL, ...) {
   check_api_ready()
   check_gcs_ready()
   campaign_id <- validate_campaign_id(campaign_id)
@@ -194,7 +194,7 @@ s160_api_results <- function(campaign_id, filter_open = FALSE,
     if (!is.null(current_updated) &&
           (is.null(baseline_updated) || current_updated != baseline_updated)) {
       message("Export complete.")
-      return(s160_gcs_results_read(campaign_id, destdir = destdir, ...))
+      return(s160_gcs_campaign_results_read(campaign_id, destdir = destdir, ...)) # nolint object_usage_linter
     }
 
     interval <- min(interval * 2, poll_interval)
