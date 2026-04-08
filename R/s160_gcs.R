@@ -145,14 +145,14 @@ s160_gcs_init <- function(bucket) {
 #' @examples
 #' \dontrun{
 #' s160_gcs_init(bucket = "campaign_results")
-#' df <- s160_gcs_results_read(1980)
-#' df <- s160_gcs_results_read(1980, destdir = ".")
-#' df <- s160_gcs_results_read(1980, destdir = "~/data")
+#' df <- s160_gcs_campaign_results_read(1980)
+#' df <- s160_gcs_campaign_results_read(1980, destdir = ".")
+#' df <- s160_gcs_campaign_results_read(1980, destdir = "~/data")
 #' }
 #' @importFrom googleCloudStorageR gcs_get_object gcs_get_global_bucket
 #' @importFrom utils read.csv
 #' @export
-s160_gcs_results_read <- function(campaign_id, filename = NULL, destdir = NULL, ...) {
+s160_gcs_campaign_results_read <- function(campaign_id, filename = NULL, destdir = NULL, ...) {
   check_gcs_ready()
   campaign_id <- validate_campaign_id(campaign_id)
 
@@ -209,11 +209,11 @@ s160_gcs_results_read <- function(campaign_id, filename = NULL, destdir = NULL, 
 #' @examples
 #' \dontrun{
 #' s160_gcs_init(bucket = "campaign_results")
-#' s160_gcs_results_files(1980)
+#' s160_gcs_campaign_results_files(1980)
 #' }
 #' @importFrom googleCloudStorageR gcs_list_objects
 #' @export
-s160_gcs_results_files <- function(campaign_id) {
+s160_gcs_campaign_results_files <- function(campaign_id) {
   check_gcs_ready()
   campaign_id <- validate_campaign_id(campaign_id)
 
@@ -244,10 +244,10 @@ s160_gcs_results_files <- function(campaign_id) {
 #' @examples
 #' \dontrun{
 #' s160_gcs_init(bucket = "campaign_results")
-#' s160_gcs_results_list()
+#' s160_gcs_campaign_results_list()
 #' }
 #' @export
-s160_gcs_results_list <- function() {
+s160_gcs_campaign_results_list <- function() {
   check_gcs_ready()
   objects <- tryCatch(
     gcs_list_objects(),
@@ -265,4 +265,47 @@ s160_gcs_results_list <- function() {
   folder_objects <- grep("/", objects$name, value = TRUE)
   campaign_ids <- unique(sub("/.*", "", folder_objects))
   sort(campaign_ids)
+}
+
+#' Check campaign results export status
+#'
+#' Returns GCS file metadata for the campaign's export file without
+#' triggering a new export. Requires GCS auth (\code{s160_gcs_init}).
+#'
+#' @param campaign_id Campaign ID (numeric or character).
+#' @return Named list with \code{name}, \code{updated}, and \code{size},
+#'   or \code{NULL} if no export file exists.
+#' @examples
+#' \dontrun{
+#' s160_gcs_init(bucket = "campaign_results")
+#' s160_gcs_campaign_results_status(1980)
+#' }
+#' @importFrom googleCloudStorageR gcs_list_objects
+#' @export
+s160_gcs_campaign_results_status <- function(campaign_id) {
+  check_gcs_ready()
+  campaign_id <- validate_campaign_id(campaign_id)
+
+  export_filename <- paste0(campaign_id, "_raw_data_download.csv")
+  prefix <- paste0(campaign_id, "/")
+
+  objects <- tryCatch(
+    gcs_list_objects(prefix = prefix),
+    error = function(e) {
+      stop(sprintf("Failed to list files for campaign %s: %s",
+                   campaign_id, conditionMessage(e)), call. = FALSE)
+    }
+  )
+
+  if (nrow(objects) == 0) return(NULL)
+
+  match_idx <- which(objects$name == paste0(prefix, export_filename))
+  if (length(match_idx) == 0) return(NULL)
+
+  row <- objects[match_idx[1], ]
+  list(
+    name = export_filename,
+    updated = row$updated,
+    size = row$size
+  )
 }

@@ -23,11 +23,11 @@ library(survey160r)
 s160_gcs_init(bucket = "campaign_results")
 
 # Read a campaign's results into a data frame
-df <- s160_gcs_results_read(1980)
+df <- s160_gcs_campaign_results_read(1980)
 
 # List available campaigns and files
-campaigns <- s160_gcs_results_list()
-files <- s160_gcs_results_files(1980)
+campaigns <- s160_gcs_campaign_results_list()
+files <- s160_gcs_campaign_results_files(1980)
 ```
 
 ## First-time setup
