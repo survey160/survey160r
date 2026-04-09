@@ -12,6 +12,8 @@ permissions:
 jobs:
   R-CMD-check:
     runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/r-lib/rlibr/r-lib-actions:ubuntu-release
 
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
@@ -19,11 +21,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-
-      - uses: r-lib/actions/setup-r@v2
-        with:
-          r-version: release
-          use-public-rspm: true
 
       - uses: r-lib/actions/setup-r-dependencies@v2
         with:
