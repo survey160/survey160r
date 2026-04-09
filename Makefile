@@ -17,7 +17,10 @@ lint:
 coverage:
 	Rscript -e 'cov <- covr::package_coverage(); print(cov); pct <- covr::percent_coverage(cov); if (pct < 100) stop(sprintf("Coverage %.1f%% is below 100%% threshold", pct))'
 
+e2e:
+	Rscript tests/e2e.R
+
 clean:
 	rm -rf *.tar.gz *.Rcheck
 
-.PHONY: all check install test lint coverage clean
+.PHONY: all check install test lint coverage e2e clean
