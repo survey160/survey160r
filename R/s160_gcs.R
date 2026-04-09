@@ -43,6 +43,51 @@ validate_campaign_id <- function(campaign_id) {
   campaign_id
 }
 
+# Download a GCS object to disk with size verification and retry.
+# Compares the local file size against GCS object metadata after download.
+# Retries up to max_retries times on size mismatch with exponential backoff.
+download_with_verify <- function(object_name, local_path, max_retries = 2L) {
+  # Get expected size from GCS metadata
+  prefix <- sub("/[^/]+$", "/", object_name)
+  objects <- gcs_list_objects(prefix = prefix)
+  expected_size <- NULL
+  if (nrow(objects) > 0) {
+    match_idx <- which(objects$name == object_name)
+    if (length(match_idx) > 0) {
+      expected_size <- as.numeric(objects$size[match_idx[1]])
+    }
+  }
+
+  attempt <- 0L
+  repeat {
+    attempt <- attempt + 1L
+    gcs_get_object(object_name = object_name, saveToDisk = local_path, overwrite = TRUE)
+
+    if (is.null(expected_size)) break  # can't verify, trust the download
+
+    actual_size <- file.info(local_path)$size
+    if (isTRUE(actual_size == expected_size)) break
+
+    if (attempt > max_retries) {
+      stop(sprintf(
+        "Download incomplete after %d attempts. Expected %s bytes, got %s bytes.",
+        attempt, format(expected_size, big.mark = ","),
+        format(actual_size, big.mark = ",")
+      ), call. = FALSE)
+    }
+
+    wait <- 2^(attempt - 1)
+    message(sprintf(
+      "Download size mismatch (expected %s, got %s). Retrying in %ds... (attempt %d/%d)",
+      format(expected_size, big.mark = ","), format(actual_size, big.mark = ","),
+      wait, attempt + 1L, max_retries + 1L
+    ))
+    Sys.sleep(wait)
+  }
+
+  invisible(local_path)
+}
+
 # --- Exported functions ------------------------------------------------------
 
 #' Initialize GCS connection
@@ -171,7 +216,7 @@ s160_gcs_campaign_results_read <- function(campaign_id, filename = NULL, destdir
   }
 
   tryCatch(
-    gcs_get_object(object_name = object_name, saveToDisk = local_path, overwrite = TRUE),
+    download_with_verify(object_name = object_name, local_path = local_path),
     error = function(e) {
       msg <- conditionMessage(e)
       if (grepl("404", msg, fixed = TRUE)) {

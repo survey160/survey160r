@@ -24,6 +24,7 @@ test_that("custom filename overrides default", {
 test_that("404 error gives clear file not found message", {
   stub_gcs_base()
   local_mocked_bindings(
+    gcs_list_objects = function(...) data.frame(name = character(0), size = numeric(0), stringsAsFactors = FALSE),
     gcs_get_object = function(...) stop("http_404 Unspecified error")
   )
 
@@ -36,6 +37,7 @@ test_that("404 error gives clear file not found message", {
 test_that("non-404 error gives download failed message", {
   stub_gcs_base()
   local_mocked_bindings(
+    gcs_list_objects = function(...) data.frame(name = character(0), size = numeric(0), stringsAsFactors = FALSE),
     gcs_get_object = function(...) stop("connection timeout")
   )
 
