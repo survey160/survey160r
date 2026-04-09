@@ -35,7 +35,9 @@ prompt_and_save_env <- function(var_name, prompt_msg) { # nocov start
   }
   cat(paste0(var_name, "=", value, "\n"),
       file = renviron_path, append = TRUE)
-  do.call(Sys.setenv, setNames(list(value), var_name))
+  args <- list(value)
+  names(args) <- var_name
+  do.call(Sys.setenv, args)
   message(sprintf("Saved %s to ~/.Renviron.", var_name))
   value
 } # nocov end
