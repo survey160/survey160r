@@ -12,17 +12,6 @@ stub_api_base <- function(env = parent.frame()) {
   }, envir = env)
 }
 
-# Set env vars for auth tests, clean up after
-with_api_env_vars <- function(code, userid = "svc", api_key = "key123",
-                              env = parent.frame()) {
-  withr::local_envvar(
-    S160_API_USERID = userid,
-    S160_API_KEY = api_key,
-    .local_envir = env
-  )
-  force(code)
-}
-
 # --- s160_api_auth ------------------------------------------------------------
 
 test_that("auth succeeds and stores JWT", {
