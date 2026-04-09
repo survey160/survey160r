@@ -84,6 +84,24 @@ test_that("download skips verification when gcs_list_objects errors", {
   expect_true(file.exists(tmp))
 })
 
+test_that("download errors when file not written to disk", {
+  tmp <- tempfile(fileext = ".csv")
+
+  local_mocked_bindings(
+    gcs_list_objects = function(prefix, ...) {
+      data.frame(name = "100/data.csv", size = 100, stringsAsFactors = FALSE)
+    },
+    gcs_get_object = function(object_name, saveToDisk, ...) { # nolint object_name_linter
+      TRUE  # does not write a file
+    }
+  )
+
+  expect_error(
+    download_with_verify("100/data.csv", tmp),
+    "Download produced no file"
+  )
+})
+
 test_that("download retries then succeeds on second attempt", {
   csv_content <- c("a,b", "1,2")
   tmp <- tempfile(fileext = ".csv")
