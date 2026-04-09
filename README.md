@@ -23,12 +23,15 @@ library(survey160r)
 # Authenticate and set bucket (opens browser on first run)
 s160_gcs_init(bucket = "campaign_results")
 
-# Read a campaign's results into a data frame
-df <- s160_gcs_campaign_results_read(1980)
-
-# List available campaigns and files
+# List available campaigns
 campaigns <- s160_gcs_campaign_results_list()
-files <- s160_gcs_campaign_results_files(1980)
+campaign_id <- campaigns[1]
+
+# Read a campaign's results into a data frame
+df <- s160_gcs_campaign_results_read(campaign_id)
+
+# List files in a campaign folder
+files <- s160_gcs_campaign_results_files(campaign_id)
 ```
 
 ## API usage
@@ -52,16 +55,16 @@ s160_api_auth()
 
 # 3. Export and download -- triggers a fresh export, polls until ready,
 #    and returns the results as a data frame
-df <- s160_api_campaign_results(1980)
+df <- s160_api_campaign_results(campaign_id)
 
 # Exclude open/uncontacted conversations
-df <- s160_api_campaign_results(1980, filter_open = TRUE)
+df <- s160_api_campaign_results(campaign_id, filter_open = TRUE)
 
 # Increase timeout for large campaigns (default 300s)
-df <- s160_api_campaign_results(1980, timeout = 600)
+df <- s160_api_campaign_results(campaign_id, timeout = 600)
 
 # Save the CSV locally instead of using a temp file
-df <- s160_api_campaign_results(1980, destdir = ".")
+df <- s160_api_campaign_results(campaign_id, destdir = ".")
 ```
 
 ### Check export status
@@ -69,7 +72,7 @@ df <- s160_api_campaign_results(1980, destdir = ".")
 You can check the last export timestamp without triggering a new export:
 
 ```r
-status <- s160_gcs_campaign_results_status(1980)
+status <- s160_gcs_campaign_results_status(campaign_id)
 status$updated  # last export time
 status$size     # file size
 ```
