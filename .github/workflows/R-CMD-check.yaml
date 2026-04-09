@@ -13,7 +13,7 @@ jobs:
   R-CMD-check:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/r-hub/containers/ubuntu-release@sha256:ed43c6097fb770857c862d761b1c58f4036fa46583b89c14925e6c217b8b17cb
+      image: ghcr.io/r-hub/containers/ubuntu-release:latest
 
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
