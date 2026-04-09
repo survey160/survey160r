@@ -47,16 +47,20 @@ validate_campaign_id <- function(campaign_id) {
 # Compares the local file size against GCS object metadata after download.
 # Retries up to max_retries times on size mismatch with exponential backoff.
 download_with_verify <- function(object_name, local_path, max_retries = 2L) {
-  # Get expected size from GCS metadata
-  prefix <- sub("/[^/]+$", "/", object_name)
-  objects <- gcs_list_objects(prefix = prefix)
-  expected_size <- NULL
-  if (nrow(objects) > 0) {
-    match_idx <- which(objects$name == object_name)
-    if (length(match_idx) > 0) {
-      expected_size <- as.numeric(objects$size[match_idx[1]])
+  # Get expected size from GCS metadata. If listing fails (permissions or
+  # transient error), fall back to downloading without verification.
+  expected_size <- tryCatch({
+    prefix <- sub("/[^/]+$", "/", object_name)
+    objects <- gcs_list_objects(prefix = prefix)
+    size <- NULL
+    if (nrow(objects) > 0) {
+      match_idx <- which(objects$name == object_name)
+      if (length(match_idx) > 0) {
+        size <- as.numeric(objects$size[match_idx[1]])
+      }
     }
-  }
+    size
+  }, error = function(e) NULL)
 
   attempt <- 0L
   repeat {
@@ -66,7 +70,10 @@ download_with_verify <- function(object_name, local_path, max_retries = 2L) {
     if (is.null(expected_size)) break  # can't verify, trust the download
 
     actual_size <- file.info(local_path)$size
-    if (isTRUE(actual_size == expected_size)) break
+    if (!file.exists(local_path) || is.na(actual_size)) {
+      stop(sprintf("Download produced no file for '%s'.", object_name), call. = FALSE)
+    }
+    if (actual_size == expected_size) break
 
     if (attempt > max_retries) {
       stop(sprintf(
