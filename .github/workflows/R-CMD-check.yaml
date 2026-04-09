@@ -24,7 +24,6 @@ jobs:
 
       - uses: r-lib/actions/setup-r-dependencies@v2
         with:
-          pak-version: none
           extra-packages: any::rcmdcheck, any::lintr, any::covr
           needs: check
 
