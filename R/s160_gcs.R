@@ -24,22 +24,11 @@ check_gcs_ready <- function() {
 
 # Prompt for the client secret and persist it to ~/.Renviron
 prompt_and_save_secret <- function() { # nocov start
-  message("First-time setup: paste the survey160r OAuth client secret (ask your team lead).")
-  secret <- readline("S160_GCS_CLIENT_SECRET: ")
-  if (secret == "") {
-    stop("Client secret cannot be empty.", call. = FALSE)
-  }
-  renviron_path <- path.expand("~/.Renviron")
-  if (file.exists(renviron_path)) {
-    lines <- readLines(renviron_path, warn = FALSE)
-    lines <- lines[!grepl("^S160_GCS_CLIENT_SECRET=", lines)]
-    writeLines(lines, renviron_path)
-  }
-  cat(paste0("S160_GCS_CLIENT_SECRET=", secret, "\n"),
-      file = renviron_path, append = TRUE)
-  Sys.setenv(S160_GCS_CLIENT_SECRET = secret)
-  message("Saved to ~/.Renviron. You won't be asked again.")
-  secret
+  prompt_and_save_renviron( # nolint object_usage_linter
+    "S160_GCS_CLIENT_SECRET",
+    "First-time setup: paste the survey160r OAuth client secret (ask your team lead).",
+    secret = TRUE
+  )
 } # nocov end
 
 # Validate campaign_id is a non-empty scalar

@@ -1,6 +1,6 @@
 Package: survey160r
 Title: R Client for Survey160 Data
-Version: 0.3.0
+Version: 0.4.0
 Authors@R: c(
     person("Lennon", "Shimokawa", email = "lshimokawa@survey160.com", role = c("aut", "cre"))
     )
@@ -14,6 +14,7 @@ Imports:
     httr,
     jsonlite
 Suggests:
+    askpass,
     testthat (>= 3.0.0),
     mockery,
     withr,

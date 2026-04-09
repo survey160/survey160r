@@ -41,7 +41,7 @@ updated, and returns the results as a data frame. Requires both API auth
 \examples{
 \dontrun{
 s160_gcs_init(bucket = "campaign_results")
-s160_api_auth("svc-analytics", "key...", "https://qa-api.survey160.com")
+s160_api_auth()
 df <- s160_api_campaign_results(1980)
 df <- s160_api_campaign_results(1980, filter_open = TRUE, timeout = 600)
 }

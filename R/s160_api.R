@@ -2,9 +2,9 @@
 #
 # Auth strategy: API key-based service account authentication.
 #
-# An admin creates a service account user and API key via the Survey160
-# admin UI or API.  The R user only needs the userid and raw API key.
-# s160_api_auth() exchanges these for a JWT stored in memory.
+# Credentials (S160_API_USERID, S160_API_KEY) are read from ~/.Renviron.
+# On first interactive run, the user is prompted and values are saved
+# automatically.
 #
 # JWT refresh: Access tokens expire after 10 minutes. Rather than
 # implementing a refresh token flow, we re-authenticate with the stored
@@ -20,6 +20,23 @@ check_api_ready <- function() {
   }
 }
 
+# Read a credential from env, prompting interactively if missing
+get_credential <- function(var_name, prompt_msg, secret = FALSE) {
+  value <- Sys.getenv(var_name)
+  if (nzchar(value)) return(value)
+
+  if (!interactive()) {
+    stop(
+      sprintf("%s not set in the current R session.\n", var_name),
+      "Run s160_api_auth() interactively to set it up, ",
+      sprintf("or add %s to ~/.Renviron and restart R.", var_name),
+      call. = FALSE
+    )
+  }
+
+  prompt_and_save_renviron(var_name, prompt_msg, secret = secret) # nocov # nolint object_usage_linter.
+}
+
 # Authenticated HTTP request with auto JWT refresh
 s160_api_request <- function(method, path, body = NULL) {
   check_api_ready()
@@ -27,11 +44,7 @@ s160_api_request <- function(method, path, body = NULL) {
   # Re-auth if JWT is older than 8 minutes
   elapsed <- as.numeric(difftime(Sys.time(), .s160_api_env$auth_time, units = "secs"))
   if (elapsed > 480) {
-    s160_api_auth(
-      .s160_api_env$userid,
-      .s160_api_env$api_key,
-      .s160_api_env$base_url
-    )
+    s160_api_auth(base_url = .s160_api_env$base_url)
   }
 
   url <- paste0(.s160_api_env$base_url, path)
@@ -63,37 +76,34 @@ s160_api_request <- function(method, path, body = NULL) {
 
 #' Authenticate to the Survey160 API
 #'
-#' Exchanges a service account API key for a JWT token. The token is stored
-#' in memory for subsequent API calls. Get your userid and API key from your
-#' survey manager.
+#' Reads service account credentials (\code{S160_API_USERID} and
+#' \code{S160_API_KEY}) from \code{~/.Renviron}. On first interactive run,
+#' prompts for both values and saves them automatically.
 #'
-#' @param userid Service account user ID.
-#' @param api_key Raw API key string.
-#' @param base_url API base URL (e.g. \code{"https://qa-api.survey160.com"}).
+#' @param base_url API base URL. Defaults to
+#'   \code{"https://api.survey160.com"}.
 #' @return Invisible NULL. Stores JWT as side effect.
 #' @examples
 #' \dontrun{
-#' s160_api_auth("svc-analytics", "abc123...", "https://qa-api.survey160.com")
+#' s160_api_auth()
 #' }
 #' @importFrom httr POST add_headers content_type_json content http_error http_status
 #' @export
-s160_api_auth <- function(userid, api_key, base_url) {
-  if (missing(userid) || missing(api_key) || missing(base_url)) {
-    stop("userid, api_key, and base_url are all required.", call. = FALSE)
-  }
-  if (!is.character(userid) || length(userid) != 1 || !nzchar(trimws(userid))) {
-    stop("userid must be a non-empty string.", call. = FALSE)
-  }
-  if (!is.character(api_key) || length(api_key) != 1 || !nzchar(trimws(api_key))) {
-    stop("api_key must be a non-empty string.", call. = FALSE)
-  }
+s160_api_auth <- function(base_url = "https://api.survey160.com") {
   if (!is.character(base_url) || length(base_url) != 1 || !nzchar(trimws(base_url))) {
     stop("base_url must be a non-empty string.", call. = FALSE)
   }
 
-  # Normalize inputs
-  userid <- trimws(userid)
-  api_key <- trimws(api_key)
+  userid <- get_credential(
+    "S160_API_USERID",
+    "Enter your Survey160 API user ID (ask your survey manager)."
+  )
+  api_key <- get_credential(
+    "S160_API_KEY",
+    "Enter your Survey160 API key (ask your survey manager).",
+    secret = TRUE
+  )
+
   base_url <- sub("/$", "", trimws(base_url))
 
   url <- paste0(base_url, "/auth/serviceAccount")
@@ -121,7 +131,6 @@ s160_api_auth <- function(userid, api_key, base_url) {
 
   .s160_api_env$jwt <- parsed$data
   .s160_api_env$userid <- userid
-  .s160_api_env$api_key <- api_key
   .s160_api_env$base_url <- base_url
   .s160_api_env$auth_time <- Sys.time()
 
@@ -149,7 +158,7 @@ s160_api_auth <- function(userid, api_key, base_url) {
 #' @examples
 #' \dontrun{
 #' s160_gcs_init(bucket = "campaign_results")
-#' s160_api_auth("svc-analytics", "key...", "https://qa-api.survey160.com")
+#' s160_api_auth()
 #' df <- s160_api_campaign_results(1980)
 #' df <- s160_api_campaign_results(1980, filter_open = TRUE, timeout = 600)
 #' }
