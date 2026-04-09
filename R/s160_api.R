@@ -34,7 +34,7 @@ get_credential <- function(var_name, prompt_msg, secret = FALSE) {
     )
   }
 
-  prompt_and_save_renviron(var_name, prompt_msg, secret = secret) # nolint object_usage_linter. nocov
+  prompt_and_save_renviron(var_name, prompt_msg, secret = secret) # nocov # nolint object_usage_linter.
 }
 
 # Authenticated HTTP request with auto JWT refresh
