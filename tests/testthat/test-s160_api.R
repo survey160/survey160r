@@ -59,12 +59,14 @@ test_that("auth fails with clear error on 401", {
 
 test_that("auth errors when S160_API_USERID not set in non-interactive mode", {
   withr::local_envvar(S160_API_USERID = NA, S160_API_KEY = "key123")
-  expect_error(s160_api_auth(), "S160_API_USERID not found")
+  local_mocked_bindings(interactive = function() FALSE, .package = "base")
+  expect_error(s160_api_auth(), "S160_API_USERID not set")
 })
 
 test_that("auth errors when S160_API_KEY not set in non-interactive mode", {
   withr::local_envvar(S160_API_USERID = "svc", S160_API_KEY = NA)
-  expect_error(s160_api_auth(), "S160_API_KEY not found")
+  local_mocked_bindings(interactive = function() FALSE, .package = "base")
+  expect_error(s160_api_auth(), "S160_API_KEY not set")
 })
 
 test_that("auth strips trailing slash from base_url", {
@@ -147,10 +149,22 @@ test_that("get_credential returns value when env var is set", {
 
 test_that("get_credential errors in non-interactive when env var missing", {
   withr::local_envvar(S160_TEST_VAR = NA)
+  local_mocked_bindings(interactive = function() FALSE, .package = "base")
   expect_error(
     survey160r:::get_credential("S160_TEST_VAR", "prompt msg"),
-    "S160_TEST_VAR not found"
+    "S160_TEST_VAR not set"
   )
+})
+
+# --- base_url validation ------------------------------------------------------
+
+test_that("auth errors on empty base_url", {
+  expect_error(s160_api_auth(base_url = ""), "non-empty")
+})
+
+test_that("auth errors on non-string base_url", {
+  expect_error(s160_api_auth(base_url = 123), "non-empty")
+  expect_error(s160_api_auth(base_url = NULL), "non-empty")
 })
 
 # --- check_api_ready ----------------------------------------------------------

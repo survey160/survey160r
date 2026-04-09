@@ -20,43 +20,21 @@ check_api_ready <- function() {
   }
 }
 
-# Prompt for a value and persist it to ~/.Renviron
-prompt_and_save_env <- function(var_name, prompt_msg) { # nocov start
-  message(prompt_msg)
-  value <- readline(paste0(var_name, ": "))
-  if (value == "") {
-    stop(paste(var_name, "cannot be empty."), call. = FALSE)
-  }
-  renviron_path <- path.expand("~/.Renviron")
-  if (file.exists(renviron_path)) {
-    lines <- readLines(renviron_path, warn = FALSE)
-    lines <- lines[!grepl(paste0("^", var_name, "="), lines)]
-    writeLines(lines, renviron_path)
-  }
-  cat(paste0(var_name, "=", value, "\n"),
-      file = renviron_path, append = TRUE)
-  args <- list(value)
-  names(args) <- var_name
-  do.call(Sys.setenv, args)
-  message(sprintf("Saved %s to ~/.Renviron.", var_name))
-  value
-} # nocov end
-
 # Read a credential from env, prompting interactively if missing
-get_credential <- function(var_name, prompt_msg) {
+get_credential <- function(var_name, prompt_msg, secret = FALSE) {
   value <- Sys.getenv(var_name)
   if (nzchar(value)) return(value)
 
   if (!interactive()) {
     stop(
-      sprintf("%s not found in .Renviron.\n", var_name),
+      sprintf("%s not set in the current R session.\n", var_name),
       "Run s160_api_auth() interactively to set it up, ",
-      sprintf("or add %s manually to ~/.Renviron.", var_name),
+      sprintf("or add %s to ~/.Renviron and restart R.", var_name),
       call. = FALSE
     )
   }
 
-  prompt_and_save_env(var_name, prompt_msg) # nocov
+  prompt_and_save_renviron(var_name, prompt_msg, secret = secret) # nolint object_usage_linter. nocov
 }
 
 # Authenticated HTTP request with auto JWT refresh
@@ -112,13 +90,18 @@ s160_api_request <- function(method, path, body = NULL) {
 #' @importFrom httr POST add_headers content_type_json content http_error http_status
 #' @export
 s160_api_auth <- function(base_url = "https://api.survey160.com") {
+  if (!is.character(base_url) || length(base_url) != 1 || !nzchar(trimws(base_url))) {
+    stop("base_url must be a non-empty string.", call. = FALSE)
+  }
+
   userid <- get_credential(
     "S160_API_USERID",
     "Enter your Survey160 API user ID (ask your survey manager)."
   )
   api_key <- get_credential(
     "S160_API_KEY",
-    "Enter your Survey160 API key (ask your survey manager)."
+    "Enter your Survey160 API key (ask your survey manager).",
+    secret = TRUE
   )
 
   base_url <- sub("/$", "", trimws(base_url))

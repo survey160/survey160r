@@ -41,7 +41,15 @@ abort <- function(msg) {
 
 message("\n== Preflight ==")
 
+# Required packages
+for (pkg in c("pkgload", "rappdirs")) {
+  if (!requireNamespace(pkg, quietly = TRUE)) {
+    abort(sprintf("  Required package '%s' not installed.", pkg))
+  }
+}
+
 # Credentials (read from ~/.Renviron)
+if (Sys.getenv("S160_GCS_CLIENT_SECRET") == "") abort("  S160_GCS_CLIENT_SECRET not set in ~/.Renviron")
 if (Sys.getenv("S160_API_USERID") == "") abort("  S160_API_USERID not set in ~/.Renviron")
 if (Sys.getenv("S160_API_KEY") == "") abort("  S160_API_KEY not set in ~/.Renviron")
 
