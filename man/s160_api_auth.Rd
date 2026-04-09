@@ -4,25 +4,22 @@
 \alias{s160_api_auth}
 \title{Authenticate to the Survey160 API}
 \usage{
-s160_api_auth(userid, api_key, base_url)
+s160_api_auth(base_url = "https://api.survey160.com")
 }
 \arguments{
-\item{userid}{Service account user ID.}
-
-\item{api_key}{Raw API key string.}
-
-\item{base_url}{API base URL (e.g. \code{"https://qa-api.survey160.com"}).}
+\item{base_url}{API base URL. Defaults to
+\code{"https://api.survey160.com"}.}
 }
 \value{
 Invisible NULL. Stores JWT as side effect.
 }
 \description{
-Exchanges a service account API key for a JWT token. The token is stored
-in memory for subsequent API calls. Get your userid and API key from your
-survey manager.
+Reads service account credentials (\code{S160_API_USERID} and
+\code{S160_API_KEY}) from \code{~/.Renviron}. On first interactive run,
+prompts for both values and saves them automatically.
 }
 \examples{
 \dontrun{
-s160_api_auth("svc-analytics", "abc123...", "https://qa-api.survey160.com")
+s160_api_auth()
 }
 }

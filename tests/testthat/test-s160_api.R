@@ -6,16 +6,28 @@ stub_api_base <- function(env = parent.frame()) {
   .s160_api_env$jwt <- "test-jwt"
   .s160_api_env$base_url <- "https://test-api.survey160.com"
   .s160_api_env$userid <- "test-user"
-  .s160_api_env$api_key <- "test-key"
   .s160_api_env$auth_time <- Sys.time()
   withr::defer({
     rm(list = ls(.s160_api_env), envir = .s160_api_env)
   }, envir = env)
 }
 
+# Set env vars for auth tests, clean up after
+with_api_env_vars <- function(code, userid = "svc", api_key = "key123",
+                              env = parent.frame()) {
+  withr::local_envvar(
+    S160_API_USERID = userid,
+    S160_API_KEY = api_key,
+    .local_envir = env
+  )
+  force(code)
+}
+
 # --- s160_api_auth ------------------------------------------------------------
 
 test_that("auth succeeds and stores JWT", {
+  withr::local_envvar(S160_API_USERID = "svc", S160_API_KEY = "key123")
+
   local_mocked_bindings(
     POST = function(url, ...) {
       structure(list(
@@ -31,15 +43,16 @@ test_that("auth succeeds and stores JWT", {
   env <- survey160r:::.s160_api_env
   withr::defer(rm(list = ls(env), envir = env))
 
-  suppressMessages(s160_api_auth("svc", "key123", "https://api.example.com"))
+  suppressMessages(s160_api_auth(base_url = "https://api.example.com"))
 
   expect_equal(env$jwt, "jwt-token-123")
   expect_equal(env$userid, "svc")
-  expect_equal(env$api_key, "key123")
   expect_equal(env$base_url, "https://api.example.com")
 })
 
 test_that("auth fails with clear error on 401", {
+  withr::local_envvar(S160_API_USERID = "svc", S160_API_KEY = "bad-key")
+
   local_mocked_bindings(
     POST = function(url, ...) {
       structure(list(status_code = 401L), class = "response")
@@ -50,24 +63,24 @@ test_that("auth fails with clear error on 401", {
   )
 
   expect_error(
-    s160_api_auth("svc", "bad-key", "https://api.example.com"),
+    s160_api_auth(base_url = "https://api.example.com"),
     "Authentication failed.*Invalid API key"
   )
 })
 
-test_that("auth errors on missing arguments", {
-  expect_error(s160_api_auth(), "required")
-  expect_error(s160_api_auth("svc"), "required")
-  expect_error(s160_api_auth("svc", "key"), "required")
+test_that("auth errors when S160_API_USERID not set in non-interactive mode", {
+  withr::local_envvar(S160_API_USERID = NA, S160_API_KEY = "key123")
+  expect_error(s160_api_auth(), "S160_API_USERID not found")
 })
 
-test_that("auth errors on empty string arguments", {
-  expect_error(s160_api_auth("", "key", "url"), "non-empty")
-  expect_error(s160_api_auth("svc", "", "url"), "non-empty")
-  expect_error(s160_api_auth("svc", "key", ""), "non-empty")
+test_that("auth errors when S160_API_KEY not set in non-interactive mode", {
+  withr::local_envvar(S160_API_USERID = "svc", S160_API_KEY = NA)
+  expect_error(s160_api_auth(), "S160_API_KEY not found")
 })
 
 test_that("auth strips trailing slash from base_url", {
+  withr::local_envvar(S160_API_USERID = "svc", S160_API_KEY = "key")
+
   local_mocked_bindings(
     POST = function(url, ...) {
       structure(list(
@@ -83,11 +96,34 @@ test_that("auth strips trailing slash from base_url", {
   env <- survey160r:::.s160_api_env
   withr::defer(rm(list = ls(env), envir = env))
 
-  suppressMessages(s160_api_auth("svc", "key", "https://api.example.com/"))
+  suppressMessages(s160_api_auth(base_url = "https://api.example.com/"))
   expect_equal(env$base_url, "https://api.example.com")
 })
 
+test_that("auth defaults to production base_url", {
+  withr::local_envvar(S160_API_USERID = "svc", S160_API_KEY = "key")
+
+  captured_url <- NULL
+  local_mocked_bindings(
+    POST = function(url, ...) {
+      captured_url <<- url
+      structure(list(status_code = 200L), class = "response")
+    },
+    http_error = function(resp) FALSE,
+    content = function(resp, ...) list(success = TRUE, data = "jwt", userid = "svc"),
+    .package = "httr"
+  )
+
+  env <- survey160r:::.s160_api_env
+  withr::defer(rm(list = ls(env), envir = env))
+
+  suppressMessages(s160_api_auth())
+  expect_equal(captured_url, "https://api.survey160.com/auth/serviceAccount")
+})
+
 test_that("auth errors on unexpected response format", {
+  withr::local_envvar(S160_API_USERID = "svc", S160_API_KEY = "key")
+
   local_mocked_bindings(
     POST = function(url, ...) structure(list(status_code = 200L), class = "response"),
     http_error = function(resp) FALSE,
@@ -95,9 +131,36 @@ test_that("auth errors on unexpected response format", {
     .package = "httr"
   )
 
+  expect_error(s160_api_auth(), "unexpected response format")
+})
+
+test_that("auth falls back to http_status when error field is NULL", {
+  withr::local_envvar(S160_API_USERID = "svc", S160_API_KEY = "key")
+
+  local_mocked_bindings(
+    POST = function(url, ...) structure(list(status_code = 503L), class = "response"),
+    http_error = function(resp) TRUE,
+    content = function(resp, ...) list(detail = "unavailable"),
+    http_status = function(resp) list(message = "Service Unavailable"),
+    .package = "httr"
+  )
+
+  expect_error(s160_api_auth(), "Authentication failed.*Service Unavailable")
+})
+
+# --- get_credential -----------------------------------------------------------
+
+test_that("get_credential returns value when env var is set", {
+  withr::local_envvar(S160_TEST_VAR = "test-value")
+  result <- survey160r:::get_credential("S160_TEST_VAR", "prompt msg")
+  expect_equal(result, "test-value")
+})
+
+test_that("get_credential errors in non-interactive when env var missing", {
+  withr::local_envvar(S160_TEST_VAR = NA)
   expect_error(
-    s160_api_auth("svc", "key", "https://api.example.com"),
-    "unexpected response format"
+    survey160r:::get_credential("S160_TEST_VAR", "prompt msg"),
+    "S160_TEST_VAR not found"
   )
 })
 
@@ -180,21 +243,6 @@ test_that("request falls back to http_status when error field is NULL", {
   expect_error(
     survey160r:::s160_api_request("POST", "/fail", body = list(x = 1)),
     "API error.*Bad Gateway"
-  )
-})
-
-test_that("auth falls back to http_status when error field is NULL", {
-  local_mocked_bindings(
-    POST = function(url, ...) structure(list(status_code = 503L), class = "response"),
-    http_error = function(resp) TRUE,
-    content = function(resp, ...) list(detail = "unavailable"),
-    http_status = function(resp) list(message = "Service Unavailable"),
-    .package = "httr"
-  )
-
-  expect_error(
-    s160_api_auth("svc", "key", "https://api.example.com"),
-    "Authentication failed.*Service Unavailable"
   )
 })
 
