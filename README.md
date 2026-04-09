@@ -11,7 +11,8 @@ R package for accessing Survey160 campaign data -- read results from Google Clou
 install.packages("survey160r", repos = "https://survey160.r-universe.dev")
 
 # From GitHub
-remotes::install_github("survey160/survey160r")
+install.packages("pak")  # if not already installed
+pak::pkg_install("survey160/survey160r")
 ```
 
 ## Usage
