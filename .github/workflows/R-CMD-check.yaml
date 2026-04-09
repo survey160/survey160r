@@ -13,7 +13,7 @@ jobs:
   R-CMD-check:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/r-lib/rlibr/r-lib-actions:ubuntu-release
+      image: ghcr.io/r-hub/containers/ubuntu-release:latest
 
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
@@ -24,6 +24,7 @@ jobs:
 
       - uses: r-lib/actions/setup-r-dependencies@v2
         with:
+          pak-version: none
           extra-packages: any::rcmdcheck, any::lintr, any::covr
           needs: check
 
