@@ -21,6 +21,19 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check version bump
+        if: github.event_name == 'pull_request'
+        run: |
+          BASE_VERSION=$(git show origin/${{ github.base_ref }}:DESCRIPTION | grep '^Version:' | sed 's/Version: //')
+          PR_VERSION=$(grep '^Version:' DESCRIPTION | sed 's/Version: //')
+          CODE_CHANGED=$(git diff --name-only origin/${{ github.base_ref }}...HEAD -- R/ man/ src/ | head -1)
+          if [ -n "$CODE_CHANGED" ] && [ "$BASE_VERSION" = "$PR_VERSION" ]; then
+            echo "::error::Package code changed but version was not bumped (still $BASE_VERSION). Update Version in DESCRIPTION."
+            exit 1
+          fi
 
       - uses: r-lib/actions/setup-r-dependencies@v2
         with:
