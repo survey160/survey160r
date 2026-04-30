@@ -408,6 +408,26 @@ test_that("batch archive accepts YYYY-MM-DD string", {
   )
 })
 
+test_that("batch archive sends JSON null when archive_date is NA", {
+  stub_api_base()
+
+  captured <- NULL
+  local_mocked_bindings(
+    s160_api_request = function(method, path, body = NULL) {
+      captured <<- body
+      list(success = TRUE)
+    }
+  )
+
+  res <- s160_api_batch_archive_campaigns(c(1001, 1002), archive_date = NA)
+
+  expect_true(is.na(captured$ncd$archive_scheduled_date))
+  expect_true(all(res$success))
+
+  json <- jsonlite::toJSON(captured, auto_unbox = TRUE)
+  expect_match(as.character(json), '"archive_scheduled_date":null', fixed = TRUE)
+})
+
 test_that("batch archive errors on invalid date string", {
   stub_api_base()
   expect_error(

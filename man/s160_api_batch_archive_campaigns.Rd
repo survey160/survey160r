@@ -11,7 +11,8 @@ s160_api_batch_archive_campaigns(campaign_ids, archive_date = Sys.Date())
 
 \item{archive_date}{Date or \code{"YYYY-MM-DD"} string. Defaults to
 today (\code{Sys.Date()}). Sent as UTC midnight in the API's expected
-ISO format.}
+ISO format. Pass \code{NA} to clear the scheduled date on each
+campaign.}
 }
 \value{
 A data frame with columns \code{campaign_id}, \code{success},

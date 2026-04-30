@@ -226,7 +226,8 @@ s160_api_campaign_results <- function(campaign_id, filter_open = FALSE,
 #' @param campaign_ids Vector of campaign IDs (numeric or character).
 #' @param archive_date Date or \code{"YYYY-MM-DD"} string. Defaults to
 #'   today (\code{Sys.Date()}). Sent as UTC midnight in the API's expected
-#'   ISO format.
+#'   ISO format. Pass \code{NA} to clear the scheduled date on each
+#'   campaign.
 #' @return A data frame with columns \code{campaign_id}, \code{success},
 #'   \code{message}.
 #' @examples
@@ -243,9 +244,13 @@ s160_api_batch_archive_campaigns <- function(campaign_ids,
     stop("campaign_ids must contain at least one ID.", call. = FALSE)
   }
 
-  if (inherits(archive_date, "Date") && length(archive_date) == 1 &&
-        !is.na(archive_date)) {
-    date_str <- format(archive_date, "%Y-%m-%d")
+  if (length(archive_date) == 1 && is.logical(archive_date) &&
+        is.na(archive_date)) {
+    archive_iso <- NA
+  } else if (inherits(archive_date, "Date") && length(archive_date) == 1 &&
+               !is.na(archive_date)) {
+    archive_iso <- paste0(format(archive_date, "%Y-%m-%d"),
+                          "T00:00:00.000Z")
   } else if (is.character(archive_date) && length(archive_date) == 1 &&
                !is.na(archive_date) && nzchar(archive_date)) {
     parsed <- as.Date(archive_date, format = "%Y-%m-%d")
@@ -253,13 +258,11 @@ s160_api_batch_archive_campaigns <- function(campaign_ids,
       stop("archive_date must be a Date or a 'YYYY-MM-DD' string.",
            call. = FALSE)
     }
-    date_str <- format(parsed, "%Y-%m-%d")
+    archive_iso <- paste0(format(parsed, "%Y-%m-%d"), "T00:00:00.000Z")
   } else {
-    stop("archive_date must be a single Date or 'YYYY-MM-DD' string.",
+    stop("archive_date must be a single Date, 'YYYY-MM-DD' string, or NA.",
          call. = FALSE)
   }
-
-  archive_iso <- paste0(date_str, "T00:00:00.000Z")
 
   results <- lapply(campaign_ids, function(cid) {
     cid_validated <- tryCatch(validate_campaign_id(cid),
