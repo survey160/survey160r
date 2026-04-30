@@ -424,6 +424,25 @@ test_that("batch archive errors on non-Date non-string archive_date", {
   )
 })
 
+test_that("batch archive captures invalid per-campaign IDs without aborting", {
+  stub_api_base()
+
+  call_count <- 0
+  local_mocked_bindings(
+    s160_api_request = function(method, path, body = NULL) {
+      call_count <<- call_count + 1
+      list(success = TRUE)
+    }
+  )
+
+  result <- s160_api_batch_archive_campaigns(c("1001", "", "1003"))
+
+  expect_equal(nrow(result), 3)
+  expect_equal(result$success, c(TRUE, FALSE, TRUE))
+  expect_match(result$message[2], "non-empty")
+  expect_equal(call_count, 2)
+})
+
 test_that("batch archive errors when archive_date is a Date vector", {
   stub_api_base()
   expect_error(
