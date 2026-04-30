@@ -366,7 +366,7 @@ test_that("batch archive schedules campaigns with given date", {
   expect_equal(calls[[1]]$path, "/campaigns/1001")
   expect_equal(
     calls[[1]]$body$ncd$archive_scheduled_date,
-    "2026-05-15T00:00:00.000000Z"
+    "2026-05-15T00:00:00.000Z"
   )
   expect_equal(calls[[2]]$path, "/campaigns/1002")
   expect_equal(calls[[3]]$path, "/campaigns/1003")
@@ -385,7 +385,7 @@ test_that("batch archive defaults to today", {
 
   s160_api_batch_archive_campaigns(1001)
 
-  expected <- paste0(format(Sys.Date(), "%Y-%m-%d"), "T00:00:00.000000Z")
+  expected <- paste0(format(Sys.Date(), "%Y-%m-%d"), "T00:00:00.000Z")
   expect_equal(captured$ncd$archive_scheduled_date, expected)
 })
 
@@ -404,7 +404,7 @@ test_that("batch archive accepts YYYY-MM-DD string", {
 
   expect_equal(
     captured$ncd$archive_scheduled_date,
-    "2026-07-04T00:00:00.000000Z"
+    "2026-07-04T00:00:00.000Z"
   )
 })
 

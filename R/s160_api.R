@@ -259,7 +259,7 @@ s160_api_batch_archive_campaigns <- function(campaign_ids,
          call. = FALSE)
   }
 
-  archive_iso <- paste0(date_str, "T00:00:00.000000Z")
+  archive_iso <- paste0(date_str, "T00:00:00.000Z")
 
   results <- lapply(campaign_ids, function(cid) {
     cid_validated <- tryCatch(validate_campaign_id(cid),
