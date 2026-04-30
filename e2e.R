@@ -147,6 +147,22 @@ check("returns data.frame", is.data.frame(df_api))
 check("has rows", nrow(df_api) > 0)
 check("has columns", ncol(df_api) > 0)
 
+# -- API: batch archive scheduling ---------------------------------------------
+#
+# QA test fixture: campaign 1027 ("SUR-1101 Test"), deactivated. The flow
+# sets archive_scheduled_date, then clears it, leaving QA in its original state.
+batch_target <- 1027L
+
+message("\n== API: batch archive scheduling ==")
+batch_set <- s160_api_batch_archive_campaigns(batch_target, Sys.Date() + 365)
+check("set returns data.frame", is.data.frame(batch_set))
+check("set succeeds", isTRUE(all(batch_set$success)))
+check("set has one row per id", nrow(batch_set) == 1L)
+
+batch_clear <- s160_api_batch_archive_campaigns(batch_target, NA)
+check("clear returns data.frame", is.data.frame(batch_clear))
+check("clear succeeds", isTRUE(all(batch_clear$success)))
+
 # -- Summary -------------------------------------------------------------------
 
 message(sprintf("\n== Results: %d passed, %d failed ==", passed, failed))
