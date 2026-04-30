@@ -412,7 +412,7 @@ test_that("batch archive errors on invalid date string", {
   stub_api_base()
   expect_error(
     s160_api_batch_archive_campaigns(1001, archive_date = "not-a-date"),
-    "must be a Date"
+    "Date"
   )
 })
 
@@ -420,7 +420,18 @@ test_that("batch archive errors on non-Date non-string archive_date", {
   stub_api_base()
   expect_error(
     s160_api_batch_archive_campaigns(1001, archive_date = 12345),
-    "must be a Date"
+    "Date"
+  )
+})
+
+test_that("batch archive errors when archive_date is a Date vector", {
+  stub_api_base()
+  expect_error(
+    s160_api_batch_archive_campaigns(
+      1001,
+      archive_date = as.Date(c("2026-05-15", "2026-05-16"))
+    ),
+    "single Date"
   )
 })
 

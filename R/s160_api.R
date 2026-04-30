@@ -243,19 +243,19 @@ s160_api_batch_archive_campaigns <- function(campaign_ids,
     stop("campaign_ids must contain at least one ID.", call. = FALSE)
   }
 
-  if (inherits(archive_date, "Date")) {
+  if (inherits(archive_date, "Date") && length(archive_date) == 1 &&
+        !is.na(archive_date)) {
     date_str <- format(archive_date, "%Y-%m-%d")
   } else if (is.character(archive_date) && length(archive_date) == 1 &&
                !is.na(archive_date) && nzchar(archive_date)) {
-    parsed <- tryCatch(as.Date(archive_date, format = "%Y-%m-%d"),
-                       error = function(e) NA)
+    parsed <- as.Date(archive_date, format = "%Y-%m-%d")
     if (is.na(parsed)) {
       stop("archive_date must be a Date or a 'YYYY-MM-DD' string.",
            call. = FALSE)
     }
     date_str <- format(parsed, "%Y-%m-%d")
   } else {
-    stop("archive_date must be a Date or a 'YYYY-MM-DD' string.",
+    stop("archive_date must be a single Date or 'YYYY-MM-DD' string.",
          call. = FALSE)
   }
 
