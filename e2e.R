@@ -159,7 +159,7 @@ check("set returns data.frame", is.data.frame(batch_set))
 check("set succeeds", isTRUE(all(batch_set$success)))
 check("set has one row per id", nrow(batch_set) == 1L)
 
-batch_clear <- s160_api_batch_archive_campaigns(batch_target, NA)
+batch_clear <- s160_api_batch_archive_campaigns(batch_target, NULL)
 check("clear returns data.frame", is.data.frame(batch_clear))
 check("clear succeeds", isTRUE(all(batch_clear$success)))
 

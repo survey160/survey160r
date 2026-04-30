@@ -408,7 +408,7 @@ test_that("batch archive accepts YYYY-MM-DD string", {
   )
 })
 
-test_that("batch archive sends JSON null when archive_date is NA", {
+test_that("batch archive sends JSON null when archive_date is NULL", {
   stub_api_base()
 
   captured <- NULL
@@ -419,7 +419,7 @@ test_that("batch archive sends JSON null when archive_date is NA", {
     }
   )
 
-  res <- s160_api_batch_archive_campaigns(c(1001, 1002), archive_date = NA)
+  res <- s160_api_batch_archive_campaigns(c(1001, 1002), archive_date = NULL)
 
   expect_true(is.na(captured$ncd$archive_scheduled_date))
   expect_true(all(res$success))
