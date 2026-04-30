@@ -213,6 +213,88 @@ s160_api_campaign_results <- function(campaign_id, filter_open = FALSE,
   stop(sprintf("Export timed out after %g seconds.", timeout), call. = FALSE)
 }
 
+#' Batch-schedule campaigns for archiving
+#'
+#' For each campaign ID, sets \code{archive_scheduled_date} via
+#' \code{POST /campaigns/<id>}. The Survey160 Celery beat task
+#' \code{mytasks.archiveCampaigns} runs nightly and archives any campaign
+#' whose scheduled date has passed (campaign must already be deactivated).
+#'
+#' Each campaign is sent as a separate request; failures are collected and
+#' reported per-campaign rather than aborting the batch.
+#'
+#' @param campaign_ids Vector of campaign IDs (numeric or character).
+#' @param archive_date Date or \code{"YYYY-MM-DD"} string. Defaults to
+#'   today (\code{Sys.Date()}). Sent as UTC midnight in the API's expected
+#'   ISO format.
+#' @return A data frame with columns \code{campaign_id}, \code{success},
+#'   \code{message}.
+#' @examples
+#' \dontrun{
+#' s160_api_auth()
+#' s160_api_batch_archive_campaigns(c(1980, 1981, 1982), "2026-05-15")
+#' }
+#' @export
+s160_api_batch_archive_campaigns <- function(campaign_ids,
+                                             archive_date = Sys.Date()) {
+  check_api_ready()
+
+  if (length(campaign_ids) == 0) {
+    stop("campaign_ids must contain at least one ID.", call. = FALSE)
+  }
+
+  if (inherits(archive_date, "Date")) {
+    date_str <- format(archive_date, "%Y-%m-%d")
+  } else if (is.character(archive_date) && length(archive_date) == 1 &&
+               !is.na(archive_date) && nzchar(archive_date)) {
+    parsed <- tryCatch(as.Date(archive_date, format = "%Y-%m-%d"),
+                       error = function(e) NA)
+    if (is.na(parsed)) {
+      stop("archive_date must be a Date or a 'YYYY-MM-DD' string.",
+           call. = FALSE)
+    }
+    date_str <- format(parsed, "%Y-%m-%d")
+  } else {
+    stop("archive_date must be a Date or a 'YYYY-MM-DD' string.",
+         call. = FALSE)
+  }
+
+  archive_iso <- paste0(date_str, "T00:00:00.000000Z")
+
+  results <- lapply(campaign_ids, function(cid) {
+    cid_validated <- tryCatch(validate_campaign_id(cid),
+                              error = function(e) {
+                                structure(conditionMessage(e),
+                                          class = "validation_error")
+                              })
+    if (inherits(cid_validated, "validation_error")) {
+      return(list(campaign_id = as.character(cid), success = FALSE,
+                  message = as.character(cid_validated)))
+    }
+
+    path <- paste0("/campaigns/", cid_validated)
+    body <- list(ncd = list(archive_scheduled_date = archive_iso))
+
+    parsed <- tryCatch(
+      s160_api_request("POST", path, body = body),
+      error = function(e) {
+        list(success = FALSE, message = conditionMessage(e))
+      }
+    )
+
+    success <- isTRUE(parsed$success)
+    msg <- if (!is.null(parsed$message)) as.character(parsed$message) else ""
+    list(campaign_id = cid_validated, success = success, message = msg)
+  })
+
+  data.frame(
+    campaign_id = vapply(results, `[[`, character(1), "campaign_id"),
+    success = vapply(results, `[[`, logical(1), "success"),
+    message = vapply(results, `[[`, character(1), "message"),
+    stringsAsFactors = FALSE
+  )
+}
+
 # --- Internal helpers ---------------------------------------------------------
 
 # Get the GCS `updated` timestamp for a specific export file.

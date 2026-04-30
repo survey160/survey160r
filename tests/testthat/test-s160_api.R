@@ -338,6 +338,138 @@ test_that("results errors on invalid poll_interval", {
   expect_error(s160_api_campaign_results(1980, poll_interval = -5), "positive number")
 })
 
+# --- s160_api_batch_archive_campaigns -----------------------------------------
+
+test_that("batch archive schedules campaigns with given date", {
+  stub_api_base()
+
+  calls <- list()
+  local_mocked_bindings(
+    s160_api_request = function(method, path, body = NULL) {
+      calls[[length(calls) + 1]] <<- list(method = method, path = path, body = body)
+      list(success = TRUE)
+    }
+  )
+
+  result <- s160_api_batch_archive_campaigns(
+    c(1001, 1002, 1003),
+    archive_date = as.Date("2026-05-15")
+  )
+
+  expect_s3_class(result, "data.frame")
+  expect_equal(nrow(result), 3)
+  expect_equal(result$campaign_id, c("1001", "1002", "1003"))
+  expect_true(all(result$success))
+
+  expect_equal(length(calls), 3)
+  expect_equal(calls[[1]]$method, "POST")
+  expect_equal(calls[[1]]$path, "/campaigns/1001")
+  expect_equal(
+    calls[[1]]$body$ncd$archive_scheduled_date,
+    "2026-05-15T00:00:00.000000Z"
+  )
+  expect_equal(calls[[2]]$path, "/campaigns/1002")
+  expect_equal(calls[[3]]$path, "/campaigns/1003")
+})
+
+test_that("batch archive defaults to today", {
+  stub_api_base()
+
+  captured <- NULL
+  local_mocked_bindings(
+    s160_api_request = function(method, path, body = NULL) {
+      captured <<- body
+      list(success = TRUE)
+    }
+  )
+
+  s160_api_batch_archive_campaigns(1001)
+
+  expected <- paste0(format(Sys.Date(), "%Y-%m-%d"), "T00:00:00.000000Z")
+  expect_equal(captured$ncd$archive_scheduled_date, expected)
+})
+
+test_that("batch archive accepts YYYY-MM-DD string", {
+  stub_api_base()
+
+  captured <- NULL
+  local_mocked_bindings(
+    s160_api_request = function(method, path, body = NULL) {
+      captured <<- body
+      list(success = TRUE)
+    }
+  )
+
+  s160_api_batch_archive_campaigns(1001, archive_date = "2026-07-04")
+
+  expect_equal(
+    captured$ncd$archive_scheduled_date,
+    "2026-07-04T00:00:00.000000Z"
+  )
+})
+
+test_that("batch archive errors on invalid date string", {
+  stub_api_base()
+  expect_error(
+    s160_api_batch_archive_campaigns(1001, archive_date = "not-a-date"),
+    "must be a Date"
+  )
+})
+
+test_that("batch archive errors on non-Date non-string archive_date", {
+  stub_api_base()
+  expect_error(
+    s160_api_batch_archive_campaigns(1001, archive_date = 12345),
+    "must be a Date"
+  )
+})
+
+test_that("batch archive errors on empty campaign_ids", {
+  stub_api_base()
+  expect_error(
+    s160_api_batch_archive_campaigns(integer(0)),
+    "at least one ID"
+  )
+})
+
+test_that("batch archive errors when not authenticated", {
+  expect_error(s160_api_batch_archive_campaigns(1001), "Run s160_api_auth")
+})
+
+test_that("batch archive collects per-campaign failures without aborting", {
+  stub_api_base()
+
+  call_count <- 0
+  local_mocked_bindings(
+    s160_api_request = function(method, path, body = NULL) {
+      call_count <<- call_count + 1
+      if (call_count == 2) stop("API error (POST /campaigns/1002): boom")
+      list(success = TRUE)
+    }
+  )
+
+  result <- s160_api_batch_archive_campaigns(c(1001, 1002, 1003))
+
+  expect_equal(nrow(result), 3)
+  expect_equal(result$success, c(TRUE, FALSE, TRUE))
+  expect_match(result$message[2], "boom")
+  expect_equal(result$message[c(1, 3)], c("", ""))
+})
+
+test_that("batch archive reports unsuccessful API responses per campaign", {
+  stub_api_base()
+
+  local_mocked_bindings(
+    s160_api_request = function(method, path, body = NULL) {
+      list(success = FALSE, message = "Invalid date format for archive_scheduled_date")
+    }
+  )
+
+  result <- s160_api_batch_archive_campaigns(c(1001, 1002))
+  expect_false(any(result$success))
+  expect_true(all(result$message == "Invalid date format for archive_scheduled_date"))
+})
+
 # --- get_gcs_file_updated -----------------------------------------------------
 
 test_that("get_gcs_file_updated returns timestamp for matching file", {
