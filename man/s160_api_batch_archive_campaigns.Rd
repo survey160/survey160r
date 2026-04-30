@@ -26,11 +26,14 @@ whose scheduled date has passed (campaign must already be deactivated).
 }
 \details{
 Each campaign is sent as a separate request; failures are collected and
-reported per-campaign rather than aborting the batch.
+reported per-campaign rather than aborting the batch. Requests are
+issued sequentially with no client-side rate limiting; intended for
+batches of tens to low hundreds of IDs.
 }
 \examples{
 \dontrun{
 s160_api_auth()
 s160_api_batch_archive_campaigns(c(1980, 1981, 1982), "2026-05-15")
+s160_api_batch_archive_campaigns(c(1980, 1981, 1982), NULL)  # clear
 }
 }

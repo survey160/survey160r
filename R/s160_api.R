@@ -221,7 +221,9 @@ s160_api_campaign_results <- function(campaign_id, filter_open = FALSE,
 #' whose scheduled date has passed (campaign must already be deactivated).
 #'
 #' Each campaign is sent as a separate request; failures are collected and
-#' reported per-campaign rather than aborting the batch.
+#' reported per-campaign rather than aborting the batch. Requests are
+#' issued sequentially with no client-side rate limiting; intended for
+#' batches of tens to low hundreds of IDs.
 #'
 #' @param campaign_ids Vector of campaign IDs (numeric or character).
 #' @param archive_date Date or \code{"YYYY-MM-DD"} string. Defaults to
@@ -234,6 +236,7 @@ s160_api_campaign_results <- function(campaign_id, filter_open = FALSE,
 #' \dontrun{
 #' s160_api_auth()
 #' s160_api_batch_archive_campaigns(c(1980, 1981, 1982), "2026-05-15")
+#' s160_api_batch_archive_campaigns(c(1980, 1981, 1982), NULL)  # clear
 #' }
 #' @export
 s160_api_batch_archive_campaigns <- function(campaign_ids,
@@ -245,6 +248,8 @@ s160_api_batch_archive_campaigns <- function(campaign_ids,
   }
 
   if (is.null(archive_date)) {
+    # jsonlite encodes scalar NA as JSON null; the server reads null as a
+    # request to clear the column.
     archive_iso <- NA
   } else if (inherits(archive_date, "Date") && length(archive_date) == 1 &&
                !is.na(archive_date)) {
@@ -277,15 +282,15 @@ s160_api_batch_archive_campaigns <- function(campaign_ids,
     path <- paste0("/campaigns/", cid_validated)
     body <- list(ncd = list(archive_scheduled_date = archive_iso))
 
-    parsed <- tryCatch(
+    resp <- tryCatch(
       s160_api_request("POST", path, body = body),
       error = function(e) {
         list(success = FALSE, message = conditionMessage(e))
       }
     )
 
-    success <- isTRUE(parsed$success)
-    msg <- if (!is.null(parsed$message)) as.character(parsed$message) else ""
+    success <- isTRUE(resp$success)
+    msg <- if (!is.null(resp$message)) as.character(resp$message) else ""
     list(campaign_id = cid_validated, success = success, message = msg)
   })
 
