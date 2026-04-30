@@ -16,7 +16,13 @@ campaign.}
 }
 \value{
 A data frame with columns \code{campaign_id}, \code{success},
-  \code{message}.
+  \code{message}. \code{success = TRUE} indicates the API accepted the
+  request without raising an error; it does NOT confirm that
+  \code{archive_scheduled_date} was actually written. The campaign
+  update endpoint silently ignores unknown fields, so a request can
+  succeed even if the schema or deployed app version doesn't yet
+  support the field. Verify via direct DB inspection until a server
+  read-back is available.
 }
 \description{
 For each campaign ID, sets \code{archive_scheduled_date} via
