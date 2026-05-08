@@ -22,6 +22,8 @@ Imports:
     rlang
 Suggests:
     askpass,
+    duckdb,
+    DBI,
     testthat (>= 3.0.0),
     mockery,
     withr,
