@@ -9,6 +9,8 @@ Description: Access Survey160 campaign data from R. Supports reading
     via the Survey160 API, and computing per-campaign latency reports
     written as Parquet to GCS.
 License: MIT + file LICENSE
+URL: https://github.com/survey160/survey160r
+BugReports: https://github.com/survey160/survey160r/issues
 Encoding: UTF-8
 Imports:
     googleCloudStorageR (>= 0.7.0),
