@@ -213,6 +213,99 @@ s160_api_campaign_results <- function(campaign_id, filter_open = FALSE,
   stop(sprintf("Export timed out after %g seconds.", timeout), call. = FALSE)
 }
 
+#' Read a single campaign's attributes
+#'
+#' Wraps the Survey160 API endpoint \code{GET /campaigns/<campaign_id>}, which
+#' returns every column on the \code{campaigns} table for one campaign. Useful
+#' for confirming attributes after a state-changing call (for example, reading
+#' \code{archive_scheduled_date} after scheduling an archive) without dropping
+#' to direct database access.
+#'
+#' Enriched, API-only fields returned by the endpoint
+#' (\code{listlength}, \code{list}, \code{login}, \code{exports},
+#' \code{has_texting_started}, \code{sandbox_configuration}, \code{aggregator},
+#' \code{has_assigned_registration}) are dropped; the result mirrors the
+#' \code{campaigns} table only. JSON-valued columns (\code{script}, \code{prompt},
+#' \code{quotas}, ...) come back as length-1 list-columns holding the parsed
+#' structure.
+#'
+#' The endpoint runs several server-side subqueries on each call; this is a
+#' per-campaign read, not appropriate for tight loops over hundreds of IDs.
+#' A batch variant would need a backend extension and is out of scope.
+#'
+#' @param campaign_id Campaign ID (numeric or character).
+#' @return A single-row data frame. Scalar columns are scalar; JSON columns
+#'   are list-columns of length 1.
+#' @examples
+#' \dontrun{
+#' s160_api_auth()
+#' info <- s160_api_campaign_get(2107)
+#' info$active
+#' info$script[[1]]  # parsed JSON
+#' }
+#' @export
+s160_api_campaign_get <- function(campaign_id) {
+  check_api_ready()
+  campaign_id <- validate_campaign_id(campaign_id)
+
+  path <- paste0("/campaigns/", campaign_id)
+  resp <- tryCatch(
+    s160_api_request("GET", path),
+    error = function(e) {
+      msg <- conditionMessage(e)
+      # The endpoint returns HTTP 400 with {"success":"false"} when no row is
+      # found, which surfaces as "Bad Request" through s160_api_request. Map
+      # that (and a real 404, defensively) to a clear not-found error.
+      if (grepl("Bad Request|Not Found", msg, ignore.case = TRUE)) {
+        stop(sprintf("Campaign %s not found.", campaign_id), call. = FALSE)
+      }
+      stop(e)
+    }
+  )
+
+  if (!isTRUE(resp$success) || is.null(resp$data)) {
+    stop(sprintf("Campaign %s not found.", campaign_id), call. = FALSE)
+  }
+
+  enriched_fields <- c(
+    "listlength", "list", "login", "exports",
+    "has_texting_started", "sandbox_configuration",
+    "aggregator", "has_assigned_registration"
+  )
+  fields <- resp$data[!names(resp$data) %in% enriched_fields]
+
+  # Scalars stay scalar; everything else (parsed JSON, multi-element vectors)
+  # becomes a length-1 list-column so the result is always a single-row frame.
+  cols <- lapply(fields, function(v) {
+    if (is.null(v)) NA
+    else if (is.list(v) || length(v) > 1L) I(list(v))
+    else v
+  })
+
+  df <- as.data.frame(cols, stringsAsFactors = FALSE)
+
+  # Coerce ISO-8601-looking character columns to POSIXct (UTC). The campaigns
+  # table has many timestamp columns (startdate, enddate, archive_scheduled_date,
+  # ...) which travel the wire as naive strings; parsing here saves every
+  # caller from doing it. Falls back to the original string if parsing fails.
+  parse_iso <- function(col) {
+    if (!is.character(col) || length(col) != 1L || is.na(col)) return(col)
+    if (!grepl("^\\d{4}-\\d{2}-\\d{2}[T ]\\d{2}:\\d{2}:\\d{2}", col)) return(col)
+    # Normalize to "YYYY-MM-DD HH:MM:SS": drop the T separator, drop a Z
+    # suffix or numeric UTC offset (the wire format is always UTC).
+    s <- sub("T", " ", col)
+    s <- sub("Z$", "", s)
+    s <- sub("[+-]\\d{2}:?\\d{2}$", "", s)
+    parsed <- suppressWarnings(
+      as.POSIXct(s, format = "%Y-%m-%d %H:%M:%OS", tz = "UTC")
+    )
+    if (is.na(parsed)) col else parsed
+  }
+  df[] <- lapply(df, parse_iso)
+
+  df
+}
+
 # --- Internal helpers ---------------------------------------------------------
 
 # Get the GCS `updated` timestamp for a specific export file.
