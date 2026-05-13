@@ -1,5 +1,12 @@
 # survey160r (development version)
 
+## Documentation
+
+* Declare `R (>= 4.1)` in `DESCRIPTION` to match what the current `arrow`,
+  `dplyr`, and `lubridate` imports already require.
+* `RELEASING.md` clarifies that the release tag must point at the release
+  PR's merge SHA, not `HEAD` (#14).
+
 # survey160r 0.6.0
 
 ## New features

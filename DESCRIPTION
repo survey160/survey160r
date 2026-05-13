@@ -12,6 +12,8 @@ License: MIT + file LICENSE
 URL: https://github.com/survey160/survey160r
 BugReports: https://github.com/survey160/survey160r/issues
 Encoding: UTF-8
+Depends:
+    R (>= 4.1)
 Imports:
     googleCloudStorageR (>= 0.7.0),
     httr,

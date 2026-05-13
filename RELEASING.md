@@ -9,11 +9,11 @@ Distribution is via [R-universe](https://survey160.r-universe.dev), which auto-r
    - Renames the `# survey160r (development version)` header in `NEWS.md` to `# survey160r X.Y.Z` and adds a fresh `(development version)` header above it.
    - Lists the changes under the new version, grouped by `## New features`, `## Bug fixes`, `## Breaking changes`, `## CI / infrastructure`, etc., with `(#NNN)` PR references.
 2. Merge to `main`. CI enforces that any code change under `R/`, `man/`, or `src/` carries a Version bump, and any Version bump carries a NEWS.md edit.
-3. After merge, tag the merge commit and push:
+3. After merge, tag the release PR's merge commit and push. The release PR's merge commit SHA is shown on the PR page under "Merged"; use that SHA (not `HEAD`) so a later merge to `main` cannot shift the tag.
 
    ```bash
-   git checkout main && git pull
-   git tag vX.Y.Z
+   git fetch origin main
+   git tag vX.Y.Z <merge-sha>
    git push origin vX.Y.Z
    ```
 
