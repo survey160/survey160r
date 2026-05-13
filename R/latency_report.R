@@ -50,20 +50,28 @@ latency_report <- function(data, config) {
   parsed <- parse_timestamps(data, ts_cols)
   data <- parsed$data
   parse_failures <- parsed$parse_failures
+  parse_failed_mask <- parsed$parse_failed_mask
 
   # Step 3: dedupe by respondent_id (earliest intro.scriptDate wins).
+  # Dedupe drops rows from `data`; we must drop the same rows from each
+  # parse_failed_mask vector so segment-NA classification later lines up
+  # row-for-row with `data`.
   if (!is.null(resp_id_col)) {
-    data <- dedupe_respondents(data, resp_id_col)
+    keep_idx <- dedupe_keep_rows(data, resp_id_col)
+    data <- data[keep_idx, , drop = FALSE]
+    parse_failed_mask <- lapply(parse_failed_mask, function(m) m[keep_idx])
   }
 
   # Step 4: optional date_filter.
   if (!is.null(config$filters$date_filter)) {
-    data <- filter_by_dates(data, config$filters$date_filter, field_tz)
+    keep_idx <- date_filter_keep_rows(data, config$filters$date_filter, field_tz)
+    data <- data[keep_idx, , drop = FALSE]
+    parse_failed_mask <- lapply(parse_failed_mask, function(m) m[keep_idx])
   }
 
   # Step 5: build the per-(respondent, segment) frame.
   windows_df <- normalize_windows(config$texting_windows)
-  frame <- build_latency_frame(data, config, windows_df)
+  frame <- build_latency_frame(data, config, windows_df, parse_failed_mask)
 
   # Step 6: aggregate to consolidated.
   consolidated <- aggregate_consolidated(frame, config, cfg_hash, run_at)
@@ -118,38 +126,50 @@ apply_population_filter <- function(data, expr) {
   data[keep, , drop = FALSE]
 }
 
-# Keep one row per respondent_id, choosing the row with the earliest
-# id.intro.scriptDate. Rows where the id is NA pass through untouched (they
-# are unidentifiable and cannot be deduped).
-dedupe_respondents <- function(data, resp_id_col) {
+# Return the row indices to keep when deduping by respondent_id, choosing the
+# row with the earliest id.intro.scriptDate per id. Rows where the id is NA
+# pass through (they are unidentifiable and cannot be deduped). Indices are
+# in original row order so callers can apply them to parallel per-row masks.
+dedupe_keep_rows <- function(data, resp_id_col) {
   if (!resp_id_col %in% names(data)) {
     stop(sprintf("respondent_id_column not found: %s", resp_id_col), call. = FALSE)
   }
-  rid <- data[[resp_id_col]]
+  n <- nrow(data)
   intro <- data[["id.intro.scriptDate"]]
-  if (is.null(intro)) return(data)
-  has_id <- !is.na(rid) & nzchar(as.character(rid))
+  if (is.null(intro)) return(seq_len(n))
+  rid <- data[[resp_id_col]]
   ord <- order(rid, intro, na.last = TRUE)
-  data <- data[ord, , drop = FALSE]
-  rid_sorted <- data[[resp_id_col]]
+  rid_sorted <- rid[ord]
   has_id_sorted <- !is.na(rid_sorted) & nzchar(as.character(rid_sorted))
-  is_dup <- has_id_sorted & duplicated(rid_sorted)
-  data[!is_dup, , drop = FALSE]
+  is_dup_sorted <- has_id_sorted & duplicated(rid_sorted)
+  sort(ord[!is_dup_sorted])
 }
 
-# Filter rows whose intro.scriptDate (in field_tz) falls in date_filter.
-filter_by_dates <- function(data, date_filter, field_tz) {
+# Return row indices whose intro.scriptDate (in field_tz) falls in date_filter.
+date_filter_keep_rows <- function(data, date_filter, field_tz) {
   intro <- data[["id.intro.scriptDate"]]
-  if (is.null(intro)) return(data)
+  if (is.null(intro)) return(seq_len(nrow(data)))
   local_dates <- as.Date(format(intro, tz = field_tz))
   target <- as.Date(date_filter)
-  data[!is.na(local_dates) & local_dates %in% target, , drop = FALSE]
+  which(!is.na(local_dates) & local_dates %in% target)
 }
 
 # Build the long (respondent x segment) data.frame: one row per
 # (respondent_index, segment) with delta, in_window flag, segment_date_local,
-# hour_local, campaign_id.
-build_latency_frame <- function(data, config, windows_df) {
+# hour_local, campaign_id, and na_reason (NA when delta_min is valid;
+# otherwise "parse_failure" | "missing_endpoint" | "chain_break").
+#
+# Classification precedence (most actionable first):
+#   parse_failure   -- at least one endpoint cell was non-blank but the
+#                      timestamp string was unparseable. Data quality issue.
+#   missing_endpoint-- at least one endpoint cell was blank (legitimately
+#                      absent), no parse failures on this segment's endpoints.
+#                      Reflects respondent drop-off mid-flow.
+#   chain_break     -- both endpoints parsed cleanly, but a prior batchDate
+#                      in the chain was NA so apply_chain_validity invalidated
+#                      this segment.
+build_latency_frame <- function(data, config, windows_df,
+                                parse_failed_mask = NULL) {
   questions <- config$flow$questions
   field_tz <- config$field_timezone
   campaign_col <- config$filters$campaign_id_column
@@ -167,21 +187,34 @@ build_latency_frame <- function(data, config, windows_df) {
   for (i in seq_len(length(questions) - 1)) {
     q_prior <- questions[i]
     q_next <- questions[i + 1]
-    batch_prior <- data[[sprintf("id.%s.batchDate", q_prior)]]
-    script_next <- data[[sprintf("id.%s.scriptDate", q_next)]]
+    batch_prior_col <- sprintf("id.%s.batchDate", q_prior)
+    script_next_col <- sprintf("id.%s.scriptDate", q_next)
+    batch_prior <- data[[batch_prior_col]]
+    script_next <- data[[script_next_col]]
 
     cs <- compute_segment_delta(batch_prior, script_next)
-    delta <- cs$delta
+    delta_pre <- cs$delta
     total_clamped <- total_clamped + cs$n_clamped
 
     chain_priors <- c(chain_priors, list(batch_prior))
-    delta <- apply_chain_validity(delta, chain_priors)
+    delta <- apply_chain_validity(delta_pre, chain_priors)
 
     in_window <- in_window_flag(batch_prior, windows_df, field_tz)
     in_window[is.na(batch_prior)] <- 0L
 
     seg_date_local <- as.Date(format(batch_prior, tz = field_tz))
     hour_local <- as.integer(format(batch_prior, format = "%H", tz = field_tz))
+
+    parse_fail_row <- segment_parse_fail_mask(
+      parse_failed_mask, batch_prior_col, script_next_col, n
+    )
+    is_na_post <- is.na(delta)
+    na_reason <- rep(NA_character_, n)
+    na_reason[is_na_post & parse_fail_row] <- "parse_failure"
+    na_reason[is_na_post & !parse_fail_row & is.na(delta_pre)] <-
+      "missing_endpoint"
+    na_reason[is_na_post & !parse_fail_row & !is.na(delta_pre)] <-
+      "chain_break"
 
     segments[[i]] <- data.frame(
       respondent_index = resp_idx,
@@ -192,12 +225,26 @@ build_latency_frame <- function(data, config, windows_df) {
       in_window = in_window,
       segment_date_local = seg_date_local,
       hour_local = hour_local,
+      na_reason = na_reason,
       stringsAsFactors = FALSE
     )
   }
   frame <- do.call(rbind, segments)
   attr(frame, "n_clamped") <- total_clamped
   frame
+}
+
+# OR-combine the parse-fail masks for a segment's two endpoint columns.
+# Returns a length-n logical. Tolerant of a NULL mask (test code paths that
+# call build_latency_frame directly) -- treats absence as "no parse failures."
+segment_parse_fail_mask <- function(parse_failed_mask, batch_col,
+                                    script_col, n) {
+  if (is.null(parse_failed_mask)) return(rep(FALSE, n))
+  bp <- parse_failed_mask[[batch_col]]
+  sn <- parse_failed_mask[[script_col]]
+  if (is.null(bp)) bp <- rep(FALSE, n)
+  if (is.null(sn)) sn <- rep(FALSE, n)
+  bp | sn
 }
 
 empty_latency_frame <- function() {
@@ -210,6 +257,7 @@ empty_latency_frame <- function() {
     in_window = integer(0),
     segment_date_local = as.Date(character(0)),
     hour_local = integer(0),
+    na_reason = character(0),
     stringsAsFactors = FALSE
   )
   attr(out, "n_clamped") <- 0L
@@ -378,8 +426,9 @@ build_diagnostics <- function(frame, n_respondents_in, parse_failures,
       n_respondents_no_valid_segment = n_respondents_in,
       n_segments_total = 0L,
       n_segments_na = 0L,
-      n_segments_na_by_reason = list(parse_failure = 0L, chain_break = 0L,
-                                     missing_endpoint = 0L),
+      n_segments_na_by_reason = list(parse_failure = 0L,
+                                     missing_endpoint = 0L,
+                                     chain_break = 0L),
       n_negative_latencies_clamped = n_clamped,
       n_out_of_window_dropped = 0L,
       parse_failures_per_column = parse_failures,
@@ -420,9 +469,10 @@ build_diagnostics <- function(frame, n_respondents_in, parse_failures,
     n_segments_total = total_segments,
     n_segments_na = na_segments,
     n_segments_na_by_reason = list(
-      parse_failure = sum(parse_failures),
-      chain_break = NA_integer_,
-      missing_endpoint = NA_integer_
+      parse_failure = sum(frame$na_reason == "parse_failure", na.rm = TRUE),
+      missing_endpoint = sum(frame$na_reason == "missing_endpoint",
+                             na.rm = TRUE),
+      chain_break = sum(frame$na_reason == "chain_break", na.rm = TRUE)
     ),
     n_negative_latencies_clamped = n_clamped,
     n_out_of_window_dropped = out_of_window,

@@ -33,21 +33,30 @@ na_if_blank <- function(data) {
   data
 }
 
-# Parse a set of timestamp columns to POSIXct (UTC). Returns the mutated data
-# plus a per-column count of parse failures (non-NA inputs that failed to
-# parse) for diagnostics. NA inputs are treated as absent, not failures.
+# Parse a set of timestamp columns to POSIXct (UTC). Returns:
+#   - data: data with parsed columns substituted in place
+#   - parse_failures: named integer count per column of non-blank inputs that
+#     failed to parse (column-level diagnostic).
+#   - parse_failed_mask: named list of logical vectors per column, TRUE where
+#     the input was non-blank but failed to parse. Used by build_latency_frame
+#     to classify segment NAs as parse_failure vs missing_endpoint.
+# NA / blank inputs are treated as absent, not failures.
 parse_timestamps <- function(data, cols) {
   failures <- integer(length(cols))
   names(failures) <- cols
+  fail_mask <- vector("list", length(cols))
+  names(fail_mask) <- cols
+  n <- nrow(data)
   for (col in cols) {
     if (!col %in% names(data)) {
       stop(sprintf("Timestamp column not found: %s", col), call. = FALSE)
     }
     raw <- data[[col]]
     if (inherits(raw, "POSIXct")) {
-      # Already parsed; normalize to UTC.
+      # Already parsed; normalize to UTC. No parse failures possible.
       attr(raw, "tzone") <- "UTC"
       data[[col]] <- raw
+      fail_mask[[col]] <- rep(FALSE, n)
       next
     }
     raw_chr <- .strip_z(as.character(raw))
@@ -63,10 +72,12 @@ parse_timestamps <- function(data, cols) {
         )
       )
     }
-    failures[[col]] <- sum(nonblank & is.na(parsed))
+    col_fail <- nonblank & is.na(parsed)
+    failures[[col]] <- sum(col_fail)
+    fail_mask[[col]] <- col_fail
     data[[col]] <- parsed
   }
-  list(data = data, parse_failures = failures)
+  list(data = data, parse_failures = failures, parse_failed_mask = fail_mask)
 }
 
 # Δ in minutes between batch_prior and script_next. Negative values clamped to

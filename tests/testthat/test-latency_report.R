@@ -127,6 +127,51 @@ test_that("latency_report errors on invalid population_filter", {
   expect_error(latency_report(fx$data, cfg), "filters.population")
 })
 
+test_that("diagnostics na_by_reason: parse_failure counted on garbage timestamps", {
+  fx <- .load_synthetic()
+  data <- fx$data
+  # Corrupt one batchDate cell with non-blank garbage on r1's q1 segment.
+  data$id.q1.batchDate[data$userid == "r1"] <- "not-a-date"
+  result <- latency_report(data, fx$config)
+  reasons <- result$diagnostics$n_segments_na_by_reason
+  # The q1->q2 segment for r1 should be classified parse_failure.
+  expect_gte(reasons$parse_failure, 1L)
+  # Conservation: sums of all reasons == total NA segments.
+  total <- reasons$parse_failure + reasons$missing_endpoint + reasons$chain_break
+  expect_equal(total, result$diagnostics$n_segments_na)
+})
+
+test_that("diagnostics na_by_reason: missing_endpoint counted on blank batchDate", {
+  fx <- .load_synthetic()
+  data <- fx$data
+  # Blank out r2's q1.batchDate. Both endpoint cells were originally valid, so
+  # this is a legitimate "respondent didn't advance" miss, not a parse failure.
+  data$id.q1.batchDate[data$userid == "r2"] <- ""
+  result <- latency_report(data, fx$config)
+  reasons <- result$diagnostics$n_segments_na_by_reason
+  expect_gte(reasons$missing_endpoint, 1L)
+  expect_equal(reasons$parse_failure, 0L)
+  total <- reasons$parse_failure + reasons$missing_endpoint + reasons$chain_break
+  expect_equal(total, result$diagnostics$n_segments_na)
+})
+
+test_that("diagnostics na_by_reason: chain_break counted when a prior batchDate is NA", {
+  fx <- .load_synthetic()
+  data <- fx$data
+  # Blank intro.batchDate for r1. Subsequent segments q1->q2 and q2->close keep
+  # both endpoints valid, but chain validity nukes them because a prior
+  # batchDate in the chain is NA. The intro->q1 segment itself is
+  # missing_endpoint (its batch_prior is intro.batchDate which is now NA).
+  data$id.intro.batchDate[data$userid == "r1"] <- ""
+  result <- latency_report(data, fx$config)
+  reasons <- result$diagnostics$n_segments_na_by_reason
+  expect_gte(reasons$chain_break, 1L)
+  expect_gte(reasons$missing_endpoint, 1L)
+  expect_equal(reasons$parse_failure, 0L)
+  total <- reasons$parse_failure + reasons$missing_endpoint + reasons$chain_break
+  expect_equal(total, result$diagnostics$n_segments_na)
+})
+
 test_that("latency_report negative-clamp counter is exposed in diagnostics", {
   fx <- .load_synthetic()
   data <- fx$data
