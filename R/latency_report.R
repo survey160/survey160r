@@ -40,6 +40,12 @@ latency_report <- function(data, config) {
   campaign_col <- config$filters$campaign_id_column
   resp_id_col <- config$filters$respondent_id_column
 
+  # Stash source_csv_hash from the input attribute before any subsetting (R
+  # drops custom attributes on `[`). pull_csv_from_gcs() sets this; manual
+  # callers can attach it themselves. Falls back to NA so write_to_gcs's
+  # override path still works for ad-hoc invocations.
+  src_csv_hash <- attr(data, "source_csv_hash") %||% NA_character_
+
   # Step 1: population filter.
   data <- apply_population_filter(data, config$filters$population)
   n_in <- nrow(data)
@@ -74,7 +80,8 @@ latency_report <- function(data, config) {
   frame <- build_latency_frame(data, config, windows_df, parse_failed_mask)
 
   # Step 6: aggregate to consolidated.
-  consolidated <- aggregate_consolidated(frame, config, cfg_hash, run_at)
+  consolidated <- aggregate_consolidated(frame, config, cfg_hash, run_at,
+                                         src_csv_hash)
 
   # Step 7: diagnostics.
   diagnostics <- build_diagnostics(
@@ -267,7 +274,8 @@ empty_latency_frame <- function() {
 # Aggregate latency_frame to the consolidated table (spec §3.1). Cells are
 # (campaign_id, date, hour_local, segment, threshold_min). For day buckets
 # hour_local is NA on every row.
-aggregate_consolidated <- function(frame, config, cfg_hash, run_at) {
+aggregate_consolidated <- function(frame, config, cfg_hash, run_at,
+                                   src_csv_hash = NA_character_) {
   thresholds <- UNIVERSAL_THRESHOLDS_MIN
   bucket <- config$reports$time_bucket
   project_id <- as.integer(config$project_id)
@@ -381,7 +389,7 @@ aggregate_consolidated <- function(frame, config, cfg_hash, run_at) {
     pct_resp_worst_gt = as.numeric(joined$pct_resp_worst_gt),
     algorithm_version = .algorithm_version,
     config_hash = cfg_hash,
-    source_csv_hash = NA_character_,
+    source_csv_hash = src_csv_hash %||% NA_character_,
     run_at_utc = run_at,
     run_by = NA_character_,
     stringsAsFactors = FALSE

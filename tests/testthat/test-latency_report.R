@@ -127,6 +127,21 @@ test_that("latency_report errors on invalid population_filter", {
   expect_error(latency_report(fx$data, cfg), "filters.population")
 })
 
+test_that("latency_report threads source_csv_hash from input attribute to consolidated", {
+  fx <- .load_synthetic()
+  data <- fx$data
+  attr(data, "source_csv_hash") <- "sha256:fixture-from-attr"
+  result <- latency_report(data, fx$config)
+  expect_equal(unique(result$consolidated$source_csv_hash),
+               "sha256:fixture-from-attr")
+})
+
+test_that("latency_report leaves source_csv_hash NA when no input attribute", {
+  fx <- .load_synthetic()
+  result <- latency_report(fx$data, fx$config)
+  expect_true(all(is.na(result$consolidated$source_csv_hash)))
+})
+
 test_that("diagnostics na_by_reason: parse_failure counted on garbage timestamps", {
   fx <- .load_synthetic()
   data <- fx$data
