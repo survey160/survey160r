@@ -1,0 +1,28 @@
+project_id: 1
+project_name: "Synthetic Test Wave"
+campaign_id: 1
+wave_run: "synthetic_w1_20260126"
+
+input:
+  source: csv
+  gcs_path: "gs://campaign_results/1/1_raw_data_download.csv"
+
+field_timezone: "America/New_York"
+
+flow:
+  questions: [intro, q1, q2, close]
+
+filters:
+  population: 'id.intro.finalText == "Yes"'
+  campaign_id_column: campaignid
+  respondent_id_column: userid
+
+texting_windows:
+  - { date: "2026-01-26", start_hour: 16, end_hour: 24 }
+
+reports:
+  time_bucket: day
+
+output:
+  bucket: "s160_analytics_dev"
+  format: [parquet]

@@ -2,7 +2,7 @@
 
 [![R-CMD-check](https://github.com/survey160/survey160r/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/survey160/survey160r/actions/workflows/R-CMD-check.yaml)
 
-R package for accessing Survey160 campaign data -- read results from Google Cloud Storage and trigger fresh exports via the API.
+R package for accessing Survey160 campaign data -- read results from Google Cloud Storage, trigger fresh exports via the API, and compute per-campaign recipient-latency reports written as Parquet to GCS.
 
 ## Installation
 
@@ -76,6 +76,91 @@ status <- s160_gcs_campaign_results_status(campaign_id)
 status$updated  # last export time
 status$size     # file size
 ```
+
+## Latency analysis
+
+Compute a per-campaign recipient-latency report from a raw campaign CSV and write it as a single Parquet file to a dedicated analytics bucket. Replaces the per-wave inline scripts that the analytics team used to maintain by hand: one algorithm, one output schema, one YAML config per campaign.
+
+The pipeline has three layers. `latency_report(data, config)` is the pure function -- deterministic, no I/O, no globals -- and is the recommended entry point for tests and ad-hoc analysis. `pull_csv_from_gcs()` / `write_to_gcs()` are thin I/O wrappers. `run_latency()` glues them together for the manual happy path.
+
+### Happy path
+
+```r
+library(survey160r)
+s160_gcs_init(bucket = "campaign_results")
+
+# config_path points to a per-wave YAML (see "Config" below)
+run_latency(
+  campaign_id = 1234,
+  config_path = "configs/wave_w1_20260126.yaml",
+  bucket = "s160_analytics",
+  run_by = "lshimokawa"
+)
+# -> writes gs://s160_analytics/latency/1234_latency.parquet
+```
+
+### Pure function
+
+```r
+data <- pull_csv_from_gcs(campaign_id = 1234)
+config <- read_config("configs/wave_w1_20260126.yaml")
+result <- latency_report(data, config)
+
+result$consolidated     # one row per (campaign_id, date, hour_local, segment, threshold_min)
+result$latency_frame    # one row per (respondent, segment) with na_reason classification
+result$diagnostics      # parse failures, NA-by-reason counts, clamped negatives, respondent summary
+result$meta             # algorithm_version, schema_version, config_hash, run_at_utc
+```
+
+### Output schema
+
+The Parquet at `gs://<bucket>/latency/<campaign_id>_latency.parquet` carries provenance columns alongside the metrics, so each row stands on its own without sidecar manifests:
+
+| Column | Purpose |
+|---|---|
+| `campaign_id`, `project_id` | Wave identity |
+| `date`, `hour_local` | Bucket grain (hour_local NA for day buckets) |
+| `segment`, `segment_index` | Pair of consecutive flow questions, e.g. `intro->q1` |
+| `threshold_min` | Universal fleet threshold (1, 3, 5, or 10 min) |
+| `n`, `pct_le` | Per-segment in-window dispatch metrics |
+| `n_respondents`, `pct_resp_hit_gt`, `pct_resp_worst_gt` | Respondent-cascade metrics |
+| `algorithm_version`, `config_hash`, `source_csv_hash`, `run_at_utc`, `run_by` | Provenance |
+
+### Reading results back
+
+```r
+view <- read_latency(bucket = "s160_analytics")
+DBI::dbGetQuery(view$con, "SELECT campaign_id, segment, pct_le FROM latency WHERE threshold_min = 5")
+DBI::dbDisconnect(view$con, shutdown = TRUE)
+```
+
+### Config
+
+A YAML config tells `latency_report()` which columns to use, the survey-flow order, the field timezone, the texting windows, and which respondents to keep. Minimal example:
+
+```yaml
+project_id: 1234
+project_name: "Wave 1 -- January 2026"
+campaign_id: 1234
+field_timezone: "America/New_York"
+
+flow:
+  questions: [intro, q1, q2, q3, close]
+
+filters:
+  population: 'id.intro.finalText == "Yes"'
+  campaign_id_column: campaignid
+  respondent_id_column: userid
+  date_filter: ["2026-01-26"]
+
+texting_windows:
+  - { date: "2026-01-26", start_hour: 16, end_hour: 24 }
+
+reports:
+  time_bucket: day
+```
+
+`validate_config()` runs fail-fast checks: required columns present, flow order matches the data, texting windows cover survey dates, no unknown keys, no terminal states (`refusal`, `ineligible`) in `flow.questions`.
 
 ## First-time setup
 
