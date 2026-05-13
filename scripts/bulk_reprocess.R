@@ -54,6 +54,12 @@ discover_questions <- function(csv_path) {
 }
 
 # Build a config without per-campaign thresholds (universal in v0.7.1+).
+# NOTE: There is no campaign-id -> project-id mapping available here, so
+# project_id is set to campaign_id as a placeholder. Outputs from this bulk
+# run will have project_id == campaign_id, which is wrong for any
+# project-level rollup. Production runs must use a per-wave YAML config that
+# carries the real project_id; this script is for methodology refresh of the
+# *_latency.parquet files only.
 build_config <- function(campaign_id, questions) {
   list(
     project_id = as.integer(campaign_id),

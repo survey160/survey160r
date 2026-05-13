@@ -110,8 +110,15 @@ latency_report <- function(data, config) {
 
 # Evaluate a population-filter expression against the data. The expression is
 # whatever string the analyst placed in `filters.population` (e.g.
-# 'id.intro.finalText == "Yes"'). Evaluated in an empty-parent env so only
-# columns of `data` are accessible.
+# 'id.intro.finalText == "Yes"'). Evaluated in a `baseenv()`-parented env so
+# only base R functions and columns of `data` are accessible.
+#
+# Trust model: YAML configs are authored by analysts with commit access and
+# go through the standard PR review process; the strings we eval here are
+# treated as trusted input, the same way an R script committed to the
+# legacy latency-scripts repo would be. Do NOT extend this to accept
+# user-uploaded configs without first restricting the expression grammar
+# (e.g., via rlang::parse_expr + a small allowlist of operators).
 apply_population_filter <- function(data, expr) {
   if (is.null(expr) || !nzchar(expr)) return(data)
   parsed <- tryCatch(parse(text = expr),
@@ -203,8 +210,13 @@ build_latency_frame <- function(data, config, windows_df,
     delta_pre <- cs$delta
     total_clamped <- total_clamped + cs$n_clamped
 
-    chain_priors <- c(chain_priors, list(batch_prior))
+    # Apply chain validity using only *strictly prior* batchDates -- the
+    # current segment's own batch_prior NA is already reflected in delta_pre
+    # by compute_segment_delta(), so including it here would be redundant
+    # work and would muddy the chain_break vs missing_endpoint diagnostic
+    # classification below.
     delta <- apply_chain_validity(delta_pre, chain_priors)
+    chain_priors <- c(chain_priors, list(batch_prior))
 
     in_window <- in_window_flag(batch_prior, windows_df, field_tz)
     in_window[is.na(batch_prior)] <- 0L
@@ -369,6 +381,12 @@ aggregate_consolidated <- function(frame, config, cfg_hash, run_at,
     100 * joined$n_resp_over / joined$.total_resp,
     NA_real_
   )
+  # Cascade left-join can produce NA n_respondents / pct_resp_worst_gt for
+  # a (campaign, date, hour_local) bucket where *every* segment was NA
+  # (parse failure, chain break, or missing endpoint) so worst_by_respondent
+  # has no row for it. The Arrow schema permits int32 NA so this round-trips
+  # cleanly; downstream consumers should treat NA cascade columns as
+  # "no respondent had any valid Δ in this bucket."
   joined <- dplyr::left_join(
     joined, cascade,
     by = c("campaign_id", "date", "hour_local", "threshold_min")
