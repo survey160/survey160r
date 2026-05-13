@@ -26,11 +26,17 @@ jobs:
 
       - name: Check version bump
         if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
-          BASE_VERSION=$(git show origin/${{ github.base_ref }}:DESCRIPTION | grep '^Version:' | sed 's/Version: //')
+          BASE_VERSION=$(git show "$BASE_SHA":DESCRIPTION | grep '^Version:' | sed 's/Version: //')
           PR_VERSION=$(grep '^Version:' DESCRIPTION | sed 's/Version: //')
-          CODE_CHANGED=$(git diff --name-only origin/${{ github.base_ref }}...HEAD -- R/ man/ src/ | head -1)
-          NEWS_CHANGED=$(git diff --name-only origin/${{ github.base_ref }}...HEAD -- NEWS.md | head -1)
+          if [ -z "$BASE_VERSION" ]; then
+            echo "::error::Could not read Version from base ($BASE_SHA). CI checkout problem."
+            exit 1
+          fi
+          CODE_CHANGED=$(git diff --name-only "$BASE_SHA"...HEAD -- R/ man/ src/ | head -1)
+          NEWS_CHANGED=$(git diff --name-only "$BASE_SHA"...HEAD -- NEWS.md | head -1)
           if [ -n "$CODE_CHANGED" ] && [ "$BASE_VERSION" = "$PR_VERSION" ]; then
             echo "::error::Package code changed but version was not bumped (still $BASE_VERSION). Update Version in DESCRIPTION."
             exit 1
