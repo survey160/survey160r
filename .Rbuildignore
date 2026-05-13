@@ -3,6 +3,7 @@
 ^\.Rproj\.user$
 ^.*\.Rproj$
 ^CLAUDE\.md$
+^RELEASING\.md$
 ^\.claude$
 ^Makefile$
 ^scripts$
