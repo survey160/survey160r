@@ -427,7 +427,11 @@ test_that("campaign_get returns single-row data frame with base columns", {
   expect_equal(df$campaignid, 2107)
   expect_equal(df$name, "Test Campaign")
   expect_equal(df$active, "active")
-  expect_equal(df$archive_scheduled_date, "2026-06-01T00:00:00Z")
+  expect_s3_class(df$archive_scheduled_date, "POSIXct")
+  expect_equal(
+    df$archive_scheduled_date,
+    as.POSIXct("2026-06-01 00:00:00", tz = "UTC")
+  )
 
   # script is a list-column (parsed JSON)
   expect_true(is.list(df$script))
@@ -506,4 +510,40 @@ test_that("campaign_get errors on invalid campaign_id", {
   stub_api_base()
   expect_error(s160_api_campaign_get(c(1, 2)), "single value")
   expect_error(s160_api_campaign_get(""), "non-empty")
+})
+
+test_that("campaign_get parses ISO-8601 timestamp columns to POSIXct", {
+  stub_api_base()
+  local_mocked_bindings(
+    s160_api_request = function(method, path, body = NULL) {
+      list(success = TRUE, data = list(
+        campaignid = 1,
+        startdate = "2026-01-15 09:30:00",
+        archive_scheduled_date = "2026-06-01T00:00:00Z",
+        name = "Not a timestamp"
+      ))
+    }
+  )
+
+  df <- s160_api_campaign_get(1)
+  expect_s3_class(df$startdate, "POSIXct")
+  expect_equal(format(df$startdate, tz = "UTC"), "2026-01-15 09:30:00")
+  expect_s3_class(df$archive_scheduled_date, "POSIXct")
+  expect_equal(df$name, "Not a timestamp")
+})
+
+test_that("campaign_get leaves unparseable timestamp-shaped strings unchanged", {
+  stub_api_base()
+  local_mocked_bindings(
+    s160_api_request = function(method, path, body = NULL) {
+      list(success = TRUE, data = list(
+        campaignid = 1,
+        weird = "2026-13-45 99:99:99"  # ISO-8601 shape, invalid values
+      ))
+    }
+  )
+
+  df <- s160_api_campaign_get(1)
+  expect_type(df$weird, "character")
+  expect_equal(df$weird, "2026-13-45 99:99:99")
 })

@@ -10,7 +10,9 @@
   (`script`, `prompt`, `quotas`, ...) come back as length-1 list-columns.
   Useful for confirming attributes after a state-changing call without
   dropping to direct database access. Per-campaign read; not intended for
-  tight loops over hundreds of IDs (SUR-1253).
+  tight loops over hundreds of IDs. ISO-8601 timestamp columns
+  (`startdate`, `archive_scheduled_date`, ...) are parsed to `POSIXct`
+  in UTC so callers do not have to re-parse them (SUR-1253).
 
 ## Documentation
 

@@ -282,7 +282,28 @@ s160_api_campaign_get <- function(campaign_id) {
     else v
   })
 
-  as.data.frame(cols, stringsAsFactors = FALSE)
+  df <- as.data.frame(cols, stringsAsFactors = FALSE)
+
+  # Coerce ISO-8601-looking character columns to POSIXct (UTC). The campaigns
+  # table has many timestamp columns (startdate, enddate, archive_scheduled_date,
+  # ...) which travel the wire as naive strings; parsing here saves every
+  # caller from doing it. Falls back to the original string if parsing fails.
+  parse_iso <- function(col) {
+    if (!is.character(col) || length(col) != 1L || is.na(col)) return(col)
+    if (!grepl("^\\d{4}-\\d{2}-\\d{2}[T ]\\d{2}:\\d{2}:\\d{2}", col)) return(col)
+    # Normalize to "YYYY-MM-DD HH:MM:SS": drop the T separator, drop a Z
+    # suffix or numeric UTC offset (the wire format is always UTC).
+    s <- sub("T", " ", col)
+    s <- sub("Z$", "", s)
+    s <- sub("[+-]\\d{2}:?\\d{2}$", "", s)
+    parsed <- suppressWarnings(
+      as.POSIXct(s, format = "%Y-%m-%d %H:%M:%OS", tz = "UTC")
+    )
+    if (is.na(parsed)) col else parsed
+  }
+  df[] <- lapply(df, parse_iso)
+
+  df
 }
 
 # --- Internal helpers ---------------------------------------------------------
