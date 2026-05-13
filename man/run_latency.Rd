@@ -4,7 +4,13 @@
 \alias{run_latency}
 \title{Run the full latency pipeline for one campaign}
 \usage{
-run_latency(campaign_id, config_path, bucket, run_by = NULL)
+run_latency(
+  campaign_id,
+  config_path,
+  bucket,
+  run_by = NULL,
+  uploader = upload_object
+)
 }
 \arguments{
 \item{campaign_id}{Campaign id (numeric or character).}
@@ -15,6 +21,8 @@ run_latency(campaign_id, config_path, bucket, run_by = NULL)
 \item{bucket}{Destination analytics bucket.}
 
 \item{run_by}{Optional string for the run_by provenance column.}
+
+\item{uploader}{Forwarded to \code{write_to_gcs()}; see its docs.}
 }
 \value{
 The full \code{gs://...} path written.

@@ -164,8 +164,10 @@ write_to_gcs <- function(result, campaign_id, bucket,
 
 # Upload a local file to GCS at <bucket>/<object_name>. Writes the per-bucket
 # upload via googleCloudStorageR. `metadata` is set as object metadata for
-# human inspection in the GCS console.
-upload_object <- function(local_path, object_name, bucket, metadata) {
+# human inspection in the GCS console. Marked # nocov because it is a thin
+# wrapper around a real network call; tests mock at the write_to_gcs(uploader=)
+# seam instead (see test-latency_io.R).
+upload_object <- function(local_path, object_name, bucket, metadata) { # nocov start
   googleCloudStorageR::gcs_upload(
     file = local_path,
     bucket = bucket,
@@ -177,7 +179,7 @@ upload_object <- function(local_path, object_name, bucket, metadata) {
     predefinedAcl = "bucketLevel"
   )
   invisible(NULL)
-}
+} # nocov end
 
 #' Read latency Parquet output from GCS via DuckDB
 #'

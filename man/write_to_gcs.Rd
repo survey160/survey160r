@@ -9,7 +9,8 @@ write_to_gcs(
   campaign_id,
   bucket,
   source_csv_hash = NULL,
-  run_by = NULL
+  run_by = NULL,
+  uploader = upload_object
 )
 }
 \arguments{
@@ -23,6 +24,12 @@ write_to_gcs(
 value already on \code{result$consolidated} is preserved.}
 
 \item{run_by}{Optional string for the run_by provenance column.}
+
+\item{uploader}{Function called once the Parquet has been written locally.
+Signature: \code{function(local_path, object_name, bucket, metadata)}.
+Defaults to \code{upload_object} (real GCS upload). Pass an alternative
+to redirect uploads (e.g., batch scripts copying to a local staging dir,
+or tests capturing the call).}
 }
 \value{
 The full \code{gs://...} path written.
