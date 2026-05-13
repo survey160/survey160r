@@ -1,5 +1,14 @@
 # survey160r (development version)
 
+## Bug fixes
+
+* `s160_api_campaign_get()` now strips sub-second precision when parsing
+  ISO-8601 timestamp columns, so values like
+  `"2026-01-15T09:30:00.123456Z"` (which PostgreSQL can emit) come back as
+  `POSIXct` rather than falling through to the string fallback. Numeric UTC
+  offsets (`+05:30`, `-0400`) are also covered. The `httr::GET` import is
+  now declared explicitly to match the other `httr` imports.
+
 ## New features
 
 * `s160_api_campaign_get(campaign_id)` reads a single campaign's attributes
