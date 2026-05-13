@@ -1,5 +1,17 @@
 # survey160r (development version)
 
+## New features
+
+* `s160_api_campaign_get(campaign_id)` reads a single campaign's attributes
+  via `GET /campaigns/<id>`. Returns a single-row data frame with the
+  `campaigns` table columns; enriched API-only fields (`listlength`,
+  `list`, `login`, `exports`, `has_texting_started`, `sandbox_configuration`,
+  `aggregator`, `has_assigned_registration`) are dropped, and JSON columns
+  (`script`, `prompt`, `quotas`, ...) come back as length-1 list-columns.
+  Useful for confirming attributes after a state-changing call without
+  dropping to direct database access. Per-campaign read; not intended for
+  tight loops over hundreds of IDs (SUR-1253).
+
 ## Documentation
 
 * Declare `R (>= 4.1)` in `DESCRIPTION` to match what the current `arrow`,

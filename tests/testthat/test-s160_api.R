@@ -390,3 +390,120 @@ test_that("get_gcs_file_updated returns NULL on GCS error", {
 
   expect_null(survey160r:::get_gcs_file_updated("1980", "1980_raw_data_download.csv"))
 })
+
+# --- s160_api_campaign_get ----------------------------------------------------
+
+test_that("campaign_get returns single-row data frame with base columns", {
+  stub_api_base()
+
+  local_mocked_bindings(
+    s160_api_request = function(method, path, body = NULL) {
+      list(
+        success = TRUE,
+        data = list(
+          campaignid = 2107,
+          name = "Test Campaign",
+          active = "active",
+          archive_scheduled_date = "2026-06-01T00:00:00Z",
+          script = list(intro = list(id = "intro"), close = list(id = "close")),
+          # Enriched fields should be dropped:
+          listlength = 1234,
+          list = list(list(phone = "5551234567")),
+          login = list("agent1"),
+          exports = list(),
+          has_texting_started = TRUE,
+          sandbox_configuration = list(),
+          aggregator = "bandwidth",
+          has_assigned_registration = TRUE
+        )
+      )
+    }
+  )
+
+  df <- s160_api_campaign_get(2107)
+
+  expect_s3_class(df, "data.frame")
+  expect_equal(nrow(df), 1L)
+  expect_equal(df$campaignid, 2107)
+  expect_equal(df$name, "Test Campaign")
+  expect_equal(df$active, "active")
+  expect_equal(df$archive_scheduled_date, "2026-06-01T00:00:00Z")
+
+  # script is a list-column (parsed JSON)
+  expect_true(is.list(df$script))
+  expect_equal(df$script[[1]]$intro$id, "intro")
+
+  # Enriched fields dropped
+  for (f in c("listlength", "list", "login", "exports",
+              "has_texting_started", "sandbox_configuration",
+              "aggregator", "has_assigned_registration")) {
+    expect_false(f %in% names(df), info = f)
+  }
+})
+
+test_that("campaign_get treats NULL fields as NA", {
+  stub_api_base()
+  local_mocked_bindings(
+    s160_api_request = function(method, path, body = NULL) {
+      list(success = TRUE,
+           data = list(campaignid = 5, archive_scheduled_date = NULL))
+    }
+  )
+
+  df <- s160_api_campaign_get(5)
+  expect_true(is.na(df$archive_scheduled_date))
+})
+
+test_that("campaign_get maps 400 not-found to clear error", {
+  stub_api_base()
+  local_mocked_bindings(
+    s160_api_request = function(method, path, body = NULL) {
+      stop("API error (GET /campaigns/9999): Bad Request", call. = FALSE)
+    }
+  )
+
+  expect_error(s160_api_campaign_get(9999), "Campaign 9999 not found")
+})
+
+test_that("campaign_get maps 404 to clear error", {
+  stub_api_base()
+  local_mocked_bindings(
+    s160_api_request = function(method, path, body = NULL) {
+      stop("API error (GET /campaigns/9999): Not Found", call. = FALSE)
+    }
+  )
+
+  expect_error(s160_api_campaign_get(9999), "Campaign 9999 not found")
+})
+
+test_that("campaign_get propagates non-not-found errors unchanged", {
+  stub_api_base()
+  local_mocked_bindings(
+    s160_api_request = function(method, path, body = NULL) {
+      stop("API error (GET /campaigns/1): Internal Server Error", call. = FALSE)
+    }
+  )
+
+  expect_error(s160_api_campaign_get(1), "Internal Server Error")
+})
+
+test_that("campaign_get errors on success=false response", {
+  stub_api_base()
+  local_mocked_bindings(
+    s160_api_request = function(method, path, body = NULL) {
+      list(success = FALSE)
+    }
+  )
+
+  expect_error(s160_api_campaign_get(42), "Campaign 42 not found")
+})
+
+test_that("campaign_get errors when API not authenticated", {
+  expect_error(s160_api_campaign_get(2107), "Run s160_api_auth")
+})
+
+test_that("campaign_get errors on invalid campaign_id", {
+  stub_api_base()
+  expect_error(s160_api_campaign_get(c(1, 2)), "single value")
+  expect_error(s160_api_campaign_get(""), "non-empty")
+})
