@@ -1,6 +1,7 @@
 # survey160r
 
 [![R-CMD-check](https://github.com/survey160/survey160r/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/survey160/survey160r/actions/workflows/R-CMD-check.yaml)
+[![R-universe](https://survey160.r-universe.dev/badges/survey160r)](https://survey160.r-universe.dev/survey160r)
 
 R package for accessing Survey160 campaign data -- read results from Google Cloud Storage, trigger fresh exports via the API, and compute per-campaign recipient-latency reports written as Parquet to GCS.
 
@@ -150,7 +151,7 @@ flow:
 filters:
   population: 'id.intro.finalText == "Yes"'
   campaign_id_column: campaignid
-  respondent_id_column: userid
+  respondent_id_column: ~     # leave null; in Survey160 v2 CSVs `userid` is the agent login, not a per-respondent id
   date_filter: ["2026-01-26"]
 
 texting_windows:
@@ -180,8 +181,10 @@ You may also be asked to allow OAuth token caching (say yes) and to
 install the `httpuv` package for a smoother auth experience (say yes).
 
 Your Google account needs **Storage Object Viewer** permission on the
-target bucket. Contact a sysadmin if you get 403 errors after
-authenticating.
+campaign-results source bucket. Producing latency outputs via
+`write_to_gcs()` or `run_latency()` additionally needs **Storage Object
+Creator** on the destination analytics bucket. Contact a sysadmin if you
+get 403 errors after authenticating.
 
 ### API (`s160_api_auth`)
 

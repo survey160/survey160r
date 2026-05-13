@@ -6,14 +6,21 @@
   `dplyr`, and `lubridate` imports already require.
 * `RELEASING.md` clarifies that the release tag must point at the release
   PR's merge SHA, not `HEAD` (#14).
+* README latency YAML example sets `respondent_id_column: ~` instead of
+  the misleading `userid`, which in Survey160 v2 CSVs is the agent login
+  rather than a per-respondent identifier.
+* README first-time-setup notes that producing latency outputs requires
+  Storage Object Creator on the destination analytics bucket, in addition
+  to Storage Object Viewer on the source bucket.
 
 # survey160r 0.6.0
 
 ## New features
 
-* Latency analysis pipeline (#13). Replaces the per-wave inline R scripts
+* Latency analysis pipeline (#13). Supersedes the per-wave inline R scripts
   that the analytics team used to maintain by hand with a single algorithm,
-  output schema, and YAML config per campaign. New public functions:
+  output schema, and YAML config per campaign; existing wave scripts will be
+  migrated client by client. New public functions:
 
   * `latency_report(data, config)` -- pure, deterministic; returns
     `consolidated`, `latency_frame`, `diagnostics`, `meta`.
@@ -114,8 +121,9 @@ surface area:
 * `s160_gcs_campaign_results_list()` -- list available campaign IDs.
 * `s160_gcs_campaign_results_files()` -- enumerate files for one
   campaign.
-* `validate_campaign_id()` -- shared input guard, rejects vectors
-  with a named error.
+
+Internal: `validate_campaign_id()` is a shared input guard reused by
+the GCS readers; not exported.
 
 Published to R-universe at
 `https://survey160.r-universe.dev` (#1).
