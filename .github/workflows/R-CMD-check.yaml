@@ -29,6 +29,7 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
           BASE_VERSION=$(git show "$BASE_SHA":DESCRIPTION | grep '^Version:' | sed 's/Version: //')
           PR_VERSION=$(grep '^Version:' DESCRIPTION | sed 's/Version: //')
           if [ -z "$BASE_VERSION" ]; then
