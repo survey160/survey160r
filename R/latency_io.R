@@ -97,11 +97,17 @@ pull_csv_from_gcs <- function(campaign_id, filename = NULL) {
 #' @param source_csv_hash Optional sha256 of the source CSV; if omitted, the
 #'   value already on \code{result$consolidated} is preserved.
 #' @param run_by Optional string for the run_by provenance column.
+#' @param uploader Function called once the Parquet has been written locally.
+#'   Signature: \code{function(local_path, object_name, bucket, metadata)}.
+#'   Defaults to \code{upload_object} (real GCS upload). Pass an alternative
+#'   to redirect uploads (e.g., batch scripts copying to a local staging dir,
+#'   or tests capturing the call).
 #' @return The full \code{gs://...} path written.
 #' @export
 write_to_gcs <- function(result, campaign_id, bucket,
                          source_csv_hash = NULL,
-                         run_by = NULL) {
+                         run_by = NULL,
+                         uploader = upload_object) {
   if (!is.list(result) || is.null(result$consolidated)) {
     stop("write_to_gcs: result must include $consolidated.", call. = FALSE)
   }
@@ -151,8 +157,8 @@ write_to_gcs <- function(result, campaign_id, bucket,
   )
 
   object_name <- .latency_object_path(campaign_id)
-  upload_object(local_path = tmp_path, object_name = object_name, bucket = bucket,
-                metadata = meta_pairs)
+  uploader(local_path = tmp_path, object_name = object_name, bucket = bucket,
+           metadata = meta_pairs)
   sprintf("gs://%s/%s", bucket, object_name)
 }
 

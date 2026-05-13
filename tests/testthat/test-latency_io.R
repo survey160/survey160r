@@ -97,6 +97,29 @@ test_that("write_to_gcs handles an empty consolidated frame", {
   expect_equal(path, "gs://s160_analytics_dev/latency/999_latency.parquet")
 })
 
+test_that("write_to_gcs uses a caller-supplied uploader instead of upload_object", {
+  fx <- .load_synthetic_result()
+  captured <- new.env(parent = emptyenv())
+  custom_uploader <- function(local_path, object_name, bucket, metadata) {
+    captured$local_path <- local_path
+    captured$object_name <- object_name
+    captured$bucket <- bucket
+    captured$metadata <- metadata
+    invisible(NULL)
+  }
+  path <- write_to_gcs(
+    result = fx$result,
+    campaign_id = 42,
+    bucket = "s160_analytics_dev",
+    source_csv_hash = "sha256:via-callback",
+    uploader = custom_uploader
+  )
+  expect_equal(path, "gs://s160_analytics_dev/latency/42_latency.parquet")
+  expect_equal(captured$object_name, "latency/42_latency.parquet")
+  expect_equal(captured$metadata$`survey160.source_csv_hash`,
+               "sha256:via-callback")
+})
+
 test_that("pull_csv_from_gcs sets a source_csv_hash attribute", {
   stub_gcs_base()
   stub_gcs_download_ok()

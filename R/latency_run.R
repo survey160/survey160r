@@ -10,9 +10,11 @@
 #'   §4 schema.
 #' @param bucket Destination analytics bucket.
 #' @param run_by Optional string for the run_by provenance column.
+#' @param uploader Forwarded to \code{write_to_gcs()}; see its docs.
 #' @return The full \code{gs://...} path written.
 #' @export
-run_latency <- function(campaign_id, config_path, bucket, run_by = NULL) {
+run_latency <- function(campaign_id, config_path, bucket, run_by = NULL,
+                        uploader = upload_object) {
   config <- read_config(config_path)
   data <- pull_csv_from_gcs(campaign_id)
   source_csv_hash <- attr(data, "source_csv_hash")
@@ -22,6 +24,7 @@ run_latency <- function(campaign_id, config_path, bucket, run_by = NULL) {
     campaign_id = campaign_id,
     bucket = bucket,
     source_csv_hash = source_csv_hash,
-    run_by = run_by
+    run_by = run_by,
+    uploader = uploader
   )
 }

@@ -117,20 +117,16 @@ process_one <- function(campaign_id, src_bucket, dst_bucket, work_dir) {
   }
   parquet_local <- file.path(work_dir,
                              sprintf("%s_latency.parquet", campaign_id))
-  testthat::with_mocked_bindings(
-    upload_object = function(local_path, object_name, bucket, metadata) {
-      file.copy(local_path, parquet_local, overwrite = TRUE)
-      invisible(NULL)
-    },
-    {
-      write_to_gcs(result = result,
-                   campaign_id = campaign_id,
-                   bucket = dst_bucket,
-                   source_csv_hash = csv_hash,
-                   run_by = "bulk_reprocess")
-    },
-    .package = "survey160r"
-  )
+  local_uploader <- function(local_path, object_name, bucket, metadata) {
+    file.copy(local_path, parquet_local, overwrite = TRUE)
+    invisible(NULL)
+  }
+  write_to_gcs(result = result,
+               campaign_id = campaign_id,
+               bucket = dst_bucket,
+               source_csv_hash = csv_hash,
+               run_by = "bulk_reprocess",
+               uploader = local_uploader)
   parquet_uri <- sprintf("gs://%s/latency/%s_latency.parquet",
                          dst_bucket, campaign_id)
   rc <- system2("gcloud",
