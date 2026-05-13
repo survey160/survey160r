@@ -39,7 +39,7 @@ Distribution is via [R-universe](https://survey160.r-universe.dev), which auto-r
 R-universe always serves the version on `main`. To install an older version by tag (reproducibility audits, bug triage):
 
 ```r
-remotes::install_github("survey160/survey160r@v0.5.0")
+pak::pkg_install("survey160/survey160r@v0.5.0")
 ```
 
 The recommended install path for users is still R-universe.

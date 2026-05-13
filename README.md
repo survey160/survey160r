@@ -220,6 +220,12 @@ gargle::gargle_oauth_sitrep()  # list cached tokens and their location
 # delete the cache directory shown above, then restart R
 ```
 
+## Development
+
+- Changelog: `NEWS.md` (or `news(package = "survey160r")` after install).
+- Cutting a release: see [`RELEASING.md`](RELEASING.md).
+- Project conventions and agent context: see `CLAUDE.md`.
+
 ## License
 
 MIT
