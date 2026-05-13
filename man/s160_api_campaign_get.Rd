@@ -10,7 +10,8 @@ s160_api_campaign_get(campaign_id)
 \item{campaign_id}{Campaign ID (numeric or character).}
 }
 \value{
-A single-row data frame. Scalar columns are scalar; JSON columns
+A single-row data frame. Scalar columns are scalar; ISO-8601
+  timestamp columns are coerced to \code{POSIXct} in UTC; JSON columns
   are list-columns of length 1.
 }
 \description{

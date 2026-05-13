@@ -547,3 +547,39 @@ test_that("campaign_get leaves unparseable timestamp-shaped strings unchanged", 
   expect_type(df$weird, "character")
   expect_equal(df$weird, "2026-13-45 99:99:99")
 })
+
+test_that("campaign_get parses sub-second-precision timestamps", {
+  stub_api_base()
+  local_mocked_bindings(
+    s160_api_request = function(method, path, body = NULL) {
+      list(success = TRUE, data = list(
+        campaignid = 1,
+        startdate = "2026-01-15T09:30:00.123456Z"
+      ))
+    }
+  )
+
+  df <- s160_api_campaign_get(1)
+  expect_s3_class(df$startdate, "POSIXct")
+  expect_equal(df$startdate, as.POSIXct("2026-01-15 09:30:00", tz = "UTC"))
+})
+
+test_that("campaign_get normalizes numeric UTC offsets when parsing timestamps", {
+  stub_api_base()
+  local_mocked_bindings(
+    s160_api_request = function(method, path, body = NULL) {
+      list(success = TRUE, data = list(
+        campaignid = 1,
+        startdate    = "2026-01-15T09:30:00+05:30",
+        archive_scheduled_date = "2026-02-20T12:00:00-0400"
+      ))
+    }
+  )
+
+  df <- s160_api_campaign_get(1)
+  expect_s3_class(df$startdate, "POSIXct")
+  expect_equal(df$startdate, as.POSIXct("2026-01-15 09:30:00", tz = "UTC"))
+  expect_s3_class(df$archive_scheduled_date, "POSIXct")
+  expect_equal(df$archive_scheduled_date,
+               as.POSIXct("2026-02-20 12:00:00", tz = "UTC"))
+})

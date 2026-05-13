@@ -87,7 +87,7 @@ s160_api_request <- function(method, path, body = NULL) {
 #' \dontrun{
 #' s160_api_auth()
 #' }
-#' @importFrom httr POST add_headers content_type_json content http_error http_status
+#' @importFrom httr GET POST add_headers content_type_json content http_error http_status
 #' @export
 s160_api_auth <- function(base_url = "https://api.survey160.com") {
   if (!is.character(base_url) || length(base_url) != 1 || !nzchar(trimws(base_url))) {
@@ -234,7 +234,8 @@ s160_api_campaign_results <- function(campaign_id, filter_open = FALSE,
 #' A batch variant would need a backend extension and is out of scope.
 #'
 #' @param campaign_id Campaign ID (numeric or character).
-#' @return A single-row data frame. Scalar columns are scalar; JSON columns
+#' @return A single-row data frame. Scalar columns are scalar; ISO-8601
+#'   timestamp columns are coerced to \code{POSIXct} in UTC; JSON columns
 #'   are list-columns of length 1.
 #' @examples
 #' \dontrun{
@@ -263,6 +264,9 @@ s160_api_campaign_get <- function(campaign_id) {
     }
   )
 
+  # Backstop for an unexpected 200 with `success != TRUE` or no data payload.
+  # The real not-found path is the HTTP 400 handled by the tryCatch above; this
+  # guard would only fire if the server changed shape.
   if (!isTRUE(resp$success) || is.null(resp$data)) {
     stop(sprintf("Campaign %s not found.", campaign_id), call. = FALSE)
   }
@@ -291,9 +295,11 @@ s160_api_campaign_get <- function(campaign_id) {
   parse_iso <- function(col) {
     if (!is.character(col) || length(col) != 1L || is.na(col)) return(col)
     if (!grepl("^\\d{4}-\\d{2}-\\d{2}[T ]\\d{2}:\\d{2}:\\d{2}", col)) return(col)
-    # Normalize to "YYYY-MM-DD HH:MM:SS": drop the T separator, drop a Z
-    # suffix or numeric UTC offset (the wire format is always UTC).
+    # Normalize to "YYYY-MM-DD HH:MM:SS": drop the T separator, drop any
+    # sub-second precision (PostgreSQL can emit `.123456`), drop a Z suffix
+    # or numeric UTC offset. The wire format is always UTC.
     s <- sub("T", " ", col)
+    s <- sub("\\.\\d+", "", s)
     s <- sub("Z$", "", s)
     s <- sub("[+-]\\d{2}:?\\d{2}$", "", s)
     parsed <- suppressWarnings(
