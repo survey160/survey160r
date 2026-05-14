@@ -1,14 +1,15 @@
 # Latency report configuration: defaults, validation, hash.
-# Configs are built programmatically (via build_config_from_campaign() or
-# inline lists). The historical YAML schema from latency_scripts.md §4 is no
-# longer wired in; spec is kept for reference but read_config() was removed.
+# Configs are built programmatically via build_config() or as hand-written
+# lists with the same shape. The historical YAML schema and the per-wave
+# API metadata layer have both been retired; only the fields latency_report()
+# actually consults are kept.
 
 # Allowed top-level config keys. validate_config() rejects anything else so
-# typos in caller-supplied lists fail loud.
+# typos in caller-supplied lists fail loud. The set matches exactly what
+# latency_report() reads -- no provenance or YAML-only slots.
 .config_keys <- c(
-  "project_id", "project_name", "campaign_id", "wave_run",
-  "input", "field_timezone", "display_timezone", "flow",
-  "filters", "texting_windows", "reports", "output"
+  "project_id", "campaign_id", "field_timezone", "flow",
+  "filters", "texting_windows", "reports"
 )
 
 # Terminal flow states that must not appear in `questions`.
@@ -16,28 +17,6 @@
 
 # Default filter expression matches legacy scripts.
 .default_population <- "id.intro.finalText == \"Yes\""
-
-# Fill in defaults for omitted optional keys. Mutates and returns the list.
-apply_config_defaults <- function(config) {
-  if (is.null(config$filters)) config$filters <- list()
-  if (is.null(config$filters$population)) {
-    config$filters$population <- .default_population
-  }
-  if (is.null(config$filters$campaign_id_column)) {
-    config$filters$campaign_id_column <- "campaignid"
-  }
-  if (is.null(config$reports)) config$reports <- list()
-  if (is.null(config$reports$time_bucket)) {
-    config$reports$time_bucket <- "day"
-  }
-  if (is.null(config$reports$extra_grouping_columns)) {
-    config$reports$extra_grouping_columns <- character(0)
-  }
-  if (is.null(config$display_timezone)) {
-    config$display_timezone <- config$field_timezone
-  }
-  config
-}
 
 #' Discover the question flow from CSV column names
 #'
@@ -70,33 +49,35 @@ discover_questions <- function(data) {
   unique(qs)
 }
 
-#' Build a latency config from the campaign API + CSV header
+#' Build a latency config from a campaign id and its CSV
 #'
-#' Stateless replacement for hand-curated per-wave YAML configs. Pulls
-#' campaign metadata from \code{s160_api_campaign_get(campaign_id)} and
-#' derives the question flow from the CSV's column names via
-#' \code{discover_questions()}. Defaults can be overridden via the
-#' \code{overrides} list; pass \code{NULL} (or omit a key) to accept the
-#' default.
+#' Pure function. Derives \code{flow.questions} from the CSV column names
+#' via \code{discover_questions()} and assembles the rest of the config from
+#' the named arguments. No I/O, no API call, no auth precondition.
 #'
 #' @param campaign_id Campaign id (numeric or character).
 #' @param data A data frame of CSV results (or a character vector of column
 #'   names) used to discover the question flow.
-#' @param overrides Optional list with any of: \code{field_timezone},
-#'   \code{project_id}, \code{texting_windows}, \code{date_filter},
-#'   \code{respondent_id_column}, \code{time_bucket}.
-#' @param campaign_api_get Function used to fetch campaign metadata. Defaults
-#'   to \code{s160_api_campaign_get}; tests inject a stub here.
+#' @param field_timezone Tz used to bucket the Parquet \code{date} and
+#'   \code{hour_local} columns. Default \code{"UTC"}.
+#' @param project_id Optional Survey160 project id; defaults to the
+#'   campaign id as a placeholder.
+#' @param texting_windows Optional list of \code{{date, start_hour, end_hour}}
+#'   windows. Default \code{list()} = all-in-window.
+#' @param date_filter Optional character/Date vector restricting which
+#'   survey dates are processed (interpreted in \code{field_timezone}).
+#' @param respondent_id_column Optional column name used to dedupe rows by
+#'   respondent. Default \code{NULL} (no dedupe).
+#' @param time_bucket \code{"day"} (default) or \code{"hour"}.
 #' @return A validated config list ready to pass to \code{latency_report()}.
 #' @export
-build_config_from_campaign <- function(campaign_id, data, overrides = list(),
-                                       campaign_api_get = s160_api_campaign_get) {
-  if (!is.list(overrides)) {
-    stop("overrides must be a list.", call. = FALSE)
-  }
-  if (!is.function(campaign_api_get)) {
-    stop("campaign_api_get must be a function.", call. = FALSE)
-  }
+build_config <- function(campaign_id, data,
+                         field_timezone = "UTC",
+                         project_id = NULL,
+                         texting_windows = list(),
+                         date_filter = NULL,
+                         respondent_id_column = NULL,
+                         time_bucket = "day") {
   questions <- discover_questions(data)
   if (length(questions) < 2L) {
     stop(paste(
@@ -106,28 +87,10 @@ build_config_from_campaign <- function(campaign_id, data, overrides = list(),
     ), call. = FALSE)
   }
 
-  meta <- campaign_api_get(campaign_id)
-  # `s160_api_campaign_get` returns a single-row data frame; pull scalars out.
-  project_name <- .scalar_or_null(meta, "name") %||%
-    sprintf("Campaign %s", campaign_id)
-  organizationid <- .scalar_or_null(meta, "organizationid")
-
-  field_tz <- overrides$field_timezone %||% "UTC"
-  project_id <- overrides$project_id %||% as.integer(campaign_id)
-  texting_windows <- overrides$texting_windows %||% list()
-  date_filter <- overrides$date_filter
-  respondent_id_column <- overrides$respondent_id_column
-  time_bucket <- overrides$time_bucket %||% "day"
-
-  wave_run <- sprintf("%s_%s", campaign_id,
-                      format(Sys.time(), "%Y%m%dT%H%M%SZ", tz = "UTC"))
-
-  config <- list(
-    project_id = as.integer(project_id),
-    project_name = as.character(project_name),
+  list(
+    project_id = as.integer(project_id %||% campaign_id),
     campaign_id = as.integer(campaign_id),
-    wave_run = wave_run,
-    field_timezone = field_tz,
+    field_timezone = field_timezone,
     flow = list(questions = questions),
     filters = list(
       population = .default_population,
@@ -138,21 +101,6 @@ build_config_from_campaign <- function(campaign_id, data, overrides = list(),
     texting_windows = texting_windows,
     reports = list(time_bucket = time_bucket)
   )
-  # Stash organizationid as a non-config attribute for provenance; not part
-  # of the validated config schema.
-  attr(config, "organizationid") <- organizationid
-  apply_config_defaults(config)
-}
-
-# Extract a scalar from a single-row data frame; NULL if column absent or NA.
-# Caller (build_config_from_campaign) guarantees a single-row data frame from
-# s160_api_campaign_get, so a missing column or a length-1 NA are the only
-# realistic "absent" signals.
-.scalar_or_null <- function(df, col) {
-  if (!is.data.frame(df) || !col %in% names(df)) return(NULL)
-  v <- df[[col]][[1L]]
-  if (is.null(v) || (length(v) == 1L && is.na(v))) return(NULL)
-  v
 }
 
 #' Validate a latency config against a data frame

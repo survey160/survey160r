@@ -127,7 +127,6 @@
 .parity_config <- function() {
   list(
     project_id = 1L,
-    project_name = "parity_test_wave",
     campaign_id = 1L,
     # UTC mirrors the legacy script's tz="GMT" so window evaluation matches
     # cell-for-cell. (Production configs use the operator's local tz.)

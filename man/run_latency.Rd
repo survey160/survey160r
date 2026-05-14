@@ -45,8 +45,8 @@ respondent. Default \code{NULL} (no dedupe; matches legacy R scripts).}
 The full \code{gs://...} path written.
 }
 \description{
-Stateless: every invocation re-derives the report config from the
-campaign API and the CSV header. No YAML required.
+Stateless: every invocation re-derives the report config from the CSV
+header. No YAML, no API call, no auth precondition beyond GCS.
 }
 \details{
 Sensible defaults are baked in; override per-call when needed. The
@@ -60,7 +60,6 @@ should pass it explicitly.
 \examples{
 \dontrun{
 s160_gcs_init(bucket = "campaign_results")
-s160_api_auth()
 run_latency(1980, "s160_analytics_prod")
 run_latency(1980, "s160_analytics_prod",
             field_timezone = "America/New_York",

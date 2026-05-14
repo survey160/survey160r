@@ -4,19 +4,25 @@
 
 * `run_latency()` no longer takes a `config_path` argument. The function is
   now stateless: it derives `flow.questions` from the CSV header (via the
-  new `discover_questions()`) and `project_name` / `organizationid` from
-  `s160_api_campaign_get()`. Sensible defaults are baked in (
+  new `discover_questions()`) and assembles the rest of the config from its
+  named arguments. Sensible defaults are baked in (
   `field_timezone = "UTC"`, `project_id = campaign_id`,
-  `texting_windows = list()`); each is overridable via a named argument
-  (SUR-1299).
+  `texting_windows = list()`); each is overridable via a named argument.
+  `run_latency()` no longer requires `s160_api_auth()` -- the config is
+  derived from the CSV alone (SUR-1299).
 * `read_config()` and the YAML config schema are removed entirely. Configs
-  are now built programmatically via `build_config_from_campaign()` or as
-  hand-written lists with the same shape. The `yaml` package is dropped
-  from `Imports`. Existing per-wave YAMLs under `latency-scripts/*.yaml`
-  must be translated to `run_latency(..., field_timezone=...,
-  project_id=..., texting_windows=..., date_filter=...)` calls; the YAML
-  files themselves are retained outside this repo as historical record
-  (SUR-1299).
+  are now built programmatically via `build_config()` or as hand-written
+  lists with the same shape. The `yaml` package is dropped from `Imports`.
+  Existing per-wave YAMLs under `latency-scripts/*.yaml` must be translated
+  to `run_latency(..., field_timezone=..., project_id=...,
+  texting_windows=..., date_filter=...)` calls; the YAML files themselves
+  are retained outside this repo as historical record (SUR-1299).
+* The config schema is trimmed to the fields `latency_report()` actually
+  reads: `project_id`, `campaign_id`, `field_timezone`, `flow`, `filters`,
+  `texting_windows`, `reports`. Previously accepted but never-used keys
+  (`project_name`, `wave_run`, `display_timezone`,
+  `reports$extra_grouping_columns`, `input`, `output`) are no longer
+  recognized; `validate_config()` rejects them as unknown (SUR-1299).
 * The Parquet `date` and `hour_local` columns are now bucketed in UTC by
   default. Callers consuming
   `gs://s160_analytics_*/latency/*_latency.parquet` that previously
@@ -30,18 +36,18 @@
   Accepts both the raw `id[<q>]scriptDate` bracket form and the dotted
   `id.<q>.scriptDate` form produced by `read.csv()`. Terminal flow states
   (`refusal`, `ineligible`) are dropped (SUR-1299).
-* `build_config_from_campaign(campaign_id, data, overrides)` assembles a
-  validated config from the campaign API plus the CSV header. Used
-  internally by `run_latency()`; exported for callers that need to inspect
-  or further customize the derived config before running the report
-  (SUR-1299).
+* `build_config(campaign_id, data, ...)` is a pure function that assembles
+  a validated config from the CSV header alone. Named arguments for every
+  override (`field_timezone`, `project_id`, `texting_windows`,
+  `date_filter`, `respondent_id_column`, `time_bucket`). No I/O, no API
+  call (SUR-1299).
 * `pull_csv_from_gcs()` now stamps a `source_csv_path` attribute on the
   returned data frame (the canonical `gs://...` URI) alongside the
   existing `source_csv_hash`. Lets downstream callers record provenance
   without re-deriving the path (SUR-1299).
 * `scripts/bulk_reprocess.R` is refactored to use the new stateless
   `run_latency()`; the inline `discover_questions` and `build_config`
-  helpers are removed (SUR-1299).
+  helpers are removed, and the script no longer needs API auth (SUR-1299).
 
 ## Bug fixes
 

@@ -89,11 +89,10 @@ The pipeline has three layers. `latency_report(data, config)` is the pure functi
 ```r
 library(survey160r)
 s160_gcs_init(bucket = "campaign_results")
-s160_api_auth()
 
-# Zero-config run: flow.questions, project_name, etc. are derived from the
-# campaign API and the CSV header. Defaults are field_timezone = "UTC",
-# project_id = campaign_id, texting_windows = list() (all-in-window).
+# Zero-config run: flow.questions are derived from the CSV header. Defaults
+# are field_timezone = "UTC", project_id = campaign_id,
+# texting_windows = list() (all-in-window).
 run_latency(
   campaign_id = 1234,
   bucket = "s160_analytics",
@@ -113,7 +112,7 @@ run_latency(1234, "s160_analytics",
 
 ```r
 data <- pull_csv_from_gcs(campaign_id = 1234)
-config <- build_config_from_campaign(1234, data)
+config <- build_config(1234, data)
 result <- latency_report(data, config)
 
 result$consolidated     # one row per (campaign_id, date, hour_local, segment, threshold_min)
@@ -146,22 +145,20 @@ DBI::dbDisconnect(view$con, shutdown = TRUE)
 
 ### Config
 
-`build_config_from_campaign(campaign_id, data, overrides, campaign_api_get)` assembles the config from the campaign API + CSV header. Override the defaults via the `overrides` list:
+`build_config(campaign_id, data, ...)` assembles the config from the CSV header alone -- pure function, no I/O. Override defaults via named args:
 
 ```r
-config <- build_config_from_campaign(
+config <- build_config(
   campaign_id = 1234,
   data = pull_csv_from_gcs(1234),
-  overrides = list(
-    field_timezone = "America/New_York",
-    project_id = 9999,
-    texting_windows = list(
-      list(date = "2026-01-26", start_hour = 16, end_hour = 24)
-    ),
-    date_filter = "2026-01-26",
-    respondent_id_column = NULL,   # `userid` is agent login, not per-respondent
-    time_bucket = "day"
-  )
+  field_timezone = "America/New_York",
+  project_id = 9999,
+  texting_windows = list(
+    list(date = "2026-01-26", start_hour = 16, end_hour = 24)
+  ),
+  date_filter = "2026-01-26",
+  respondent_id_column = NULL,   # `userid` is agent login, not per-respondent
+  time_bucket = "day"
 )
 ```
 

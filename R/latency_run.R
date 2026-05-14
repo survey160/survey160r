@@ -1,16 +1,15 @@
 # Stateless runner for the latency pipeline.
-# Pulls the campaign CSV from GCS, derives the config from
-# s160_api_campaign_get() + the CSV header (no YAML required), runs
-# latency_report(), and writes the result to the analytics bucket.
+# Pulls the campaign CSV from GCS, derives the config from the CSV header,
+# runs latency_report(), and writes the result to the analytics bucket.
 #
-# Pre-conditions: caller must have run s160_gcs_init(bucket = "campaign_results")
-# (for the source CSV) and s160_api_auth() (for campaign metadata) in the
-# current R session.
+# Pre-condition: caller must have run s160_gcs_init(bucket = "campaign_results")
+# in the current R session. No API auth needed -- the config is derived from
+# the CSV alone.
 
 #' Run the full latency pipeline for one campaign
 #'
-#' Stateless: every invocation re-derives the report config from the
-#' campaign API and the CSV header. No YAML required.
+#' Stateless: every invocation re-derives the report config from the CSV
+#' header. No YAML, no API call, no auth precondition beyond GCS.
 #'
 #' Sensible defaults are baked in; override per-call when needed. The
 #' \code{field_timezone} default is \code{"UTC"} (matches the CSV format and
@@ -39,7 +38,6 @@
 #' @examples
 #' \dontrun{
 #' s160_gcs_init(bucket = "campaign_results")
-#' s160_api_auth()
 #' run_latency(1980, "s160_analytics_prod")
 #' run_latency(1980, "s160_analytics_prod",
 #'             field_timezone = "America/New_York",
@@ -56,16 +54,13 @@ run_latency <- function(campaign_id, bucket,
                         uploader = upload_object) {
   data <- pull_csv_from_gcs(campaign_id)
   source_csv_hash <- attr(data, "source_csv_hash")
-  config <- build_config_from_campaign(
-    campaign_id,
-    data,
-    overrides = list(
-      field_timezone = field_timezone,
-      project_id = project_id,
-      texting_windows = texting_windows,
-      date_filter = date_filter,
-      respondent_id_column = respondent_id_column
-    )
+  config <- build_config(
+    campaign_id, data,
+    field_timezone = field_timezone,
+    project_id = project_id,
+    texting_windows = texting_windows,
+    date_filter = date_filter,
+    respondent_id_column = respondent_id_column
   )
   result <- latency_report(data, config)
   write_to_gcs(

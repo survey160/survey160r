@@ -2,9 +2,9 @@
 # bucket and writes the results to the analytics bucket. Used to refresh the
 # fleet after methodology bumps (e.g., new universal-thresholds rollout).
 #
-# Auth: gcloud (ADC, Workload Identity, or `gcloud auth login`) for GCS,
-# plus survey160r API auth (S160_API_USERID, S160_API_KEY in ~/.Renviron)
-# for campaign metadata.
+# Auth: gcloud (ADC, Workload Identity, or `gcloud auth login`) for GCS.
+# No Survey160 API auth needed -- run_latency derives the config from the
+# CSV header alone.
 #
 # Usage:
 #   Rscript scripts/bulk_reprocess.R [src_bucket] [dst_bucket]
@@ -67,7 +67,6 @@ process_one <- function(campaign_id, dst_bucket) {
 # --- Main ------------------------------------------------------------------
 
 s160_gcs_init(bucket = SRC_BUCKET)
-s160_api_auth()
 
 campaigns <- list_campaigns(SRC_BUCKET)
 cat(sprintf("[bulk_reprocess] found %d campaigns\n\n", length(campaigns)))

@@ -4,7 +4,6 @@
 .minimal_config <- function(overrides = list()) {
   base <- list(
     project_id = 1L,
-    project_name = "Test",
     campaign_id = 1L,
     field_timezone = "America/New_York",
     flow = list(questions = c("intro", "q1", "close")),
@@ -33,16 +32,6 @@
     stringsAsFactors = FALSE
   )
 }
-
-test_that("apply_config_defaults fills omitted optional keys", {
-  cfg <- list(project_id = 1, campaign_id = 1, field_timezone = "UTC",
-              flow = list(questions = c("a", "b")))
-  out <- survey160r:::apply_config_defaults(cfg)
-  expect_equal(out$reports$time_bucket, "day")
-  expect_equal(out$filters$campaign_id_column, "campaignid")
-  expect_equal(out$filters$population, 'id.intro.finalText == "Yes"')
-  expect_equal(out$display_timezone, "UTC")
-})
 
 test_that("validate_config rejects a config that still carries thresholds", {
   d <- .minimal_data()

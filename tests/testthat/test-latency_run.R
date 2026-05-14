@@ -1,23 +1,12 @@
-# Coverage for R/latency_run.R: end-to-end orchestration with pull, campaign
-# API, and write mocked. The runner is stateless -- no YAML, config built
-# from the in-memory CSV header + s160_api_campaign_get().
+# Coverage for R/latency_run.R: end-to-end orchestration with pull and write
+# mocked. The runner is stateless and API-free -- config is built from the
+# CSV header alone.
 
 .fixture_data <- function(csv_path = test_path("fixtures/synthetic.csv")) {
   d <- read.csv(csv_path, stringsAsFactors = FALSE)
   attr(d, "source_csv_hash") <- "sha256:fixture"
   attr(d, "source_csv_path") <- "gs://campaign_results/1/1_raw_data_download.csv"
   d
-}
-
-.stub_campaign_api <- function(name = "Synthetic", organizationid = 42L) {
-  function(campaign_id) {
-    data.frame(
-      campaignid = as.integer(campaign_id),
-      name = name,
-      organizationid = organizationid,
-      stringsAsFactors = FALSE
-    )
-  }
 }
 
 test_that("run_latency wires pull -> build_config -> report -> write", {
@@ -28,7 +17,6 @@ test_that("run_latency wires pull -> build_config -> report -> write", {
       captured$pull_id <- campaign_id
       fx_data
     },
-    s160_api_campaign_get = .stub_campaign_api(),
     upload_object = function(local_path, object_name, bucket, metadata) {
       captured$object_name <- object_name
       captured$bucket <- bucket
@@ -58,7 +46,6 @@ test_that("run_latency surfaces validate_config failures on a malformed CSV", {
   fx_data$id.intro.finalText <- NULL
   local_mocked_bindings(
     pull_csv_from_gcs = function(campaign_id, filename = NULL) fx_data,
-    s160_api_campaign_get = .stub_campaign_api(),
     upload_object = function(local_path, object_name, bucket, metadata) {
       stop("uploader should not be called when validation fails")
     }
@@ -75,7 +62,6 @@ test_that("run_latency overrides flow through to the config", {
   captured$cfg <- NULL
   local_mocked_bindings(
     pull_csv_from_gcs = function(campaign_id, filename = NULL) fx_data,
-    s160_api_campaign_get = .stub_campaign_api(),
     latency_report = function(data, config) {
       captured$cfg <- config
       list(
