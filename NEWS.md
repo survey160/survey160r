@@ -45,9 +45,18 @@
   returned data frame (the canonical `gs://...` URI) alongside the
   existing `source_csv_hash`. Lets downstream callers record provenance
   without re-deriving the path (SUR-1299).
-* `scripts/bulk_reprocess.R` is refactored to use the new stateless
-  `run_latency()`; the inline `discover_questions` and `build_config`
-  helpers are removed, and the script no longer needs API auth (SUR-1299).
+* `run_latency_all(source_bucket, bucket, ...)` runs the latency pipeline
+  for every campaign with an export CSV under `source_bucket` and writes the
+  per-campaign Parquet to `bucket`. Per-campaign failures are caught by
+  default (`continue_on_error = TRUE`) and recorded in the returned status
+  data frame so one bad CSV does not block the rest of the fleet. Saves
+  and restores the global GCS bucket so the caller's session state is
+  untouched. Replaces the bespoke iteration loop in
+  `scripts/bulk_reprocess.R`, which is now a thin shell wrapper around
+  this function (SUR-1299).
+* `scripts/bulk_reprocess.R` is refactored to call `run_latency_all()`;
+  the inline `discover_questions`, `build_config`, and process-one helpers
+  are removed, and the script no longer needs API auth (SUR-1299).
 
 ## Bug fixes
 

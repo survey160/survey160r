@@ -72,3 +72,144 @@ run_latency <- function(campaign_id, bucket,
     uploader = uploader
   )
 }
+
+#' Run the latency pipeline for every campaign in a source bucket
+#'
+#' Discovers every campaign with an export CSV under \code{source_bucket} via
+#' \code{s160_gcs_campaign_results_list()} and runs \code{run_latency()} for
+#' each, writing the per-campaign Parquet to \code{bucket}. Per-campaign
+#' failures are caught and recorded; the loop continues so one bad CSV does
+#' not block the rest of the fleet.
+#'
+#' The current GCS global bucket is saved and restored on exit, so this
+#' function does not leave the session pointed at \code{source_bucket}.
+#'
+#' All override arguments (\code{field_timezone}, \code{texting_windows},
+#' \code{date_filter}, \code{respondent_id_column}) apply uniformly to
+#' every campaign. \code{project_id} is always set to \code{campaign_id}
+#' (placeholder) -- callers needing per-campaign project ids should iterate
+#' \code{run_latency()} themselves with their own mapping.
+#'
+#' @param source_bucket Source GCS bucket containing per-campaign CSV exports
+#'   (e.g. \code{"campaign_results"}).
+#' @param bucket Destination GCS bucket for the Parquet outputs
+#'   (e.g. \code{"s160_analytics_dev"}).
+#' @param campaign_ids Optional character/numeric vector of campaign ids to
+#'   process. \code{NULL} (default) processes every campaign found in
+#'   \code{source_bucket}.
+#' @param field_timezone Forwarded to \code{run_latency()}. Default
+#'   \code{"UTC"}; pass \code{"America/New_York"} to match historical fleet
+#'   bucketing.
+#' @param texting_windows,date_filter,respondent_id_column Forwarded to
+#'   \code{run_latency()}.
+#' @param run_by Forwarded to \code{run_latency()}. Default
+#'   \code{"run_latency_all"}.
+#' @param uploader Forwarded to \code{run_latency()}; see \code{write_to_gcs}.
+#' @param continue_on_error Logical. \code{TRUE} (default) records the
+#'   error and moves on; \code{FALSE} re-raises the first error.
+#' @return A data frame with one row per attempted campaign:
+#'   \code{campaign_id}, \code{status} (\code{"ok"} / \code{"failed"}),
+#'   \code{parquet_uri} (NA on failure), \code{error_message} (NA on
+#'   success), \code{elapsed_s}.
+#' @examples
+#' \dontrun{
+#' s160_gcs_init(bucket = "campaign_results")  # any session GCS auth works
+#' results <- run_latency_all(
+#'   source_bucket = "campaign_results",
+#'   bucket = "s160_analytics_dev",
+#'   field_timezone = "America/New_York",
+#'   run_by = "bulk_reprocess"
+#' )
+#' subset(results, status == "failed")
+#' }
+#' @export
+run_latency_all <- function(source_bucket, bucket,
+                            campaign_ids = NULL,
+                            field_timezone = "UTC",
+                            texting_windows = list(),
+                            date_filter = NULL,
+                            respondent_id_column = NULL,
+                            run_by = "run_latency_all",
+                            uploader = upload_object,
+                            continue_on_error = TRUE) {
+  if (!is.character(source_bucket) || length(source_bucket) != 1L ||
+        !nzchar(trimws(source_bucket))) {
+    stop("source_bucket must be a non-empty string.", call. = FALSE)
+  }
+  if (!is.character(bucket) || length(bucket) != 1L ||
+        !nzchar(trimws(bucket))) {
+    stop("bucket must be a non-empty string.", call. = FALSE)
+  }
+
+  # Stash and restore the global bucket so the caller's session state is
+  # untouched after this function returns.
+  prev_bucket <- tryCatch(gcs_get_global_bucket(), error = function(e) NULL)
+  on.exit({
+    if (!is.null(prev_bucket) && nzchar(prev_bucket) &&
+          prev_bucket != source_bucket) {
+      try(s160_gcs_init(bucket = prev_bucket), silent = TRUE)
+    }
+  }, add = TRUE)
+  if (is.null(prev_bucket) || prev_bucket != source_bucket) {
+    s160_gcs_init(bucket = source_bucket)
+  }
+
+  if (is.null(campaign_ids)) {
+    campaign_ids <- s160_gcs_campaign_results_list()
+  }
+  campaign_ids <- as.character(campaign_ids)
+
+  results <- vector("list", length(campaign_ids))
+  for (i in seq_along(campaign_ids)) {
+    cid <- campaign_ids[[i]]
+    message(sprintf("[%d/%d] %s", i, length(campaign_ids), cid))
+    results[[i]] <- .run_one_campaign(
+      cid, bucket, field_timezone, texting_windows, date_filter,
+      respondent_id_column, run_by, uploader, continue_on_error
+    )
+  }
+  do.call(rbind, results)
+}
+
+# Single-campaign worker for run_latency_all(). Extracted to keep the outer
+# function's cyclomatic complexity under the linter threshold.
+.run_one_campaign <- function(cid, bucket, field_timezone, texting_windows,
+                              date_filter, respondent_id_column, run_by,
+                              uploader, continue_on_error) {
+  t0 <- Sys.time()
+  path <- tryCatch(
+    run_latency(
+      campaign_id = cid,
+      bucket = bucket,
+      field_timezone = field_timezone,
+      texting_windows = texting_windows,
+      date_filter = date_filter,
+      respondent_id_column = respondent_id_column,
+      run_by = run_by,
+      uploader = uploader
+    ),
+    error = function(e) {
+      if (!continue_on_error) stop(e)
+      e
+    }
+  )
+  elapsed <- as.numeric(difftime(Sys.time(), t0, units = "secs"))
+  if (inherits(path, "error")) {
+    message(sprintf("  failed: %s", conditionMessage(path)))
+    return(data.frame(
+      campaign_id = cid, status = "failed",
+      parquet_uri = NA_character_,
+      error_message = conditionMessage(path),
+      elapsed_s = elapsed,
+      stringsAsFactors = FALSE
+    ))
+  }
+  message(sprintf("  ok: %s (%.1fs)", path, elapsed))
+  data.frame(
+    campaign_id = cid, status = "ok",
+    parquet_uri = path,
+    error_message = NA_character_,
+    elapsed_s = elapsed,
+    stringsAsFactors = FALSE
+  )
+}
