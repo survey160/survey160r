@@ -40,6 +40,9 @@ survey dates are processed (interpreted in \code{field_timezone}).}
 respondent. Default \code{NULL} (no dedupe).}
 
 \item{time_bucket}{\code{"day"} (default) or \code{"hour"}.}
+
+\item{...}{Additional arguments accepted by the deprecated
+\code{build_config()} alias; forwarded to \code{latency_build_config}.}
 }
 \value{
 A validated config list ready to pass to \code{latency_report()}.

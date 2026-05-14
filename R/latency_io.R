@@ -41,16 +41,22 @@ latency_parquet_schema <- function() {
 #'
 #' @param campaign_id Campaign id (numeric or character).
 #' @param filename Optional override for the CSV filename.
-#' @return A data frame with attribute \code{source_csv_hash} set.
+#' @param bucket Source GCS bucket. \code{NULL} (default) falls back to the
+#'   global bucket set by \code{s160_gcs_init()}; pass an explicit value to
+#'   skip the global entirely.
+#' @return A data frame with attributes \code{source_csv_hash} and
+#'   \code{source_csv_path} set.
 #' @export
-pull_csv_from_gcs <- function(campaign_id, filename = NULL) {
+pull_csv_from_gcs <- function(campaign_id, filename = NULL, bucket = NULL) {
+  bucket <- resolve_bucket(bucket)
   tmpdir <- tempfile(pattern = "s160_latency_")
   dir.create(tmpdir)
   on.exit(unlink(tmpdir, recursive = TRUE), add = TRUE)
   data <- s160_gcs_campaign_results_read(
     campaign_id = campaign_id,
     filename = filename,
-    destdir = tmpdir
+    destdir = tmpdir,
+    bucket = bucket
   )
   fn <- if (is.null(filename)) {
     paste0(as.character(campaign_id), "_raw_data_download.csv")
@@ -63,12 +69,9 @@ pull_csv_from_gcs <- function(campaign_id, filename = NULL) {
   } else {
     NA_character_
   }
-  # Stamp the canonical GCS source path (not the local temp path, which is
-  # unlinked on return). Lets downstream callers record provenance without
-  # re-deriving the path from campaign_id + filename. s160_gcs_campaign_results_read
-  # above already required a non-empty bucket, so gcs_get_global_bucket() here
-  # is guaranteed to succeed with the same value.
-  bucket <- gcs_get_global_bucket()
+  # Canonical GCS source path (not the local temp path, which is unlinked on
+  # return). Lets downstream callers record provenance without re-deriving
+  # the path from campaign_id + filename.
   attr(data, "source_csv_path") <-
     sprintf("gs://%s/%s/%s", bucket, as.character(campaign_id), fn)
   data

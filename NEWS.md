@@ -45,6 +45,16 @@
   returned data frame (the canonical `gs://...` URI) alongside the
   existing `source_csv_hash`. Lets downstream callers record provenance
   without re-deriving the path (SUR-1299).
+* All reader functions and the latency runners now take an explicit
+  `bucket` (or `source_bucket`) argument that defaults to the global set
+  by `s160_gcs_init()`. Callers can either keep using `s160_gcs_init()`
+  once-per-session or pass `bucket = "..."` per call and skip the global
+  entirely. `run_latency_all()` no longer needs to stash/restore the
+  global bucket since its inner calls thread `source_bucket` through
+  every layer. Affects `s160_gcs_campaign_results_read`,
+  `s160_gcs_campaign_results_list`, `s160_gcs_campaign_results_files`,
+  `s160_gcs_campaign_results_status`, `pull_csv_from_gcs`, and
+  `run_latency` (SUR-1299).
 * `R/latency_report.R` (531 lines) is split into five cohesive files:
   `latency_report.R` keeps the orchestrator and shared constants;
   `latency_filter.R` holds the population / dedupe / date filters;

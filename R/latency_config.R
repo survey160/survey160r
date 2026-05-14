@@ -69,6 +69,8 @@ latency_discover_questions <- function(data) {
 #' @param respondent_id_column Optional column name used to dedupe rows by
 #'   respondent. Default \code{NULL} (no dedupe).
 #' @param time_bucket \code{"day"} (default) or \code{"hour"}.
+#' @param ... Additional arguments accepted by the deprecated
+#'   \code{build_config()} alias; forwarded to \code{latency_build_config}.
 #' @return A validated config list ready to pass to \code{latency_report()}.
 #' @export
 latency_build_config <- function(campaign_id, data,

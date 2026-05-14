@@ -7,6 +7,7 @@
 run_latency(
   campaign_id,
   bucket,
+  source_bucket = NULL,
   field_timezone = "UTC",
   project_id = NULL,
   texting_windows = list(),
@@ -20,6 +21,10 @@ run_latency(
 \item{campaign_id}{Campaign id (numeric or character).}
 
 \item{bucket}{Destination analytics bucket.}
+
+\item{source_bucket}{Source GCS bucket containing the campaign CSV.
+\code{NULL} (default) falls back to the global bucket set by
+\code{s160_gcs_init()}; pass an explicit value to skip the global.}
 
 \item{field_timezone}{Tz used to bucket the Parquet \code{date} and
 \code{hour_local} columns. Default \code{"UTC"}.}

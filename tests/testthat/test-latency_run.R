@@ -13,7 +13,7 @@ test_that("run_latency wires pull -> build_config -> report -> write", {
   fx_data <- .fixture_data()
   captured <- new.env(parent = emptyenv())
   local_mocked_bindings(
-    pull_csv_from_gcs = function(campaign_id, filename = NULL) {
+    pull_csv_from_gcs = function(campaign_id, filename = NULL, bucket = NULL) {
       captured$pull_id <- campaign_id
       fx_data
     },
@@ -45,7 +45,7 @@ test_that("run_latency surfaces validate_config failures on a malformed CSV", {
   fx_data <- .fixture_data()
   fx_data$id.intro.finalText <- NULL
   local_mocked_bindings(
-    pull_csv_from_gcs = function(campaign_id, filename = NULL) fx_data,
+    pull_csv_from_gcs = function(campaign_id, filename = NULL, bucket = NULL) fx_data,
     upload_object = function(local_path, object_name, bucket, metadata) {
       stop("uploader should not be called when validation fails")
     }
@@ -61,7 +61,7 @@ test_that("run_latency overrides flow through to the config", {
   captured <- new.env(parent = emptyenv())
   captured$cfg <- NULL
   local_mocked_bindings(
-    pull_csv_from_gcs = function(campaign_id, filename = NULL) fx_data,
+    pull_csv_from_gcs = function(campaign_id, filename = NULL, bucket = NULL) fx_data,
     latency_report = function(data, config) {
       captured$cfg <- config
       list(

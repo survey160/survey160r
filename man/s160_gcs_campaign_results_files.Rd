@@ -4,10 +4,13 @@
 \alias{s160_gcs_campaign_results_files}
 \title{List files in a campaign's GCS folder}
 \usage{
-s160_gcs_campaign_results_files(campaign_id)
+s160_gcs_campaign_results_files(campaign_id, bucket = NULL)
 }
 \arguments{
 \item{campaign_id}{Campaign ID (numeric or character). Must be a single value.}
+
+\item{bucket}{Source GCS bucket. \code{NULL} (default) falls back to the
+global bucket set by \code{s160_gcs_init()}.}
 }
 \value{
 Character vector of file names (without the campaign_id prefix).

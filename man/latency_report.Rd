@@ -12,7 +12,7 @@ timestamp columns named \code{id.<q>.scriptDate} / \code{id.<q>.batchDate}
 for each question in \code{config$flow$questions}, plus the population
 column \code{id.intro.finalText} and the campaign id column.}
 
-\item{config}{Config list from \code{build_config_from_campaign()} (or
+\item{config}{Config list from \code{latency_build_config()} (or
 a hand-built list with the same shape).}
 }
 \value{

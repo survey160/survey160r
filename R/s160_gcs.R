@@ -22,6 +22,29 @@ check_gcs_ready <- function() {
   }
 }
 
+# Resolve an explicit `bucket` arg, falling back to the global set by
+# s160_gcs_init(). Returns a non-empty string; errors with a clear message
+# when neither is available. Used by every reader so callers can either
+# (a) call s160_gcs_init() once and let functions default, or (b) pass an
+# explicit `bucket =` and skip the global state entirely.
+resolve_bucket <- function(bucket = NULL) {
+  if (!is.null(bucket)) {
+    if (!is.character(bucket) || length(bucket) != 1L ||
+          !nzchar(trimws(bucket))) {
+      stop("bucket must be a non-empty string.", call. = FALSE)
+    }
+    return(bucket)
+  }
+  resolved <- tryCatch(gcs_get_global_bucket(), error = function(e) NULL)
+  if (is.null(resolved) || resolved == "") {
+    stop(paste(
+      "No GCS bucket available. Pass `bucket = \"...\"` explicitly, or",
+      "call s160_gcs_init() to set a default for the session."
+    ), call. = FALSE)
+  }
+  resolved
+}
+
 # Prompt for the client secret and persist it to ~/.Renviron
 prompt_and_save_secret <- function() { # nocov start
   prompt_and_save_renviron( # nolint object_usage_linter
@@ -46,7 +69,8 @@ validate_campaign_id <- function(campaign_id) {
 # Download a GCS object to disk with size verification and retry.
 # Compares the local file size against GCS object metadata after download.
 # Retries up to max_retries times on size mismatch with exponential backoff.
-download_with_verify <- function(object_name, local_path, max_retries = 2L) {
+download_with_verify <- function(object_name, local_path, max_retries = 2L,
+                                 bucket = NULL) {
   # Get expected size from GCS metadata. If listing fails (permissions or
   # transient error), fall back to downloading without verification.
   # googleCloudStorageR's gcs_list_objects() returns `size` as a formatted
@@ -54,7 +78,8 @@ download_with_verify <- function(object_name, local_path, max_retries = 2L) {
   # "unknown size" and skip verification rather than crashing the compare.
   expected_size <- tryCatch({
     prefix <- sub("/[^/]+$", "/", object_name)
-    objects <- gcs_list_objects(prefix = prefix)
+    objects <- if (is.null(bucket)) gcs_list_objects(prefix = prefix)
+               else gcs_list_objects(prefix = prefix, bucket = bucket)
     size <- NULL
     if (nrow(objects) > 0) {
       match_idx <- which(objects$name == object_name)
@@ -69,7 +94,12 @@ download_with_verify <- function(object_name, local_path, max_retries = 2L) {
   attempt <- 0L
   repeat {
     attempt <- attempt + 1L
-    gcs_get_object(object_name = object_name, saveToDisk = local_path, overwrite = TRUE)
+    if (is.null(bucket)) {
+      gcs_get_object(object_name = object_name, saveToDisk = local_path, overwrite = TRUE)
+    } else {
+      gcs_get_object(object_name = object_name, saveToDisk = local_path,
+                     overwrite = TRUE, bucket = bucket)
+    }
 
     if (is.null(expected_size)) break  # can't verify, trust the download
 
@@ -184,6 +214,8 @@ s160_gcs_init <- function(bucket) {
 #' @param destdir Directory to save the downloaded file. When \code{NULL}
 #'   (default), a temporary file is used and cleaned up automatically. Use
 #'   \code{"."} for the current directory.
+#' @param bucket Source GCS bucket. \code{NULL} (default) falls back to the
+#'   global bucket set by \code{s160_gcs_init()}.
 #' @param ... Additional arguments passed to \code{read.csv()}, e.g.
 #'   \code{stringsAsFactors}, \code{na.strings}, \code{nrows}.
 #' @return A data frame with one row per survey response.
@@ -197,9 +229,10 @@ s160_gcs_init <- function(bucket) {
 #' @importFrom googleCloudStorageR gcs_get_object gcs_get_global_bucket
 #' @importFrom utils read.csv
 #' @export
-s160_gcs_campaign_results_read <- function(campaign_id, filename = NULL, destdir = NULL, ...) {
-  check_gcs_ready()
+s160_gcs_campaign_results_read <- function(campaign_id, filename = NULL,
+                                           destdir = NULL, bucket = NULL, ...) {
   campaign_id <- validate_campaign_id(campaign_id)
+  bucket <- resolve_bucket(bucket)
 
   if (is.null(filename)) {
     filename <- paste0(campaign_id, "_raw_data_download.csv")
@@ -209,7 +242,6 @@ s160_gcs_campaign_results_read <- function(campaign_id, filename = NULL, destdir
   }
   object_name <- paste0(campaign_id, "/", filename)
 
-  bucket <- gcs_get_global_bucket()
   gcs_path <- sprintf("gs://%s/%s", bucket, object_name)
   message(sprintf("Reading: %s", gcs_path))
 
@@ -227,7 +259,8 @@ s160_gcs_campaign_results_read <- function(campaign_id, filename = NULL, destdir
   }
 
   tryCatch(
-    download_with_verify(object_name = object_name, local_path = local_path),
+    download_with_verify(object_name = object_name, local_path = local_path,
+                         bucket = bucket),
     error = function(e) {
       msg <- conditionMessage(e)
       if (grepl("404", msg, fixed = TRUE)) {
@@ -250,6 +283,8 @@ s160_gcs_campaign_results_read <- function(campaign_id, filename = NULL, destdir
 #' Returns \code{character(0)} with a message if the campaign has no files.
 #'
 #' @param campaign_id Campaign ID (numeric or character). Must be a single value.
+#' @param bucket Source GCS bucket. \code{NULL} (default) falls back to the
+#'   global bucket set by \code{s160_gcs_init()}.
 #' @return Character vector of file names (without the campaign_id prefix).
 #' @examples
 #' \dontrun{
@@ -258,13 +293,13 @@ s160_gcs_campaign_results_read <- function(campaign_id, filename = NULL, destdir
 #' }
 #' @importFrom googleCloudStorageR gcs_list_objects
 #' @export
-s160_gcs_campaign_results_files <- function(campaign_id) {
-  check_gcs_ready()
+s160_gcs_campaign_results_files <- function(campaign_id, bucket = NULL) {
   campaign_id <- validate_campaign_id(campaign_id)
+  bucket <- resolve_bucket(bucket)
 
   prefix <- paste0(campaign_id, "/")
   objects <- tryCatch(
-    gcs_list_objects(prefix = prefix),
+    gcs_list_objects(prefix = prefix, bucket = bucket),
     error = function(e) {
       stop(sprintf("Failed to list files for campaign %s: %s", campaign_id, conditionMessage(e)), call. = FALSE)
     }
@@ -285,6 +320,8 @@ s160_gcs_campaign_results_files <- function(campaign_id) {
 #' in the results bucket. Objects at the bucket root (not inside a folder) are
 #' excluded.
 #'
+#' @param bucket Source GCS bucket. \code{NULL} (default) falls back to the
+#'   global bucket set by \code{s160_gcs_init()}.
 #' @return Character vector of campaign IDs, sorted.
 #' @examples
 #' \dontrun{
@@ -292,10 +329,10 @@ s160_gcs_campaign_results_files <- function(campaign_id) {
 #' s160_gcs_campaign_results_list()
 #' }
 #' @export
-s160_gcs_campaign_results_list <- function() {
-  check_gcs_ready()
+s160_gcs_campaign_results_list <- function(bucket = NULL) {
+  bucket <- resolve_bucket(bucket)
   objects <- tryCatch(
-    gcs_list_objects(),
+    gcs_list_objects(bucket = bucket),
     error = function(e) {
       stop(sprintf("Failed to list campaigns: %s", conditionMessage(e)), call. = FALSE)
     }
@@ -318,6 +355,8 @@ s160_gcs_campaign_results_list <- function() {
 #' triggering a new export. Requires GCS auth (\code{s160_gcs_init}).
 #'
 #' @param campaign_id Campaign ID (numeric or character).
+#' @param bucket Source GCS bucket. \code{NULL} (default) falls back to the
+#'   global bucket set by \code{s160_gcs_init()}.
 #' @return Named list with \code{name}, \code{updated}, and \code{size},
 #'   or \code{NULL} if no export file exists.
 #' @examples
@@ -327,15 +366,15 @@ s160_gcs_campaign_results_list <- function() {
 #' }
 #' @importFrom googleCloudStorageR gcs_list_objects
 #' @export
-s160_gcs_campaign_results_status <- function(campaign_id) {
-  check_gcs_ready()
+s160_gcs_campaign_results_status <- function(campaign_id, bucket = NULL) {
   campaign_id <- validate_campaign_id(campaign_id)
+  bucket <- resolve_bucket(bucket)
 
   export_filename <- paste0(campaign_id, "_raw_data_download.csv")
   prefix <- paste0(campaign_id, "/")
 
   objects <- tryCatch(
-    gcs_list_objects(prefix = prefix),
+    gcs_list_objects(prefix = prefix, bucket = bucket),
     error = function(e) {
       stop(sprintf("Failed to list files for campaign %s: %s",
                    campaign_id, conditionMessage(e)), call. = FALSE)

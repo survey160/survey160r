@@ -21,6 +21,9 @@
 #'
 #' @param campaign_id Campaign id (numeric or character).
 #' @param bucket Destination analytics bucket.
+#' @param source_bucket Source GCS bucket containing the campaign CSV.
+#'   \code{NULL} (default) falls back to the global bucket set by
+#'   \code{s160_gcs_init()}; pass an explicit value to skip the global.
 #' @param field_timezone Tz used to bucket the Parquet \code{date} and
 #'   \code{hour_local} columns. Default \code{"UTC"}.
 #' @param project_id Optional Survey160 project id; defaults to the
@@ -45,6 +48,7 @@
 #' }
 #' @export
 run_latency <- function(campaign_id, bucket,
+                        source_bucket = NULL,
                         field_timezone = "UTC",
                         project_id = NULL,
                         texting_windows = list(),
@@ -52,7 +56,7 @@ run_latency <- function(campaign_id, bucket,
                         respondent_id_column = NULL,
                         run_by = NULL,
                         uploader = upload_object) {
-  data <- pull_csv_from_gcs(campaign_id)
+  data <- pull_csv_from_gcs(campaign_id, bucket = source_bucket)
   source_csv_hash <- attr(data, "source_csv_hash")
   config <- latency_build_config(
     campaign_id, data,
@@ -81,8 +85,8 @@ run_latency <- function(campaign_id, bucket,
 #' failures are caught and recorded; the loop continues so one bad CSV does
 #' not block the rest of the fleet.
 #'
-#' The current GCS global bucket is saved and restored on exit, so this
-#' function does not leave the session pointed at \code{source_bucket}.
+#' Reads and writes use explicit \code{bucket} arguments throughout, so this
+#' function never touches the session-global GCS bucket.
 #'
 #' All override arguments (\code{field_timezone}, \code{texting_windows},
 #' \code{date_filter}, \code{respondent_id_column}) apply uniformly to
@@ -141,21 +145,8 @@ run_latency_all <- function(source_bucket, bucket,
     stop("bucket must be a non-empty string.", call. = FALSE)
   }
 
-  # Stash and restore the global bucket so the caller's session state is
-  # untouched after this function returns.
-  prev_bucket <- tryCatch(gcs_get_global_bucket(), error = function(e) NULL)
-  on.exit({
-    if (!is.null(prev_bucket) && nzchar(prev_bucket) &&
-          prev_bucket != source_bucket) {
-      try(s160_gcs_init(bucket = prev_bucket), silent = TRUE)
-    }
-  }, add = TRUE)
-  if (is.null(prev_bucket) || prev_bucket != source_bucket) {
-    s160_gcs_init(bucket = source_bucket)
-  }
-
   if (is.null(campaign_ids)) {
-    campaign_ids <- s160_gcs_campaign_results_list()
+    campaign_ids <- s160_gcs_campaign_results_list(bucket = source_bucket)
   }
   campaign_ids <- as.character(campaign_ids)
 
@@ -164,8 +155,8 @@ run_latency_all <- function(source_bucket, bucket,
     cid <- campaign_ids[[i]]
     message(sprintf("[%d/%d] %s", i, length(campaign_ids), cid))
     results[[i]] <- .run_one_campaign(
-      cid, bucket, field_timezone, texting_windows, date_filter,
-      respondent_id_column, run_by, uploader, continue_on_error
+      cid, source_bucket, bucket, field_timezone, texting_windows,
+      date_filter, respondent_id_column, run_by, uploader, continue_on_error
     )
   }
   do.call(rbind, results)
@@ -173,14 +164,16 @@ run_latency_all <- function(source_bucket, bucket,
 
 # Single-campaign worker for run_latency_all(). Extracted to keep the outer
 # function's cyclomatic complexity under the linter threshold.
-.run_one_campaign <- function(cid, bucket, field_timezone, texting_windows,
-                              date_filter, respondent_id_column, run_by,
-                              uploader, continue_on_error) {
+.run_one_campaign <- function(cid, source_bucket, bucket, field_timezone,
+                              texting_windows, date_filter,
+                              respondent_id_column, run_by, uploader,
+                              continue_on_error) {
   t0 <- Sys.time()
   path <- tryCatch(
     run_latency(
       campaign_id = cid,
       bucket = bucket,
+      source_bucket = source_bucket,
       field_timezone = field_timezone,
       texting_windows = texting_windows,
       date_filter = date_filter,

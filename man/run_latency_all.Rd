@@ -57,8 +57,8 @@ failures are caught and recorded; the loop continues so one bad CSV does
 not block the rest of the fleet.
 }
 \details{
-The current GCS global bucket is saved and restored on exit, so this
-function does not leave the session pointed at \code{source_bucket}.
+Reads and writes use explicit \code{bucket} arguments throughout, so this
+function never touches the session-global GCS bucket.
 
 All override arguments (\code{field_timezone}, \code{texting_windows},
 \code{date_filter}, \code{respondent_id_column}) apply uniformly to
