@@ -11,8 +11,7 @@ latency_build_config(
   project_id = NULL,
   texting_windows = list(),
   date_filter = NULL,
-  respondent_id_column = NULL,
-  time_bucket = "day"
+  respondent_id_column = NULL
 )
 }
 \arguments{
@@ -35,8 +34,6 @@ survey dates are processed (interpreted in \code{field_timezone}).}
 
 \item{respondent_id_column}{Optional column name used to dedupe rows by
 respondent. Default \code{NULL} (no dedupe).}
-
-\item{time_bucket}{\code{"day"} (default) or \code{"hour"}.}
 }
 \value{
 A validated config list ready to pass to \code{latency_report()}.

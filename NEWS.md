@@ -2,6 +2,26 @@
 
 ## Breaking changes
 
+* The consolidated Parquet is now always hour-grained: every row has
+  `hour_local` populated (0-23), and the day-bucket option that wrote
+  `hour_local = NA` is gone. The `time_bucket` config field and the
+  `reports` config slot are removed; `latency_build_config()` no longer
+  accepts a `time_bucket` argument; `validate_config()` rejects `reports`
+  as an unknown key. Downstream consumers (e.g. survey160-shiny) roll up
+  to day at query time with weighted aggregation:
+  `SUM(pct_le * n) / SUM(n) GROUP BY date, segment, threshold_min`.
+  Respondent-cascade columns (`n_respondents`, `pct_resp_hit_gt`,
+  `pct_resp_worst_gt`) do **not** aggregate cleanly across hours -- a
+  respondent appearing in two hours is counted in both denominators.
+  Sophisticated consumers that need precise day-grain cascade re-derive
+  from the raw `latency_frame`. Existing Parquets in
+  `gs://s160_analytics_*/latency/` must be regenerated via
+  `run_latency_all()` (SUR-1304).
+
+# survey160r 0.8.0
+
+## Breaking changes
+
 * `run_latency()` no longer takes a `config_path` argument. The function is
   now stateless: it derives `flow.questions` from the CSV header (via the
   new `discover_questions()`) and assembles the rest of the config from its

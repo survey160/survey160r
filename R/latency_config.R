@@ -9,7 +9,7 @@
 # what latency_report() reads -- no provenance or YAML-only slots.
 .config_keys <- c(
   "project_id", "campaign_id", "field_timezone", "flow",
-  "filters", "texting_windows", "reports"
+  "filters", "texting_windows"
 )
 
 # Terminal flow states that must not appear in `questions`.
@@ -68,7 +68,6 @@ latency_discover_questions <- function(data) {
 #'   survey dates are processed (interpreted in \code{field_timezone}).
 #' @param respondent_id_column Optional column name used to dedupe rows by
 #'   respondent. Default \code{NULL} (no dedupe).
-#' @param time_bucket \code{"day"} (default) or \code{"hour"}.
 #' @return A validated config list ready to pass to \code{latency_report()}.
 #' @export
 latency_build_config <- function(campaign_id, data,
@@ -76,8 +75,7 @@ latency_build_config <- function(campaign_id, data,
                          project_id = NULL,
                          texting_windows = list(),
                          date_filter = NULL,
-                         respondent_id_column = NULL,
-                         time_bucket = "day") {
+                         respondent_id_column = NULL) {
   questions <- latency_discover_questions(data)
   if (length(questions) < 2L) {
     stop(paste(
@@ -98,8 +96,7 @@ latency_build_config <- function(campaign_id, data,
       respondent_id_column = respondent_id_column,
       date_filter = date_filter
     ),
-    texting_windows = texting_windows,
-    reports = list(time_bucket = time_bucket)
+    texting_windows = texting_windows
   )
 }
 
@@ -122,14 +119,7 @@ latency_validate_config <- function(config, data) {
   if (is.null(config$project_id)) stop("config: 'project_id' is required.", call. = FALSE)
   if (is.null(config$campaign_id)) stop("config: 'campaign_id' is required.", call. = FALSE)
   if (is.null(config$field_timezone)) stop("config: 'field_timezone' is required.", call. = FALSE)
-  if (!is.null(config$reports$thresholds)) {
-    stop(paste(
-      "config: 'reports.thresholds' is no longer configurable --",
-      "thresholds are fleet-locked at c(1, 3, 5, 10). Remove this key."
-    ), call. = FALSE)
-  }
   validate_questions(config$flow$questions)
-  validate_time_bucket(config$reports$time_bucket)
   validate_columns_present(config, data)
   validate_flow_order(config, data)
   validate_windows_cover(config, data)
@@ -150,12 +140,6 @@ validate_questions <- function(questions) {
   if (length(bad) > 0) {
     stop(sprintf("config: 'flow.questions' must not include terminal states: %s",
                  paste(bad, collapse = ", ")), call. = FALSE)
-  }
-}
-
-validate_time_bucket <- function(bucket) {
-  if (!bucket %in% c("day", "hour")) {
-    stop("config: 'reports.time_bucket' must be 'day' or 'hour'.", call. = FALSE)
   }
 }
 

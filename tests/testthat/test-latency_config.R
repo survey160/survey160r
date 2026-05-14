@@ -11,7 +11,6 @@
       population = 'id.intro.finalText == "Yes"',
       campaign_id_column = "campaignid"
     ),
-    reports = list(time_bucket = "day"),
     texting_windows = list(
       list(date = "2026-01-26", start_hour = 16, end_hour = 24)
     )
@@ -32,14 +31,6 @@
     stringsAsFactors = FALSE
   )
 }
-
-test_that("validate_config rejects a config that still carries thresholds", {
-  d <- .minimal_data()
-  cfg <- .minimal_config(list(reports = list(time_bucket = "day",
-                                              thresholds = c(1, 3, 5, 10))))
-  expect_error(latency_validate_config(cfg, d),
-               "fleet-locked")
-})
 
 test_that("validate_config accepts a minimal valid config", {
   expect_invisible(latency_validate_config(.minimal_config(), .minimal_data()))
@@ -79,15 +70,6 @@ test_that("validate_config rejects empty / single-question / dup / terminal flow
     latency_validate_config(.minimal_config(
       list(flow = list(questions = c("intro", "refusal", "close")))), d),
     "terminal states"
-  )
-})
-
-test_that("validate_config rejects bad time_bucket", {
-  d <- .minimal_data()
-  expect_error(
-    latency_validate_config(.minimal_config(
-      list(reports = list(time_bucket = "weekly"))), d),
-    "'day' or 'hour'"
   )
 })
 

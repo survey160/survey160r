@@ -17,8 +17,7 @@ synthetic_config <- function() {
     ),
     texting_windows = list(
       list(date = "2026-01-26", start_hour = 16, end_hour = 24)
-    ),
-    reports = list(time_bucket = "day")
+    )
   )
 }
 

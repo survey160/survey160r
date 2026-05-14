@@ -1,12 +1,11 @@
 # Aggregation of the per-respondent x per-segment frame to the consolidated
-# Parquet table (spec §3.1). Cells are
-# (campaign_id, date, hour_local, segment, threshold_min). For day buckets
-# hour_local is NA on every row.
+# Parquet table. Cells are always at the hour grain:
+# (campaign_id, date, hour_local, segment, threshold_min). Downstream
+# consumers roll up to day at query time when needed.
 
 aggregate_consolidated <- function(frame, config, cfg_hash, run_at,
                                    src_csv_hash = NA_character_) {
   thresholds <- UNIVERSAL_THRESHOLDS_MIN
-  bucket <- config$reports$time_bucket
   project_id <- as.integer(config$project_id)
 
   if (nrow(frame) == 0) {
@@ -14,9 +13,6 @@ aggregate_consolidated <- function(frame, config, cfg_hash, run_at,
   }
 
   bucketed <- frame
-  if (bucket == "day") {
-    bucketed$hour_local <- NA_integer_
-  }
   bucketed$date <- bucketed$segment_date_local
 
   # Total respondents per (campaign_id, date, hour_local) -- denominator for

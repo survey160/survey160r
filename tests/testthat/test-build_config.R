@@ -50,8 +50,8 @@ test_that("build_config applies stateless defaults", {
   expect_null(cfg$filters$respondent_id_column)
   expect_null(cfg$filters$date_filter)
   expect_equal(cfg$texting_windows, list())
-  expect_equal(cfg$reports$time_bucket, "day")
   # No dead fields leak through.
+  expect_null(cfg$reports)
   expect_null(cfg$project_name)
   expect_null(cfg$wave_run)
   expect_null(cfg$display_timezone)
@@ -65,15 +65,13 @@ test_that("build_config honors all named overrides", {
     texting_windows = list(list(date = "2026-01-26",
                                 start_hour = 16, end_hour = 24)),
     date_filter = "2026-01-26",
-    respondent_id_column = "userid",
-    time_bucket = "hour"
+    respondent_id_column = "userid"
   )
   expect_equal(cfg$campaign_id, 7L)
   expect_equal(cfg$project_id, 9999L)
   expect_equal(cfg$field_timezone, "America/New_York")
   expect_equal(cfg$filters$respondent_id_column, "userid")
   expect_equal(cfg$filters$date_filter, "2026-01-26")
-  expect_equal(cfg$reports$time_bucket, "hour")
   expect_equal(length(cfg$texting_windows), 1L)
 })
 
