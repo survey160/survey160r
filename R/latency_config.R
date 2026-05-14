@@ -34,7 +34,7 @@
 #' @param data A data frame or character vector of column names.
 #' @return A character vector of question ids in flow order.
 #' @export
-discover_questions <- function(data) {
+latency_discover_questions <- function(data) {
   cols <- if (is.data.frame(data)) names(data) else as.character(data)
   # Match either bracket form (raw header) or dot form (post read.csv).
   m_dot <- regmatches(cols, regexec("^id\\.([A-Za-z0-9_]+)\\.scriptDate$", cols))
@@ -71,14 +71,14 @@ discover_questions <- function(data) {
 #' @param time_bucket \code{"day"} (default) or \code{"hour"}.
 #' @return A validated config list ready to pass to \code{latency_report()}.
 #' @export
-build_config <- function(campaign_id, data,
+latency_build_config <- function(campaign_id, data,
                          field_timezone = "UTC",
                          project_id = NULL,
                          texting_windows = list(),
                          date_filter = NULL,
                          respondent_id_column = NULL,
                          time_bucket = "day") {
-  questions <- discover_questions(data)
+  questions <- latency_discover_questions(data)
   if (length(questions) < 2L) {
     stop(paste(
       "Could not discover at least two questions from CSV columns;",
@@ -109,11 +109,11 @@ build_config <- function(campaign_id, data,
 #' on the first failing rule.
 #'
 #' @param config The config list (typically from
-#'   \code{build_config_from_campaign}).
+#'   \code{latency_build_config}).
 #' @param data The data frame the report will run against.
 #' @return Invisible \code{TRUE} on success; otherwise stops with an error.
 #' @export
-validate_config <- function(config, data) {
+latency_validate_config <- function(config, data) {
   unknown <- setdiff(names(config), .config_keys)
   if (length(unknown) > 0) {
     stop(sprintf("Unknown config keys: %s", paste(unknown, collapse = ", ")),
@@ -256,7 +256,7 @@ validate_windows_cover <- function(config, data) {
 #' @param config The config list.
 #' @return A hex sha256 string.
 #' @export
-config_hash <- function(config) {
+latency_config_hash <- function(config) {
   canonical <- canonicalize_config(config)
   digest::digest(canonical, algo = "sha256", serialize = TRUE)
 }
@@ -272,4 +272,41 @@ canonicalize_config <- function(x) {
   } else {
     x
   }
+}
+
+# --- Deprecated unprefixed aliases ----------------------------------------
+# Kept so callers of 0.7.1 -> 0.8.0 don't break overnight. Each forwards to
+# the latency_-prefixed canonical name and emits a deprecation warning via
+# lifecycle. Plan: remove in 0.9.0.
+
+#' @rdname latency_discover_questions
+#' @export
+discover_questions <- function(data) {
+  lifecycle::deprecate_warn("0.8.0", "discover_questions()",
+                            "latency_discover_questions()")
+  latency_discover_questions(data)
+}
+
+#' @rdname latency_build_config
+#' @export
+build_config <- function(campaign_id, data, ...) {
+  lifecycle::deprecate_warn("0.8.0", "build_config()",
+                            "latency_build_config()")
+  latency_build_config(campaign_id, data, ...)
+}
+
+#' @rdname latency_validate_config
+#' @export
+validate_config <- function(config, data) {
+  lifecycle::deprecate_warn("0.8.0", "validate_config()",
+                            "latency_validate_config()")
+  latency_validate_config(config, data)
+}
+
+#' @rdname latency_config_hash
+#' @export
+config_hash <- function(config) {
+  lifecycle::deprecate_warn("0.8.0", "config_hash()",
+                            "latency_config_hash()")
+  latency_config_hash(config)
 }

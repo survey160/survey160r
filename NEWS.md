@@ -45,6 +45,14 @@
   returned data frame (the canonical `gs://...` URI) alongside the
   existing `source_csv_hash`. Lets downstream callers record provenance
   without re-deriving the path (SUR-1299).
+* The four unprefixed latency exports have been renamed under the
+  `latency_*` namespace to prevent collisions with other R packages and
+  signal cohesion: `discover_questions` -> `latency_discover_questions`,
+  `build_config` -> `latency_build_config`, `validate_config` ->
+  `latency_validate_config`, `config_hash` -> `latency_config_hash`. The
+  old names remain exported as deprecation aliases that warn via
+  `lifecycle::deprecate_warn` and forward to the new ones; planned removal
+  in 0.9.0 (SUR-1299).
 * `run_latency_all(source_bucket, bucket, ...)` runs the latency pipeline
   for every campaign with an export CSV under `source_bucket` and writes the
   per-campaign Parquet to `bucket`. Per-campaign failures are caught by

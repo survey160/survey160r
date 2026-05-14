@@ -112,7 +112,7 @@ run_latency(1234, "s160_analytics",
 
 ```r
 data <- pull_csv_from_gcs(campaign_id = 1234)
-config <- build_config(1234, data)
+config <- latency_build_config(1234, data)
 result <- latency_report(data, config)
 
 result$consolidated     # one row per (campaign_id, date, hour_local, segment, threshold_min)
@@ -145,10 +145,10 @@ DBI::dbDisconnect(view$con, shutdown = TRUE)
 
 ### Config
 
-`build_config(campaign_id, data, ...)` assembles the config from the CSV header alone -- pure function, no I/O. Override defaults via named args:
+`latency_build_config(campaign_id, data, ...)` assembles the config from the CSV header alone -- pure function, no I/O. Override defaults via named args:
 
 ```r
-config <- build_config(
+config <- latency_build_config(
   campaign_id = 1234,
   data = pull_csv_from_gcs(1234),
   field_timezone = "America/New_York",
@@ -162,7 +162,7 @@ config <- build_config(
 )
 ```
 
-`validate_config()` runs fail-fast checks: required columns present, flow order matches the data, texting windows cover survey dates, no unknown keys, no terminal states (`refusal`, `ineligible`) in `flow.questions`.
+`latency_validate_config()` runs fail-fast checks: required columns present, flow order matches the data, texting windows cover survey dates, no unknown keys, no terminal states (`refusal`, `ineligible`) in `flow.questions`.
 
 ## First-time setup
 

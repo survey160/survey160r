@@ -54,7 +54,7 @@ run_latency <- function(campaign_id, bucket,
                         uploader = upload_object) {
   data <- pull_csv_from_gcs(campaign_id)
   source_csv_hash <- attr(data, "source_csv_hash")
-  config <- build_config(
+  config <- latency_build_config(
     campaign_id, data,
     field_timezone = field_timezone,
     project_id = project_id,

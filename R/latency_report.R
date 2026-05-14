@@ -29,9 +29,9 @@ UNIVERSAL_THRESHOLDS_MIN <- c(1L, 3L, 5L, 10L)
 #'   \code{meta} (algorithm_version, config_hash, run_at_utc).
 #' @export
 latency_report <- function(data, config) {
-  validate_config(config, data)
+  latency_validate_config(config, data)
 
-  cfg_hash <- config_hash(config)
+  cfg_hash <- latency_config_hash(config)
   run_at <- Sys.time()
   attr(run_at, "tzone") <- "UTC"
 

@@ -2,7 +2,7 @@
 
 # Inline replacement for the old tests/testthat/fixtures/synthetic_config.yaml.
 # Used by test-latency_report.R and test-latency_io.R to drive latency_report
-# against the synthetic.csv fixture. Field shape matches what build_config()
+# against the synthetic.csv fixture. Field shape matches what latency_build_config()
 # returns.
 synthetic_config <- function() {
   list(
