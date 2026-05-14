@@ -45,6 +45,15 @@
   returned data frame (the canonical `gs://...` URI) alongside the
   existing `source_csv_hash`. Lets downstream callers record provenance
   without re-deriving the path (SUR-1299).
+* `R/latency_report.R` (531 lines) is split into five cohesive files:
+  `latency_report.R` keeps the orchestrator and shared constants;
+  `latency_filter.R` holds the population / dedupe / date filters;
+  `latency_frame.R` holds the per-respondent x per-segment frame builder;
+  `latency_aggregate.R` holds the consolidated-table aggregation;
+  `latency_diagnostics.R` holds the diagnostics-list assembly. The `%||%`
+  operator (used in three files) moves to `aaa_utils.R`. Pure internal
+  refactor; no behavior change, verified by the legacy-parity test
+  (SUR-1299).
 * The four unprefixed latency exports have been renamed under the
   `latency_*` namespace to prevent collisions with other R packages and
   signal cohesion: `discover_questions` -> `latency_discover_questions`,

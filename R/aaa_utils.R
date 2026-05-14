@@ -1,5 +1,8 @@
 # Shared internal utilities
 
+# Null-coalescing operator. Used package-wide.
+`%||%` <- function(a, b) if (is.null(a)) b else a
+
 # Prompt for a value and persist it to ~/.Renviron.
 # When secret = TRUE, uses masked input if available.
 prompt_and_save_renviron <- function(var_name, prompt_msg, secret = FALSE) { # nocov start
