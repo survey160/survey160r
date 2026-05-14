@@ -69,9 +69,8 @@
   signal cohesion: `discover_questions` -> `latency_discover_questions`,
   `build_config` -> `latency_build_config`, `validate_config` ->
   `latency_validate_config`, `config_hash` -> `latency_config_hash`. The
-  old names remain exported as deprecation aliases that warn via
-  `lifecycle::deprecate_warn` and forward to the new ones; planned removal
-  in 0.9.0 (SUR-1299).
+  old names are removed without a deprecation period; callers using the
+  pre-0.8.0 names must update (SUR-1299).
 * `run_latency_all(source_bucket, bucket, ...)` runs the latency pipeline
   for every campaign with an export CSV under `source_bucket` and writes the
   per-campaign Parquet to `bucket`. Per-campaign failures are caught by

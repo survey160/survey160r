@@ -2,12 +2,9 @@
 % Please edit documentation in R/latency_config.R
 \name{latency_discover_questions}
 \alias{latency_discover_questions}
-\alias{discover_questions}
 \title{Discover the question flow from CSV column names}
 \usage{
 latency_discover_questions(data)
-
-discover_questions(data)
 }
 \arguments{
 \item{data}{A data frame or character vector of column names.}

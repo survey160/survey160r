@@ -1,12 +1,12 @@
 # Latency report configuration: defaults, validation, hash.
-# Configs are built programmatically via build_config() or as hand-written
-# lists with the same shape. The historical YAML schema and the per-wave
-# API metadata layer have both been retired; only the fields latency_report()
-# actually consults are kept.
+# Configs are built programmatically via latency_build_config() or as
+# hand-written lists with the same shape. The historical YAML schema and
+# the per-wave API metadata layer have both been retired; only the fields
+# latency_report() actually consults are kept.
 
-# Allowed top-level config keys. validate_config() rejects anything else so
-# typos in caller-supplied lists fail loud. The set matches exactly what
-# latency_report() reads -- no provenance or YAML-only slots.
+# Allowed top-level config keys. latency_validate_config() rejects anything
+# else so typos in caller-supplied lists fail loud. The set matches exactly
+# what latency_report() reads -- no provenance or YAML-only slots.
 .config_keys <- c(
   "project_id", "campaign_id", "field_timezone", "flow",
   "filters", "texting_windows", "reports"
@@ -52,8 +52,8 @@ latency_discover_questions <- function(data) {
 #' Build a latency config from a campaign id and its CSV
 #'
 #' Pure function. Derives \code{flow.questions} from the CSV column names
-#' via \code{discover_questions()} and assembles the rest of the config from
-#' the named arguments. No I/O, no API call, no auth precondition.
+#' via \code{latency_discover_questions()} and assembles the rest of the
+#' config from the named arguments. No I/O, no API call, no auth precondition.
 #'
 #' @param campaign_id Campaign id (numeric or character).
 #' @param data A data frame of CSV results (or a character vector of column
@@ -69,8 +69,6 @@ latency_discover_questions <- function(data) {
 #' @param respondent_id_column Optional column name used to dedupe rows by
 #'   respondent. Default \code{NULL} (no dedupe).
 #' @param time_bucket \code{"day"} (default) or \code{"hour"}.
-#' @param ... Additional arguments accepted by the deprecated
-#'   \code{build_config()} alias; forwarded to \code{latency_build_config}.
 #' @return A validated config list ready to pass to \code{latency_report()}.
 #' @export
 latency_build_config <- function(campaign_id, data,
@@ -274,41 +272,4 @@ canonicalize_config <- function(x) {
   } else {
     x
   }
-}
-
-# --- Deprecated unprefixed aliases ----------------------------------------
-# Kept so callers of 0.7.1 -> 0.8.0 don't break overnight. Each forwards to
-# the latency_-prefixed canonical name and emits a deprecation warning via
-# lifecycle. Plan: remove in 0.9.0.
-
-#' @rdname latency_discover_questions
-#' @export
-discover_questions <- function(data) {
-  lifecycle::deprecate_warn("0.8.0", "discover_questions()",
-                            "latency_discover_questions()")
-  latency_discover_questions(data)
-}
-
-#' @rdname latency_build_config
-#' @export
-build_config <- function(campaign_id, data, ...) {
-  lifecycle::deprecate_warn("0.8.0", "build_config()",
-                            "latency_build_config()")
-  latency_build_config(campaign_id, data, ...)
-}
-
-#' @rdname latency_validate_config
-#' @export
-validate_config <- function(config, data) {
-  lifecycle::deprecate_warn("0.8.0", "validate_config()",
-                            "latency_validate_config()")
-  latency_validate_config(config, data)
-}
-
-#' @rdname latency_config_hash
-#' @export
-config_hash <- function(config) {
-  lifecycle::deprecate_warn("0.8.0", "config_hash()",
-                            "latency_config_hash()")
-  latency_config_hash(config)
 }

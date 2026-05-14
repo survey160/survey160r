@@ -21,7 +21,6 @@ Imports:
     arrow,
     lubridate,
     digest,
-    lifecycle,
     dplyr,
     rlang
 Suggests:

@@ -2,7 +2,6 @@
 % Please edit documentation in R/latency_config.R
 \name{latency_build_config}
 \alias{latency_build_config}
-\alias{build_config}
 \title{Build a latency config from a campaign id and its CSV}
 \usage{
 latency_build_config(
@@ -15,8 +14,6 @@ latency_build_config(
   respondent_id_column = NULL,
   time_bucket = "day"
 )
-
-build_config(campaign_id, data, ...)
 }
 \arguments{
 \item{campaign_id}{Campaign id (numeric or character).}
@@ -40,15 +37,12 @@ survey dates are processed (interpreted in \code{field_timezone}).}
 respondent. Default \code{NULL} (no dedupe).}
 
 \item{time_bucket}{\code{"day"} (default) or \code{"hour"}.}
-
-\item{...}{Additional arguments accepted by the deprecated
-\code{build_config()} alias; forwarded to \code{latency_build_config}.}
 }
 \value{
 A validated config list ready to pass to \code{latency_report()}.
 }
 \description{
 Pure function. Derives \code{flow.questions} from the CSV column names
-via \code{discover_questions()} and assembles the rest of the config from
-the named arguments. No I/O, no API call, no auth precondition.
+via \code{latency_discover_questions()} and assembles the rest of the
+config from the named arguments. No I/O, no API call, no auth precondition.
 }

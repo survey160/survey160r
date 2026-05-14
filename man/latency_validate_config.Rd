@@ -2,12 +2,9 @@
 % Please edit documentation in R/latency_config.R
 \name{latency_validate_config}
 \alias{latency_validate_config}
-\alias{validate_config}
 \title{Validate a latency config against a data frame}
 \usage{
 latency_validate_config(config, data)
-
-validate_config(config, data)
 }
 \arguments{
 \item{config}{The config list (typically from

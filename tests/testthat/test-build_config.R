@@ -93,20 +93,3 @@ test_that("build_config result passes validate_config against real data", {
   cfg <- latency_build_config(1L, data)
   expect_silent(latency_validate_config(cfg, data))
 })
-
-test_that("deprecated unprefixed aliases warn but still forward", {
-  csv_path <- test_path("fixtures/synthetic.csv")
-  data <- read.csv(csv_path, stringsAsFactors = FALSE)
-
-  expect_warning(qs <- discover_questions(names(data)), "deprecated")
-  expect_equal(qs, latency_discover_questions(names(data)))
-
-  expect_warning(cfg <- build_config(1L, data), "deprecated")
-  expect_equal(cfg, latency_build_config(1L, data))
-
-  expect_warning(out <- validate_config(cfg, data), "deprecated")
-  expect_true(out)
-
-  expect_warning(h1 <- config_hash(cfg), "deprecated")
-  expect_equal(h1, latency_config_hash(cfg))
-})

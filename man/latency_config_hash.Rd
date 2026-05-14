@@ -2,12 +2,9 @@
 % Please edit documentation in R/latency_config.R
 \name{latency_config_hash}
 \alias{latency_config_hash}
-\alias{config_hash}
 \title{Stable hash of a config}
 \usage{
 latency_config_hash(config)
-
-config_hash(config)
 }
 \arguments{
 \item{config}{The config list.}
