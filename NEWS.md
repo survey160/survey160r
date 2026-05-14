@@ -8,9 +8,15 @@
   `s160_api_campaign_get()`. Sensible defaults are baked in (
   `field_timezone = "UTC"`, `project_id = campaign_id`,
   `texting_windows = list()`); each is overridable via a named argument
-  (SUR-1299). Callers using the legacy YAML workflow can still build a
-  config via `read_config()` and call `latency_report()` + `write_to_gcs()`
-  directly.
+  (SUR-1299).
+* `read_config()` and the YAML config schema are removed entirely. Configs
+  are now built programmatically via `build_config_from_campaign()` or as
+  hand-written lists with the same shape. The `yaml` package is dropped
+  from `Imports`. Existing per-wave YAMLs under `latency-scripts/*.yaml`
+  must be translated to `run_latency(..., field_timezone=...,
+  project_id=..., texting_windows=..., date_filter=...)` calls; the YAML
+  files themselves are retained outside this repo as historical record
+  (SUR-1299).
 * The Parquet `date` and `hour_local` columns are now bucketed in UTC by
   default. Callers consuming
   `gs://s160_analytics_*/latency/*_latency.parquet` that previously

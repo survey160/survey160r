@@ -7,7 +7,8 @@
 validate_config(config, data)
 }
 \arguments{
-\item{config}{The config list (typically from \code{read_config}).}
+\item{config}{The config list (typically from
+\code{build_config_from_campaign}).}
 
 \item{data}{The data frame the report will run against.}
 }

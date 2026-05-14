@@ -3,12 +3,11 @@
 
 .load_synthetic <- function() {
   csv_path <- test_path("fixtures/synthetic.csv")
-  cfg_path <- test_path("fixtures/synthetic_config.yaml")
   data <- read.csv(csv_path, stringsAsFactors = FALSE, na.strings = c(""))
   # read.csv translates NA to NA, but we want empty strings in the original
   # cells to test na_if_blank end-to-end. Reread without na.strings.
   data <- read.csv(csv_path, stringsAsFactors = FALSE)
-  list(data = data, config = read_config(cfg_path))
+  list(data = data, config = synthetic_config())
 }
 
 test_that("latency_report is deterministic on identical inputs", {

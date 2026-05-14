@@ -20,8 +20,8 @@ UNIVERSAL_THRESHOLDS_MIN <- c(1L, 3L, 5L, 10L)
 #'   timestamp columns named \code{id.<q>.scriptDate} / \code{id.<q>.batchDate}
 #'   for each question in \code{config$flow$questions}, plus the population
 #'   column \code{id.intro.finalText} and the campaign id column.
-#' @param config Config list from \code{read_config()} (or constructed
-#'   directly).
+#' @param config Config list from \code{build_config_from_campaign()} (or
+#'   a hand-built list with the same shape).
 #' @return A list with \code{consolidated} (one row per
 #'   (campaign_id, date, hour_local, segment, threshold_min)),
 #'   \code{latency_frame} (one row per respondent x segment),

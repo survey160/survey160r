@@ -34,20 +34,6 @@
   )
 }
 
-test_that("read_config applies defaults and parses YAML", {
-  path <- test_path("fixtures/synthetic_config.yaml")
-  cfg <- read_config(path)
-  expect_equal(cfg$project_id, 1L)
-  expect_equal(cfg$reports$time_bucket, "day")
-  expect_equal(cfg$filters$campaign_id_column, "campaignid")
-  expect_equal(cfg$display_timezone, "America/New_York")
-})
-
-test_that("read_config errors on missing file", {
-  expect_error(read_config("/tmp/does-not-exist.yaml"),
-               "Config file not found")
-})
-
 test_that("apply_config_defaults fills omitted optional keys", {
   cfg <- list(project_id = 1, campaign_id = 1, field_timezone = "UTC",
               flow = list(questions = c("a", "b")))

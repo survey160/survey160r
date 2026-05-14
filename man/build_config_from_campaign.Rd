@@ -25,7 +25,7 @@ names) used to discover the question flow.}
 to \code{s160_api_campaign_get}; tests inject a stub here.}
 }
 \value{
-A config list in the same shape \code{read_config()} returns.
+A validated config list ready to pass to \code{latency_report()}.
 }
 \description{
 Stateless replacement for hand-curated per-wave YAML configs. Pulls

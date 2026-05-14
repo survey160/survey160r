@@ -20,7 +20,6 @@ Imports:
     jsonlite,
     arrow,
     lubridate,
-    yaml,
     digest,
     dplyr,
     rlang

@@ -3,9 +3,8 @@
 
 .load_synthetic_result <- function() {
   csv_path <- test_path("fixtures/synthetic.csv")
-  cfg_path <- test_path("fixtures/synthetic_config.yaml")
   data <- read.csv(csv_path, stringsAsFactors = FALSE)
-  config <- read_config(cfg_path)
+  config <- synthetic_config()
   list(result = latency_report(data, config), config = config)
 }
 

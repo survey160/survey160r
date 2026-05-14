@@ -1,40 +1,21 @@
-# Latency report configuration: load, validate, hash.
-# Implements the YAML schema from latency_scripts.md §4 and the fail-fast
-# validation rules from §2.4.
+# Latency report configuration: defaults, validation, hash.
+# Configs are built programmatically (via build_config_from_campaign() or
+# inline lists). The historical YAML schema from latency_scripts.md §4 is no
+# longer wired in; spec is kept for reference but read_config() was removed.
 
-# Allowed top-level config keys. Anything else aborts (spec I10).
+# Allowed top-level config keys. validate_config() rejects anything else so
+# typos in caller-supplied lists fail loud.
 .config_keys <- c(
   "project_id", "project_name", "campaign_id", "wave_run",
   "input", "field_timezone", "display_timezone", "flow",
   "filters", "texting_windows", "reports", "output"
 )
 
-.input_keys <- c("source", "gcs_path")
-.flow_keys <- c("questions")
-.filter_keys <- c("population", "campaign_id_column", "respondent_id_column", "date_filter")
-.report_keys <- c("time_bucket", "extra_grouping_columns")
-.output_keys <- c("bucket", "format")
-.window_keys <- c("date", "start_hour", "end_hour")
-
 # Terminal flow states that must not appear in `questions`.
 .terminal_states <- c("refusal", "ineligible")
 
 # Default filter expression matches legacy scripts.
 .default_population <- "id.intro.finalText == \"Yes\""
-
-#' Load a latency report config from a YAML file
-#'
-#' @param path Path to a YAML file matching the schema in
-#'   \code{latency_scripts.md} §4.
-#' @return A list with config values; defaults applied for omitted keys.
-#' @export
-read_config <- function(path) {
-  if (!file.exists(path)) {
-    stop(sprintf("Config file not found: %s", path), call. = FALSE)
-  }
-  raw <- yaml::read_yaml(path)
-  apply_config_defaults(raw)
-}
 
 # Fill in defaults for omitted optional keys. Mutates and returns the list.
 apply_config_defaults <- function(config) {
@@ -106,7 +87,7 @@ discover_questions <- function(data) {
 #'   \code{respondent_id_column}, \code{time_bucket}.
 #' @param campaign_api_get Function used to fetch campaign metadata. Defaults
 #'   to \code{s160_api_campaign_get}; tests inject a stub here.
-#' @return A config list in the same shape \code{read_config()} returns.
+#' @return A validated config list ready to pass to \code{latency_report()}.
 #' @export
 build_config_from_campaign <- function(campaign_id, data, overrides = list(),
                                        campaign_api_get = s160_api_campaign_get) {
@@ -179,7 +160,8 @@ build_config_from_campaign <- function(campaign_id, data, overrides = list(),
 #' Implements the fail-fast checks from spec §2.4. Aborts with a named error
 #' on the first failing rule.
 #'
-#' @param config The config list (typically from \code{read_config}).
+#' @param config The config list (typically from
+#'   \code{build_config_from_campaign}).
 #' @param data The data frame the report will run against.
 #' @return Invisible \code{TRUE} on success; otherwise stops with an error.
 #' @export
