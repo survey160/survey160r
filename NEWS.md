@@ -51,6 +51,13 @@
 
 ## Bug fixes
 
+* `download_with_verify()` no longer crashes when `googleCloudStorageR`'s
+  `gcs_list_objects()` returns a human-readable `size` string (e.g.
+  `"483.3 Kb"`). The previous code did `as.numeric(size)`, got `NA`, then
+  hit `if (actual_size == NA)` and aborted with "missing value where
+  TRUE/FALSE needed". A non-numeric size is now treated as "unknown" and
+  the download proceeds without verification. Discovered while running
+  `run_latency` against the production `campaign_results` bucket (SUR-1299).
 * `s160_api_campaign_get()` now strips sub-second precision when parsing
   ISO-8601 timestamp columns, so values like
   `"2026-01-15T09:30:00.123456Z"` (which PostgreSQL can emit) come back as

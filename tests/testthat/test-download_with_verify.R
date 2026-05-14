@@ -67,6 +67,29 @@ test_that("download skips verification when metadata unavailable", {
   expect_true(file.exists(tmp))
 })
 
+test_that("download skips verification when gcs_list_objects returns a formatted-string size", {
+  # Real googleCloudStorageR returns `size` as a human-readable string like
+  # "483.3 Kb"; as.numeric() yields NA. Treat as "unknown size" and skip the
+  # comparison rather than crashing the if(NA) compare.
+  csv_content <- c("a,b", "1,2")
+  tmp <- tempfile(fileext = ".csv")
+  on.exit(unlink(tmp), add = TRUE)
+
+  local_mocked_bindings(
+    gcs_list_objects = function(prefix, ...) {
+      data.frame(name = "100/data.csv", size = "483.3 Kb",
+                 stringsAsFactors = FALSE)
+    },
+    gcs_get_object = function(object_name, saveToDisk, ...) { # nolint object_name_linter
+      writeLines(csv_content, saveToDisk)
+      TRUE
+    }
+  )
+
+  result <- download_with_verify("100/data.csv", tmp)
+  expect_true(file.exists(tmp))
+})
+
 test_that("download skips verification when gcs_list_objects errors", {
   csv_content <- c("a,b", "1,2")
   tmp <- tempfile(fileext = ".csv")

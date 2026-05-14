@@ -49,6 +49,9 @@ validate_campaign_id <- function(campaign_id) {
 download_with_verify <- function(object_name, local_path, max_retries = 2L) {
   # Get expected size from GCS metadata. If listing fails (permissions or
   # transient error), fall back to downloading without verification.
+  # googleCloudStorageR's gcs_list_objects() returns `size` as a formatted
+  # string ("483.3 Kb"), so as.numeric() yields NA -- treat that as
+  # "unknown size" and skip verification rather than crashing the compare.
   expected_size <- tryCatch({
     prefix <- sub("/[^/]+$", "/", object_name)
     objects <- gcs_list_objects(prefix = prefix)
@@ -56,7 +59,8 @@ download_with_verify <- function(object_name, local_path, max_retries = 2L) {
     if (nrow(objects) > 0) {
       match_idx <- which(objects$name == object_name)
       if (length(match_idx) > 0) {
-        size <- as.numeric(objects$size[match_idx[1]])
+        coerced <- suppressWarnings(as.numeric(objects$size[match_idx[1]]))
+        if (!is.na(coerced)) size <- coerced
       }
     }
     size
