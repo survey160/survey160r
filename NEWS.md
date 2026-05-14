@@ -1,7 +1,103 @@
 # survey160r (development version)
 
+## Breaking changes
+
+* `run_latency()` no longer takes a `config_path` argument. The function is
+  now stateless: it derives `flow.questions` from the CSV header (via the
+  new `discover_questions()`) and assembles the rest of the config from its
+  named arguments. Sensible defaults are baked in (
+  `field_timezone = "UTC"`, `project_id = campaign_id`,
+  `texting_windows = list()`); each is overridable via a named argument.
+  `run_latency()` no longer requires `s160_api_auth()` -- the config is
+  derived from the CSV alone (SUR-1299).
+* `read_config()` and the YAML config schema are removed entirely. Configs
+  are now built programmatically via `build_config()` or as hand-written
+  lists with the same shape. The `yaml` package is dropped from `Imports`.
+  Existing per-wave YAMLs under `latency-scripts/*.yaml` must be translated
+  to `run_latency(..., field_timezone=..., project_id=...,
+  texting_windows=..., date_filter=...)` calls; the YAML files themselves
+  are retained outside this repo as historical record (SUR-1299).
+* The config schema is trimmed to the fields `latency_report()` actually
+  reads: `project_id`, `campaign_id`, `field_timezone`, `flow`, `filters`,
+  `texting_windows`, `reports`. Previously accepted but never-used keys
+  (`project_name`, `wave_run`, `display_timezone`,
+  `reports$extra_grouping_columns`, `input`, `output`) are no longer
+  recognized; `validate_config()` rejects them as unknown (SUR-1299).
+* The Parquet `date` and `hour_local` columns are now bucketed in UTC by
+  default. Callers consuming
+  `gs://s160_analytics_*/latency/*_latency.parquet` that previously
+  depended on an `America/New_York`-bucketed output must pass
+  `field_timezone = "America/New_York"` explicitly.
+
+## New features
+
+* `discover_questions(data)` derives the question flow from CSV column
+  names (either a data frame or a character vector of header tokens).
+  Accepts both the raw `id[<q>]scriptDate` bracket form and the dotted
+  `id.<q>.scriptDate` form produced by `read.csv()`. Terminal flow states
+  (`refusal`, `ineligible`) are dropped (SUR-1299).
+* `build_config(campaign_id, data, ...)` is a pure function that assembles
+  a validated config from the CSV header alone. Named arguments for every
+  override (`field_timezone`, `project_id`, `texting_windows`,
+  `date_filter`, `respondent_id_column`, `time_bucket`). No I/O, no API
+  call (SUR-1299).
+* `pull_csv_from_gcs()` now stamps a `source_csv_path` attribute on the
+  returned data frame (the canonical `gs://...` URI) alongside the
+  existing `source_csv_hash`. Lets downstream callers record provenance
+  without re-deriving the path (SUR-1299).
+* All reader functions and the latency runners now take an explicit
+  `bucket` (or `source_bucket`) argument that defaults to the global set
+  by `s160_gcs_init()`. Callers can either keep using `s160_gcs_init()`
+  once-per-session or pass `bucket = "..."` per call and skip the global
+  entirely. `run_latency_all()` no longer needs to stash/restore the
+  global bucket since its inner calls thread `source_bucket` through
+  every layer. Affects `s160_gcs_campaign_results_read`,
+  `s160_gcs_campaign_results_list`, `s160_gcs_campaign_results_files`,
+  `s160_gcs_campaign_results_status`, `pull_csv_from_gcs`, and
+  `run_latency` (SUR-1299).
+* `R/latency_report.R` (531 lines) is split into five cohesive files:
+  `latency_report.R` keeps the orchestrator and shared constants;
+  `latency_filter.R` holds the population / dedupe / date filters;
+  `latency_frame.R` holds the per-respondent x per-segment frame builder;
+  `latency_aggregate.R` holds the consolidated-table aggregation;
+  `latency_diagnostics.R` holds the diagnostics-list assembly. The `%||%`
+  operator (used in three files) moves to `aaa_utils.R`. Pure internal
+  refactor; no behavior change, verified by the legacy-parity test
+  (SUR-1299).
+* The four unprefixed latency exports have been renamed under the
+  `latency_*` namespace to prevent collisions with other R packages and
+  signal cohesion: `discover_questions` -> `latency_discover_questions`,
+  `build_config` -> `latency_build_config`, `validate_config` ->
+  `latency_validate_config`, `config_hash` -> `latency_config_hash`. The
+  old names are removed without a deprecation period; callers using the
+  pre-0.8.0 names must update (SUR-1299).
+* `latency_report()` and `run_latency()` accept an optional `run_at`
+  argument (defaults to `Sys.time()`). `run_latency_all()` stamps a single
+  fleet-wide timestamp on every campaign in one pass so the latest fleet
+  output can be selected with `WHERE run_at_utc = (SELECT MAX(run_at_utc)
+  FROM latency)` (SUR-1299).
+* `run_latency_all(source_bucket, bucket, ...)` runs the latency pipeline
+  for every campaign with an export CSV under `source_bucket` and writes the
+  per-campaign Parquet to `bucket`. Per-campaign failures are caught by
+  default (`continue_on_error = TRUE`) and recorded in the returned status
+  data frame so one bad CSV does not block the rest of the fleet. Saves
+  and restores the global GCS bucket so the caller's session state is
+  untouched. Replaces the bespoke iteration loop in
+  `scripts/bulk_reprocess.R`, which is now a thin shell wrapper around
+  this function (SUR-1299).
+* `scripts/bulk_reprocess.R` is refactored to call `run_latency_all()`;
+  the inline `discover_questions`, `build_config`, and process-one helpers
+  are removed, and the script no longer needs API auth (SUR-1299).
+
 ## Bug fixes
 
+* `download_with_verify()` no longer crashes when `googleCloudStorageR`'s
+  `gcs_list_objects()` returns a human-readable `size` string (e.g.
+  `"483.3 Kb"`). The previous code did `as.numeric(size)`, got `NA`, then
+  hit `if (actual_size == NA)` and aborted with "missing value where
+  TRUE/FALSE needed". A non-numeric size is now treated as "unknown" and
+  the download proceeds without verification. Discovered while running
+  `run_latency` against the production `campaign_results` bucket (SUR-1299).
 * `s160_api_campaign_get()` now strips sub-second precision when parsing
   ISO-8601 timestamp columns, so values like
   `"2026-01-15T09:30:00.123456Z"` (which PostgreSQL can emit) come back as

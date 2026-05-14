@@ -4,15 +4,20 @@
 \alias{pull_csv_from_gcs}
 \title{Read campaign CSV from GCS for latency analysis}
 \usage{
-pull_csv_from_gcs(campaign_id, filename = NULL)
+pull_csv_from_gcs(campaign_id, filename = NULL, bucket = NULL)
 }
 \arguments{
 \item{campaign_id}{Campaign id (numeric or character).}
 
 \item{filename}{Optional override for the CSV filename.}
+
+\item{bucket}{Source GCS bucket. \code{NULL} (default) falls back to the
+global bucket set by \code{s160_gcs_init()}; pass an explicit value to
+skip the global entirely.}
 }
 \value{
-A data frame with attribute \code{source_csv_hash} set.
+A data frame with attributes \code{source_csv_hash} and
+  \code{source_csv_path} set.
 }
 \description{
 Thin wrapper over \code{s160_gcs_campaign_results_read} that also computes

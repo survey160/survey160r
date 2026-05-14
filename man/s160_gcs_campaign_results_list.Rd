@@ -4,7 +4,11 @@
 \alias{s160_gcs_campaign_results_list}
 \title{List all campaign IDs in the current bucket}
 \usage{
-s160_gcs_campaign_results_list()
+s160_gcs_campaign_results_list(bucket = NULL)
+}
+\arguments{
+\item{bucket}{Source GCS bucket. \code{NULL} (default) falls back to the
+global bucket set by \code{s160_gcs_init()}.}
 }
 \value{
 Character vector of campaign IDs, sorted.

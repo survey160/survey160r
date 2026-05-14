@@ -4,7 +4,7 @@
 \alias{latency_report}
 \title{Compute a latency report for one campaign}
 \usage{
-latency_report(data, config)
+latency_report(data, config, run_at = NULL)
 }
 \arguments{
 \item{data}{A data frame with one row per respondent and the per-question
@@ -12,8 +12,14 @@ timestamp columns named \code{id.<q>.scriptDate} / \code{id.<q>.batchDate}
 for each question in \code{config$flow$questions}, plus the population
 column \code{id.intro.finalText} and the campaign id column.}
 
-\item{config}{Config list from \code{read_config()} (or constructed
-directly).}
+\item{config}{Config list from \code{latency_build_config()} (or
+a hand-built list with the same shape).}
+
+\item{run_at}{Optional \code{POSIXct} timestamp to stamp on every row's
+\code{run_at_utc} column. \code{NULL} (default) uses \code{Sys.time()}.
+Bulk runners (\code{run_latency_all}) pass a single timestamp here so
+every campaign in one fleet pass shares the same \code{run_at_utc},
+making "last fleet run" queries trivial.}
 }
 \value{
 A list with \code{consolidated} (one row per

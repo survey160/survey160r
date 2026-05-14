@@ -1,6 +1,6 @@
 Package: survey160r
 Title: R Client for Survey160 Data
-Version: 0.7.1
+Version: 0.8.0
 Authors@R: c(
     person("Lennon", "Shimokawa", email = "lshimokawa@survey160.com", role = c("aut", "cre"))
     )
@@ -20,7 +20,6 @@ Imports:
     jsonlite,
     arrow,
     lubridate,
-    yaml,
     digest,
     dplyr,
     rlang

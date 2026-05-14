@@ -1,20 +1,16 @@
-# Latency report configuration: load, validate, hash.
-# Implements the YAML schema from latency_scripts.md §4 and the fail-fast
-# validation rules from §2.4.
+# Latency report configuration: defaults, validation, hash.
+# Configs are built programmatically via latency_build_config() or as
+# hand-written lists with the same shape. The historical YAML schema and
+# the per-wave API metadata layer have both been retired; only the fields
+# latency_report() actually consults are kept.
 
-# Allowed top-level config keys. Anything else aborts (spec I10).
+# Allowed top-level config keys. latency_validate_config() rejects anything
+# else so typos in caller-supplied lists fail loud. The set matches exactly
+# what latency_report() reads -- no provenance or YAML-only slots.
 .config_keys <- c(
-  "project_id", "project_name", "campaign_id", "wave_run",
-  "input", "field_timezone", "display_timezone", "flow",
-  "filters", "texting_windows", "reports", "output"
+  "project_id", "campaign_id", "field_timezone", "flow",
+  "filters", "texting_windows", "reports"
 )
-
-.input_keys <- c("source", "gcs_path")
-.flow_keys <- c("questions")
-.filter_keys <- c("population", "campaign_id_column", "respondent_id_column", "date_filter")
-.report_keys <- c("time_bucket", "extra_grouping_columns")
-.output_keys <- c("bucket", "format")
-.window_keys <- c("date", "start_hour", "end_hour")
 
 # Terminal flow states that must not appear in `questions`.
 .terminal_states <- c("refusal", "ineligible")
@@ -22,40 +18,89 @@
 # Default filter expression matches legacy scripts.
 .default_population <- "id.intro.finalText == \"Yes\""
 
-#' Load a latency report config from a YAML file
+#' Discover the question flow from CSV column names
 #'
-#' @param path Path to a YAML file matching the schema in
-#'   \code{latency_scripts.md} §4.
-#' @return A list with config values; defaults applied for omitted keys.
+#' Scans the column names of an in-memory CSV data frame (as returned by
+#' \code{read.csv} / \code{pull_csv_from_gcs}) for \code{id.<q>.scriptDate}
+#' columns and returns the question ids in their original column order.
+#' Terminal flow states (\code{refusal}, \code{ineligible}) are dropped so
+#' the result is usable directly as \code{config$flow$questions}.
+#'
+#' Survey160 v2 CSV headers are emitted as \code{id[<q>]scriptDate} on disk;
+#' \code{read.csv} converts the brackets to dots. Both forms are accepted so
+#' callers can pass either a data frame or a character vector of raw header
+#' tokens.
+#'
+#' @param data A data frame or character vector of column names.
+#' @return A character vector of question ids in flow order.
 #' @export
-read_config <- function(path) {
-  if (!file.exists(path)) {
-    stop(sprintf("Config file not found: %s", path), call. = FALSE)
-  }
-  raw <- yaml::read_yaml(path)
-  apply_config_defaults(raw)
+latency_discover_questions <- function(data) {
+  cols <- if (is.data.frame(data)) names(data) else as.character(data)
+  # Match either bracket form (raw header) or dot form (post read.csv).
+  m_dot <- regmatches(cols, regexec("^id\\.([A-Za-z0-9_]+)\\.scriptDate$", cols))
+  m_brk <- regmatches(cols, regexec("^id\\[([A-Za-z0-9_]+)\\]scriptDate$", cols))
+  qs_dot <- vapply(m_dot, function(x) if (length(x) == 2) x[2] else NA_character_,
+                   character(1))
+  qs_brk <- vapply(m_brk, function(x) if (length(x) == 2) x[2] else NA_character_,
+                   character(1))
+  qs <- ifelse(!is.na(qs_dot), qs_dot, qs_brk)
+  qs <- qs[!is.na(qs)]
+  qs <- qs[!qs %in% .terminal_states]
+  unique(qs)
 }
 
-# Fill in defaults for omitted optional keys. Mutates and returns the list.
-apply_config_defaults <- function(config) {
-  if (is.null(config$filters)) config$filters <- list()
-  if (is.null(config$filters$population)) {
-    config$filters$population <- .default_population
+#' Build a latency config from a campaign id and its CSV
+#'
+#' Pure function. Derives \code{flow.questions} from the CSV column names
+#' via \code{latency_discover_questions()} and assembles the rest of the
+#' config from the named arguments. No I/O, no API call, no auth precondition.
+#'
+#' @param campaign_id Campaign id (numeric or character).
+#' @param data A data frame of CSV results (or a character vector of column
+#'   names) used to discover the question flow.
+#' @param field_timezone Tz used to bucket the Parquet \code{date} and
+#'   \code{hour_local} columns. Default \code{"UTC"}.
+#' @param project_id Optional Survey160 project id; defaults to the
+#'   campaign id as a placeholder.
+#' @param texting_windows Optional list of \code{{date, start_hour, end_hour}}
+#'   windows. Default \code{list()} = all-in-window.
+#' @param date_filter Optional character/Date vector restricting which
+#'   survey dates are processed (interpreted in \code{field_timezone}).
+#' @param respondent_id_column Optional column name used to dedupe rows by
+#'   respondent. Default \code{NULL} (no dedupe).
+#' @param time_bucket \code{"day"} (default) or \code{"hour"}.
+#' @return A validated config list ready to pass to \code{latency_report()}.
+#' @export
+latency_build_config <- function(campaign_id, data,
+                         field_timezone = "UTC",
+                         project_id = NULL,
+                         texting_windows = list(),
+                         date_filter = NULL,
+                         respondent_id_column = NULL,
+                         time_bucket = "day") {
+  questions <- latency_discover_questions(data)
+  if (length(questions) < 2L) {
+    stop(paste(
+      "Could not discover at least two questions from CSV columns;",
+      "expected id.<q>.scriptDate columns. Found:",
+      paste(head(questions, 5L), collapse = ", ")
+    ), call. = FALSE)
   }
-  if (is.null(config$filters$campaign_id_column)) {
-    config$filters$campaign_id_column <- "campaignid"
-  }
-  if (is.null(config$reports)) config$reports <- list()
-  if (is.null(config$reports$time_bucket)) {
-    config$reports$time_bucket <- "day"
-  }
-  if (is.null(config$reports$extra_grouping_columns)) {
-    config$reports$extra_grouping_columns <- character(0)
-  }
-  if (is.null(config$display_timezone)) {
-    config$display_timezone <- config$field_timezone
-  }
-  config
+
+  list(
+    project_id = as.integer(project_id %||% campaign_id),
+    campaign_id = as.integer(campaign_id),
+    field_timezone = field_timezone,
+    flow = list(questions = questions),
+    filters = list(
+      population = .default_population,
+      campaign_id_column = "campaignid",
+      respondent_id_column = respondent_id_column,
+      date_filter = date_filter
+    ),
+    texting_windows = texting_windows,
+    reports = list(time_bucket = time_bucket)
+  )
 }
 
 #' Validate a latency config against a data frame
@@ -63,11 +108,12 @@ apply_config_defaults <- function(config) {
 #' Implements the fail-fast checks from spec §2.4. Aborts with a named error
 #' on the first failing rule.
 #'
-#' @param config The config list (typically from \code{read_config}).
+#' @param config The config list (typically from
+#'   \code{latency_build_config}).
 #' @param data The data frame the report will run against.
 #' @return Invisible \code{TRUE} on success; otherwise stops with an error.
 #' @export
-validate_config <- function(config, data) {
+latency_validate_config <- function(config, data) {
   unknown <- setdiff(names(config), .config_keys)
   if (length(unknown) > 0) {
     stop(sprintf("Unknown config keys: %s", paste(unknown, collapse = ", ")),
@@ -210,7 +256,7 @@ validate_windows_cover <- function(config, data) {
 #' @param config The config list.
 #' @return A hex sha256 string.
 #' @export
-config_hash <- function(config) {
+latency_config_hash <- function(config) {
   canonical <- canonicalize_config(config)
   digest::digest(canonical, algo = "sha256", serialize = TRUE)
 }

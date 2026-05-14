@@ -4,10 +4,13 @@
 \alias{s160_gcs_campaign_results_status}
 \title{Check campaign results export status}
 \usage{
-s160_gcs_campaign_results_status(campaign_id)
+s160_gcs_campaign_results_status(campaign_id, bucket = NULL)
 }
 \arguments{
 \item{campaign_id}{Campaign ID (numeric or character).}
+
+\item{bucket}{Source GCS bucket. \code{NULL} (default) falls back to the
+global bucket set by \code{s160_gcs_init()}.}
 }
 \value{
 Named list with \code{name}, \code{updated}, and \code{size},

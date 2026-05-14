@@ -90,21 +90,29 @@ The pipeline has three layers. `latency_report(data, config)` is the pure functi
 library(survey160r)
 s160_gcs_init(bucket = "campaign_results")
 
-# config_path points to a per-wave YAML (see "Config" below)
+# Zero-config run: flow.questions are derived from the CSV header. Defaults
+# are field_timezone = "UTC", project_id = campaign_id,
+# texting_windows = list() (all-in-window).
 run_latency(
   campaign_id = 1234,
-  config_path = "configs/wave_w1_20260126.yaml",
   bucket = "s160_analytics",
   run_by = "lshimokawa"
 )
 # -> writes gs://s160_analytics/latency/1234_latency.parquet
+
+# Production dashboards typically want operator-local bucketing and a real
+# project id; pass them explicitly:
+run_latency(1234, "s160_analytics",
+            field_timezone = "America/New_York",
+            project_id = 9999,
+            run_by = "lshimokawa")
 ```
 
 ### Pure function
 
 ```r
 data <- pull_csv_from_gcs(campaign_id = 1234)
-config <- read_config("configs/wave_w1_20260126.yaml")
+config <- latency_build_config(1234, data)
 result <- latency_report(data, config)
 
 result$consolidated     # one row per (campaign_id, date, hour_local, segment, threshold_min)
@@ -137,31 +145,24 @@ DBI::dbDisconnect(view$con, shutdown = TRUE)
 
 ### Config
 
-A YAML config tells `latency_report()` which columns to use, the survey-flow order, the field timezone, the texting windows, and which respondents to keep. Minimal example:
+`latency_build_config(campaign_id, data, ...)` assembles the config from the CSV header alone -- pure function, no I/O. Override defaults via named args:
 
-```yaml
-project_id: 1234
-project_name: "Wave 1 -- January 2026"
-campaign_id: 1234
-field_timezone: "America/New_York"
-
-flow:
-  questions: [intro, q1, q2, q3, close]
-
-filters:
-  population: 'id.intro.finalText == "Yes"'
-  campaign_id_column: campaignid
-  respondent_id_column: ~     # leave null; in Survey160 v2 CSVs `userid` is the agent login, not a per-respondent id
-  date_filter: ["2026-01-26"]
-
-texting_windows:
-  - { date: "2026-01-26", start_hour: 16, end_hour: 24 }
-
-reports:
-  time_bucket: day
+```r
+config <- latency_build_config(
+  campaign_id = 1234,
+  data = pull_csv_from_gcs(1234),
+  field_timezone = "America/New_York",
+  project_id = 9999,
+  texting_windows = list(
+    list(date = "2026-01-26", start_hour = 16, end_hour = 24)
+  ),
+  date_filter = "2026-01-26",
+  respondent_id_column = NULL,   # `userid` is agent login, not per-respondent
+  time_bucket = "day"
+)
 ```
 
-`validate_config()` runs fail-fast checks: required columns present, flow order matches the data, texting windows cover survey dates, no unknown keys, no terminal states (`refusal`, `ineligible`) in `flow.questions`.
+`latency_validate_config()` runs fail-fast checks: required columns present, flow order matches the data, texting windows cover survey dates, no unknown keys, no terminal states (`refusal`, `ineligible`) in `flow.questions`.
 
 ## First-time setup
 

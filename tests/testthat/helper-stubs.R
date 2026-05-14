@@ -1,5 +1,27 @@
 # Shared test stubs -- loaded automatically by testthat before all tests
 
+# Inline replacement for the old tests/testthat/fixtures/synthetic_config.yaml.
+# Used by test-latency_report.R and test-latency_io.R to drive latency_report
+# against the synthetic.csv fixture. Field shape matches what latency_build_config()
+# returns.
+synthetic_config <- function() {
+  list(
+    project_id = 1L,
+    campaign_id = 1L,
+    field_timezone = "America/New_York",
+    flow = list(questions = c("intro", "q1", "q2", "close")),
+    filters = list(
+      population = 'id.intro.finalText == "Yes"',
+      campaign_id_column = "campaignid",
+      respondent_id_column = "userid"
+    ),
+    texting_windows = list(
+      list(date = "2026-01-26", start_hour = 16, end_hour = 24)
+    ),
+    reports = list(time_bucket = "day")
+  )
+}
+
 # Stub GCS dependencies for functions that call check_gcs_ready + validate_campaign_id
 stub_gcs_base <- function(env = parent.frame()) {
   testthat::local_mocked_bindings(

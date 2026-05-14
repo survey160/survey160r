@@ -8,6 +8,7 @@ s160_gcs_campaign_results_read(
   campaign_id,
   filename = NULL,
   destdir = NULL,
+  bucket = NULL,
   ...
 )
 }
@@ -21,6 +22,9 @@ Must not contain path separators.}
 \item{destdir}{Directory to save the downloaded file. When \code{NULL}
 (default), a temporary file is used and cleaned up automatically. Use
 \code{"."} for the current directory.}
+
+\item{bucket}{Source GCS bucket. \code{NULL} (default) falls back to the
+global bucket set by \code{s160_gcs_init()}.}
 
 \item{...}{Additional arguments passed to \code{read.csv()}, e.g.
 \code{stringsAsFactors}, \code{na.strings}, \code{nrows}.}
