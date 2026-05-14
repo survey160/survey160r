@@ -146,6 +146,29 @@ test_that("run_latency_all forwards source_bucket to the list call", {
   expect_equal(captured_bucket, "campaign_results")
 })
 
+test_that("run_latency_all stamps a single fleet-wide run_at on every campaign", {
+  seen_run_ats <- list()
+  local_mocked_bindings(
+    s160_gcs_campaign_results_list = function(bucket = NULL) {
+      c("a", "b", "c")
+    },
+    run_latency = function(campaign_id, bucket, run_at = NULL, ...) {
+      seen_run_ats[[length(seen_run_ats) + 1L]] <<- run_at
+      "gs://dst/x.parquet"
+    }
+  )
+  suppressMessages(run_latency_all(
+    source_bucket = "campaign_results",
+    bucket = "dst"
+  ))
+  expect_length(seen_run_ats, 3L)
+  expect_false(any(vapply(seen_run_ats, is.null, logical(1))))
+  # All three campaigns got the exact same POSIXct instant.
+  unique_stamps <- unique(do.call(c, seen_run_ats))
+  expect_length(unique_stamps, 1L)
+  expect_equal(attr(unique_stamps, "tzone"), "UTC")
+})
+
 test_that("run_latency_all validates source_bucket and bucket", {
   expect_error(run_latency_all(source_bucket = "", bucket = "dst"),
                "source_bucket")

@@ -62,7 +62,7 @@ test_that("run_latency overrides flow through to the config", {
   captured$cfg <- NULL
   local_mocked_bindings(
     pull_csv_from_gcs = function(campaign_id, filename = NULL, bucket = NULL) fx_data,
-    latency_report = function(data, config) {
+    latency_report = function(data, config, run_at = NULL) {
       captured$cfg <- config
       list(
         consolidated = data.frame(

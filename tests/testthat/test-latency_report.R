@@ -10,6 +10,14 @@
   list(data = data, config = synthetic_config())
 }
 
+test_that("latency_report honors an explicit run_at override", {
+  fx <- .load_synthetic()
+  fixed <- as.POSIXct("2026-01-01 12:00:00", tz = "UTC")
+  out <- latency_report(fx$data, fx$config, run_at = fixed)
+  expect_equal(out$meta$run_at_utc, fixed)
+  expect_true(all(out$consolidated$run_at_utc == fixed))
+})
+
 test_that("latency_report is deterministic on identical inputs", {
   fx <- .load_synthetic()
   r1 <- latency_report(fx$data, fx$config)

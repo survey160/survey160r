@@ -36,6 +36,10 @@
 #' @param respondent_id_column Optional column name used to dedupe rows by
 #'   respondent. Default \code{NULL} (no dedupe; matches legacy R scripts).
 #' @param run_by Optional string for the \code{run_by} provenance column.
+#' @param run_at Optional \code{POSIXct} timestamp to stamp on every row's
+#'   \code{run_at_utc} column. \code{NULL} (default) uses \code{Sys.time()}.
+#'   \code{run_latency_all()} passes one stamp here so every campaign in a
+#'   fleet pass shares the same \code{run_at_utc}.
 #' @param uploader Forwarded to \code{write_to_gcs()}; see its docs.
 #' @return The full \code{gs://...} path written.
 #' @examples
@@ -55,6 +59,7 @@ run_latency <- function(campaign_id, bucket,
                         date_filter = NULL,
                         respondent_id_column = NULL,
                         run_by = NULL,
+                        run_at = NULL,
                         uploader = upload_object) {
   data <- pull_csv_from_gcs(campaign_id, bucket = source_bucket)
   source_csv_hash <- attr(data, "source_csv_hash")
@@ -66,7 +71,7 @@ run_latency <- function(campaign_id, bucket,
     date_filter = date_filter,
     respondent_id_column = respondent_id_column
   )
-  result <- latency_report(data, config)
+  result <- latency_report(data, config, run_at = run_at)
   write_to_gcs(
     result = result,
     campaign_id = campaign_id,
@@ -150,13 +155,20 @@ run_latency_all <- function(source_bucket, bucket,
   }
   campaign_ids <- as.character(campaign_ids)
 
+  # Single fleet-wide timestamp. Every per-campaign Parquet in this run
+  # carries the same `run_at_utc`, so "show me the latest fleet pass" is a
+  # one-liner: SELECT * FROM latency WHERE run_at_utc = (SELECT MAX(...)).
+  fleet_run_at <- Sys.time()
+  attr(fleet_run_at, "tzone") <- "UTC"
+
   results <- vector("list", length(campaign_ids))
   for (i in seq_along(campaign_ids)) {
     cid <- campaign_ids[[i]]
     message(sprintf("[%d/%d] %s", i, length(campaign_ids), cid))
     results[[i]] <- .run_one_campaign(
       cid, source_bucket, bucket, field_timezone, texting_windows,
-      date_filter, respondent_id_column, run_by, uploader, continue_on_error
+      date_filter, respondent_id_column, run_by, fleet_run_at, uploader,
+      continue_on_error
     )
   }
   do.call(rbind, results)
@@ -166,7 +178,7 @@ run_latency_all <- function(source_bucket, bucket,
 # function's cyclomatic complexity under the linter threshold.
 .run_one_campaign <- function(cid, source_bucket, bucket, field_timezone,
                               texting_windows, date_filter,
-                              respondent_id_column, run_by, uploader,
+                              respondent_id_column, run_by, run_at, uploader,
                               continue_on_error) {
   t0 <- Sys.time()
   path <- tryCatch(
@@ -179,6 +191,7 @@ run_latency_all <- function(source_bucket, bucket,
       date_filter = date_filter,
       respondent_id_column = respondent_id_column,
       run_by = run_by,
+      run_at = run_at,
       uploader = uploader
     ),
     error = function(e) {

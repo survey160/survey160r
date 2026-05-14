@@ -71,6 +71,11 @@
   `latency_validate_config`, `config_hash` -> `latency_config_hash`. The
   old names are removed without a deprecation period; callers using the
   pre-0.8.0 names must update (SUR-1299).
+* `latency_report()` and `run_latency()` accept an optional `run_at`
+  argument (defaults to `Sys.time()`). `run_latency_all()` stamps a single
+  fleet-wide timestamp on every campaign in one pass so the latest fleet
+  output can be selected with `WHERE run_at_utc = (SELECT MAX(run_at_utc)
+  FROM latency)` (SUR-1299).
 * `run_latency_all(source_bucket, bucket, ...)` runs the latency pipeline
   for every campaign with an export CSV under `source_bucket` and writes the
   per-campaign Parquet to `bucket`. Per-campaign failures are caught by

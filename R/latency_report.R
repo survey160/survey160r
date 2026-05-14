@@ -29,17 +29,22 @@ UNIVERSAL_THRESHOLDS_MIN <- c(1L, 3L, 5L, 10L)
 #'   column \code{id.intro.finalText} and the campaign id column.
 #' @param config Config list from \code{latency_build_config()} (or
 #'   a hand-built list with the same shape).
+#' @param run_at Optional \code{POSIXct} timestamp to stamp on every row's
+#'   \code{run_at_utc} column. \code{NULL} (default) uses \code{Sys.time()}.
+#'   Bulk runners (\code{run_latency_all}) pass a single timestamp here so
+#'   every campaign in one fleet pass shares the same \code{run_at_utc},
+#'   making "last fleet run" queries trivial.
 #' @return A list with \code{consolidated} (one row per
 #'   (campaign_id, date, hour_local, segment, threshold_min)),
 #'   \code{latency_frame} (one row per respondent x segment),
 #'   \code{diagnostics} (counts and breakdowns per spec §3.3), and
 #'   \code{meta} (algorithm_version, config_hash, run_at_utc).
 #' @export
-latency_report <- function(data, config) {
+latency_report <- function(data, config, run_at = NULL) {
   latency_validate_config(config, data)
 
   cfg_hash <- latency_config_hash(config)
-  run_at <- Sys.time()
+  if (is.null(run_at)) run_at <- Sys.time()
   attr(run_at, "tzone") <- "UTC"
 
   questions <- config$flow$questions

@@ -14,6 +14,7 @@ run_latency(
   date_filter = NULL,
   respondent_id_column = NULL,
   run_by = NULL,
+  run_at = NULL,
   uploader = upload_object
 )
 }
@@ -43,6 +44,11 @@ survey dates are processed (in \code{field_timezone}).}
 respondent. Default \code{NULL} (no dedupe; matches legacy R scripts).}
 
 \item{run_by}{Optional string for the \code{run_by} provenance column.}
+
+\item{run_at}{Optional \code{POSIXct} timestamp to stamp on every row's
+\code{run_at_utc} column. \code{NULL} (default) uses \code{Sys.time()}.
+\code{run_latency_all()} passes one stamp here so every campaign in a
+fleet pass shares the same \code{run_at_utc}.}
 
 \item{uploader}{Forwarded to \code{write_to_gcs()}; see its docs.}
 }
