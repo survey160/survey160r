@@ -63,6 +63,14 @@ pull_csv_from_gcs <- function(campaign_id, filename = NULL) {
   } else {
     NA_character_
   }
+  # Stamp the canonical GCS source path (not the local temp path, which is
+  # unlinked on return). Lets downstream callers record provenance without
+  # re-deriving the path from campaign_id + filename. s160_gcs_campaign_results_read
+  # above already required a non-empty bucket, so gcs_get_global_bucket() here
+  # is guaranteed to succeed with the same value.
+  bucket <- gcs_get_global_bucket()
+  attr(data, "source_csv_path") <-
+    sprintf("gs://%s/%s/%s", bucket, as.character(campaign_id), fn)
   data
 }
 

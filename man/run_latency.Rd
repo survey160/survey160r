@@ -6,8 +6,12 @@
 \usage{
 run_latency(
   campaign_id,
-  config_path,
   bucket,
+  field_timezone = "UTC",
+  project_id = NULL,
+  texting_windows = list(),
+  date_filter = NULL,
+  respondent_id_column = NULL,
   run_by = NULL,
   uploader = upload_object
 )
@@ -15,12 +19,25 @@ run_latency(
 \arguments{
 \item{campaign_id}{Campaign id (numeric or character).}
 
-\item{config_path}{Path to a YAML config matching \code{latency_scripts.md}
-§4 schema.}
-
 \item{bucket}{Destination analytics bucket.}
 
-\item{run_by}{Optional string for the run_by provenance column.}
+\item{field_timezone}{Tz used to bucket the Parquet \code{date} and
+\code{hour_local} columns. Default \code{"UTC"}.}
+
+\item{project_id}{Optional Survey160 project id; defaults to the
+campaign id (placeholder, see Details).}
+
+\item{texting_windows}{Optional list of \code{{date, start_hour, end_hour}}
+windows for the spec's out-of-window filtering. Default \code{list()}
+means "all-in-window" (no filtering).}
+
+\item{date_filter}{Optional character/Date vector restricting which
+survey dates are processed (in \code{field_timezone}).}
+
+\item{respondent_id_column}{Optional column name used to dedupe rows by
+respondent. Default \code{NULL} (no dedupe; matches legacy R scripts).}
+
+\item{run_by}{Optional string for the \code{run_by} provenance column.}
 
 \item{uploader}{Forwarded to \code{write_to_gcs()}; see its docs.}
 }
@@ -28,5 +45,25 @@ run_latency(
 The full \code{gs://...} path written.
 }
 \description{
-Run the full latency pipeline for one campaign
+Stateless: every invocation re-derives the report config from the
+campaign API and the CSV header. No YAML required.
+}
+\details{
+Sensible defaults are baked in; override per-call when needed. The
+\code{field_timezone} default is \code{"UTC"} (matches the CSV format and
+is fully reproducible); production callers running operator-local
+dashboards typically pass \code{"America/New_York"}. The \code{project_id}
+default is the campaign id, matching the legacy \code{bulk_reprocess.R}
+placeholder behaviour; callers that know the real Survey160 project id
+should pass it explicitly.
+}
+\examples{
+\dontrun{
+s160_gcs_init(bucket = "campaign_results")
+s160_api_auth()
+run_latency(1980, "s160_analytics_prod")
+run_latency(1980, "s160_analytics_prod",
+            field_timezone = "America/New_York",
+            project_id = 9999)
+}
 }

@@ -120,9 +120,11 @@ test_that("write_to_gcs uses a caller-supplied uploader instead of upload_object
                "sha256:via-callback")
 })
 
-test_that("pull_csv_from_gcs sets a source_csv_hash attribute", {
+test_that("pull_csv_from_gcs sets source_csv_hash and source_csv_path attributes", {
   stub_gcs_base()
   stub_gcs_download_ok()
   data <- suppressMessages(pull_csv_from_gcs(1980))
   expect_true(grepl("^sha256:", attr(data, "source_csv_hash")))
+  expect_equal(attr(data, "source_csv_path"),
+               "gs://test_bucket/1980/1980_raw_data_download.csv")
 })

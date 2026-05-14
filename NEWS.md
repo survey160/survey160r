@@ -1,5 +1,42 @@
 # survey160r (development version)
 
+## Breaking changes
+
+* `run_latency()` no longer takes a `config_path` argument. The function is
+  now stateless: it derives `flow.questions` from the CSV header (via the
+  new `discover_questions()`) and `project_name` / `organizationid` from
+  `s160_api_campaign_get()`. Sensible defaults are baked in (
+  `field_timezone = "UTC"`, `project_id = campaign_id`,
+  `texting_windows = list()`); each is overridable via a named argument
+  (SUR-1299). Callers using the legacy YAML workflow can still build a
+  config via `read_config()` and call `latency_report()` + `write_to_gcs()`
+  directly.
+* The Parquet `date` and `hour_local` columns are now bucketed in UTC by
+  default. Callers consuming
+  `gs://s160_analytics_*/latency/*_latency.parquet` that previously
+  depended on an `America/New_York`-bucketed output must pass
+  `field_timezone = "America/New_York"` explicitly.
+
+## New features
+
+* `discover_questions(data)` derives the question flow from CSV column
+  names (either a data frame or a character vector of header tokens).
+  Accepts both the raw `id[<q>]scriptDate` bracket form and the dotted
+  `id.<q>.scriptDate` form produced by `read.csv()`. Terminal flow states
+  (`refusal`, `ineligible`) are dropped (SUR-1299).
+* `build_config_from_campaign(campaign_id, data, overrides)` assembles a
+  validated config from the campaign API plus the CSV header. Used
+  internally by `run_latency()`; exported for callers that need to inspect
+  or further customize the derived config before running the report
+  (SUR-1299).
+* `pull_csv_from_gcs()` now stamps a `source_csv_path` attribute on the
+  returned data frame (the canonical `gs://...` URI) alongside the
+  existing `source_csv_hash`. Lets downstream callers record provenance
+  without re-deriving the path (SUR-1299).
+* `scripts/bulk_reprocess.R` is refactored to use the new stateless
+  `run_latency()`; the inline `discover_questions` and `build_config`
+  helpers are removed (SUR-1299).
+
 ## Bug fixes
 
 * `s160_api_campaign_get()` now strips sub-second precision when parsing

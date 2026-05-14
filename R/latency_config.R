@@ -58,6 +58,122 @@ apply_config_defaults <- function(config) {
   config
 }
 
+#' Discover the question flow from CSV column names
+#'
+#' Scans the column names of an in-memory CSV data frame (as returned by
+#' \code{read.csv} / \code{pull_csv_from_gcs}) for \code{id.<q>.scriptDate}
+#' columns and returns the question ids in their original column order.
+#' Terminal flow states (\code{refusal}, \code{ineligible}) are dropped so
+#' the result is usable directly as \code{config$flow$questions}.
+#'
+#' Survey160 v2 CSV headers are emitted as \code{id[<q>]scriptDate} on disk;
+#' \code{read.csv} converts the brackets to dots. Both forms are accepted so
+#' callers can pass either a data frame or a character vector of raw header
+#' tokens.
+#'
+#' @param data A data frame or character vector of column names.
+#' @return A character vector of question ids in flow order.
+#' @export
+discover_questions <- function(data) {
+  cols <- if (is.data.frame(data)) names(data) else as.character(data)
+  # Match either bracket form (raw header) or dot form (post read.csv).
+  m_dot <- regmatches(cols, regexec("^id\\.([A-Za-z0-9_]+)\\.scriptDate$", cols))
+  m_brk <- regmatches(cols, regexec("^id\\[([A-Za-z0-9_]+)\\]scriptDate$", cols))
+  qs_dot <- vapply(m_dot, function(x) if (length(x) == 2) x[2] else NA_character_,
+                   character(1))
+  qs_brk <- vapply(m_brk, function(x) if (length(x) == 2) x[2] else NA_character_,
+                   character(1))
+  qs <- ifelse(!is.na(qs_dot), qs_dot, qs_brk)
+  qs <- qs[!is.na(qs)]
+  qs <- qs[!qs %in% .terminal_states]
+  unique(qs)
+}
+
+#' Build a latency config from the campaign API + CSV header
+#'
+#' Stateless replacement for hand-curated per-wave YAML configs. Pulls
+#' campaign metadata from \code{s160_api_campaign_get(campaign_id)} and
+#' derives the question flow from the CSV's column names via
+#' \code{discover_questions()}. Defaults can be overridden via the
+#' \code{overrides} list; pass \code{NULL} (or omit a key) to accept the
+#' default.
+#'
+#' @param campaign_id Campaign id (numeric or character).
+#' @param data A data frame of CSV results (or a character vector of column
+#'   names) used to discover the question flow.
+#' @param overrides Optional list with any of: \code{field_timezone},
+#'   \code{project_id}, \code{texting_windows}, \code{date_filter},
+#'   \code{respondent_id_column}, \code{time_bucket}.
+#' @param campaign_api_get Function used to fetch campaign metadata. Defaults
+#'   to \code{s160_api_campaign_get}; tests inject a stub here.
+#' @return A config list in the same shape \code{read_config()} returns.
+#' @export
+build_config_from_campaign <- function(campaign_id, data, overrides = list(),
+                                       campaign_api_get = s160_api_campaign_get) {
+  if (!is.list(overrides)) {
+    stop("overrides must be a list.", call. = FALSE)
+  }
+  if (!is.function(campaign_api_get)) {
+    stop("campaign_api_get must be a function.", call. = FALSE)
+  }
+  questions <- discover_questions(data)
+  if (length(questions) < 2L) {
+    stop(paste(
+      "Could not discover at least two questions from CSV columns;",
+      "expected id.<q>.scriptDate columns. Found:",
+      paste(head(questions, 5L), collapse = ", ")
+    ), call. = FALSE)
+  }
+
+  meta <- campaign_api_get(campaign_id)
+  # `s160_api_campaign_get` returns a single-row data frame; pull scalars out.
+  project_name <- .scalar_or_null(meta, "name") %||%
+    sprintf("Campaign %s", campaign_id)
+  organizationid <- .scalar_or_null(meta, "organizationid")
+
+  field_tz <- overrides$field_timezone %||% "UTC"
+  project_id <- overrides$project_id %||% as.integer(campaign_id)
+  texting_windows <- overrides$texting_windows %||% list()
+  date_filter <- overrides$date_filter
+  respondent_id_column <- overrides$respondent_id_column
+  time_bucket <- overrides$time_bucket %||% "day"
+
+  wave_run <- sprintf("%s_%s", campaign_id,
+                      format(Sys.time(), "%Y%m%dT%H%M%SZ", tz = "UTC"))
+
+  config <- list(
+    project_id = as.integer(project_id),
+    project_name = as.character(project_name),
+    campaign_id = as.integer(campaign_id),
+    wave_run = wave_run,
+    field_timezone = field_tz,
+    flow = list(questions = questions),
+    filters = list(
+      population = .default_population,
+      campaign_id_column = "campaignid",
+      respondent_id_column = respondent_id_column,
+      date_filter = date_filter
+    ),
+    texting_windows = texting_windows,
+    reports = list(time_bucket = time_bucket)
+  )
+  # Stash organizationid as a non-config attribute for provenance; not part
+  # of the validated config schema.
+  attr(config, "organizationid") <- organizationid
+  apply_config_defaults(config)
+}
+
+# Extract a scalar from a single-row data frame; NULL if column absent or NA.
+# Caller (build_config_from_campaign) guarantees a single-row data frame from
+# s160_api_campaign_get, so a missing column or a length-1 NA are the only
+# realistic "absent" signals.
+.scalar_or_null <- function(df, col) {
+  if (!is.data.frame(df) || !col %in% names(df)) return(NULL)
+  v <- df[[col]][[1L]]
+  if (is.null(v) || (length(v) == 1L && is.na(v))) return(NULL)
+  v
+}
+
 #' Validate a latency config against a data frame
 #'
 #' Implements the fail-fast checks from spec §2.4. Aborts with a named error
