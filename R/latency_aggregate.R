@@ -1,11 +1,11 @@
 # Aggregation of the per-respondent x per-segment frame to the consolidated
-# Parquet table (spec §3.1). Cells are
-# (campaign_id, date, hour_local, segment, threshold_min). For day buckets
-# hour_local is NA on every row.
+# Parquet table. Cells are always at the hour grain:
+# (campaign_id, date, hour_local, segment, threshold_min). Downstream
+# consumers (and latency_report()'s day-rollup pass) get day-grain rows by
+# nulling hour_local on the input frame before calling.
 #
 # Orchestrator: aggregate_consolidated()
 # Pieces:
-#   prepare_bucketed_frame()   -- alias date and apply day/hour bucketing
 #   aggregate_totals()         -- per-bucket distinct respondent count
 #   aggregate_worst_cascade()  -- per-threshold respondent worst-Δ cascade
 #   aggregate_segment_cells()  -- per-(bucket, segment, threshold) cell rows
@@ -31,7 +31,8 @@ aggregate_consolidated <- function(frame, config, cfg_hash, run_at,
   }
 
   thresholds <- UNIVERSAL_THRESHOLDS_MIN
-  bucketed <- prepare_bucketed_frame(frame, config$reports$time_bucket)
+  bucketed <- frame
+  bucketed$date <- bucketed$segment_date_local
 
   totals <- aggregate_totals(bucketed)
   cascade <- aggregate_worst_cascade(bucketed, thresholds)
@@ -42,18 +43,6 @@ aggregate_consolidated <- function(frame, config, cfg_hash, run_at,
                         cfg_hash = cfg_hash,
                         run_at = run_at,
                         src_csv_hash = src_csv_hash)
-}
-
-# Copy `frame` and rename/blank-out columns to match the bucketing the
-# downstream summaries group on. Day buckets collapse hour_local to NA on
-# every row so the dplyr group_by yields one row per (campaign, date, NA).
-prepare_bucketed_frame <- function(frame, bucket) {
-  out <- frame
-  if (bucket == "day") {
-    out$hour_local <- NA_integer_
-  }
-  out$date <- out$segment_date_local
-  out
 }
 
 # Total respondents per bucket -- the denominator for pct_resp_hit_gt.
@@ -104,8 +93,8 @@ cascade_chunk <- function(worst, t) {
             "pct_resp_worst_gt")]
 }
 
-# Per-(bucket, segment, threshold) cell rows. n is the in-window valid count;
-# pct_le and n_resp_over are derived from the same set.
+# Per-(bucket, segment, threshold) cell rows. n is the valid-Δ count for the
+# cell; pct_le and n_resp_over are derived from the same set.
 aggregate_segment_cells <- function(bucketed, thresholds) {
   rows <- lapply(thresholds, function(t) segment_cells_chunk(bucketed, t))
   do.call(rbind, rows)
@@ -118,9 +107,8 @@ segment_cells_chunk <- function(bucketed, t) {
       .data$campaign_id, .data$date, .data$hour_local,
       .data$segment, .data$segment_index
     ),
-    n = sum(!is.na(.data$delta_min) & .data$in_window == 1L),
-    n_le = sum(!is.na(.data$delta_min) & .data$in_window == 1L &
-                 .data$delta_min <= t),
+    n = sum(!is.na(.data$delta_min)),
+    n_le = sum(!is.na(.data$delta_min) & .data$delta_min <= t),
     n_resp_over = dplyr::n_distinct(
       .data$respondent_index[!is.na(.data$delta_min) & .data$delta_min > t]
     ),
@@ -138,10 +126,9 @@ assemble_consolidated <- function(cells, totals, cascade,
                                   src_csv_hash) {
   joined <- dplyr::left_join(cells, totals, by = .bucket_keys)
   # pct_resp_hit_gt is gated on `n > 0` (the cell has at least one valid
-  # in-window Δ); without that gate, a cell with n=0 but a non-zero
-  # n_resp_over from out-of-window segments would emit a misleading
-  # percentage. safe_pct() handles the denominator side; we still need the
-  # explicit `joined$n > 0` mask layered on top.
+  # Δ). safe_pct() handles the denominator side; we still need the explicit
+  # `joined$n > 0` mask layered on top so cells with no valid endpoints
+  # don't report a percentage built from cross-segment cascade rollups.
   joined$pct_resp_hit_gt <- ifelse(
     joined$n > 0,
     safe_pct(joined$n_resp_over, joined$.total_resp),

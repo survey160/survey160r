@@ -9,12 +9,13 @@ run_latency_all(
   bucket,
   campaign_ids = NULL,
   field_timezone = "UTC",
-  texting_windows = list(),
   date_filter = NULL,
   respondent_id_column = NULL,
   run_by = "run_latency_all",
   uploader = upload_object,
-  continue_on_error = TRUE
+  continue_on_error = TRUE,
+  workers = 1L,
+  skip_unchanged = FALSE
 )
 }
 \arguments{
@@ -32,7 +33,7 @@ process. \code{NULL} (default) processes every campaign found in
 \code{"UTC"}; pass \code{"America/New_York"} to match historical fleet
 bucketing.}
 
-\item{texting_windows, date_filter, respondent_id_column}{Forwarded to
+\item{date_filter, respondent_id_column}{Forwarded to
 \code{run_latency()}.}
 
 \item{run_by}{Forwarded to \code{run_latency()}. Default
@@ -42,12 +43,32 @@ bucketing.}
 
 \item{continue_on_error}{Logical. \code{TRUE} (default) records the
 error and moves on; \code{FALSE} re-raises the first error.}
+
+\item{workers}{Integer >= 1. \code{1L} (default) processes campaigns
+serially. Values > 1 dispatch the per-campaign work via
+\code{future.apply::future_lapply()}, which must be installed.
+The caller is responsible for setting up the future plan; the most
+common choice for local runs is \code{future::plan(future::multisession,
+workers = N)}. With \code{multisession}, each worker re-uses the
+cached gargle OAuth token from disk on its first GCS call; the
+session-global bucket set by \code{s160_gcs_init()} is not propagated
+to workers, which is harmless here because every read and write threads
+\code{bucket}/\code{source_bucket} explicitly.}
+
+\item{skip_unchanged}{Logical. \code{FALSE} (default) reprocesses every
+campaign. \code{TRUE} compares the source CSV's GCS \code{updated}
+timestamp against the existing destination Parquet's \code{updated}
+timestamp and skips campaigns whose output is at least as new as the
+source. Skipped campaigns appear in the result with \code{status =
+"skipped"} and the existing \code{parquet_uri}. The comparison is made
+once at dispatch time; concurrent uploads of the source CSV during the
+run are not detected.}
 }
 \value{
 A data frame with one row per attempted campaign:
-  \code{campaign_id}, \code{status} (\code{"ok"} / \code{"failed"}),
-  \code{parquet_uri} (NA on failure), \code{error_message} (NA on
-  success), \code{elapsed_s}.
+  \code{campaign_id}, \code{status} (\code{"ok"} / \code{"failed"} /
+  \code{"skipped"}), \code{parquet_uri} (NA on failure), \code{error_message}
+  (NA on success and skip), \code{elapsed_s}.
 }
 \description{
 Discovers every campaign with an export CSV under \code{source_bucket} via
@@ -60,10 +81,10 @@ not block the rest of the fleet.
 Reads and writes use explicit \code{bucket} arguments throughout, so this
 function never touches the session-global GCS bucket.
 
-All override arguments (\code{field_timezone}, \code{texting_windows},
-\code{date_filter}, \code{respondent_id_column}) apply uniformly to
-every campaign. \code{project_id} is always set to \code{campaign_id}
-(placeholder) -- callers needing per-campaign project ids should iterate
+All override arguments (\code{field_timezone}, \code{date_filter},
+\code{respondent_id_column}) apply uniformly to every campaign.
+\code{project_id} is always set to \code{campaign_id} (placeholder) --
+callers needing per-campaign project ids should iterate
 \code{run_latency()} themselves with their own mapping.
 }
 \examples{

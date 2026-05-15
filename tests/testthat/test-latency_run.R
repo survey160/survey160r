@@ -91,8 +91,6 @@ test_that("run_latency overrides flow through to the config", {
     bucket = "s160_analytics_dev",
     field_timezone = "America/New_York",
     project_id = 9999,
-    texting_windows = list(list(date = "2026-01-26",
-                                start_hour = 16, end_hour = 24)),
     date_filter = c("2026-01-26"),
     respondent_id_column = "userid"
   )
@@ -102,5 +100,4 @@ test_that("run_latency overrides flow through to the config", {
   expect_equal(captured$cfg$campaign_id, 7L)
   expect_equal(captured$cfg$filters$respondent_id_column, "userid")
   expect_equal(captured$cfg$filters$date_filter, "2026-01-26")
-  expect_equal(length(captured$cfg$texting_windows), 1L)
 })

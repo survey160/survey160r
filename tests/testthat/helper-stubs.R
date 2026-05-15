@@ -14,11 +14,7 @@ synthetic_config <- function() {
       population = 'id.intro.finalText == "Yes"',
       campaign_id_column = "campaignid",
       respondent_id_column = "userid"
-    ),
-    texting_windows = list(
-      list(date = "2026-01-26", start_hour = 16, end_hour = 24)
-    ),
-    reports = list(time_bucket = "day")
+    )
   )
 }
 

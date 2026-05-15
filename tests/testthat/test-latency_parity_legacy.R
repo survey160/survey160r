@@ -137,11 +137,7 @@
       campaign_id_column = "campaignid",
       respondent_id_column = NULL,
       date_filter = "2026-01-10"
-    ),
-    texting_windows = list(
-      list(date = "2026-01-10", start_hour = 16, end_hour = 24)
-    ),
-    reports = list(time_bucket = "day")
+    )
   )
 }
 
@@ -178,13 +174,16 @@ test_that("legacy parity: pct_le matches per segment per threshold", {
   })
 
   result <- latency_report(data, config)
-  cons <- result$consolidated
+  # Compare against the day rollup rows in the output (hour_local = NA),
+  # which carry the legacy single-value-per-(segment, threshold) shape.
+  day_rows <- result$consolidated[is.na(result$consolidated$hour_local), ]
 
   for (i in seq_len(length(qs) - 1)) {
     seg <- sprintf("%s→%s", qs[i], qs[i + 1])
     for (j in seq_along(thresholds)) {
       t <- thresholds[j]
-      new_val <- cons$pct_le[cons$segment == seg & cons$threshold_min == t]
+      new_val <- day_rows$pct_le[day_rows$segment == seg &
+                                   day_rows$threshold_min == t]
       expect_length(new_val, 1)
       expect_equal(new_val, unname(legacy_pct[[i]][j]), tolerance = 1e-9,
                    info = sprintf("segment=%s threshold=%d", seg, t))
@@ -209,11 +208,22 @@ test_that("legacy parity: respondent cascade matches over-threshold bucket pcts"
   legacy_pct_worst_gt <- vapply(indicators, mean, numeric(1)) * 100
 
   result <- latency_report(data, config)
-  cons <- result$consolidated
-  worst <- unique(cons[, c("threshold_min", "pct_resp_worst_gt")])
-  worst <- worst[order(worst$threshold_min), ]
+  # Cascade can't be rolled up from hour-grained consolidated rows (respondents
+  # who appear in multiple hours are counted in each hour's denominator). Derive
+  # the wave-level cascade from the per-respondent latency_frame instead --
+  # this is the same recipe spec §2 specifies.
+  frame <- result$latency_frame
+  worst_by_resp <- dplyr::summarise(
+    dplyr::group_by(frame, .data$respondent_index),
+    worst = suppressWarnings(max(.data$delta_min, na.rm = TRUE)),
+    .groups = "drop"
+  )
+  worst_by_resp <- worst_by_resp[is.finite(worst_by_resp$worst), , drop = FALSE]
+  derived_pct_worst_gt <- vapply(thresholds, function(t) {
+    100 * mean(worst_by_resp$worst > t)
+  }, numeric(1))
 
-  expect_equal(worst$pct_resp_worst_gt,
+  expect_equal(derived_pct_worst_gt,
                unname(legacy_pct_worst_gt),
                tolerance = 1e-9)
 })

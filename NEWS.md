@@ -1,5 +1,52 @@
 # survey160r (development version)
 
+## New features
+
+* `run_latency_all()` gains a `workers` argument that dispatches per-campaign
+  work via `future.apply::future_lapply()` when greater than 1, allowing
+  fleet passes to process campaigns in parallel. Callers set up the future
+  plan (e.g. `future::plan(future::multisession, workers = 4)`) themselves
+  (SUR-1305).
+* `run_latency_all()` gains a `skip_unchanged` argument. When `TRUE`, each
+  campaign's source CSV `updated` timestamp is compared against the existing
+  destination Parquet's `updated` timestamp and campaigns whose output is
+  already current are reported with `status = "skipped"` and the existing
+  `parquet_uri` without re-downloading or re-emitting (SUR-1305).
+* New exported helper `s160_gcs_latency_output_status()` returns GCS
+  metadata for a campaign's existing latency Parquet output, or `NULL` if
+  none exists (SUR-1305).
+
+## Breaking changes
+
+* The consolidated Parquet now carries **two grains** in one file: hour
+  rows (one per `(campaign_id, date, hour_local, segment, threshold_min)`
+  with `hour_local` 0-23) for time-of-day analysis, plus day rollup rows
+  (`hour_local = NA`) carrying correct day-grain `n`, `pct_le`, and
+  respondent-cascade columns. Downstream consumers filter on
+  `hour_local IS NULL` for day rollups, `hour_local IS NOT NULL` for
+  time-of-day; both are arithmetically correct without any further
+  rollup. The `time_bucket` config knob and the `reports` config slot
+  are removed -- `latency_build_config()` no longer accepts a
+  `time_bucket` argument, and `validate_config()` rejects `reports` as
+  an unknown key. Existing Parquets in `gs://s160_analytics_*/latency/`
+  (which carried only one grain) must be regenerated via
+  `run_latency_all()` (SUR-1304).
+* Note for naive aggregators: summing the hour rows' `n_respondents`
+  over-counts cross-hour respondents (a respondent active in two hours
+  appears in both hours' distinct-respondent counts). Always read the
+  day rollup row (`hour_local IS NULL`) for correct day-grain cascade;
+  do not attempt to recompute it by aggregating the hour rows.
+* The `texting_windows` config field is removed. The algorithm no longer
+  filters dispatches by an analyst-declared texting plan; `n` and
+  `pct_le` now count every valid dispatch. The pre-removal feature
+  excluded out-of-window dispatches from the in-window denominator;
+  with the cube schema introduced in this release downstream consumers
+  can see which hours had high volume directly from the hour rows.
+  Diagnostics field `n_out_of_window_dropped` and
+  `windows_normalized_utc` are dropped along with the feature.
+  `latency_build_config()`, `run_latency()`, and `run_latency_all()`
+  no longer accept a `texting_windows` argument (SUR-1304).
+
 ## Internal
 
 * Moved `pull_csv_from_gcs()` and the internal `upload_object()` helper from
@@ -13,11 +60,12 @@
   for the "percent of X, NA if denominator is zero" pattern, encapsulated
   the data + parse-failed-mask plumbing behind `subset_parsed_input()`,
   extracted `classify_na_reason()` from the segment loop, and split
-  `aggregate_consolidated()` into `prepare_bucketed_frame()`,
-  `aggregate_totals()`, `aggregate_worst_cascade()`,
-  `aggregate_segment_cells()`, and `assemble_consolidated()`. Numeric
-  output is unchanged (parity test still passes); the refactor only
-  reshapes the call graph (SUR-1305).
+  `aggregate_consolidated()` into per-aggregation helpers
+  (`aggregate_totals()`, `aggregate_worst_cascade()`,
+  `aggregate_segment_cells()`, `assemble_consolidated()`). Numeric output
+  is unchanged; the refactor only reshapes the call graph (SUR-1305).
+
+# survey160r 0.8.0
 
 ## Breaking changes
 
