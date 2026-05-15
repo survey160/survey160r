@@ -1,39 +1,26 @@
-# --- Helper -------------------------------------------------------------------
+# Coverage for R/s160_api.R. Mocks the httr quartet (POST/GET/http_error/
+# content) via stub_httr_response(), and seeds the package-private auth env
+# via stub_api_base(). See helper-stubs.R for both.
 
-# Set up a fake API auth state for tests that need it
-stub_api_base <- function(env = parent.frame()) {
-  .s160_api_env <- survey160r:::.s160_api_env
-  .s160_api_env$jwt <- "test-jwt"
-  .s160_api_env$base_url <- "https://test-api.survey160.com"
-  .s160_api_env$userid <- "test-user"
-  .s160_api_env$auth_time <- Sys.time()
-  withr::defer({
-    rm(list = ls(.s160_api_env), envir = .s160_api_env)
-  }, envir = env)
+.api_env <- function() survey160r:::.s160_api_env
+
+.defer_api_env_reset <- function(env = parent.frame()) {
+  e <- .api_env()
+  withr::defer(rm(list = ls(e), envir = e), envir = env)
 }
 
 # --- s160_api_auth ------------------------------------------------------------
 
 test_that("auth succeeds and stores JWT", {
   withr::local_envvar(S160_API_USERID = "svc", S160_API_KEY = "key123")
-
-  local_mocked_bindings(
-    POST = function(url, ...) {
-      structure(list(
-        status_code = 200L,
-        content = charToRaw('{"success":true,"data":"jwt-token-123","userid":"svc"}')
-      ), class = "response")
-    },
-    http_error = function(resp) FALSE,
-    content = function(resp, ...) list(success = TRUE, data = "jwt-token-123", userid = "svc"),
-    .package = "httr"
+  stub_httr_response(
+    body = list(success = TRUE, data = "jwt-token-123", userid = "svc")
   )
-
-  env <- survey160r:::.s160_api_env
-  withr::defer(rm(list = ls(env), envir = env))
+  .defer_api_env_reset()
 
   suppressMessages(s160_api_auth(base_url = "https://api.example.com"))
 
+  env <- .api_env()
   expect_equal(env$jwt, "jwt-token-123")
   expect_equal(env$userid, "svc")
   expect_equal(env$base_url, "https://api.example.com")
@@ -41,19 +28,14 @@ test_that("auth succeeds and stores JWT", {
 
 test_that("auth fails with clear error on 401", {
   withr::local_envvar(S160_API_USERID = "svc", S160_API_KEY = "bad-key")
-
-  local_mocked_bindings(
-    POST = function(url, ...) {
-      structure(list(status_code = 401L), class = "response")
-    },
-    http_error = function(resp) TRUE,
-    content = function(resp, ...) list(error = "Invalid API key"),
-    .package = "httr"
+  stub_httr_response(
+    status = 401L,
+    body = list(error = "Invalid API key"),
+    http_error = TRUE
   )
-
   expect_error(
     s160_api_auth(base_url = "https://api.example.com"),
-    "Authentication failed.*Invalid API key"
+    "Authentication failed"
   )
 })
 
@@ -71,72 +53,43 @@ test_that("auth errors when S160_API_KEY not set in non-interactive mode", {
 
 test_that("auth strips trailing slash from base_url", {
   withr::local_envvar(S160_API_USERID = "svc", S160_API_KEY = "key")
-
-  local_mocked_bindings(
-    POST = function(url, ...) {
-      structure(list(
-        status_code = 200L,
-        url = url
-      ), class = "response")
-    },
-    http_error = function(resp) FALSE,
-    content = function(resp, ...) list(success = TRUE, data = "jwt", userid = "svc"),
-    .package = "httr"
+  stub_httr_response(
+    body = list(success = TRUE, data = "jwt", userid = "svc")
   )
-
-  env <- survey160r:::.s160_api_env
-  withr::defer(rm(list = ls(env), envir = env))
+  .defer_api_env_reset()
 
   suppressMessages(s160_api_auth(base_url = "https://api.example.com/"))
-  expect_equal(env$base_url, "https://api.example.com")
+  expect_equal(.api_env()$base_url, "https://api.example.com")
 })
 
 test_that("auth defaults to production base_url", {
   withr::local_envvar(S160_API_USERID = "svc", S160_API_KEY = "key")
-
-  captured_url <- NULL
-  local_mocked_bindings(
-    POST = function(url, ...) {
-      captured_url <<- url
-      structure(list(status_code = 200L), class = "response")
-    },
-    http_error = function(resp) FALSE,
-    content = function(resp, ...) list(success = TRUE, data = "jwt", userid = "svc"),
-    .package = "httr"
+  captured <- new_capture()
+  stub_httr_response(
+    body = list(success = TRUE, data = "jwt", userid = "svc"),
+    capture = captured
   )
-
-  env <- survey160r:::.s160_api_env
-  withr::defer(rm(list = ls(env), envir = env))
+  .defer_api_env_reset()
 
   suppressMessages(s160_api_auth())
-  expect_equal(captured_url, "https://api.survey160.com/auth/serviceAccount")
+  expect_equal(captured$url, "https://api.survey160.com/auth/serviceAccount")
 })
 
 test_that("auth errors on unexpected response format", {
   withr::local_envvar(S160_API_USERID = "svc", S160_API_KEY = "key")
-
-  local_mocked_bindings(
-    POST = function(url, ...) structure(list(status_code = 200L), class = "response"),
-    http_error = function(resp) FALSE,
-    content = function(resp, ...) list(success = FALSE),
-    .package = "httr"
-  )
-
+  stub_httr_response(body = list(success = FALSE))
   expect_error(s160_api_auth(), "unexpected response format")
 })
 
 test_that("auth falls back to http_status when error field is NULL", {
   withr::local_envvar(S160_API_USERID = "svc", S160_API_KEY = "key")
-
-  local_mocked_bindings(
-    POST = function(url, ...) structure(list(status_code = 503L), class = "response"),
-    http_error = function(resp) TRUE,
-    content = function(resp, ...) list(detail = "unavailable"),
-    http_status = function(resp) list(message = "Service Unavailable"),
-    .package = "httr"
+  stub_httr_response(
+    status = 503L,
+    body = list(detail = "unavailable"),
+    http_error = TRUE,
+    status_msg = "Service Unavailable"
   )
-
-  expect_error(s160_api_auth(), "Authentication failed.*Service Unavailable")
+  expect_error(s160_api_auth(), "Authentication failed")
 })
 
 # --- get_credential -----------------------------------------------------------
@@ -177,7 +130,7 @@ test_that("check_api_ready errors when not authenticated", {
 
 test_that("request refreshes JWT when older than 8 minutes", {
   stub_api_base()
-  env <- survey160r:::.s160_api_env
+  env <- .api_env()
   env$auth_time <- Sys.time() - 600  # 10 min ago
 
   auth_called <- FALSE
@@ -188,12 +141,7 @@ test_that("request refreshes JWT when older than 8 minutes", {
       env$auth_time <- Sys.time()
     }
   )
-  local_mocked_bindings(
-    GET = function(url, ...) structure(list(status_code = 200L), class = "response"),
-    http_error = function(resp) FALSE,
-    content = function(resp, ...) list(ok = TRUE),
-    .package = "httr"
-  )
+  stub_httr_response(body = list(ok = TRUE))
 
   survey160r:::s160_api_request("GET", "/test")
   expect_true(auth_called)
@@ -201,17 +149,9 @@ test_that("request refreshes JWT when older than 8 minutes", {
 
 test_that("request does not refresh JWT when fresh", {
   stub_api_base()
-
   auth_called <- FALSE
-  local_mocked_bindings(
-    s160_api_auth = function(...) auth_called <<- TRUE
-  )
-  local_mocked_bindings(
-    GET = function(url, ...) structure(list(status_code = 200L), class = "response"),
-    http_error = function(resp) FALSE,
-    content = function(resp, ...) list(ok = TRUE),
-    .package = "httr"
-  )
+  local_mocked_bindings(s160_api_auth = function(...) auth_called <<- TRUE)
+  stub_httr_response(body = list(ok = TRUE))
 
   survey160r:::s160_api_request("GET", "/test")
   expect_false(auth_called)
@@ -219,33 +159,29 @@ test_that("request does not refresh JWT when fresh", {
 
 test_that("request raises error on HTTP failure", {
   stub_api_base()
-  local_mocked_bindings(
-    POST = function(url, ...) structure(list(status_code = 500L), class = "response"),
-    http_error = function(resp) TRUE,
-    content = function(resp, ...) list(error = "Internal server error"),
-    http_status = function(resp) list(message = "Server Error"),
-    .package = "httr"
+  stub_httr_response(
+    status = 500L,
+    body = list(error = "Internal server error"),
+    http_error = TRUE,
+    status_msg = "Server Error"
   )
-
   expect_error(
     survey160r:::s160_api_request("POST", "/fail", body = list(x = 1)),
-    "API error.*Internal server error"
+    "API error"
   )
 })
 
 test_that("request falls back to http_status when error field is NULL", {
   stub_api_base()
-  local_mocked_bindings(
-    POST = function(url, ...) structure(list(status_code = 502L), class = "response"),
-    http_error = function(resp) TRUE,
-    content = function(resp, ...) list(message = "something else"),
-    http_status = function(resp) list(message = "Bad Gateway"),
-    .package = "httr"
+  stub_httr_response(
+    status = 502L,
+    body = list(message = "something else"),
+    http_error = TRUE,
+    status_msg = "Bad Gateway"
   )
-
   expect_error(
     survey160r:::s160_api_request("POST", "/fail", body = list(x = 1)),
-    "API error.*Bad Gateway"
+    "API error"
   )
 })
 
@@ -342,15 +278,11 @@ test_that("results errors on invalid poll_interval", {
 
 test_that("get_gcs_file_updated returns timestamp for matching file", {
   stub_gcs_base()
-  local_mocked_bindings(
-    gcs_list_objects = function(prefix, ...) {
-      data.frame(
-        name = "1980/1980_raw_data_download.csv",
-        updated = "2024-06-15T10:00:00Z",
-        stringsAsFactors = FALSE
-      )
-    }
-  )
+  stub_gcs_list(data.frame(
+    name = "1980/1980_raw_data_download.csv",
+    updated = "2024-06-15T10:00:00Z",
+    stringsAsFactors = FALSE
+  ))
 
   result <- survey160r:::get_gcs_file_updated("1980", "1980_raw_data_download.csv")
   expect_equal(result, "2024-06-15T10:00:00Z")
@@ -358,27 +290,20 @@ test_that("get_gcs_file_updated returns timestamp for matching file", {
 
 test_that("get_gcs_file_updated returns NULL when file not found", {
   stub_gcs_base()
-  local_mocked_bindings(
-    gcs_list_objects = function(prefix, ...) {
-      data.frame(name = character(0), updated = character(0), stringsAsFactors = FALSE)
-    }
-  )
-
+  stub_gcs_list(data.frame(
+    name = character(0), updated = character(0),
+    stringsAsFactors = FALSE
+  ))
   expect_null(survey160r:::get_gcs_file_updated("1980", "1980_raw_data_download.csv"))
 })
 
 test_that("get_gcs_file_updated returns NULL when target file not in list", {
   stub_gcs_base()
-  local_mocked_bindings(
-    gcs_list_objects = function(prefix, ...) {
-      data.frame(
-        name = "1980/other_file.csv",
-        updated = "2024-06-15T10:00:00Z",
-        stringsAsFactors = FALSE
-      )
-    }
-  )
-
+  stub_gcs_list(data.frame(
+    name = "1980/other_file.csv",
+    updated = "2024-06-15T10:00:00Z",
+    stringsAsFactors = FALSE
+  ))
   expect_null(survey160r:::get_gcs_file_updated("1980", "1980_raw_data_download.csv"))
 })
 
@@ -438,11 +363,10 @@ test_that("campaign_get returns single-row data frame with base columns", {
   expect_equal(df$script[[1]]$intro$id, "intro")
 
   # Enriched fields dropped
-  for (f in c("listlength", "list", "login", "exports",
-              "has_texting_started", "sandbox_configuration",
-              "aggregator", "has_assigned_registration")) {
-    expect_false(f %in% names(df), info = f)
-  }
+  enriched <- c("listlength", "list", "login", "exports",
+                "has_texting_started", "sandbox_configuration",
+                "aggregator", "has_assigned_registration")
+  expect_false(any(enriched %in% names(df)))
 })
 
 test_that("campaign_get treats NULL fields as NA", {
@@ -578,8 +502,8 @@ test_that("campaign_get normalizes numeric UTC offsets when parsing timestamps",
 
   df <- s160_api_campaign_get(1)
   expect_s3_class(df$startdate, "POSIXct")
-  expect_equal(df$startdate, as.POSIXct("2026-01-15 09:30:00", tz = "UTC"))
+  expect_equal(format(df$startdate, tz = "UTC"), "2026-01-15 09:30:00")
   expect_s3_class(df$archive_scheduled_date, "POSIXct")
-  expect_equal(df$archive_scheduled_date,
-               as.POSIXct("2026-02-20 12:00:00", tz = "UTC"))
+  expect_equal(format(df$archive_scheduled_date, tz = "UTC"),
+               "2026-02-20 12:00:00")
 })

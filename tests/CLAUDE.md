@@ -31,7 +31,7 @@ testthat::test_file("tests/testthat/test-latency_run.R")
 
 ## Mocking
 
-The suite uses `testthat::local_mocked_bindings()` (testthat 3.x) — never `mockery` for new code (`mockery` is a Suggests dep, used only in legacy spots).
+The suite uses `testthat::local_mocked_bindings()` (testthat 3.x) for almost everything. `mockery::stub` is retained in two `test-s160_gcs_init.R` spots where `local_mocked_bindings` can't reach: (1) `system.file` -- the base-namespace lookup happens before the rebind takes effect; (2) forcing `interactive() == TRUE` inside `covr::package_coverage()`'s non-interactive subprocess. `interactive() == FALSE` mocks via `local_mocked_bindings(.package = "base")` work fine elsewhere. New tests should always default to `local_mocked_bindings`.
 
 `local_mocked_bindings()` rebinds within the calling test's `local()` scope and auto-restores on exit. When wrapping it in a helper, **always pass `.env = parent.frame()`** so the mock applies in the caller's scope, not the helper's:
 
