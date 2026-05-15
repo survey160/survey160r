@@ -177,3 +177,157 @@ test_that("run_latency_all validates source_bucket and bucket", {
   expect_error(run_latency_all(source_bucket = c("a", "b"), bucket = "dst"),
                "source_bucket")
 })
+
+test_that("run_latency_all validates workers", {
+  expect_error(run_latency_all(source_bucket = "src", bucket = "dst",
+                               workers = 0),
+               "workers")
+  expect_error(run_latency_all(source_bucket = "src", bucket = "dst",
+                               workers = c(1, 2)),
+               "workers")
+  expect_error(run_latency_all(source_bucket = "src", bucket = "dst",
+                               workers = NA_integer_),
+               "workers")
+})
+
+test_that("run_latency_all errors when workers > 1 and future.apply missing", {
+  local_mocked_bindings(
+    requireNamespace = function(package, ...) {
+      if (identical(package, "future.apply")) FALSE else TRUE
+    },
+    .package = "base"
+  )
+  expect_error(
+    run_latency_all(source_bucket = "src", bucket = "dst",
+                    campaign_ids = c("1"), workers = 2),
+    "future.apply"
+  )
+})
+
+test_that("run_latency_all skips campaigns whose output is already current", {
+  ran <- character(0)
+  local_mocked_bindings(
+    s160_gcs_campaign_results_status = function(campaign_id, bucket = NULL) {
+      list(name = sprintf("%s_raw_data_download.csv", campaign_id),
+           updated = as.POSIXct("2026-01-01 00:00:00", tz = "UTC"),
+           size = 100)
+    },
+    s160_gcs_latency_output_status = function(campaign_id, bucket) {
+      if (campaign_id == "fresh") {
+        list(name = "latency/fresh_latency.parquet",
+             updated = as.POSIXct("2026-01-02 00:00:00", tz = "UTC"),
+             size = 50)
+      } else {
+        list(name = sprintf("latency/%s_latency.parquet", campaign_id),
+             updated = as.POSIXct("2025-12-25 00:00:00", tz = "UTC"),
+             size = 50)
+      }
+    },
+    run_latency = function(campaign_id, bucket, ...) {
+      ran <<- c(ran, as.character(campaign_id))
+      sprintf("gs://%s/latency/%s_latency.parquet", bucket, campaign_id)
+    }
+  )
+  out <- suppressMessages(run_latency_all(
+    source_bucket = "src", bucket = "dst",
+    campaign_ids = c("stale", "fresh"),
+    skip_unchanged = TRUE
+  ))
+  expect_equal(out$status, c("ok", "skipped"))
+  expect_equal(ran, "stale")
+  expect_equal(out$parquet_uri[2], "gs://dst/latency/fresh_latency.parquet")
+  expect_equal(out$elapsed_s[2], 0)
+})
+
+test_that("run_latency_all skip_unchanged runs campaigns missing source or dest", {
+  ran <- character(0)
+  local_mocked_bindings(
+    s160_gcs_campaign_results_status = function(campaign_id, bucket = NULL) {
+      if (campaign_id == "no_source") return(NULL)
+      list(name = "x.csv",
+           updated = as.POSIXct("2026-01-01", tz = "UTC"),
+           size = 1)
+    },
+    s160_gcs_latency_output_status = function(campaign_id, bucket) {
+      if (campaign_id == "no_dest") return(NULL)
+      list(name = "x.parquet",
+           updated = as.POSIXct("2026-01-01", tz = "UTC"),
+           size = 1)
+    },
+    run_latency = function(campaign_id, bucket, ...) {
+      ran <<- c(ran, as.character(campaign_id))
+      sprintf("gs://%s/latency/%s_latency.parquet", bucket, campaign_id)
+    }
+  )
+  out <- suppressMessages(run_latency_all(
+    source_bucket = "src", bucket = "dst",
+    campaign_ids = c("no_source", "no_dest"),
+    skip_unchanged = TRUE
+  ))
+  expect_equal(out$status, c("ok", "ok"))
+  expect_equal(sort(ran), c("no_dest", "no_source"))
+})
+
+test_that(".skip_unchanged_uri handles errors and unparseable timestamps", {
+  withr::local_envvar(c())  # noop, just to keep withr loaded for consistency
+  # Source listing errors -> NULL (process the campaign).
+  local_mocked_bindings(
+    s160_gcs_campaign_results_status = function(...) stop("transient 503"),
+    s160_gcs_latency_output_status = function(...) NULL
+  )
+  expect_null(.skip_unchanged_uri("1", "src", "dst"))
+
+  # Destination listing errors -> NULL.
+  local_mocked_bindings(
+    s160_gcs_campaign_results_status = function(...) {
+      list(name = "x",
+           updated = as.POSIXct("2026-01-01", tz = "UTC"), size = 1)
+    },
+    s160_gcs_latency_output_status = function(...) stop("403 forbidden")
+  )
+  expect_null(.skip_unchanged_uri("1", "src", "dst"))
+
+  # Both sides present but `updated` is unparseable.
+  local_mocked_bindings(
+    s160_gcs_campaign_results_status = function(...) {
+      list(name = "x", updated = "not-a-date", size = 1)
+    },
+    s160_gcs_latency_output_status = function(...) {
+      list(name = "y", updated = "also-bad", size = 1)
+    }
+  )
+  expect_null(.skip_unchanged_uri("1", "src", "dst"))
+
+  # Source has no `updated` field -> NULL.
+  local_mocked_bindings(
+    s160_gcs_campaign_results_status = function(...) {
+      list(name = "x", updated = NULL, size = 1)
+    },
+    s160_gcs_latency_output_status = function(...) {
+      list(name = "y",
+           updated = as.POSIXct("2026-01-01", tz = "UTC"), size = 1)
+    }
+  )
+  expect_null(.skip_unchanged_uri("1", "src", "dst"))
+})
+
+test_that("run_latency_all dispatches via future.apply when workers > 1", {
+  skip_if_not_installed("future.apply")
+  skip_if_not_installed("future")
+  future::plan(future::sequential)
+  on.exit(future::plan(future::sequential), add = TRUE)
+
+  local_mocked_bindings(
+    s160_gcs_campaign_results_list = function(bucket = NULL) c("p1", "p2"),
+    run_latency = function(campaign_id, bucket, ...) {
+      sprintf("gs://%s/latency/%s_latency.parquet", bucket, campaign_id)
+    }
+  )
+  out <- suppressMessages(run_latency_all(
+    source_bucket = "src", bucket = "dst", workers = 2
+  ))
+  expect_equal(out$status, c("ok", "ok"))
+  expect_equal(out$parquet_uri,
+               c("gs://dst/latency/p1_latency.parquet",
+                 "gs://dst/latency/p2_latency.parquet"))
+})

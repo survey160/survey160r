@@ -14,7 +14,9 @@ run_latency_all(
   respondent_id_column = NULL,
   run_by = "run_latency_all",
   uploader = upload_object,
-  continue_on_error = TRUE
+  continue_on_error = TRUE,
+  workers = 1L,
+  skip_unchanged = FALSE
 )
 }
 \arguments{
@@ -42,12 +44,26 @@ bucketing.}
 
 \item{continue_on_error}{Logical. \code{TRUE} (default) records the
 error and moves on; \code{FALSE} re-raises the first error.}
+
+\item{workers}{Integer >= 1. \code{1L} (default) processes campaigns
+serially. Values > 1 dispatch the per-campaign work via
+\code{future.apply::future_lapply()}, which must be installed.
+The caller is responsible for setting up the future plan; the most
+common choice for local runs is \code{future::plan(future::multisession,
+workers = N)}.}
+
+\item{skip_unchanged}{Logical. \code{FALSE} (default) reprocesses every
+campaign. \code{TRUE} compares the source CSV's GCS \code{updated}
+timestamp against the existing destination Parquet's \code{updated}
+timestamp and skips campaigns whose output is at least as new as the
+source. Skipped campaigns appear in the result with \code{status =
+"skipped"} and the existing \code{parquet_uri}.}
 }
 \value{
 A data frame with one row per attempted campaign:
-  \code{campaign_id}, \code{status} (\code{"ok"} / \code{"failed"}),
-  \code{parquet_uri} (NA on failure), \code{error_message} (NA on
-  success), \code{elapsed_s}.
+  \code{campaign_id}, \code{status} (\code{"ok"} / \code{"failed"} /
+  \code{"skipped"}), \code{parquet_uri} (NA on failure), \code{error_message}
+  (NA on success and skip), \code{elapsed_s}.
 }
 \description{
 Discovers every campaign with an export CSV under \code{source_bucket} via
