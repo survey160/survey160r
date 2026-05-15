@@ -1,5 +1,21 @@
 # survey160r (development version)
 
+## New features
+
+* `run_latency_all()` gains a `workers` argument that dispatches per-campaign
+  work via `future.apply::future_lapply()` when greater than 1, allowing
+  fleet passes to process campaigns in parallel. Callers set up the future
+  plan (e.g. `future::plan(future::multisession, workers = 4)`) themselves
+  (SUR-1305).
+* `run_latency_all()` gains a `skip_unchanged` argument. When `TRUE`, each
+  campaign's source CSV `updated` timestamp is compared against the existing
+  destination Parquet's `updated` timestamp and campaigns whose output is
+  already current are reported with `status = "skipped"` and the existing
+  `parquet_uri` without re-downloading or re-emitting (SUR-1305).
+* New exported helper `s160_gcs_latency_output_status()` returns GCS
+  metadata for a campaign's existing latency Parquet output, or `NULL` if
+  none exists (SUR-1305).
+
 ## Breaking changes
 
 * The consolidated Parquet now carries **two grains** in one file: hour

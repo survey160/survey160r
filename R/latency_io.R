@@ -192,6 +192,47 @@ upload_object <- function(local_path, object_name, bucket, metadata) { # nocov s
   invisible(NULL)
 } # nocov end
 
+#' GCS metadata for a campaign's latency Parquet output
+#'
+#' Returns object metadata (\code{name}, \code{updated}, \code{size}) for
+#' \code{gs://<bucket>/latency/<campaign_id>_latency.parquet}, or \code{NULL}
+#' if no such object exists. Used by \code{run_latency_all(skip_unchanged =
+#' TRUE)} to decide whether a campaign's existing output is newer than its
+#' source CSV.
+#'
+#' @param campaign_id Campaign id (numeric or character).
+#' @param bucket Destination GCS bucket containing the latency output.
+#' @return Named list with \code{name}, \code{updated} (POSIXct), and
+#'   \code{size}, or \code{NULL}.
+#' @importFrom googleCloudStorageR gcs_list_objects
+#' @export
+s160_gcs_latency_output_status <- function(campaign_id, bucket) {
+  campaign_id <- as.character(campaign_id)
+  if (!is.character(bucket) || length(bucket) != 1L ||
+        !nzchar(trimws(bucket))) {
+    stop("bucket must be a non-empty string.", call. = FALSE)
+  }
+  object_name <- .latency_object_path(campaign_id)
+  # List the `latency/` folder rather than passing the full object name as a
+  # prefix: prefix-matching would also return `<name>.bak` / `<name>v2`
+  # variants, and the parent listing is the same one-round-trip cost.
+  objects <- tryCatch(
+    gcs_list_objects(prefix = "latency/", bucket = bucket),
+    error = function(e) {
+      stop(sprintf("Failed to list latency output for %s: %s",
+                   campaign_id, conditionMessage(e)), call. = FALSE)
+    }
+  )
+  if (nrow(objects) == 0) return(NULL)
+  match_idx <- which(objects$name == object_name)
+  if (length(match_idx) == 0) return(NULL)
+  list(
+    name = object_name,
+    updated = objects$updated[match_idx[1]],
+    size = objects$size[match_idx[1]]
+  )
+}
+
 #' Read latency Parquet output from GCS via DuckDB
 #'
 #' Returns a DuckDB connection and a view name (\code{latency}) over
