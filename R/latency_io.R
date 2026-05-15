@@ -213,8 +213,11 @@ s160_gcs_latency_output_status <- function(campaign_id, bucket) {
     stop("bucket must be a non-empty string.", call. = FALSE)
   }
   object_name <- .latency_object_path(campaign_id)
+  # List the `latency/` folder rather than passing the full object name as a
+  # prefix: prefix-matching would also return `<name>.bak` / `<name>v2`
+  # variants, and the parent listing is the same one-round-trip cost.
   objects <- tryCatch(
-    gcs_list_objects(prefix = object_name, bucket = bucket),
+    gcs_list_objects(prefix = "latency/", bucket = bucket),
     error = function(e) {
       stop(sprintf("Failed to list latency output for %s: %s",
                    campaign_id, conditionMessage(e)), call. = FALSE)

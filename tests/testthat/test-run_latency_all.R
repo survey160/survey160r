@@ -269,7 +269,6 @@ test_that("run_latency_all skip_unchanged runs campaigns missing source or dest"
 })
 
 test_that(".skip_unchanged_uri handles errors and unparseable timestamps", {
-  withr::local_envvar(c())  # noop, just to keep withr loaded for consistency
   # Source listing errors -> NULL (process the campaign).
   local_mocked_bindings(
     s160_gcs_campaign_results_status = function(...) stop("transient 503"),
@@ -314,8 +313,8 @@ test_that(".skip_unchanged_uri handles errors and unparseable timestamps", {
 test_that("run_latency_all dispatches via future.apply when workers > 1", {
   skip_if_not_installed("future.apply")
   skip_if_not_installed("future")
-  future::plan(future::sequential)
-  on.exit(future::plan(future::sequential), add = TRUE)
+  old_plan <- future::plan(future::sequential)
+  on.exit(future::plan(old_plan), add = TRUE)
 
   local_mocked_bindings(
     s160_gcs_campaign_results_list = function(bucket = NULL) c("p1", "p2"),

@@ -50,14 +50,20 @@ serially. Values > 1 dispatch the per-campaign work via
 \code{future.apply::future_lapply()}, which must be installed.
 The caller is responsible for setting up the future plan; the most
 common choice for local runs is \code{future::plan(future::multisession,
-workers = N)}.}
+workers = N)}. With \code{multisession}, each worker re-uses the
+cached gargle OAuth token from disk on its first GCS call; the
+session-global bucket set by \code{s160_gcs_init()} is not propagated
+to workers, which is harmless here because every read and write threads
+\code{bucket}/\code{source_bucket} explicitly.}
 
 \item{skip_unchanged}{Logical. \code{FALSE} (default) reprocesses every
 campaign. \code{TRUE} compares the source CSV's GCS \code{updated}
 timestamp against the existing destination Parquet's \code{updated}
 timestamp and skips campaigns whose output is at least as new as the
 source. Skipped campaigns appear in the result with \code{status =
-"skipped"} and the existing \code{parquet_uri}.}
+"skipped"} and the existing \code{parquet_uri}. The comparison is made
+once at dispatch time; concurrent uploads of the source CSV during the
+run are not detected.}
 }
 \value{
 A data frame with one row per attempted campaign:
