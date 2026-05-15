@@ -349,6 +349,69 @@ s160_gcs_campaign_results_list <- function(bucket = NULL) {
   sort(campaign_ids)
 }
 
+#' Read campaign CSV from GCS for latency analysis
+#'
+#' Thin wrapper over \code{s160_gcs_campaign_results_read} that also computes
+#' a sha256 of the downloaded CSV bytes for provenance. The hash travels back
+#' on the returned object as the \code{source_csv_hash} attribute.
+#'
+#' @param campaign_id Campaign id (numeric or character).
+#' @param filename Optional override for the CSV filename.
+#' @param bucket Source GCS bucket. \code{NULL} (default) falls back to the
+#'   global bucket set by \code{s160_gcs_init()}; pass an explicit value to
+#'   skip the global entirely.
+#' @return A data frame with attributes \code{source_csv_hash} and
+#'   \code{source_csv_path} set.
+#' @export
+pull_csv_from_gcs <- function(campaign_id, filename = NULL, bucket = NULL) {
+  bucket <- resolve_bucket(bucket)
+  tmpdir <- tempfile(pattern = "s160_latency_")
+  dir.create(tmpdir)
+  on.exit(unlink(tmpdir, recursive = TRUE), add = TRUE)
+  data <- s160_gcs_campaign_results_read(
+    campaign_id = campaign_id,
+    filename = filename,
+    destdir = tmpdir,
+    bucket = bucket
+  )
+  fn <- if (is.null(filename)) {
+    paste0(as.character(campaign_id), "_raw_data_download.csv")
+  } else {
+    filename
+  }
+  csv_path <- file.path(tmpdir, fn)
+  attr(data, "source_csv_hash") <- if (file.exists(csv_path)) {
+    paste0("sha256:", digest::digest(file = csv_path, algo = "sha256"))
+  } else {
+    NA_character_
+  }
+  # Canonical GCS source path (not the local temp path, which is unlinked on
+  # return). Lets downstream callers record provenance without re-deriving
+  # the path from campaign_id + filename.
+  attr(data, "source_csv_path") <-
+    sprintf("gs://%s/%s/%s", bucket, as.character(campaign_id), fn)
+  data
+}
+
+# Upload a local file to GCS at <bucket>/<object_name> via googleCloudStorageR.
+# `metadata` is set as object metadata for human inspection in the GCS console.
+# Used as the default `uploader` for write_to_gcs(). Marked # nocov because it
+# is a thin wrapper around a real network call; tests mock at the
+# write_to_gcs(uploader=) seam instead (see test-latency_io.R).
+upload_object <- function(local_path, object_name, bucket, metadata) { # nocov start
+  googleCloudStorageR::gcs_upload(
+    file = local_path,
+    bucket = bucket,
+    name = object_name,
+    object_metadata = googleCloudStorageR::gcs_metadata_object(
+      object_name = object_name,
+      metadata = metadata
+    ),
+    predefinedAcl = "bucketLevel"
+  )
+  invisible(NULL)
+} # nocov end
+
 #' Check campaign results export status
 #'
 #' Returns GCS file metadata for the campaign's export file without

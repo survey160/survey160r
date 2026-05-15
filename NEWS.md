@@ -1,5 +1,14 @@
 # survey160r (development version)
 
+## Internal
+
+* Moved `pull_csv_from_gcs()` and the internal `upload_object()` helper from
+  `R/latency_io.R` to `R/s160_gcs.R`, where they sit next to the other GCS
+  client functions. The latency layer (`R/latency_*.R`) is now provably
+  independent of `googleCloudStorageR` and the `s160_gcs_*` helpers, paving
+  the way for a future package split. No exported-API or behaviour change
+  (SUR-1305).
+
 ## Breaking changes
 
 * `run_latency()` no longer takes a `config_path` argument. The function is
