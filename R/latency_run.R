@@ -28,9 +28,6 @@
 #'   \code{hour_local} columns. Default \code{"UTC"}.
 #' @param project_id Optional Survey160 project id; defaults to the
 #'   campaign id (placeholder, see Details).
-#' @param texting_windows Optional list of \code{{date, start_hour, end_hour}}
-#'   windows for the spec's out-of-window filtering. Default \code{list()}
-#'   means "all-in-window" (no filtering).
 #' @param date_filter Optional character/Date vector restricting which
 #'   survey dates are processed (in \code{field_timezone}).
 #' @param respondent_id_column Optional column name used to dedupe rows by
@@ -55,7 +52,6 @@ run_latency <- function(campaign_id, bucket,
                         source_bucket = NULL,
                         field_timezone = "UTC",
                         project_id = NULL,
-                        texting_windows = list(),
                         date_filter = NULL,
                         respondent_id_column = NULL,
                         run_by = NULL,
@@ -67,7 +63,6 @@ run_latency <- function(campaign_id, bucket,
     campaign_id, data,
     field_timezone = field_timezone,
     project_id = project_id,
-    texting_windows = texting_windows,
     date_filter = date_filter,
     respondent_id_column = respondent_id_column
   )
@@ -93,10 +88,10 @@ run_latency <- function(campaign_id, bucket,
 #' Reads and writes use explicit \code{bucket} arguments throughout, so this
 #' function never touches the session-global GCS bucket.
 #'
-#' All override arguments (\code{field_timezone}, \code{texting_windows},
-#' \code{date_filter}, \code{respondent_id_column}) apply uniformly to
-#' every campaign. \code{project_id} is always set to \code{campaign_id}
-#' (placeholder) -- callers needing per-campaign project ids should iterate
+#' All override arguments (\code{field_timezone}, \code{date_filter},
+#' \code{respondent_id_column}) apply uniformly to every campaign.
+#' \code{project_id} is always set to \code{campaign_id} (placeholder) --
+#' callers needing per-campaign project ids should iterate
 #' \code{run_latency()} themselves with their own mapping.
 #'
 #' @param source_bucket Source GCS bucket containing per-campaign CSV exports
@@ -109,7 +104,7 @@ run_latency <- function(campaign_id, bucket,
 #' @param field_timezone Forwarded to \code{run_latency()}. Default
 #'   \code{"UTC"}; pass \code{"America/New_York"} to match historical fleet
 #'   bucketing.
-#' @param texting_windows,date_filter,respondent_id_column Forwarded to
+#' @param date_filter,respondent_id_column Forwarded to
 #'   \code{run_latency()}.
 #' @param run_by Forwarded to \code{run_latency()}. Default
 #'   \code{"run_latency_all"}.
@@ -135,7 +130,6 @@ run_latency <- function(campaign_id, bucket,
 run_latency_all <- function(source_bucket, bucket,
                             campaign_ids = NULL,
                             field_timezone = "UTC",
-                            texting_windows = list(),
                             date_filter = NULL,
                             respondent_id_column = NULL,
                             run_by = "run_latency_all",
@@ -166,7 +160,7 @@ run_latency_all <- function(source_bucket, bucket,
     cid <- campaign_ids[[i]]
     message(sprintf("[%d/%d] %s", i, length(campaign_ids), cid))
     results[[i]] <- .run_one_campaign(
-      cid, source_bucket, bucket, field_timezone, texting_windows,
+      cid, source_bucket, bucket, field_timezone,
       date_filter, respondent_id_column, run_by, fleet_run_at, uploader,
       continue_on_error
     )
@@ -177,9 +171,8 @@ run_latency_all <- function(source_bucket, bucket,
 # Single-campaign worker for run_latency_all(). Extracted to keep the outer
 # function's cyclomatic complexity under the linter threshold.
 .run_one_campaign <- function(cid, source_bucket, bucket, field_timezone,
-                              texting_windows, date_filter,
-                              respondent_id_column, run_by, run_at, uploader,
-                              continue_on_error) {
+                              date_filter, respondent_id_column, run_by,
+                              run_at, uploader, continue_on_error) {
   t0 <- Sys.time()
   path <- tryCatch(
     run_latency(
@@ -187,7 +180,6 @@ run_latency_all <- function(source_bucket, bucket,
       bucket = bucket,
       source_bucket = source_bucket,
       field_timezone = field_timezone,
-      texting_windows = texting_windows,
       date_filter = date_filter,
       respondent_id_column = respondent_id_column,
       run_by = run_by,

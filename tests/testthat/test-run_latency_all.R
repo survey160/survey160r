@@ -35,14 +35,12 @@ test_that("run_latency_all forwards overrides to run_latency", {
   local_mocked_bindings(
     s160_gcs_campaign_results_list = function(bucket = NULL) c("42"),
     run_latency = function(campaign_id, bucket, source_bucket = NULL,
-                           field_timezone, texting_windows,
-                           date_filter, respondent_id_column, run_by,
-                           uploader, ...) {
+                           field_timezone, date_filter,
+                           respondent_id_column, run_by, uploader, ...) {
       captured$args <- list(
         campaign_id = campaign_id, bucket = bucket,
         source_bucket = source_bucket,
         field_timezone = field_timezone,
-        texting_windows = texting_windows,
         date_filter = date_filter,
         respondent_id_column = respondent_id_column,
         run_by = run_by
@@ -55,8 +53,6 @@ test_that("run_latency_all forwards overrides to run_latency", {
     source_bucket = "campaign_results",
     bucket = "dst",
     field_timezone = "America/New_York",
-    texting_windows = list(list(date = "2026-01-26",
-                                start_hour = 16, end_hour = 24)),
     date_filter = "2026-01-26",
     respondent_id_column = "userid",
     run_by = "custom_label"
@@ -68,7 +64,6 @@ test_that("run_latency_all forwards overrides to run_latency", {
   expect_equal(captured$args$date_filter, "2026-01-26")
   expect_equal(captured$args$respondent_id_column, "userid")
   expect_equal(captured$args$run_by, "custom_label")
-  expect_equal(length(captured$args$texting_windows), 1L)
 })
 
 test_that("run_latency_all continues past per-campaign failures by default", {

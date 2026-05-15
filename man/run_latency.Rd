@@ -10,7 +10,6 @@ run_latency(
   source_bucket = NULL,
   field_timezone = "UTC",
   project_id = NULL,
-  texting_windows = list(),
   date_filter = NULL,
   respondent_id_column = NULL,
   run_by = NULL,
@@ -32,10 +31,6 @@ run_latency(
 
 \item{project_id}{Optional Survey160 project id; defaults to the
 campaign id (placeholder, see Details).}
-
-\item{texting_windows}{Optional list of \code{{date, start_hour, end_hour}}
-windows for the spec's out-of-window filtering. Default \code{list()}
-means "all-in-window" (no filtering).}
 
 \item{date_filter}{Optional character/Date vector restricting which
 survey dates are processed (in \code{field_timezone}).}
