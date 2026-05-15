@@ -318,6 +318,7 @@ test_that("run_latency_all dispatches via future.apply when workers > 1", {
 
   local_mocked_bindings(
     s160_gcs_campaign_results_list = function(bucket = NULL) c("p1", "p2"),
+    .ensure_worker_gcs_auth = function(parent_oauth) NULL,
     run_latency = function(campaign_id, bucket, ...) {
       sprintf("gs://%s/latency/%s_latency.parquet", bucket, campaign_id)
     }

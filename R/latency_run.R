@@ -187,7 +187,17 @@ run_latency_all <- function(source_bucket, bucket,
 
   run_idx <- which(needs_run)
   if (length(run_idx) > 0L) {
+    # Capture the parent's OAuth client options. Multisession workers start
+    # with empty options() and no gargle auth state; we re-establish both
+    # inside the worker so the cached token on disk is honored. The session
+    # global bucket is intentionally NOT propagated -- every read and write
+    # below threads `bucket`/`source_bucket` explicitly.
+    parent_oauth <- list(
+      client_id = getOption("googleAuthR.client_id"),
+      client_secret = getOption("googleAuthR.client_secret")
+    )
     runner <- function(i) {
+      if (workers > 1L) .ensure_worker_gcs_auth(parent_oauth)
       cid <- campaign_ids[[i]]
       message(sprintf("[%d/%d] %s", i, n, cid))
       .run_one_campaign(
@@ -197,7 +207,13 @@ run_latency_all <- function(source_bucket, bucket,
       )
     }
     run_results <- if (workers > 1L) {
-      future.apply::future_lapply(run_idx, runner, future.seed = TRUE)
+      # Workers spawned by multisession futures start fresh and need our
+      # package loaded so `.run_one_campaign` and the downstream pipeline
+      # helpers are resolvable. Bypassed harmlessly under `sequential`.
+      future.apply::future_lapply(
+        run_idx, runner, future.seed = TRUE,
+        future.packages = "survey160r"
+      )
     } else {
       lapply(run_idx, runner)
     }
@@ -208,6 +224,21 @@ run_latency_all <- function(source_bucket, bucket,
 
   do.call(rbind, results)
 }
+
+# Re-establish gargle auth state inside a future worker so cached OAuth
+# tokens on disk are picked up. Idempotent. Silent on success. Marked
+# # nocov because exercising it requires a real multisession worker; the
+# behavior is integration-tested by scripts/smoke_SUR-1305.R.
+.ensure_worker_gcs_auth <- function(parent_oauth) { # nocov start
+  if (!is.null(parent_oauth$client_id)) {
+    options(googleAuthR.client_id = parent_oauth$client_id)
+  }
+  if (!is.null(parent_oauth$client_secret)) {
+    options(googleAuthR.client_secret = parent_oauth$client_secret)
+  }
+  suppressMessages(googleCloudStorageR::gcs_auth(email = TRUE))
+  invisible(NULL)
+} # nocov end
 
 # Validate the three argument shapes that gate everything else. Returns the
 # coerced workers value; raises with a stable message on any failure.
