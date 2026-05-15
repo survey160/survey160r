@@ -100,6 +100,55 @@ load_synthetic_data <- function(
   d
 }
 
+# Load the 8-question parity fixture used by test-latency_parity_legacy.R.
+# Six respondents, one day, designed so each cascade bucket has exactly one
+# respondent. Returns a plain data frame (no GCS attrs) -- the parity tests
+# call latency_report() directly.
+load_synthetic_parity <- function() {
+  read.csv(testthat::test_path("fixtures/synthetic_parity.csv"),
+           stringsAsFactors = FALSE)
+}
+
+# Load the cross-hour rollup fixture used by test-day_rollup_equivalence.R.
+load_synthetic_cross_hour <- function() {
+  read.csv(testthat::test_path("fixtures/synthetic_cross_hour.csv"),
+           stringsAsFactors = FALSE)
+}
+
+# Build a minimal valid Survey160 v2 data frame matching `questions`.
+# The terminal question has only a scriptDate (no batchDate), matching the
+# real export convention. `with_rows = FALSE` returns a column-only frame
+# (useful for latency_build_config tests that only inspect column names).
+minimal_synthetic_data <- function(questions = c("intro", "q1", "close"),
+                                   with_rows = TRUE) {
+  cols <- c("campaignid", "userid", "id.intro.finalText")
+  terminal <- questions[length(questions)]
+  for (q in questions) {
+    cols <- c(cols, sprintf("id.%s.scriptDate", q))
+    if (q != terminal) cols <- c(cols, sprintf("id.%s.batchDate", q))
+  }
+  if (!with_rows) {
+    return(setNames(
+      as.data.frame(matrix(NA, nrow = 0, ncol = length(cols)),
+                    stringsAsFactors = FALSE),
+      cols
+    ))
+  }
+  values <- list(campaignid = 1L, userid = "r1", id.intro.finalText = "Yes")
+  base <- as.POSIXct("2026-01-26 21:00:00", tz = "UTC")
+  for (i in seq_along(questions)) {
+    q <- questions[i]
+    values[[sprintf("id.%s.scriptDate", q)]] <-
+      paste0(format(base + (i - 1) * 30, "%Y-%m-%d %H:%M:%OS6", tz = "UTC"), "Z")
+    if (q != terminal) {
+      values[[sprintf("id.%s.batchDate", q)]] <-
+        paste0(format(base + (i - 1) * 30 + 5, "%Y-%m-%d %H:%M:%OS6",
+                      tz = "UTC"), "Z")
+    }
+  }
+  as.data.frame(values, stringsAsFactors = FALSE)
+}
+
 # Stub pull_csv_from_gcs to return `data`. Captures `pull_id` and
 # `pull_bucket` into `capture` when supplied.
 stub_pull_csv <- function(data, capture = NULL, env = parent.frame()) {

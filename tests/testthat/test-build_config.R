@@ -31,12 +31,7 @@ test_that("discover_questions ignores non-scriptDate columns and dedupes", {
 })
 
 .make_data <- function() {
-  cols <- c("campaignid", "userid", "id.intro.finalText",
-            "id.intro.scriptDate", "id.intro.batchDate",
-            "id.q1.scriptDate", "id.q1.batchDate",
-            "id.close.scriptDate")
-  setNames(as.data.frame(matrix(NA, nrow = 0, ncol = length(cols)),
-                         stringsAsFactors = FALSE), cols)
+  minimal_synthetic_data(with_rows = FALSE)
 }
 
 test_that("build_config applies stateless defaults", {
