@@ -58,13 +58,7 @@ build_latency_frame <- function(data, config, parse_failed_mask = NULL) {
     parse_fail_row <- segment_parse_fail_mask(
       parse_failed_mask, batch_prior_col, script_next_col, n
     )
-    is_na_post <- is.na(delta)
-    na_reason <- rep(NA_character_, n)
-    na_reason[is_na_post & parse_fail_row] <- "parse_failure"
-    na_reason[is_na_post & !parse_fail_row & is.na(delta_pre)] <-
-      "missing_endpoint"
-    na_reason[is_na_post & !parse_fail_row & !is.na(delta_pre)] <-
-      "chain_break"
+    na_reason <- classify_na_reason(delta, delta_pre, parse_fail_row)
 
     segments[[i]] <- data.frame(
       respondent_index = resp_idx,
@@ -81,6 +75,23 @@ build_latency_frame <- function(data, config, parse_failed_mask = NULL) {
   frame <- do.call(rbind, segments)
   attr(frame, "n_clamped") <- total_clamped
   frame
+}
+
+# Classify why a segment's Δ is NA. Precedence (most actionable first):
+#   parse_failure   -- an endpoint string was non-blank but unparseable.
+#   missing_endpoint-- an endpoint was blank/NA before chain validity ran
+#                      (i.e. delta_pre is already NA from compute_segment_delta).
+#   chain_break     -- this segment's own endpoints parsed cleanly, but a
+#                      strictly-prior batchDate was NA, so apply_chain_validity
+#                      invalidated the segment.
+# Returns NA_character_ on rows where delta is valid.
+classify_na_reason <- function(delta, delta_pre, parse_fail_row) {
+  is_na_post <- is.na(delta)
+  out <- rep(NA_character_, length(delta))
+  out[is_na_post & parse_fail_row] <- "parse_failure"
+  out[is_na_post & !parse_fail_row & is.na(delta_pre)] <- "missing_endpoint"
+  out[is_na_post & !parse_fail_row & !is.na(delta_pre)] <- "chain_break"
+  out
 }
 
 # OR-combine the parse-fail masks for a segment's two endpoint columns.

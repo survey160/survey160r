@@ -29,10 +29,14 @@ R client for Survey160 data. Reads campaign results from Google Cloud Storage, t
 
 ## Workflow
 
-- Branch: `SUR-XXXX-kebab-case-title` off `main`.
+- Branch: `SUR-XXXX-kebab-case-title` off `main`, created as a git worktree at `../survey160r-SUR-XXXX-<slug>/` (sibling of this repo). The worktree convention keeps `main` checked out in the primary path for quick diff/log reads without disturbing in-flight work.
 - Commit prefix: `SUR-XXXX`, single line, no body.
 - PR target: `main` (no QA branch in this repo).
 - Releases are documented in `RELEASING.md`. Distribution is R-universe (auto-rebuild from `main`); tags are historical anchors only.
+
+## Verifying changes
+
+After any change under `R/`, run `make verify` -- it loads the package once and runs `testthat::test_package()` + `lintr::lint_package()` + `covr::package_coverage()` in a single R session. Prefer this over ad-hoc `Rscript -e '...'` calls; it is the canonical pre-commit gate and is ~3x faster than three cold R startups. For a heavier release-time gate, `make check` runs the full `R CMD check`.
 
 ## Reference
 

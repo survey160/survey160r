@@ -22,6 +22,21 @@
   out
 }
 
+# Parse a character vector of Survey160 CSV timestamp strings to POSIXct (UTC).
+# Strips a trailing 'Z' first, then tries `.timestamp_orders` in turn. Blank
+# and NA inputs return NA; unparseable non-blank inputs also return NA --
+# callers that want a parse-failure mask should compare `nzchar(strip_z(...))`
+# against `is.na(result)`. Used by parse_timestamps() (per-column with
+# diagnostics) and the config validators (one-shot parsing, no diagnostics).
+parse_s160_timestamps_chr <- function(chr) {
+  suppressWarnings(lubridate::parse_date_time(
+    .strip_z(as.character(chr)),
+    orders = .timestamp_orders,
+    tz = "UTC",
+    quiet = TRUE
+  ))
+}
+
 # Replace empty strings with NA on character columns. Mirrors the legacy
 # `na_if(., "")` step so downstream parsers see NA, not "".
 na_if_blank <- function(data) {
@@ -63,14 +78,7 @@ parse_timestamps <- function(data, cols) {
     nonblank <- !is.na(raw_chr) & nzchar(raw_chr)
     parsed <- rep(as.POSIXct(NA), length(raw_chr))
     if (any(nonblank)) {
-      parsed[nonblank] <- suppressWarnings(
-        lubridate::parse_date_time(
-          raw_chr[nonblank],
-          orders = .timestamp_orders,
-          tz = "UTC",
-          quiet = TRUE
-        )
-      )
+      parsed[nonblank] <- parse_s160_timestamps_chr(raw_chr[nonblank])
     }
     col_fail <- nonblank & is.na(parsed)
     failures[[col]] <- sum(col_fail)
@@ -78,6 +86,17 @@ parse_timestamps <- function(data, cols) {
     data[[col]] <- parsed
   }
   list(data = data, parse_failures = failures, parse_failed_mask = fail_mask)
+}
+
+# Row-subset a (data, parse_failed_mask) pair in lockstep. Used by
+# latency_report() after dedupe and date_filter so the per-segment mask
+# stays aligned with `data` row-for-row. Pure: returns a new pair, does
+# not mutate.
+subset_parsed_input <- function(data, parse_failed_mask, keep_idx) {
+  list(
+    data = data[keep_idx, , drop = FALSE],
+    parse_failed_mask = lapply(parse_failed_mask, function(m) m[keep_idx])
+  )
 }
 
 # Δ in minutes between batch_prior and script_next. Negative values clamped to

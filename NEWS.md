@@ -47,6 +47,24 @@
   `latency_build_config()`, `run_latency()`, and `run_latency_all()`
   no longer accept a `texting_windows` argument (SUR-1304).
 
+## Internal
+
+* Moved `pull_csv_from_gcs()` and the internal `upload_object()` helper from
+  `R/latency_io.R` to `R/s160_gcs.R`, where they sit next to the other GCS
+  client functions. The latency layer (`R/latency_*.R`) is now provably
+  independent of `googleCloudStorageR` and the `s160_gcs_*` helpers, paving
+  the way for a future package split. No exported-API or behaviour change
+  (SUR-1305).
+* Cleanup pass on the latency internals: unified Survey160 CSV timestamp
+  parsing behind `parse_s160_timestamps_chr()`, added a `safe_pct()` helper
+  for the "percent of X, NA if denominator is zero" pattern, encapsulated
+  the data + parse-failed-mask plumbing behind `subset_parsed_input()`,
+  extracted `classify_na_reason()` from the segment loop, and split
+  `aggregate_consolidated()` into per-aggregation helpers
+  (`aggregate_totals()`, `aggregate_worst_cascade()`,
+  `aggregate_segment_cells()`, `assemble_consolidated()`). Numeric output
+  is unchanged; the refactor only reshapes the call graph (SUR-1305).
+
 # survey160r 0.8.0
 
 ## Breaking changes

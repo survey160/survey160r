@@ -1,33 +1,67 @@
 # Aggregation of the per-respondent x per-segment frame to the consolidated
 # Parquet table. Cells are always at the hour grain:
 # (campaign_id, date, hour_local, segment, threshold_min). Downstream
-# consumers roll up to day at query time when needed.
+# consumers (and latency_report()'s day-rollup pass) get day-grain rows by
+# nulling hour_local on the input frame before calling.
+#
+# Orchestrator: aggregate_consolidated()
+# Pieces:
+#   aggregate_totals()         -- per-bucket distinct respondent count
+#   aggregate_worst_cascade()  -- per-threshold respondent worst-Δ cascade
+#   aggregate_segment_cells()  -- per-(bucket, segment, threshold) cell rows
+#   assemble_consolidated()    -- joins, schema-shaped data.frame, sort
+
+# Grouping keys used by every aggregation in this file. Kept as a single
+# vector so a future column addition (e.g. operator_id) only edits one place.
+.bucket_keys <- c("campaign_id", "date", "hour_local")
+
+# 100 * num / denom, or NA when denom is missing or non-positive. The pattern
+# shows up everywhere a "percent of X" column is built; centralised so the
+# zero-denominator NA convention can't drift between cells, cascade, and
+# diagnostics.
+safe_pct <- function(num, denom) {
+  ifelse(!is.na(denom) & denom > 0, 100 * num / denom, NA_real_)
+}
 
 aggregate_consolidated <- function(frame, config, cfg_hash, run_at,
                                    src_csv_hash = NA_character_) {
-  thresholds <- UNIVERSAL_THRESHOLDS_MIN
   project_id <- as.integer(config$project_id)
-
   if (nrow(frame) == 0) {
     return(empty_consolidated(project_id, cfg_hash, run_at))
   }
 
+  thresholds <- UNIVERSAL_THRESHOLDS_MIN
   bucketed <- frame
   bucketed$date <- bucketed$segment_date_local
 
-  # Total respondents per (campaign_id, date, hour_local) -- denominator for
-  # pct_resp_hit_gt. Defined as distinct respondent_index appearing in any
-  # segment for that bucket key (matches "all in-wave respondents" per spec).
-  totals <- dplyr::summarise(
+  totals <- aggregate_totals(bucketed)
+  cascade <- aggregate_worst_cascade(bucketed, thresholds)
+  cells <- aggregate_segment_cells(bucketed, thresholds)
+
+  assemble_consolidated(cells, totals, cascade,
+                        project_id = project_id,
+                        cfg_hash = cfg_hash,
+                        run_at = run_at,
+                        src_csv_hash = src_csv_hash)
+}
+
+# Total respondents per bucket -- the denominator for pct_resp_hit_gt.
+# Defined as distinct respondent_index appearing in *any* segment for the
+# bucket key (matches "all in-wave respondents" per spec).
+aggregate_totals <- function(bucketed) {
+  dplyr::summarise(
     dplyr::group_by(bucketed, .data$campaign_id, .data$date, .data$hour_local),
     .total_resp = dplyr::n_distinct(.data$respondent_index),
     .groups = "drop"
   )
+}
 
-  # Per-respondent worst Δ across all segments, per (campaign, date, hour).
-  # Drives the n_respondents and pct_resp_worst_gt columns -- the wave-level
-  # "respondent latency cascade" the historical reports show.
-  worst_by_respondent <- dplyr::summarise(
+# Per-bucket respondent latency cascade: for each threshold, how many
+# respondents had at least one valid Δ in the bucket and what fraction of
+# those had a *worst* Δ exceeding the threshold. This is the wave-level
+# view the historical reports show.
+aggregate_worst_cascade <- function(bucketed, thresholds) {
+  worst <- dplyr::summarise(
     dplyr::group_by(
       dplyr::filter(bucketed, !is.na(.data$delta_min)),
       .data$campaign_id, .data$date, .data$hour_local,
@@ -36,74 +70,78 @@ aggregate_consolidated <- function(frame, config, cfg_hash, run_at,
     worst_delta = suppressWarnings(max(.data$delta_min, na.rm = TRUE)),
     .groups = "drop"
   )
-  # Drop respondents whose worst is non-finite (no valid Δ at all in this
-  # bucket -- shouldn't happen given the filter above, but guards against
-  # edge cases where dplyr emits -Inf).
-  worst_by_respondent <- worst_by_respondent[
-    is.finite(worst_by_respondent$worst_delta), , drop = FALSE]
-  cascade_rows <- list()
-  for (t in thresholds) {
-    chunk <- dplyr::summarise(
-      dplyr::group_by(worst_by_respondent,
-                      .data$campaign_id, .data$date, .data$hour_local),
-      n_respondents = dplyr::n(),
-      n_worst_over = sum(.data$worst_delta > t),
-      .groups = "drop"
-    )
-    chunk$threshold_min <- as.integer(t)
-    chunk$pct_resp_worst_gt <- ifelse(
-      chunk$n_respondents > 0,
-      100 * chunk$n_worst_over / chunk$n_respondents,
-      NA_real_
-    )
-    cascade_rows[[length(cascade_rows) + 1L]] <-
-      chunk[, c("campaign_id", "date", "hour_local", "threshold_min",
-                "n_respondents", "pct_resp_worst_gt")]
-  }
-  cascade <- do.call(rbind, cascade_rows)
+  # Drop respondents whose worst is non-finite. Shouldn't happen given the
+  # filter above, but guards against dplyr edge cases that emit -Inf.
+  worst <- worst[is.finite(worst$worst_delta), , drop = FALSE]
 
-  rows <- list()
-  for (t in thresholds) {
-    cells <- dplyr::summarise(
-      dplyr::group_by(
-        bucketed,
-        .data$campaign_id, .data$date, .data$hour_local,
-        .data$segment, .data$segment_index
-      ),
-      n = sum(!is.na(.data$delta_min)),
-      pct_le = ifelse(
-        sum(!is.na(.data$delta_min)) > 0,
-        100 * mean(.data$delta_min[!is.na(.data$delta_min)] <= t),
-        NA_real_
-      ),
-      n_resp_over = dplyr::n_distinct(
-        .data$respondent_index[!is.na(.data$delta_min) & .data$delta_min > t]
-      ),
-      .groups = "drop"
-    )
-    cells$threshold_min <- as.integer(t)
-    rows[[length(rows) + 1L]] <- cells
-  }
-  combined <- do.call(rbind, rows)
-  joined <- dplyr::left_join(
-    combined, totals,
-    by = c("campaign_id", "date", "hour_local")
+  chunks <- lapply(thresholds, function(t) cascade_chunk(worst, t))
+  do.call(rbind, chunks)
+}
+
+# Single-threshold cascade row builder. Extracted so aggregate_worst_cascade
+# is purely the lapply skeleton + rbind.
+cascade_chunk <- function(worst, t) {
+  chunk <- dplyr::summarise(
+    dplyr::group_by(worst, .data$campaign_id, .data$date, .data$hour_local),
+    n_respondents = dplyr::n(),
+    n_worst_over = sum(.data$worst_delta > t),
+    .groups = "drop"
   )
+  chunk$threshold_min <- as.integer(t)
+  chunk$pct_resp_worst_gt <- safe_pct(chunk$n_worst_over, chunk$n_respondents)
+  chunk[, c(.bucket_keys, "threshold_min", "n_respondents",
+            "pct_resp_worst_gt")]
+}
+
+# Per-(bucket, segment, threshold) cell rows. n is the valid-Δ count for the
+# cell; pct_le and n_resp_over are derived from the same set.
+aggregate_segment_cells <- function(bucketed, thresholds) {
+  rows <- lapply(thresholds, function(t) segment_cells_chunk(bucketed, t))
+  do.call(rbind, rows)
+}
+
+segment_cells_chunk <- function(bucketed, t) {
+  cells <- dplyr::summarise(
+    dplyr::group_by(
+      bucketed,
+      .data$campaign_id, .data$date, .data$hour_local,
+      .data$segment, .data$segment_index
+    ),
+    n = sum(!is.na(.data$delta_min)),
+    n_le = sum(!is.na(.data$delta_min) & .data$delta_min <= t),
+    n_resp_over = dplyr::n_distinct(
+      .data$respondent_index[!is.na(.data$delta_min) & .data$delta_min > t]
+    ),
+    .groups = "drop"
+  )
+  cells$threshold_min <- as.integer(t)
+  cells$pct_le <- safe_pct(cells$n_le, cells$n)
+  cells
+}
+
+# Join the three aggregations, stamp provenance, coerce to the final schema
+# order, and sort. Returns the data.frame written to Parquet.
+assemble_consolidated <- function(cells, totals, cascade,
+                                  project_id, cfg_hash, run_at,
+                                  src_csv_hash) {
+  joined <- dplyr::left_join(cells, totals, by = .bucket_keys)
+  # pct_resp_hit_gt is gated on `n > 0` (the cell has at least one valid
+  # Δ). safe_pct() handles the denominator side; we still need the explicit
+  # `joined$n > 0` mask layered on top so cells with no valid endpoints
+  # don't report a percentage built from cross-segment cascade rollups.
   joined$pct_resp_hit_gt <- ifelse(
-    !is.na(joined$.total_resp) & joined$.total_resp > 0 & joined$n > 0,
-    100 * joined$n_resp_over / joined$.total_resp,
+    joined$n > 0,
+    safe_pct(joined$n_resp_over, joined$.total_resp),
     NA_real_
   )
   # Cascade left-join can produce NA n_respondents / pct_resp_worst_gt for
-  # a (campaign, date, hour_local) bucket where *every* segment was NA
-  # (parse failure, chain break, or missing endpoint) so worst_by_respondent
-  # has no row for it. The Arrow schema permits int32 NA so this round-trips
-  # cleanly; downstream consumers should treat NA cascade columns as
-  # "no respondent had any valid Δ in this bucket."
-  joined <- dplyr::left_join(
-    joined, cascade,
-    by = c("campaign_id", "date", "hour_local", "threshold_min")
-  )
+  # a bucket where *every* segment was NA (parse failure, chain break, or
+  # missing endpoint) so the worst-by-respondent step has no row for it.
+  # The Arrow schema permits int32 NA so this round-trips cleanly;
+  # downstream consumers should treat NA cascade columns as "no respondent
+  # had any valid Δ in this bucket."
+  joined <- dplyr::left_join(joined, cascade,
+                             by = c(.bucket_keys, "threshold_min"))
 
   out <- data.frame(
     campaign_id = as.integer(joined$campaign_id),
