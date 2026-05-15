@@ -10,10 +10,6 @@
     filters = list(
       population = 'id.intro.finalText == "Yes"',
       campaign_id_column = "campaignid"
-    ),
-    reports = list(time_bucket = "day"),
-    texting_windows = list(
-      list(date = "2026-01-26", start_hour = 16, end_hour = 24)
     )
   )
   modifyList(base, overrides)
@@ -32,14 +28,6 @@
     stringsAsFactors = FALSE
   )
 }
-
-test_that("validate_config rejects a config that still carries thresholds", {
-  d <- .minimal_data()
-  cfg <- .minimal_config(list(reports = list(time_bucket = "day",
-                                              thresholds = c(1, 3, 5, 10))))
-  expect_error(latency_validate_config(cfg, d),
-               "fleet-locked")
-})
 
 test_that("validate_config accepts a minimal valid config", {
   expect_invisible(latency_validate_config(.minimal_config(), .minimal_data()))
@@ -82,15 +70,6 @@ test_that("validate_config rejects empty / single-question / dup / terminal flow
   )
 })
 
-test_that("validate_config rejects bad time_bucket", {
-  d <- .minimal_data()
-  expect_error(
-    latency_validate_config(.minimal_config(
-      list(reports = list(time_bucket = "weekly"))), d),
-    "'day' or 'hour'"
-  )
-})
-
 test_that("validate_config rejects missing required columns", {
   d <- .minimal_data()
   d$id.q1.batchDate <- NULL
@@ -107,18 +86,6 @@ test_that("validate_config rejects mis-ordered flow (script before batch)", {
   d$id.close.scriptDate <- "2026-01-26 20:01:00.000000Z"
   expect_error(latency_validate_config(.minimal_config(), d),
                "Flow order check failed")
-})
-
-test_that("validate_config rejects texting_windows that miss survey dates", {
-  d <- .minimal_data()
-  d$id.intro.scriptDate <- "2026-02-01 21:00:00.000000Z"
-  expect_error(latency_validate_config(.minimal_config(), d),
-               "texting_windows do not cover")
-})
-
-test_that("validate_config allows empty texting_windows (all-in-window)", {
-  cfg <- .minimal_config(list(texting_windows = list()))
-  expect_invisible(latency_validate_config(cfg, .minimal_data()))
 })
 
 test_that("config_hash is stable across canonically-equal configs", {

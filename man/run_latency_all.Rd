@@ -9,7 +9,6 @@ run_latency_all(
   bucket,
   campaign_ids = NULL,
   field_timezone = "UTC",
-  texting_windows = list(),
   date_filter = NULL,
   respondent_id_column = NULL,
   run_by = "run_latency_all",
@@ -34,7 +33,7 @@ process. \code{NULL} (default) processes every campaign found in
 \code{"UTC"}; pass \code{"America/New_York"} to match historical fleet
 bucketing.}
 
-\item{texting_windows, date_filter, respondent_id_column}{Forwarded to
+\item{date_filter, respondent_id_column}{Forwarded to
 \code{run_latency()}.}
 
 \item{run_by}{Forwarded to \code{run_latency()}. Default
@@ -82,10 +81,10 @@ not block the rest of the fleet.
 Reads and writes use explicit \code{bucket} arguments throughout, so this
 function never touches the session-global GCS bucket.
 
-All override arguments (\code{field_timezone}, \code{texting_windows},
-\code{date_filter}, \code{respondent_id_column}) apply uniformly to
-every campaign. \code{project_id} is always set to \code{campaign_id}
-(placeholder) -- callers needing per-campaign project ids should iterate
+All override arguments (\code{field_timezone}, \code{date_filter},
+\code{respondent_id_column}) apply uniformly to every campaign.
+\code{project_id} is always set to \code{campaign_id} (placeholder) --
+callers needing per-campaign project ids should iterate
 \code{run_latency()} themselves with their own mapping.
 }
 \examples{

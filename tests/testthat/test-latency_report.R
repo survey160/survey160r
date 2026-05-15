@@ -39,54 +39,104 @@ test_that("latency_report drops respondents excluded by population_filter", {
   expect_equal(result$diagnostics$n_respondents_in, 3L)
 })
 
-test_that("latency_report consolidated rows match hand-derived expectations", {
+test_that("latency_report consolidated has hour and day rollup rows", {
   fx <- .load_synthetic()
   result <- latency_report(fx$data, fx$config)
   cons <- result$consolidated
 
-  expect_equal(nrow(cons), 3 * 4)  # 3 segments x 4 universal thresholds
+  # Fixture: 3 respondents (r1, r2, r3) with intro.batchDate at distinct
+  # UTC hours that map to 3 distinct ET hours (the configured field_tz).
+  # Hour-grain rows: 3 hours x 3 segments x 4 thresholds = 36.
+  # Day-rollup rows: 1 date x 3 segments x 4 thresholds = 12.
+  # Total = 48. r3 (UTC 20:00 -> ET 15:00) is out of texting window 16-24.
+  expect_equal(nrow(cons), 36L + 12L)
+
+  hour_rows <- cons[!is.na(cons$hour_local), ]
+  day_rows  <- cons[is.na(cons$hour_local), ]
+  expect_equal(nrow(hour_rows), 36L)
+  expect_equal(nrow(day_rows), 12L)
+
   expect_setequal(unique(cons$segment),
                   c("intro→q1", "q1→q2", "q2→close"))
   expect_setequal(unique(cons$threshold_min), c(1L, 3L, 5L, 10L))
-  expect_true(all(is.na(cons$hour_local)))  # day bucket
+  expect_setequal(unique(hour_rows$hour_local), c(15L, 16L, 17L))
   expect_equal(unique(as.character(cons$date)), "2026-01-26")
   expect_equal(unique(cons$campaign_id), 1L)
   expect_equal(unique(cons$project_id), 1L)
   expect_equal(unique(cons$algorithm_version), "2.0.0")
 
-  # In-window n is 2 for every segment (r1 and r2 in window; r3 out).
-  expect_true(all(cons$n == 2L))
+  # n per hour cell is 1 (the single respondent in that hour). All three
+  # respondents now count -- there's no texting-window exclusion.
+  expect_true(all(hour_rows$n == 1L))
 
-  # Pull specific cells.
-  intro_q1_t1 <- cons[cons$segment == "intro→q1" & cons$threshold_min == 1L, ]
-  expect_equal(intro_q1_t1$pct_le, 100)
-  expect_equal(intro_q1_t1$pct_resp_hit_gt, 0)
+  # pct_le per single-respondent hour cell.
+  r2_q1q2_t1 <- hour_rows[hour_rows$segment == "q1→q2" &
+                            hour_rows$threshold_min == 1L &
+                            hour_rows$hour_local == 17L, ]
+  expect_equal(r2_q1q2_t1$pct_le, 0)         # r2's q1->q2 is 4 min > 1 min
+  r2_q1q2_t5 <- hour_rows[hour_rows$segment == "q1→q2" &
+                            hour_rows$threshold_min == 5L &
+                            hour_rows$hour_local == 17L, ]
+  expect_equal(r2_q1q2_t5$pct_le, 100)       # 4 min <= 5 min
 
-  q1_q2_t1 <- cons[cons$segment == "q1→q2" & cons$threshold_min == 1L, ]
-  expect_equal(q1_q2_t1$pct_le, 50)
-  expect_equal(round(q1_q2_t1$pct_resp_hit_gt, 4), round(100 / 3, 4))
-
-  q1_q2_t5 <- cons[cons$segment == "q1→q2" & cons$threshold_min == 5L, ]
-  expect_equal(q1_q2_t5$pct_le, 100)
-  expect_equal(q1_q2_t5$pct_resp_hit_gt, 0)
+  # Day rollup row: n is sum of hour cells (3 = r1 + r2 + r3). pct_le for
+  # q1->q2 at threshold 1 is 2/3 (r1 0.5 min, r3 ~ms, r2 4 min).
+  day_q1q2_t1 <- day_rows[day_rows$segment == "q1→q2" &
+                            day_rows$threshold_min == 1L, ]
+  expect_equal(day_q1q2_t1$n, 3L)
+  expect_equal(round(day_q1q2_t1$pct_le, 4), round(200 / 3, 4))
 })
 
-test_that("cascade columns are present and consistent", {
+test_that("hour-rollup of pct_le matches the day rows in the same output", {
   fx <- .load_synthetic()
   result <- latency_report(fx$data, fx$config)
   cons <- result$consolidated
+  hour_rows <- cons[!is.na(cons$hour_local), ]
+  day_rows  <- cons[is.na(cons$hour_local), ]
 
-  # All three respondents have at least one valid Δ on this date.
-  # n_respondents is constant across (campaign, date, hour_local).
-  expect_equal(unique(cons$n_respondents), 3L)
+  rolled <- dplyr::summarise(
+    dplyr::group_by(hour_rows, .data$segment, .data$threshold_min),
+    pct_le_rolled = ifelse(sum(.data$n) > 0,
+                           sum(.data$pct_le * .data$n, na.rm = TRUE) /
+                             sum(.data$n),
+                           NA_real_),
+    n_rolled = sum(.data$n),
+    .groups = "drop"
+  )
+  merged <- merge(
+    day_rows[, c("segment", "threshold_min", "n", "pct_le")],
+    rolled,
+    by = c("segment", "threshold_min")
+  )
+  expect_equal(merged$n, merged$n_rolled, tolerance = 0)
+  expect_equal(merged$pct_le, merged$pct_le_rolled, tolerance = 1e-9)
+})
 
-  # The 5-bucket cascade derives from pct_resp_worst_gt by subtraction.
-  worst <- unique(cons[, c("threshold_min", "pct_resp_worst_gt")])
-  worst <- worst[order(worst$threshold_min), ]
-  # r1 worst Δ = 0.5, r2 worst Δ = 4 (q1→q2 segment), r3 worst Δ = 0.5.
-  # So pct with worst > 1 = 1/3 (r2), > 3 = 1/3, > 5 = 0, > 10 = 0.
-  expect_equal(round(worst$pct_resp_worst_gt, 4),
-               round(c(100 / 3, 100 / 3, 0, 0), 4))
+test_that("cascade columns are present and per-hour-respondent", {
+  fx <- .load_synthetic()
+  result <- latency_report(fx$data, fx$config)
+  cons <- result$consolidated
+  hour_rows <- cons[!is.na(cons$hour_local), ]
+  day_rows  <- cons[is.na(cons$hour_local), ]
+
+  # Hour grain: each of the 3 in-fixture respondents occupies a distinct
+  # hour, so each hour bucket has exactly one respondent.
+  expect_equal(unique(hour_rows$n_respondents), 1L)
+  # Day rollup carries the wave-level distinct count: all 3 respondents.
+  expect_equal(unique(day_rows$n_respondents), 3L)
+
+  # Hour 17 (r2, worst delta = 4 min): pct_resp_worst_gt > 0 for
+  # thresholds 1 and 3; 0 for 5 and 10.
+  h17 <- unique(hour_rows[hour_rows$hour_local == 17L,
+                     c("threshold_min", "pct_resp_worst_gt")])
+  h17 <- h17[order(h17$threshold_min), ]
+  expect_equal(h17$pct_resp_worst_gt, c(100, 100, 0, 0))
+
+  # Hour 15 (r3): r3's worst delta is 0.5 min, so pct_resp_worst_gt is 0
+  # at every threshold.
+  h15 <- unique(hour_rows[hour_rows$hour_local == 15L,
+                     c("threshold_min", "pct_resp_worst_gt")])
+  expect_true(all(h15$pct_resp_worst_gt == 0))
 })
 
 test_that("latency_report dedupes by respondent_id keeping earliest intro", {
@@ -111,12 +161,15 @@ test_that("latency_report emits an empty consolidated when no respondents pass f
   expect_equal(result$diagnostics$n_respondents_in, 0L)
 })
 
-test_that("latency_report supports hour-bucketed output", {
+test_that("latency_report emits both hour rows (0-23) and a day rollup row (NA) per cell", {
   fx <- .load_synthetic()
-  cfg <- fx$config
-  cfg$reports$time_bucket <- "hour"
-  result <- latency_report(fx$data, cfg)
-  expect_false(all(is.na(result$consolidated$hour_local)))
+  cons <- latency_report(fx$data, fx$config)$consolidated
+  expect_true(any(!is.na(cons$hour_local)),
+              info = "expect at least one hour row")
+  expect_true(any(is.na(cons$hour_local)),
+              info = "expect at least one day rollup row")
+  # Hour rows carry integer 0-23; day rows carry NA.
+  expect_true(all(cons$hour_local[!is.na(cons$hour_local)] %in% 0:23))
 })
 
 test_that("latency_report's date_filter restricts to listed dates", {

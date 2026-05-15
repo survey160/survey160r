@@ -18,6 +18,39 @@
 
 ## Breaking changes
 
+* The consolidated Parquet now carries **two grains** in one file: hour
+  rows (one per `(campaign_id, date, hour_local, segment, threshold_min)`
+  with `hour_local` 0-23) for time-of-day analysis, plus day rollup rows
+  (`hour_local = NA`) carrying correct day-grain `n`, `pct_le`, and
+  respondent-cascade columns. Downstream consumers filter on
+  `hour_local IS NULL` for day rollups, `hour_local IS NOT NULL` for
+  time-of-day; both are arithmetically correct without any further
+  rollup. The `time_bucket` config knob and the `reports` config slot
+  are removed -- `latency_build_config()` no longer accepts a
+  `time_bucket` argument, and `validate_config()` rejects `reports` as
+  an unknown key. Existing Parquets in `gs://s160_analytics_*/latency/`
+  (which carried only one grain) must be regenerated via
+  `run_latency_all()` (SUR-1304).
+* Note for naive aggregators: summing the hour rows' `n_respondents`
+  over-counts cross-hour respondents (a respondent active in two hours
+  appears in both hours' distinct-respondent counts). Always read the
+  day rollup row (`hour_local IS NULL`) for correct day-grain cascade;
+  do not attempt to recompute it by aggregating the hour rows.
+* The `texting_windows` config field is removed. The algorithm no longer
+  filters dispatches by an analyst-declared texting plan; `n` and
+  `pct_le` now count every valid dispatch. The pre-removal feature
+  excluded out-of-window dispatches from the in-window denominator;
+  with the cube schema introduced in this release downstream consumers
+  can see which hours had high volume directly from the hour rows.
+  Diagnostics field `n_out_of_window_dropped` and
+  `windows_normalized_utc` are dropped along with the feature.
+  `latency_build_config()`, `run_latency()`, and `run_latency_all()`
+  no longer accept a `texting_windows` argument (SUR-1304).
+
+# survey160r 0.8.0
+
+## Breaking changes
+
 * `run_latency()` no longer takes a `config_path` argument. The function is
   now stateless: it derives `flow.questions` from the CSV header (via the
   new `discover_questions()`) and assembles the rest of the config from its

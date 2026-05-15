@@ -3,7 +3,7 @@
 
 # Build the diagnostics list per spec §3.3.
 build_diagnostics <- function(frame, n_respondents_in, parse_failures,
-                              windows_df, field_tz, config_hash) {
+                              config_hash) {
   n_clamped <- attr(frame, "n_clamped") %||% 0L
   if (nrow(frame) == 0) {
     return(list(
@@ -16,9 +16,7 @@ build_diagnostics <- function(frame, n_respondents_in, parse_failures,
                                      missing_endpoint = 0L,
                                      chain_break = 0L),
       n_negative_latencies_clamped = n_clamped,
-      n_out_of_window_dropped = 0L,
       parse_failures_per_column = parse_failures,
-      windows_normalized_utc = windows_to_utc(windows_df, field_tz),
       config_hash = config_hash,
       algorithm_version = .algorithm_version,
       respondent_summary = list(
@@ -40,7 +38,6 @@ build_diagnostics <- function(frame, n_respondents_in, parse_failures,
   no_valid <- total_resp_observed - used
   total_segments <- nrow(frame)
   na_segments <- sum(is.na(frame$delta_min))
-  out_of_window <- sum(!is.na(frame$delta_min) & frame$in_window == 0L)
 
   worst <- by_resp$max_delta
   worst[!is.finite(worst)] <- NA_real_
@@ -61,9 +58,7 @@ build_diagnostics <- function(frame, n_respondents_in, parse_failures,
       chain_break = sum(frame$na_reason == "chain_break", na.rm = TRUE)
     ),
     n_negative_latencies_clamped = n_clamped,
-    n_out_of_window_dropped = out_of_window,
     parse_failures_per_column = parse_failures,
-    windows_normalized_utc = windows_to_utc(windows_df, field_tz),
     config_hash = config_hash,
     algorithm_version = .algorithm_version,
     respondent_summary = list(
@@ -73,17 +68,4 @@ build_diagnostics <- function(frame, n_respondents_in, parse_failures,
       pct_worst_over_10 = pct_over_10
     )
   )
-}
-
-windows_to_utc <- function(windows_df, field_tz) {
-  if (is.null(windows_df) || nrow(windows_df) == 0) {
-    return(data.frame(start_utc = as.POSIXct(character(0), tz = "UTC"),
-                      end_utc = as.POSIXct(character(0), tz = "UTC")))
-  }
-  midnights <- as.POSIXct(format(windows_df$date), tz = field_tz)
-  start_local <- midnights + windows_df$start_hour * 3600
-  end_local <- midnights + windows_df$end_hour * 3600
-  attr(start_local, "tzone") <- "UTC"
-  attr(end_local, "tzone") <- "UTC"
-  data.frame(start_utc = start_local, end_utc = end_local)
 }

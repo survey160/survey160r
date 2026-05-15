@@ -1,12 +1,12 @@
 # Per-respondent x per-segment frame construction (spec §2.2).
-# Pure functions, no I/O. Inputs are filtered+parsed data plus the config
-# and texting-window frame; output is the long latency_frame consumed by
-# aggregate_consolidated() and build_diagnostics().
+# Pure functions, no I/O. Inputs are filtered+parsed data plus the config;
+# output is the long latency_frame consumed by aggregate_consolidated() and
+# build_diagnostics().
 
 # Build the long (respondent x segment) data.frame: one row per
-# (respondent_index, segment) with delta, in_window flag, segment_date_local,
-# hour_local, campaign_id, and na_reason (NA when delta_min is valid;
-# otherwise "parse_failure" | "missing_endpoint" | "chain_break").
+# (respondent_index, segment) with delta, segment_date_local, hour_local,
+# campaign_id, and na_reason (NA when delta_min is valid; otherwise
+# "parse_failure" | "missing_endpoint" | "chain_break").
 #
 # Classification precedence (most actionable first):
 #   parse_failure   -- at least one endpoint cell was non-blank but the
@@ -17,8 +17,7 @@
 #   chain_break     -- both endpoints parsed cleanly, but a prior batchDate
 #                      in the chain was NA so apply_chain_validity invalidated
 #                      this segment.
-build_latency_frame <- function(data, config, windows_df,
-                                parse_failed_mask = NULL) {
+build_latency_frame <- function(data, config, parse_failed_mask = NULL) {
   questions <- config$flow$questions
   field_tz <- config$field_timezone
   campaign_col <- config$filters$campaign_id_column
@@ -53,9 +52,6 @@ build_latency_frame <- function(data, config, windows_df,
     delta <- apply_chain_validity(delta_pre, chain_priors)
     chain_priors <- c(chain_priors, list(batch_prior))
 
-    in_window <- in_window_flag(batch_prior, windows_df, field_tz)
-    in_window[is.na(batch_prior)] <- 0L
-
     seg_date_local <- as.Date(format(batch_prior, tz = field_tz))
     hour_local <- as.integer(format(batch_prior, format = "%H", tz = field_tz))
 
@@ -76,7 +72,6 @@ build_latency_frame <- function(data, config, windows_df,
       segment = sprintf("%s\u2192%s", q_prior, q_next),
       segment_index = i,
       delta_min = delta,
-      in_window = in_window,
       segment_date_local = seg_date_local,
       hour_local = hour_local,
       na_reason = na_reason,
@@ -108,7 +103,6 @@ empty_latency_frame <- function() {
     segment = character(0),
     segment_index = integer(0),
     delta_min = numeric(0),
-    in_window = integer(0),
     segment_date_local = as.Date(character(0)),
     hour_local = integer(0),
     na_reason = character(0),
