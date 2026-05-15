@@ -1,69 +1,32 @@
-# Helper: write csv content and return its file size
-write_csv_size <- function(content, path) {
-  writeLines(content, path)
-  file.info(path)$size
-}
+# Coverage for R/s160_gcs.R download_with_verify(). Tests fall into two
+# groups: single-attempt behavior (uses stub_gcs_download_ok) and retry
+# behavior (needs per-attempt logic, kept inline).
 
 test_that("download succeeds when file size matches GCS metadata", {
-  csv_content <- c("a,b", "1,2")
   tmp <- tempfile(fileext = ".csv")
   on.exit(unlink(tmp), add = TRUE)
-  expected_size <- write_csv_size(csv_content, tmp)
+  stub_gcs_download_ok(name_override = "100/data.csv")
 
-  local_mocked_bindings(
-    gcs_list_objects = function(prefix, ...) {
-      data.frame(name = "100/data.csv", size = expected_size, stringsAsFactors = FALSE)
-    },
-    gcs_get_object = function(object_name, saveToDisk, ...) { # nolint object_name_linter
-      writeLines(csv_content, saveToDisk)
-      TRUE
-    }
-  )
-
-  result <- download_with_verify("100/data.csv", tmp)
+  download_with_verify("100/data.csv", tmp)
   expect_true(file.exists(tmp))
 })
 
-test_that("download retries on size mismatch then fails", {
-  tmp <- tempfile(fileext = ".csv")
-  on.exit(unlink(tmp), add = TRUE)
-  attempt_count <- 0L
-
-  mockery::stub(download_with_verify, "Sys.sleep", function(...) NULL)
-  local_mocked_bindings(
-    gcs_list_objects = function(prefix, ...) {
-      data.frame(name = "100/data.csv", size = 999999, stringsAsFactors = FALSE)
-    },
-    gcs_get_object = function(object_name, saveToDisk, ...) { # nolint object_name_linter
-      attempt_count <<- attempt_count + 1L
-      writeLines("a,b", saveToDisk)
-      TRUE
-    }
-  )
-
-  expect_error(
-    suppressMessages(download_with_verify("100/data.csv", tmp, max_retries = 1L)),
-    "Download incomplete"
-  )
-  expect_equal(attempt_count, 2L)  # initial + 1 retry
-})
-
 test_that("download skips verification when metadata unavailable", {
-  csv_content <- c("a,b", "1,2")
   tmp <- tempfile(fileext = ".csv")
   on.exit(unlink(tmp), add = TRUE)
-
+  # Empty listing -> verification skipped.
   local_mocked_bindings(
-    gcs_list_objects = function(prefix, ...) {
-      data.frame(name = character(0), size = numeric(0), stringsAsFactors = FALSE)
+    gcs_list_objects = function(prefix = NULL, ...) {
+      data.frame(name = character(0), size = numeric(0),
+                 stringsAsFactors = FALSE)
     },
     gcs_get_object = function(object_name, saveToDisk, ...) { # nolint object_name_linter
-      writeLines(csv_content, saveToDisk)
+      writeLines(c("a,b", "1,2"), saveToDisk)
       TRUE
     }
   )
 
-  result <- download_with_verify("100/data.csv", tmp)
+  download_with_verify("100/data.csv", tmp)
   expect_true(file.exists(tmp))
 })
 
@@ -71,52 +34,32 @@ test_that("download skips verification when gcs_list_objects returns a formatted
   # Real googleCloudStorageR returns `size` as a human-readable string like
   # "483.3 Kb"; as.numeric() yields NA. Treat as "unknown size" and skip the
   # comparison rather than crashing the if(NA) compare.
-  csv_content <- c("a,b", "1,2")
   tmp <- tempfile(fileext = ".csv")
   on.exit(unlink(tmp), add = TRUE)
-
-  local_mocked_bindings(
-    gcs_list_objects = function(prefix, ...) {
-      data.frame(name = "100/data.csv", size = "483.3 Kb",
-                 stringsAsFactors = FALSE)
-    },
-    gcs_get_object = function(object_name, saveToDisk, ...) { # nolint object_name_linter
-      writeLines(csv_content, saveToDisk)
-      TRUE
-    }
+  stub_gcs_download_ok(
+    name_override = "100/data.csv",
+    size_override = "483.3 Kb"
   )
 
-  result <- download_with_verify("100/data.csv", tmp)
+  download_with_verify("100/data.csv", tmp)
   expect_true(file.exists(tmp))
 })
 
 test_that("download skips verification when gcs_list_objects errors", {
-  csv_content <- c("a,b", "1,2")
   tmp <- tempfile(fileext = ".csv")
   on.exit(unlink(tmp), add = TRUE)
+  stub_gcs_download_ok(fail_list = "403 Forbidden")
 
-  local_mocked_bindings(
-    gcs_list_objects = function(prefix, ...) stop("403 Forbidden"),
-    gcs_get_object = function(object_name, saveToDisk, ...) { # nolint object_name_linter
-      writeLines(csv_content, saveToDisk)
-      TRUE
-    }
-  )
-
-  result <- download_with_verify("100/data.csv", tmp)
+  download_with_verify("100/data.csv", tmp)
   expect_true(file.exists(tmp))
 })
 
 test_that("download errors when file not written to disk", {
   tmp <- tempfile(fileext = ".csv")
-
-  local_mocked_bindings(
-    gcs_list_objects = function(prefix, ...) {
-      data.frame(name = "100/data.csv", size = 100, stringsAsFactors = FALSE)
-    },
-    gcs_get_object = function(object_name, saveToDisk, ...) { # nolint object_name_linter
-      TRUE  # does not write a file
-    }
+  stub_gcs_download_ok(
+    name_override = "100/data.csv",
+    size_override = 100,
+    skip_write = TRUE
   )
 
   expect_error(
@@ -125,24 +68,84 @@ test_that("download errors when file not written to disk", {
   )
 })
 
+# --- retry behavior -------------------------------------------------------
+# Per-attempt logic doesn't fit a generic helper; kept inline. Sys.sleep is
+# mocked via local_mocked_bindings so tests don't actually sleep.
+
+test_that("download with max_retries = 0 fails on the first mismatch without retrying", {
+  tmp <- tempfile(fileext = ".csv")
+  on.exit(unlink(tmp), add = TRUE)
+  attempts <- 0L
+
+  local_mocked_bindings(Sys.sleep = function(...) NULL, .package = "base")
+  local_mocked_bindings(
+    gcs_list_objects = function(prefix, ...) {
+      data.frame(name = "100/data.csv", size = 999999L,
+                 stringsAsFactors = FALSE)
+    },
+    gcs_get_object = function(object_name, saveToDisk, ...) { # nolint object_name_linter
+      attempts <<- attempts + 1L
+      writeLines("x", saveToDisk)
+      TRUE
+    }
+  )
+
+  expect_error(
+    suppressMessages(download_with_verify("100/data.csv", tmp,
+                                          max_retries = 0L)),
+    "Download incomplete after 1 attempts"
+  )
+  expect_equal(attempts, 1L)
+})
+
+test_that("download retries on size mismatch then fails", {
+  tmp <- tempfile(fileext = ".csv")
+  on.exit(unlink(tmp), add = TRUE)
+  attempts <- 0L
+
+  local_mocked_bindings(Sys.sleep = function(...) NULL, .package = "base")
+  local_mocked_bindings(
+    gcs_list_objects = function(prefix, ...) {
+      data.frame(name = "100/data.csv", size = 999999L,
+                 stringsAsFactors = FALSE)
+    },
+    gcs_get_object = function(object_name, saveToDisk, ...) { # nolint object_name_linter
+      attempts <<- attempts + 1L
+      writeLines("a,b", saveToDisk)
+      TRUE
+    }
+  )
+
+  expect_error(
+    suppressMessages(download_with_verify("100/data.csv", tmp,
+                                          max_retries = 1L)),
+    "Download incomplete"
+  )
+  expect_equal(attempts, 2L)  # initial + 1 retry
+})
+
 test_that("download retries then succeeds on second attempt", {
   csv_content <- c("a,b", "1,2")
   tmp <- tempfile(fileext = ".csv")
   on.exit(unlink(tmp), add = TRUE)
-  expected_size <- write_csv_size(csv_content, tmp)
-  attempt_count <- 0L
+  size_probe <- tempfile()
+  writeLines(csv_content, size_probe)
+  expected_size <- file.info(size_probe)$size
+  unlink(size_probe)
+  attempts <- 0L
 
-  mockery::stub(download_with_verify, "Sys.sleep", function(...) NULL)
+  local_mocked_bindings(Sys.sleep = function(...) NULL, .package = "base")
   local_mocked_bindings(
     gcs_list_objects = function(prefix, ...) {
-      data.frame(name = "100/data.csv", size = expected_size, stringsAsFactors = FALSE)
+      data.frame(name = "100/data.csv", size = expected_size,
+                 stringsAsFactors = FALSE)
     },
     gcs_get_object = function(object_name, saveToDisk, ...) { # nolint object_name_linter
-      attempt_count <<- attempt_count + 1L
-      if (attempt_count == 1L) {
+      attempts <<- attempts + 1L
+      if (attempts == 1L) {
         writeLines("x", saveToDisk)  # truncated
       } else {
-        writeLines(csv_content, saveToDisk)  # correct size
+        writeLines(csv_content, saveToDisk)
       }
       TRUE
     }
@@ -152,6 +155,6 @@ test_that("download retries then succeeds on second attempt", {
     download_with_verify("100/data.csv", tmp, max_retries = 2L),
     "size mismatch"
   )
-  expect_equal(attempt_count, 2L)
+  expect_equal(attempts, 2L)
   expect_true(file.exists(tmp))
 })

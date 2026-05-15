@@ -15,19 +15,11 @@
   modifyList(base, overrides)
 }
 
-# Helper to build a minimal valid data frame matching the minimal config.
-.minimal_data <- function() {
-  data.frame(
-    campaignid = 1L,
-    id.intro.finalText = "Yes",
-    id.intro.scriptDate = "2026-01-26 21:00:00.000000Z",
-    id.intro.batchDate = "2026-01-26 21:00:30.000000Z",
-    id.q1.scriptDate = "2026-01-26 21:00:40.000000Z",
-    id.q1.batchDate = "2026-01-26 21:01:00.000000Z",
-    id.close.scriptDate = "2026-01-26 21:01:30.000000Z",
-    stringsAsFactors = FALSE
-  )
-}
+# Minimal valid data frame matching the minimal config. The shared helper
+# adds a `userid` column; this test's minimal_config does not declare a
+# respondent_id_column, so the extra column is harmless (validate_config
+# only checks required columns are present, not that none are extra).
+.minimal_data <- function() minimal_synthetic_data()
 
 test_that("validate_config accepts a minimal valid config", {
   expect_invisible(latency_validate_config(.minimal_config(), .minimal_data()))

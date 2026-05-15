@@ -2,8 +2,8 @@
 # pull_csv_from_gcs hash attribute, write_to_gcs validation.
 
 .load_synthetic_result <- function() {
-  csv_path <- test_path("fixtures/synthetic.csv")
-  data <- read.csv(csv_path, stringsAsFactors = FALSE)
+  data <- read.csv(test_path("fixtures/synthetic.csv"),
+                   stringsAsFactors = FALSE)
   config <- synthetic_config()
   list(result = latency_report(data, config), config = config)
 }
@@ -23,20 +23,8 @@ test_that("latency_parquet_schema returns the expected columns and types", {
 
 test_that("write_to_gcs produces a Parquet conforming to the pinned schema", {
   fx <- .load_synthetic_result()
-  captured <- new.env(parent = emptyenv())
-  local_mocked_bindings(
-    upload_object = function(local_path, object_name, bucket, metadata) {
-      captured$local_path <- local_path
-      captured$object_name <- object_name
-      captured$bucket <- bucket
-      captured$metadata <- metadata
-      # Copy the file out of the temp before write_to_gcs unlinks it.
-      persisted <- tempfile(fileext = ".parquet")
-      file.copy(local_path, persisted, overwrite = TRUE)
-      captured$persisted <- persisted
-      invisible(NULL)
-    }
-  )
+  captured <- new_capture()
+  stub_upload(capture = captured, persist = TRUE)
 
   path <- write_to_gcs(
     result = fx$result,
@@ -48,7 +36,6 @@ test_that("write_to_gcs produces a Parquet conforming to the pinned schema", {
   expect_equal(captured$object_name, "latency/1_latency.parquet")
   expect_equal(captured$bucket, "s160_analytics_dev")
 
-  # Round-trip read.
   rt <- arrow::read_parquet(captured$persisted)
   expect_equal(nrow(rt), nrow(fx$result$consolidated))
   expect_equal(unique(rt$source_csv_hash), "sha256:test")
@@ -83,22 +70,18 @@ test_that("write_to_gcs validates result and bucket arguments", {
 test_that("write_to_gcs handles an empty consolidated frame", {
   fx <- .load_synthetic_result()
   fx$result$consolidated <- fx$result$consolidated[0, ]
-  captured <- new.env(parent = emptyenv())
-  local_mocked_bindings(
-    upload_object = function(local_path, object_name, bucket, metadata) {
-      captured$object_name <- object_name
-      invisible(NULL)
-    }
-  )
+  captured <- new_capture()
+  stub_upload(capture = captured)
   path <- write_to_gcs(fx$result, 999, "s160_analytics_dev",
                       source_csv_hash = "sha256:empty",
                       run_by = "test")
   expect_equal(path, "gs://s160_analytics_dev/latency/999_latency.parquet")
+  expect_equal(captured$object_name, "latency/999_latency.parquet")
 })
 
 test_that("write_to_gcs uses a caller-supplied uploader instead of upload_object", {
   fx <- .load_synthetic_result()
-  captured <- new.env(parent = emptyenv())
+  captured <- new_capture()
   custom_uploader <- function(local_path, object_name, bucket, metadata) {
     captured$local_path <- local_path
     captured$object_name <- object_name

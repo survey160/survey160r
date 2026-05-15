@@ -18,6 +18,24 @@ test_that("latency_report honors an explicit run_at override", {
   expect_true(all(out$consolidated$run_at_utc == fixed))
 })
 
+test_that("latency_report tolerates an all-NA wave batchDate column", {
+  # Degenerate input: every respondent's id.intro.batchDate is NA. The
+  # chain-validity check cascades, so every downstream segment loses every
+  # respondent. The report must still return a well-formed result frame
+  # (correct schema, all-NA percentages) instead of crashing.
+  fx <- .load_synthetic()
+  fx$data$id.intro.batchDate <- NA_character_
+  out <- latency_report(fx$data, fx$config)
+  cons <- out$consolidated
+
+  # The schema is intact and the per-(segment, threshold) skeleton still
+  # populates day-rollup rows -- they're just all empty.
+  day_rows <- cons[is.na(cons$hour_local), ]
+  expect_true(nrow(day_rows) > 0L)
+  expect_true(all(day_rows$n == 0L))
+  expect_true(all(is.na(day_rows$pct_le) | is.nan(day_rows$pct_le)))
+})
+
 test_that("latency_report is deterministic on identical inputs", {
   fx <- .load_synthetic()
   r1 <- latency_report(fx$data, fx$config)
@@ -48,9 +66,7 @@ test_that("latency_report consolidated has hour and day rollup rows", {
   # UTC hours that map to 3 distinct ET hours (the configured field_tz).
   # Hour-grain rows: 3 hours x 3 segments x 4 thresholds = 36.
   # Day-rollup rows: 1 date x 3 segments x 4 thresholds = 12.
-  # Total = 48. r3 (UTC 20:00 -> ET 15:00) is out of texting window 16-24.
-  expect_equal(nrow(cons), 36L + 12L)
-
+  # r3 (UTC 20:00 -> ET 15:00) is out of texting window 16-24.
   hour_rows <- cons[!is.na(cons$hour_local), ]
   day_rows  <- cons[is.na(cons$hour_local), ]
   expect_equal(nrow(hour_rows), 36L)

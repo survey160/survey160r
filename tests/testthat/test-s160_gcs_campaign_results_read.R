@@ -1,6 +1,6 @@
 test_that("default call uses campaign_id filename, cleans up temp, no working dir leak", {
   stub_gcs_base()
-  captured <- new.env(parent = emptyenv())
+  captured <- new_capture()
   stub_gcs_download_ok(capture_env = captured)
 
   wd_before <- list.files(getwd(), pattern = "\\.csv$")
@@ -14,7 +14,7 @@ test_that("default call uses campaign_id filename, cleans up temp, no working di
 
 test_that("custom filename overrides default", {
   stub_gcs_base()
-  captured <- new.env(parent = emptyenv())
+  captured <- new_capture()
   stub_gcs_download_ok(capture_env = captured)
 
   expect_message(s160_gcs_campaign_results_read(1980, filename = "custom.csv"), "1980/custom.csv")
