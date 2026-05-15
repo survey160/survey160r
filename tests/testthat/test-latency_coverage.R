@@ -101,49 +101,6 @@ test_that("validate_flow_order short-circuits when no rows have parseable pairs"
   expect_invisible(survey160r:::validate_flow_order(cfg, d))
 })
 
-# --- validate_windows_cover ------------------------------------------------
-
-test_that("validate_windows_cover short-circuits when texting_windows is empty", {
-  cfg <- list(texting_windows = list(), field_timezone = "UTC")
-  expect_invisible(survey160r:::validate_windows_cover(cfg, data.frame()))
-  cfg$texting_windows <- NULL
-  expect_invisible(survey160r:::validate_windows_cover(cfg, data.frame()))
-})
-
-test_that("validate_windows_cover short-circuits when id.intro.scriptDate absent", {
-  cfg <- list(
-    texting_windows = list(list(date = "2026-01-26",
-                                start_hour = 16, end_hour = 24)),
-    field_timezone = "UTC"
-  )
-  expect_invisible(
-    survey160r:::validate_windows_cover(cfg, data.frame(x = 1L))
-  )
-})
-
-test_that("validate_windows_cover short-circuits when all intro timestamps NA", {
-  cfg <- list(
-    texting_windows = list(list(date = "2026-01-26",
-                                start_hour = 16, end_hour = 24)),
-    field_timezone = "UTC"
-  )
-  d <- data.frame(id.intro.scriptDate = NA_character_,
-                  stringsAsFactors = FALSE)
-  expect_invisible(survey160r:::validate_windows_cover(cfg, d))
-})
-
-# --- windows_to_utc empty branch -------------------------------------------
-
-test_that("windows_to_utc returns an empty data.frame for NULL or 0-row input", {
-  out_null <- survey160r:::windows_to_utc(NULL, "UTC")
-  expect_equal(nrow(out_null), 0)
-  expect_equal(names(out_null), c("start_utc", "end_utc"))
-  empty <- data.frame(date = as.Date(character(0)),
-                      start_hour = integer(0), end_hour = integer(0))
-  out_empty <- survey160r:::windows_to_utc(empty, "UTC")
-  expect_equal(nrow(out_empty), 0)
-})
-
 # --- pull_csv_from_gcs filename override -----------------------------------
 
 test_that("pull_csv_from_gcs honors a caller-supplied filename", {

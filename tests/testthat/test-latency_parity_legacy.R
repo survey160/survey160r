@@ -137,9 +137,6 @@
       campaign_id_column = "campaignid",
       respondent_id_column = NULL,
       date_filter = "2026-01-10"
-    ),
-    texting_windows = list(
-      list(date = "2026-01-10", start_hour = 16, end_hour = 24)
     )
   )
 }

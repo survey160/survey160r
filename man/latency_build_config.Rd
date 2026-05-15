@@ -9,7 +9,6 @@ latency_build_config(
   data,
   field_timezone = "UTC",
   project_id = NULL,
-  texting_windows = list(),
   date_filter = NULL,
   respondent_id_column = NULL
 )
@@ -25,9 +24,6 @@ names) used to discover the question flow.}
 
 \item{project_id}{Optional Survey160 project id; defaults to the
 campaign id as a placeholder.}
-
-\item{texting_windows}{Optional list of \code{{date, start_hour, end_hour}}
-windows. Default \code{list()} = all-in-window.}
 
 \item{date_filter}{Optional character/Date vector restricting which
 survey dates are processed (interpreted in \code{field_timezone}).}

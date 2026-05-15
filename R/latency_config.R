@@ -9,7 +9,7 @@
 # what latency_report() reads -- no provenance or YAML-only slots.
 .config_keys <- c(
   "project_id", "campaign_id", "field_timezone", "flow",
-  "filters", "texting_windows"
+  "filters"
 )
 
 # Terminal flow states that must not appear in `questions`.
@@ -62,8 +62,6 @@ latency_discover_questions <- function(data) {
 #'   \code{hour_local} columns. Default \code{"UTC"}.
 #' @param project_id Optional Survey160 project id; defaults to the
 #'   campaign id as a placeholder.
-#' @param texting_windows Optional list of \code{{date, start_hour, end_hour}}
-#'   windows. Default \code{list()} = all-in-window.
 #' @param date_filter Optional character/Date vector restricting which
 #'   survey dates are processed (interpreted in \code{field_timezone}).
 #' @param respondent_id_column Optional column name used to dedupe rows by
@@ -73,7 +71,6 @@ latency_discover_questions <- function(data) {
 latency_build_config <- function(campaign_id, data,
                          field_timezone = "UTC",
                          project_id = NULL,
-                         texting_windows = list(),
                          date_filter = NULL,
                          respondent_id_column = NULL) {
   questions <- latency_discover_questions(data)
@@ -95,8 +92,7 @@ latency_build_config <- function(campaign_id, data,
       campaign_id_column = "campaignid",
       respondent_id_column = respondent_id_column,
       date_filter = date_filter
-    ),
-    texting_windows = texting_windows
+    )
   )
 }
 
@@ -122,7 +118,6 @@ latency_validate_config <- function(config, data) {
   validate_questions(config$flow$questions)
   validate_columns_present(config, data)
   validate_flow_order(config, data)
-  validate_windows_cover(config, data)
   invisible(TRUE)
 }
 
@@ -196,38 +191,6 @@ validate_flow_order <- function(config, data) {
   if (ratio < 0.9) {
     stop(sprintf("Flow order check failed: only %.1f%% of rows have scriptDate(next) >= batchDate(prior). Likely mis-ordered 'flow.questions'.", # nolint
                  100 * ratio), call. = FALSE)
-  }
-  invisible(TRUE)
-}
-
-# Survey dates that will actually be processed must be covered by some
-# texting_window, OR texting_windows must be empty (all-in-window mode).
-# Honors `filters.date_filter`: dates outside the filter are not required
-# to be covered.
-validate_windows_cover <- function(config, data) {
-  windows <- config$texting_windows
-  if (is.null(windows) || length(windows) == 0) return(invisible(TRUE))
-  intro_script <- "id.intro.scriptDate"
-  if (!intro_script %in% names(data)) return(invisible(TRUE))
-  parsed <- suppressWarnings(lubridate::parse_date_time(
-    .strip_z(as.character(data[[intro_script]])),
-    orders = .timestamp_orders, tz = "UTC", quiet = TRUE
-  ))
-  parsed <- parsed[!is.na(parsed)]
-  if (length(parsed) == 0) return(invisible(TRUE))
-  field_tz <- config$field_timezone
-  local_dates <- as.Date(format(parsed, tz = field_tz))
-  date_filter <- config$filters$date_filter
-  if (!is.null(date_filter)) {
-    local_dates <- local_dates[local_dates %in% as.Date(date_filter)]
-    if (length(local_dates) == 0) return(invisible(TRUE))
-  }
-  window_dates <- as.Date(vapply(windows, function(w) as.character(w$date), character(1)))
-  missing_dates <- setdiff(unique(local_dates), window_dates)
-  if (length(missing_dates) > 0) {
-    stop(sprintf("texting_windows do not cover survey dates: %s",
-                 paste(as.character(as.Date(missing_dates, origin = "1970-01-01")), collapse = ", ")),
-         call. = FALSE)
   }
   invisible(TRUE)
 }

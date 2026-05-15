@@ -70,10 +70,10 @@ aggregate_consolidated <- function(frame, config, cfg_hash, run_at,
         .data$campaign_id, .data$date, .data$hour_local,
         .data$segment, .data$segment_index
       ),
-      n = sum(!is.na(.data$delta_min) & .data$in_window == 1L),
+      n = sum(!is.na(.data$delta_min)),
       pct_le = ifelse(
-        sum(!is.na(.data$delta_min) & .data$in_window == 1L) > 0,
-        100 * mean(.data$delta_min[!is.na(.data$delta_min) & .data$in_window == 1L] <= t),
+        sum(!is.na(.data$delta_min)) > 0,
+        100 * mean(.data$delta_min[!is.na(.data$delta_min)] <= t),
         NA_real_
       ),
       n_resp_over = dplyr::n_distinct(

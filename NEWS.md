@@ -20,6 +20,16 @@
   appears in both hours' distinct-respondent counts). Always read the
   day rollup row (`hour_local IS NULL`) for correct day-grain cascade;
   do not attempt to recompute it by aggregating the hour rows.
+* The `texting_windows` config field is removed. The algorithm no longer
+  filters dispatches by an analyst-declared texting plan; `n` and
+  `pct_le` now count every valid dispatch. The pre-removal feature
+  excluded out-of-window dispatches from the in-window denominator;
+  with the cube schema introduced in this release downstream consumers
+  can see which hours had high volume directly from the hour rows.
+  Diagnostics field `n_out_of_window_dropped` and
+  `windows_normalized_utc` are dropped along with the feature.
+  `latency_build_config()`, `run_latency()`, and `run_latency_all()`
+  no longer accept a `texting_windows` argument (SUR-1304).
 
 # survey160r 0.8.0
 

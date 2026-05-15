@@ -65,10 +65,9 @@ test_that("latency_report consolidated has hour and day rollup rows", {
   expect_equal(unique(cons$project_id), 1L)
   expect_equal(unique(cons$algorithm_version), "2.0.0")
 
-  # In-window n per hour cell is 1 for hours 16 and 17, 0 for hour 15.
-  in_window_cells <- hour_rows[hour_rows$hour_local %in% c(16L, 17L), ]
-  expect_true(all(in_window_cells$n == 1L))
-  expect_true(all(hour_rows$n[hour_rows$hour_local == 15L] == 0L))
+  # n per hour cell is 1 (the single respondent in that hour). All three
+  # respondents now count -- there's no texting-window exclusion.
+  expect_true(all(hour_rows$n == 1L))
 
   # pct_le per single-respondent hour cell.
   r2_q1q2_t1 <- hour_rows[hour_rows$segment == "q1→q2" &
@@ -80,12 +79,12 @@ test_that("latency_report consolidated has hour and day rollup rows", {
                             hour_rows$hour_local == 17L, ]
   expect_equal(r2_q1q2_t5$pct_le, 100)       # 4 min <= 5 min
 
-  # Day rollup row: n is sum of in-window hour cells (2 = r1 + r2). pct_le
-  # for q1->q2 at threshold 1 is 50% (r1 fast, r2 slow).
+  # Day rollup row: n is sum of hour cells (3 = r1 + r2 + r3). pct_le for
+  # q1->q2 at threshold 1 is 2/3 (r1 0.5 min, r3 ~ms, r2 4 min).
   day_q1q2_t1 <- day_rows[day_rows$segment == "q1→q2" &
                             day_rows$threshold_min == 1L, ]
-  expect_equal(day_q1q2_t1$n, 2L)
-  expect_equal(day_q1q2_t1$pct_le, 50)
+  expect_equal(day_q1q2_t1$n, 3L)
+  expect_equal(round(day_q1q2_t1$pct_le, 4), round(200 / 3, 4))
 })
 
 test_that("hour-rollup of pct_le matches the day rows in the same output", {
@@ -133,9 +132,8 @@ test_that("cascade columns are present and per-hour-respondent", {
   h17 <- h17[order(h17$threshold_min), ]
   expect_equal(h17$pct_resp_worst_gt, c(100, 100, 0, 0))
 
-  # Hour 15 (r3): r3 is out-of-window for in_window aggregation but still
-  # contributes to the cascade (cascade ignores in_window). r3's worst delta
-  # is 0.5 min, so pct_resp_worst_gt is 0 at every threshold.
+  # Hour 15 (r3): r3's worst delta is 0.5 min, so pct_resp_worst_gt is 0
+  # at every threshold.
   h15 <- unique(hour_rows[hour_rows$hour_local == 15L,
                      c("threshold_min", "pct_resp_worst_gt")])
   expect_true(all(h15$pct_resp_worst_gt == 0))

@@ -10,9 +10,6 @@
     filters = list(
       population = 'id.intro.finalText == "Yes"',
       campaign_id_column = "campaignid"
-    ),
-    texting_windows = list(
-      list(date = "2026-01-26", start_hour = 16, end_hour = 24)
     )
   )
   modifyList(base, overrides)
@@ -89,18 +86,6 @@ test_that("validate_config rejects mis-ordered flow (script before batch)", {
   d$id.close.scriptDate <- "2026-01-26 20:01:00.000000Z"
   expect_error(latency_validate_config(.minimal_config(), d),
                "Flow order check failed")
-})
-
-test_that("validate_config rejects texting_windows that miss survey dates", {
-  d <- .minimal_data()
-  d$id.intro.scriptDate <- "2026-02-01 21:00:00.000000Z"
-  expect_error(latency_validate_config(.minimal_config(), d),
-               "texting_windows do not cover")
-})
-
-test_that("validate_config allows empty texting_windows (all-in-window)", {
-  cfg <- .minimal_config(list(texting_windows = list()))
-  expect_invisible(latency_validate_config(cfg, .minimal_data()))
 })
 
 test_that("config_hash is stable across canonically-equal configs", {
