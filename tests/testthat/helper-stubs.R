@@ -57,3 +57,99 @@ stub_gcs_download_ok <- function(capture_env = NULL, env = parent.frame()) {
     .env = env
   )
 }
+
+# --- run_latency / run_latency_all helpers --------------------------------
+
+# Capture env for mock-recorded values. Use `<<-` or `env$field <- ...` from
+# inside a mock body; read fields back after the call under test returns.
+new_capture <- function() new.env(parent = emptyenv())
+
+# Load the shared synthetic CSV with the source_csv_hash/path attributes
+# that run_latency() expects pull_csv_from_gcs() to attach. `mutate` lets a
+# test perturb the data inline (e.g. drop a column to trigger validation).
+load_synthetic_data <- function(
+    mutate = identity,
+    source_csv_hash = "sha256:fixture",
+    source_csv_path = "gs://campaign_results/1/1_raw_data_download.csv") {
+  d <- mutate(read.csv(testthat::test_path("fixtures/synthetic.csv"),
+                       stringsAsFactors = FALSE))
+  attr(d, "source_csv_hash") <- source_csv_hash
+  attr(d, "source_csv_path") <- source_csv_path
+  d
+}
+
+# Stub pull_csv_from_gcs to return `data`. Captures `pull_id` and
+# `pull_bucket` into `capture` when supplied.
+stub_pull_csv <- function(data, capture = NULL, env = parent.frame()) {
+  testthat::local_mocked_bindings(
+    pull_csv_from_gcs = function(campaign_id, filename = NULL, bucket = NULL) {
+      if (!is.null(capture)) {
+        capture$pull_id <- campaign_id
+        capture$pull_bucket <- bucket
+      }
+      data
+    },
+    .env = env
+  )
+}
+
+# Stub upload_object. With `must_not_call = TRUE`, raises if invoked --
+# useful for negative paths (e.g. validation failure must not upload).
+# Otherwise records object_name/bucket/metadata into `capture`.
+stub_upload <- function(capture = NULL, must_not_call = FALSE,
+                        env = parent.frame()) {
+  testthat::local_mocked_bindings(
+    upload_object = function(local_path, object_name, bucket, metadata) {
+      if (must_not_call) stop("uploader should not be called")
+      if (!is.null(capture)) {
+        capture$object_name <- object_name
+        capture$bucket <- bucket
+        capture$metadata <- metadata
+      }
+      invisible(NULL)
+    },
+    .env = env
+  )
+}
+
+# Build a GCS object-status list as returned by s160_gcs_*_status helpers.
+# `updated` accepts a POSIXct or an ISO-ish string parsed as UTC.
+gcs_status <- function(name = "obj.csv",
+                       updated = "2026-01-01 00:00:00",
+                       size = 1L) {
+  if (is.character(updated)) updated <- as.POSIXct(updated, tz = "UTC")
+  list(name = name, updated = updated, size = size)
+}
+
+# Stub run_latency for run_latency_all tests. Records every campaign_id and
+# the full per-call argument list into `capture`. Campaigns listed in
+# `fail_on` raise `error_msg` (default "malformed CSV"). Returns a
+# deterministic gs:// URI built from bucket + campaign_id.
+stub_run_latency <- function(capture = NULL, fail_on = character(),
+                             error_msg = "malformed CSV",
+                             env = parent.frame()) {
+  testthat::local_mocked_bindings(
+    run_latency = function(campaign_id, bucket, source_bucket = NULL,
+                           run_at = NULL, ...) {
+      if (!is.null(capture)) {
+        capture$ids <- c(capture$ids, as.character(campaign_id))
+        capture$run_ats <- c(capture$run_ats, list(run_at))
+        capture$last_args <- list(
+          campaign_id = campaign_id, bucket = bucket,
+          source_bucket = source_bucket, run_at = run_at, ...
+        )
+      }
+      if (as.character(campaign_id) %in% fail_on) stop(error_msg)
+      sprintf("gs://%s/latency/%s_latency.parquet", bucket, campaign_id)
+    },
+    .env = env
+  )
+}
+
+# Stub s160_gcs_campaign_results_list to return `ids`.
+stub_campaign_list <- function(ids, env = parent.frame()) {
+  testthat::local_mocked_bindings(
+    s160_gcs_campaign_results_list = function(bucket = NULL) ids,
+    .env = env
+  )
+}

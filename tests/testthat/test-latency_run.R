@@ -2,28 +2,10 @@
 # mocked. The runner is stateless and API-free -- config is built from the
 # CSV header alone.
 
-.fixture_data <- function(csv_path = test_path("fixtures/synthetic.csv")) {
-  d <- read.csv(csv_path, stringsAsFactors = FALSE)
-  attr(d, "source_csv_hash") <- "sha256:fixture"
-  attr(d, "source_csv_path") <- "gs://campaign_results/1/1_raw_data_download.csv"
-  d
-}
-
 test_that("run_latency wires pull -> build_config -> report -> write", {
-  fx_data <- .fixture_data()
-  captured <- new.env(parent = emptyenv())
-  local_mocked_bindings(
-    pull_csv_from_gcs = function(campaign_id, filename = NULL, bucket = NULL) {
-      captured$pull_id <- campaign_id
-      fx_data
-    },
-    upload_object = function(local_path, object_name, bucket, metadata) {
-      captured$object_name <- object_name
-      captured$bucket <- bucket
-      captured$metadata <- metadata
-      invisible(NULL)
-    }
-  )
+  captured <- new_capture()
+  stub_pull_csv(load_synthetic_data(), capture = captured)
+  stub_upload(capture = captured)
 
   path <- run_latency(
     campaign_id = 1,
@@ -40,16 +22,29 @@ test_that("run_latency wires pull -> build_config -> report -> write", {
   )
 })
 
+test_that("run_latency forwards source_bucket to pull_csv_from_gcs", {
+  captured <- new_capture()
+  stub_pull_csv(load_synthetic_data(), capture = captured)
+  stub_upload()
+
+  run_latency(
+    campaign_id = 1,
+    bucket = "s160_analytics_dev",
+    source_bucket = "campaign_results"
+  )
+
+  expect_equal(captured$pull_bucket, "campaign_results")
+})
+
 test_that("run_latency surfaces validate_config failures on a malformed CSV", {
   # Strip the population-filter column so validate_columns_present aborts.
-  fx_data <- .fixture_data()
-  fx_data$id.intro.finalText <- NULL
-  local_mocked_bindings(
-    pull_csv_from_gcs = function(campaign_id, filename = NULL, bucket = NULL) fx_data,
-    upload_object = function(local_path, object_name, bucket, metadata) {
-      stop("uploader should not be called when validation fails")
-    }
-  )
+  bad <- load_synthetic_data(mutate = function(d) {
+    d$id.intro.finalText <- NULL
+    d
+  })
+  stub_pull_csv(bad)
+  stub_upload(must_not_call = TRUE)
+
   expect_error(
     run_latency(campaign_id = 1, bucket = "s160_analytics_dev"),
     "id\\.intro\\.finalText"
@@ -57,13 +52,13 @@ test_that("run_latency surfaces validate_config failures on a malformed CSV", {
 })
 
 test_that("run_latency overrides flow through to the config", {
-  fx_data <- .fixture_data()
-  captured <- new.env(parent = emptyenv())
-  captured$cfg <- NULL
+  captured <- new_capture()
+  stub_pull_csv(load_synthetic_data())
+  stub_upload()
   local_mocked_bindings(
-    pull_csv_from_gcs = function(campaign_id, filename = NULL, bucket = NULL) fx_data,
     latency_report = function(data, config, run_at = NULL) {
       captured$cfg <- config
+      captured$run_at <- run_at
       list(
         consolidated = data.frame(
           campaign_id = integer(0), project_id = integer(0),
@@ -80,19 +75,18 @@ test_that("run_latency overrides flow through to the config", {
         meta = list(algorithm_version = "2.0.0", config_hash = "h",
                     schema_version = "2")
       )
-    },
-    upload_object = function(local_path, object_name, bucket, metadata) {
-      invisible(NULL)
     }
   )
 
+  fixed_run_at <- as.POSIXct("2026-02-14 09:00:00", tz = "UTC")
   run_latency(
     campaign_id = 7,
     bucket = "s160_analytics_dev",
     field_timezone = "America/New_York",
     project_id = 9999,
     date_filter = c("2026-01-26"),
-    respondent_id_column = "userid"
+    respondent_id_column = "userid",
+    run_at = fixed_run_at
   )
 
   expect_equal(captured$cfg$field_timezone, "America/New_York")
@@ -100,4 +94,24 @@ test_that("run_latency overrides flow through to the config", {
   expect_equal(captured$cfg$campaign_id, 7L)
   expect_equal(captured$cfg$filters$respondent_id_column, "userid")
   expect_equal(captured$cfg$filters$date_filter, "2026-01-26")
+  expect_equal(captured$run_at, fixed_run_at)
+})
+
+test_that("run_latency routes a custom uploader through write_to_gcs", {
+  captured <- new_capture()
+  stub_pull_csv(load_synthetic_data())
+  custom_uploader <- function(local_path, object_name, bucket, metadata) {
+    captured$called <- TRUE
+    captured$bucket <- bucket
+    invisible(NULL)
+  }
+
+  run_latency(
+    campaign_id = 1,
+    bucket = "s160_analytics_dev",
+    uploader = custom_uploader
+  )
+
+  expect_true(isTRUE(captured$called))
+  expect_equal(captured$bucket, "s160_analytics_dev")
 })

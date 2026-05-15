@@ -1,0 +1,97 @@
+# survey160r tests
+
+testthat (edition 3) suite. 100% coverage is enforced (`covr::package_coverage()`); use `# nocov` only for branches that genuinely require a live worker / interactive session.
+
+## Layout
+
+```
+tests/
+├── testthat.R                  # entry point: library(survey160r) + test_check()
+└── testthat/
+    ├── helper-stubs.R          # shared helpers, auto-loaded before all tests
+    ├── fixtures/
+    │   └── synthetic.csv       # canonical Survey160 v2 CSV (4 rows, 1 campaign, 1 day)
+    └── test-<module>.R         # one file per R/<module>.R (mostly)
+```
+
+`helper-*.R` files are sourced by testthat automatically — never call them manually. Put new shared utilities there, not in individual test files.
+
+## Run the suite
+
+`make verify` from the package root is the canonical gate — it loads the package once and runs `testthat::test_package()` + `lintr::lint_package()` + `covr::package_coverage()` in a single R session. About 3x faster than three cold `Rscript -e` calls. Prefer it over ad-hoc invocations.
+
+`make check` runs the full `R CMD check` (used at release time).
+
+When iterating on a single file, run interactively after `pkgload::load_all()`:
+
+```r
+pkgload::load_all()
+testthat::test_file("tests/testthat/test-latency_run.R")
+```
+
+## Mocking
+
+The suite uses `testthat::local_mocked_bindings()` (testthat 3.x) — never `mockery` for new code (`mockery` is a Suggests dep, used only in legacy spots).
+
+`local_mocked_bindings()` rebinds within the calling test's `local()` scope and auto-restores on exit. When wrapping it in a helper, **always pass `.env = parent.frame()`** so the mock applies in the caller's scope, not the helper's:
+
+```r
+stub_pull_csv <- function(data, capture = NULL, env = parent.frame()) {
+  testthat::local_mocked_bindings(
+    pull_csv_from_gcs = function(...) { ...; data },
+    .env = env
+  )
+}
+```
+
+To mock a base-R function, pass `.package = "base"` (see the `requireNamespace` mock in `test-run_latency_all.R`).
+
+## Shared helpers (helper-stubs.R)
+
+### Capture pattern
+
+```r
+captured <- new_capture()              # = new.env(parent = emptyenv())
+# ... mocks write fields into `captured` from inside their bodies ...
+expect_equal(captured$pull_id, 1)
+```
+
+Prefer a capture env over `<<-` to a free variable — it survives `local_mocked_bindings` scope changes and reads cleanly.
+
+### GCS / latency stubs
+
+| Helper | Purpose |
+|---|---|
+| `stub_gcs_base()` | `check_gcs_ready` + `validate_campaign_id` + `gcs_get_global_bucket` no-ops |
+| `stub_gcs_download_ok(capture)` | `gcs_get_object` writes a minimal CSV; `gcs_list_objects` returns matching size |
+| `stub_pull_csv(data, capture)` | mocks `pull_csv_from_gcs`; records `pull_id`/`pull_bucket` |
+| `stub_upload(capture, must_not_call)` | mocks `upload_object`; flag flips it into "asserts not invoked" |
+| `stub_run_latency(capture, fail_on, error_msg)` | mocks `run_latency`; records ids/args/`run_at`; raises for ids in `fail_on` |
+| `stub_campaign_list(ids)` | mocks `s160_gcs_campaign_results_list` |
+| `gcs_status(name, updated, size)` | builds the list returned by `s160_gcs_*_status` (`updated` accepts an ISO string or POSIXct) |
+
+### Fixture loaders
+
+```r
+synthetic_config()                # latency config matching synthetic.csv
+load_synthetic_data()             # CSV + source_csv_hash/source_csv_path attrs
+load_synthetic_data(mutate = \(d) { d$id.intro.finalText <- NULL; d })
+```
+
+The `mutate` hook is how you trigger negative paths (drop a column, perturb a value) without copying the CSV.
+
+## Conventions
+
+- **Stateless runner tests**: stub the I/O boundary (`pull_csv_from_gcs`, `upload_object`), let the real pipeline run end-to-end. Don't mock `latency_report` unless you specifically need to capture the config it was called with (see `test-latency_run.R`'s "overrides flow through to the config" case).
+- **Suppress messages**: every `run_latency*` call goes through `message()` for per-campaign progress. Wrap in `suppressMessages()` — `test-run_latency_all.R` uses a `run_all()` shim for this.
+- **Times are UTC**: tests pass POSIXct stamps with `tz = "UTC"` explicitly. `gcs_status()` parses character `updated` as UTC.
+- **Don't share fixture data across tests by file mutation**: each test loads its own copy via `load_synthetic_data()`. The fixture file is read-only.
+- **`# nocov start` / `# nocov end`** is only used for paths that require a live multisession worker or interactive auth (e.g. `.ensure_worker_gcs_auth` in `R/latency_run.R`). Document the integration test that exercises them (typically a script under `scripts/`).
+- **Test file names**: `test-<module>.R` matching `R/<module>.R` where possible. Cross-cutting suites (`test-latency_coverage.R`, `test-day_rollup_equivalence.R`, `test-latency_parity_legacy.R`) are named after the property under test.
+
+## Adding a new test file
+
+1. Decide if it's per-module (`test-foo.R` against `R/foo.R`) or a property/parity check (named after the property).
+2. Use existing helpers from `helper-stubs.R`. If you find yourself copying a mock block twice, add a helper rather than a third copy.
+3. Run `make verify` before committing — the lint + coverage gates will catch most regressions.
+4. Per the package `CLAUDE.md`: any change under `R/`, `man/`, or `src/` requires a `Version:` bump in `DESCRIPTION` and a matching `NEWS.md` edit. Test-only changes don't.
