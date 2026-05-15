@@ -10,7 +10,9 @@ tests/
 └── testthat/
     ├── helper-stubs.R          # shared helpers, auto-loaded before all tests
     ├── fixtures/
-    │   └── synthetic.csv       # canonical Survey160 v2 CSV (4 rows, 1 campaign, 1 day)
+    │   ├── synthetic.csv             # canonical Survey160 v2 CSV (4 rows, 1 campaign, 1 day)
+    │   ├── synthetic_parity.csv      # 8-question, 6-respondent legacy-parity input
+    │   └── synthetic_cross_hour.csv  # 4 respondents straddling an hour boundary (day-rollup tests)
     └── test-<module>.R         # one file per R/<module>.R (mostly)
 ```
 
@@ -76,9 +78,15 @@ Prefer a capture env over `<<-` to a free variable — it survives `local_mocked
 synthetic_config()                # latency config matching synthetic.csv
 load_synthetic_data()             # CSV + source_csv_hash/source_csv_path attrs
 load_synthetic_data(mutate = \(d) { d$id.intro.finalText <- NULL; d })
+load_synthetic_parity()           # 8-question, 6-respondent legacy-parity input
+load_synthetic_cross_hour()       # 4-respondent cross-hour fixture
+minimal_synthetic_data(           # programmatic builder; no file I/O
+  questions = c("intro", "q1", "close"),
+  with_rows = TRUE                # FALSE -> column-only frame
+)
 ```
 
-The `mutate` hook is how you trigger negative paths (drop a column, perturb a value) without copying the CSV.
+The `mutate` hook is how you trigger negative paths (drop a column, perturb a value) without copying the CSV. `minimal_synthetic_data()` is preferred when a test only needs a column-shape or one synthetic row -- it has no fixture file dependency.
 
 ## Conventions
 

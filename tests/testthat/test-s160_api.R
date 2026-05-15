@@ -35,7 +35,7 @@ test_that("auth fails with clear error on 401", {
   )
   expect_error(
     s160_api_auth(base_url = "https://api.example.com"),
-    "Authentication failed"
+    "Authentication failed.*Invalid API key"
   )
 })
 
@@ -89,7 +89,7 @@ test_that("auth falls back to http_status when error field is NULL", {
     http_error = TRUE,
     status_msg = "Service Unavailable"
   )
-  expect_error(s160_api_auth(), "Authentication failed")
+  expect_error(s160_api_auth(), "Authentication failed.*Service Unavailable")
 })
 
 # --- get_credential -----------------------------------------------------------
@@ -199,7 +199,7 @@ test_that("request raises error on HTTP failure", {
   )
   expect_error(
     survey160r:::s160_api_request("POST", "/fail", body = list(x = 1)),
-    "API error"
+    "API error.*Internal server error"
   )
 })
 
@@ -213,7 +213,7 @@ test_that("request falls back to http_status when error field is NULL", {
   )
   expect_error(
     survey160r:::s160_api_request("POST", "/fail", body = list(x = 1)),
-    "API error"
+    "API error.*Bad Gateway"
   )
 })
 
