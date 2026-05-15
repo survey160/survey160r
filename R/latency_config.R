@@ -194,14 +194,8 @@ validate_flow_order <- function(config, data) {
   for (i in seq_len(length(questions) - 1)) {
     prior <- sprintf("id.%s.batchDate", questions[i])
     nxt <- sprintf("id.%s.scriptDate", questions[i + 1])
-    bp <- suppressWarnings(lubridate::parse_date_time(
-      .strip_z(as.character(data[[prior]])), orders = .timestamp_orders,
-      tz = "UTC", quiet = TRUE
-    ))
-    sn <- suppressWarnings(lubridate::parse_date_time(
-      .strip_z(as.character(data[[nxt]])), orders = .timestamp_orders,
-      tz = "UTC", quiet = TRUE
-    ))
+    bp <- parse_s160_timestamps_chr(data[[prior]])
+    sn <- parse_s160_timestamps_chr(data[[nxt]])
     valid <- !is.na(bp) & !is.na(sn)
     if (!any(valid)) next
     cmp_total <- cmp_total + sum(valid)
@@ -225,10 +219,7 @@ validate_windows_cover <- function(config, data) {
   if (is.null(windows) || length(windows) == 0) return(invisible(TRUE))
   intro_script <- "id.intro.scriptDate"
   if (!intro_script %in% names(data)) return(invisible(TRUE))
-  parsed <- suppressWarnings(lubridate::parse_date_time(
-    .strip_z(as.character(data[[intro_script]])),
-    orders = .timestamp_orders, tz = "UTC", quiet = TRUE
-  ))
+  parsed <- parse_s160_timestamps_chr(data[[intro_script]])
   parsed <- parsed[!is.na(parsed)]
   if (length(parsed) == 0) return(invisible(TRUE))
   field_tz <- config$field_timezone

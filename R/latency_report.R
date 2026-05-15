@@ -70,21 +70,27 @@ latency_report <- function(data, config, run_at = NULL) {
   parse_failures <- parsed$parse_failures
   parse_failed_mask <- parsed$parse_failed_mask
 
+  # Steps 3 & 4 drop rows from `data`; the per-segment parse_failed_mask
+  # vectors must shrink in lockstep so segment-NA classification later lines
+  # up row-for-row. subset_parsed_input() does both at once -- adding a
+  # third filter step in the future cannot forget the reindex.
+
   # Step 3: dedupe by respondent_id (earliest intro.scriptDate wins).
-  # Dedupe drops rows from `data`; we must drop the same rows from each
-  # parse_failed_mask vector so segment-NA classification later lines up
-  # row-for-row with `data`.
   if (!is.null(resp_id_col)) {
-    keep_idx <- dedupe_keep_rows(data, resp_id_col)
-    data <- data[keep_idx, , drop = FALSE]
-    parse_failed_mask <- lapply(parse_failed_mask, function(m) m[keep_idx])
+    pair <- subset_parsed_input(data, parse_failed_mask,
+                                dedupe_keep_rows(data, resp_id_col))
+    data <- pair$data
+    parse_failed_mask <- pair$parse_failed_mask
   }
 
   # Step 4: optional date_filter.
   if (!is.null(config$filters$date_filter)) {
-    keep_idx <- date_filter_keep_rows(data, config$filters$date_filter, field_tz)
-    data <- data[keep_idx, , drop = FALSE]
-    parse_failed_mask <- lapply(parse_failed_mask, function(m) m[keep_idx])
+    pair <- subset_parsed_input(
+      data, parse_failed_mask,
+      date_filter_keep_rows(data, config$filters$date_filter, field_tz)
+    )
+    data <- pair$data
+    parse_failed_mask <- pair$parse_failed_mask
   }
 
   # Step 5: build the per-(respondent, segment) frame.
