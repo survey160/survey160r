@@ -157,6 +157,38 @@ test_that("request does not refresh JWT when fresh", {
   expect_false(auth_called)
 })
 
+test_that("request refreshes JWT just past the 480-second threshold", {
+  # Threshold lives in R/s160_api.R: `if (elapsed > 480) refresh`. Pinning a
+  # test at 481s (just over) guards against off-by-one drift; the 600s test
+  # above only proves the "well past" path.
+  stub_api_base()
+  env <- .api_env()
+  env$auth_time <- Sys.time() - 481
+
+  auth_called <- FALSE
+  local_mocked_bindings(s160_api_auth = function(...) {
+    auth_called <<- TRUE
+    env$auth_time <- Sys.time()
+  })
+  stub_httr_response(body = list(ok = TRUE))
+
+  survey160r:::s160_api_request("GET", "/test")
+  expect_true(auth_called)
+})
+
+test_that("request does NOT refresh when auth is just inside the threshold", {
+  stub_api_base()
+  env <- .api_env()
+  env$auth_time <- Sys.time() - 470  # 10s of slack below 480
+
+  auth_called <- FALSE
+  local_mocked_bindings(s160_api_auth = function(...) auth_called <<- TRUE)
+  stub_httr_response(body = list(ok = TRUE))
+
+  survey160r:::s160_api_request("GET", "/test")
+  expect_false(auth_called)
+})
+
 test_that("request raises error on HTTP failure", {
   stub_api_base()
   stub_httr_response(
@@ -230,6 +262,30 @@ test_that("results works when no prior export exists (baseline is NULL)", {
 
   df <- suppressMessages(s160_api_campaign_results(42, timeout = 10, poll_interval = 0.1))
   expect_equal(df$campaignid, 42)
+})
+
+test_that("results propagates the trigger error before polling starts", {
+  stub_api_base()
+  stub_gcs_base()
+  poll_called <- FALSE
+  local_mocked_bindings(
+    get_gcs_file_updated = function(campaign_id, filename) {
+      poll_called <<- TRUE
+      "2024-01-01T00:00:00Z"
+    },
+    s160_api_request = function(method, path, body = NULL) {
+      stop("API error (POST /startCampaignResultsExport): Service Unavailable",
+           call. = FALSE)
+    }
+  )
+  expect_error(
+    suppressMessages(s160_api_campaign_results(1980, timeout = 10,
+                                               poll_interval = 0.1)),
+    "Service Unavailable"
+  )
+  # get_gcs_file_updated is called once for the baseline before the trigger,
+  # but never again -- the polling loop must not run.
+  expect_true(poll_called)
 })
 
 test_that("results times out when GCS never updates", {

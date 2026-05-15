@@ -72,6 +72,32 @@ test_that("download errors when file not written to disk", {
 # Per-attempt logic doesn't fit a generic helper; kept inline. Sys.sleep is
 # mocked via local_mocked_bindings so tests don't actually sleep.
 
+test_that("download with max_retries = 0 fails on the first mismatch without retrying", {
+  tmp <- tempfile(fileext = ".csv")
+  on.exit(unlink(tmp), add = TRUE)
+  attempts <- 0L
+
+  local_mocked_bindings(Sys.sleep = function(...) NULL, .package = "base")
+  local_mocked_bindings(
+    gcs_list_objects = function(prefix, ...) {
+      data.frame(name = "100/data.csv", size = 999999L,
+                 stringsAsFactors = FALSE)
+    },
+    gcs_get_object = function(object_name, saveToDisk, ...) { # nolint object_name_linter
+      attempts <<- attempts + 1L
+      writeLines("x", saveToDisk)
+      TRUE
+    }
+  )
+
+  expect_error(
+    suppressMessages(download_with_verify("100/data.csv", tmp,
+                                          max_retries = 0L)),
+    "Download incomplete after 1 attempts"
+  )
+  expect_equal(attempts, 1L)
+})
+
 test_that("download retries on size mismatch then fails", {
   tmp <- tempfile(fileext = ".csv")
   on.exit(unlink(tmp), add = TRUE)
