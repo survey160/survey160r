@@ -2,21 +2,24 @@
 
 ## Breaking changes
 
-* The consolidated Parquet is now always hour-grained: every row has
-  `hour_local` populated (0-23), and the day-bucket option that wrote
-  `hour_local = NA` is gone. The `time_bucket` config field and the
-  `reports` config slot are removed; `latency_build_config()` no longer
-  accepts a `time_bucket` argument; `validate_config()` rejects `reports`
-  as an unknown key. Downstream consumers (e.g. survey160-shiny) roll up
-  to day at query time with weighted aggregation:
-  `SUM(pct_le * n) / SUM(n) GROUP BY date, segment, threshold_min`.
-  Respondent-cascade columns (`n_respondents`, `pct_resp_hit_gt`,
-  `pct_resp_worst_gt`) do **not** aggregate cleanly across hours -- a
-  respondent appearing in two hours is counted in both denominators.
-  Sophisticated consumers that need precise day-grain cascade re-derive
-  from the raw `latency_frame`. Existing Parquets in
-  `gs://s160_analytics_*/latency/` must be regenerated via
+* The consolidated Parquet now carries **two grains** in one file: hour
+  rows (one per `(campaign_id, date, hour_local, segment, threshold_min)`
+  with `hour_local` 0-23) for time-of-day analysis, plus day rollup rows
+  (`hour_local = NA`) carrying correct day-grain `n`, `pct_le`, and
+  respondent-cascade columns. Downstream consumers filter on
+  `hour_local IS NULL` for day rollups, `hour_local IS NOT NULL` for
+  time-of-day; both are arithmetically correct without any further
+  rollup. The `time_bucket` config knob and the `reports` config slot
+  are removed -- `latency_build_config()` no longer accepts a
+  `time_bucket` argument, and `validate_config()` rejects `reports` as
+  an unknown key. Existing Parquets in `gs://s160_analytics_*/latency/`
+  (which carried only one grain) must be regenerated via
   `run_latency_all()` (SUR-1304).
+* Note for naive aggregators: summing the hour rows' `n_respondents`
+  over-counts cross-hour respondents (a respondent active in two hours
+  appears in both hours' distinct-respondent counts). Always read the
+  day rollup row (`hour_local IS NULL`) for correct day-grain cascade;
+  do not attempt to recompute it by aggregating the hour rows.
 
 # survey160r 0.8.0
 

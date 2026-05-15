@@ -91,9 +91,20 @@ latency_report <- function(data, config, run_at = NULL) {
   windows_df <- normalize_windows(config$texting_windows)
   frame <- build_latency_frame(data, config, windows_df, parse_failed_mask)
 
-  # Step 6: aggregate to consolidated.
-  consolidated <- aggregate_consolidated(frame, config, cfg_hash, run_at,
-                                         src_csv_hash)
+  # Step 6: aggregate to consolidated at TWO grains in the same frame.
+  # Hour rows (hour_local 0-23) for time-of-day analysis; day-rollup rows
+  # (hour_local = NA) carrying correct day-grain cascade metrics that can't
+  # be reconstructed by simple aggregation of hour rows (a respondent
+  # spanning two hours is counted in both hours' denominators). Downstream
+  # consumers filter on `hour_local IS NULL` for day rollups,
+  # `hour_local IS NOT NULL` for time-of-day.
+  hour_grain <- aggregate_consolidated(frame, config, cfg_hash, run_at,
+                                       src_csv_hash)
+  day_frame <- frame
+  if (nrow(day_frame) > 0L) day_frame$hour_local <- NA_integer_
+  day_grain <- aggregate_consolidated(day_frame, config, cfg_hash, run_at,
+                                      src_csv_hash)
+  consolidated <- rbind(hour_grain, day_grain)
 
   # Step 7: diagnostics.
   diagnostics <- build_diagnostics(

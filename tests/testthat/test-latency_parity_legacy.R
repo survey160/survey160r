@@ -177,21 +177,16 @@ test_that("legacy parity: pct_le matches per segment per threshold", {
   })
 
   result <- latency_report(data, config)
-  cons <- result$consolidated
-  # Output is now always hour-grained; roll up to day with weighted mean to
-  # compare against the legacy single-value-per-(segment, threshold).
-  rolled <- dplyr::summarise(
-    dplyr::group_by(cons, .data$segment, .data$threshold_min),
-    pct_le = sum(.data$pct_le * .data$n) / sum(.data$n),
-    .groups = "drop"
-  )
+  # Compare against the day rollup rows in the output (hour_local = NA),
+  # which carry the legacy single-value-per-(segment, threshold) shape.
+  day_rows <- result$consolidated[is.na(result$consolidated$hour_local), ]
 
   for (i in seq_len(length(qs) - 1)) {
     seg <- sprintf("%s→%s", qs[i], qs[i + 1])
     for (j in seq_along(thresholds)) {
       t <- thresholds[j]
-      new_val <- rolled$pct_le[rolled$segment == seg &
-                                 rolled$threshold_min == t]
+      new_val <- day_rows$pct_le[day_rows$segment == seg &
+                                   day_rows$threshold_min == t]
       expect_length(new_val, 1)
       expect_equal(new_val, unname(legacy_pct[[i]][j]), tolerance = 1e-9,
                    info = sprintf("segment=%s threshold=%d", seg, t))
