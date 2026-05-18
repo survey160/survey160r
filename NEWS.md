@@ -1,22 +1,25 @@
 # survey160r (development version)
 
-## New features
-
-* `run_latency_all()` gains a `workers` argument that dispatches per-campaign
-  work via `future.apply::future_lapply()` when greater than 1, allowing
-  fleet passes to process campaigns in parallel. Callers set up the future
-  plan (e.g. `future::plan(future::multisession, workers = 4)`) themselves
-  (SUR-1305).
-* `run_latency_all()` gains a `skip_unchanged` argument. When `TRUE`, each
-  campaign's source CSV `updated` timestamp is compared against the existing
-  destination Parquet's `updated` timestamp and campaigns whose output is
-  already current are reported with `status = "skipped"` and the existing
-  `parquet_uri` without re-downloading or re-emitting (SUR-1305).
-* New exported helper `s160_gcs_latency_output_status()` returns GCS
-  metadata for a campaign's existing latency Parquet output, or `NULL` if
-  none exists (SUR-1305).
-
 ## Breaking changes
+
+* The package is now algorithm-only. Fleet orchestration, GCS writes, and
+  scheduling have moved to the survey160-shiny repo (SUR-1313).
+* `run_latency()` no longer writes to GCS. Its signature drops the
+  destination `bucket` and `uploader` arguments and gains a top-level
+  `source_bucket` argument; it returns the in-memory result list from
+  `latency_report()` with the source CSV's sha256 attached as the
+  `source_csv_hash` attribute. Callers that need persisted Parquet
+  should use the fleet runner in survey160-shiny.
+* `run_latency_all()`, `write_to_gcs()`, `s160_gcs_latency_output_status()`,
+  and `read_latency()` are removed. The first three move to
+  survey160-shiny; `read_latency()` had no in-tree consumers and is
+  dropped (reintroduce if a real consumer surfaces).
+* `scripts/bulk_reprocess.R` is removed; survey160-shiny's
+  `scripts/run_latency.R` is now the supported fleet entry point.
+* `future`, `future.apply`, `duckdb`, and `DBI` leave Suggests. `arrow`
+  leaves Imports (no remaining call sites in this package).
+
+## Breaking changes (continued)
 
 * The consolidated Parquet now carries **two grains** in one file: hour
   rows (one per `(campaign_id, date, hour_local, segment, threshold_min)`
@@ -29,8 +32,8 @@
   are removed -- `latency_build_config()` no longer accepts a
   `time_bucket` argument, and `validate_config()` rejects `reports` as
   an unknown key. Existing Parquets in `gs://s160_analytics_*/latency/`
-  (which carried only one grain) must be regenerated via
-  `run_latency_all()` (SUR-1304).
+  (which carried only one grain) must be regenerated via the
+  survey160-shiny fleet runner (SUR-1304, SUR-1313).
 * Note for naive aggregators: summing the hour rows' `n_respondents`
   over-counts cross-hour respondents (a respondent active in two hours
   appears in both hours' distinct-respondent counts). Always read the
@@ -44,17 +47,11 @@
   can see which hours had high volume directly from the hour rows.
   Diagnostics field `n_out_of_window_dropped` and
   `windows_normalized_utc` are dropped along with the feature.
-  `latency_build_config()`, `run_latency()`, and `run_latency_all()`
-  no longer accept a `texting_windows` argument (SUR-1304).
+  `latency_build_config()` and `run_latency()` no longer accept a
+  `texting_windows` argument (SUR-1304).
 
 ## Internal
 
-* Moved `pull_csv_from_gcs()` and the internal `upload_object()` helper from
-  `R/latency_io.R` to `R/s160_gcs.R`, where they sit next to the other GCS
-  client functions. The latency layer (`R/latency_*.R`) is now provably
-  independent of `googleCloudStorageR` and the `s160_gcs_*` helpers, paving
-  the way for a future package split. No exported-API or behaviour change
-  (SUR-1305).
 * Cleanup pass on the latency internals: unified Survey160 CSV timestamp
   parsing behind `parse_s160_timestamps_chr()`, added a `safe_pct()` helper
   for the "percent of X, NA if denominator is zero" pattern, encapsulated

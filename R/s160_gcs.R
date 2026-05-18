@@ -393,25 +393,6 @@ pull_csv_from_gcs <- function(campaign_id, filename = NULL, bucket = NULL) {
   data
 }
 
-# Upload a local file to GCS at <bucket>/<object_name> via googleCloudStorageR.
-# `metadata` is set as object metadata for human inspection in the GCS console.
-# Used as the default `uploader` for write_to_gcs(). Marked # nocov because it
-# is a thin wrapper around a real network call; tests mock at the
-# write_to_gcs(uploader=) seam instead (see test-latency_io.R).
-upload_object <- function(local_path, object_name, bucket, metadata) { # nocov start
-  googleCloudStorageR::gcs_upload(
-    file = local_path,
-    bucket = bucket,
-    name = object_name,
-    object_metadata = googleCloudStorageR::gcs_metadata_object(
-      object_name = object_name,
-      metadata = metadata
-    ),
-    predefinedAcl = "bucketLevel"
-  )
-  invisible(NULL)
-} # nocov end
-
 #' Check campaign results export status
 #'
 #' Returns GCS file metadata for the campaign's export file without

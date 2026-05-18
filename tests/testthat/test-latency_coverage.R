@@ -126,3 +126,30 @@ test_that("pull_csv_from_gcs honors a caller-supplied filename", {
   )
   expect_true(grepl("^sha256:", attr(data, "source_csv_hash")))
 })
+
+test_that("pull_csv_from_gcs derives the default filename from campaign_id", {
+  stub_gcs_base()
+  # Without an explicit filename, the helper falls back to
+  # `<campaign_id>_raw_data_download.csv` for both the hash lookup and the
+  # canonical source_csv_path attribute.
+  local_mocked_bindings(
+    gcs_get_object = function(object_name, saveToDisk, ...) { # nolint
+      writeLines(c("a,b", "1,2"), saveToDisk)
+      TRUE
+    },
+    gcs_list_objects = function(prefix = NULL, ...) {
+      tmp <- tempfile()
+      writeLines(c("a,b", "1,2"), tmp)
+      sz <- file.info(tmp)$size
+      unlink(tmp)
+      data.frame(name = "1980/1980_raw_data_download.csv",
+                 size = sz, stringsAsFactors = FALSE)
+    }
+  )
+  data <- suppressMessages(pull_csv_from_gcs(1980))
+  expect_true(grepl("^sha256:", attr(data, "source_csv_hash")))
+  expect_equal(
+    attr(data, "source_csv_path"),
+    "gs://test_bucket/1980/1980_raw_data_download.csv"
+  )
+})
