@@ -397,6 +397,43 @@ s160_gcs_pull_csv <- function(campaign_id, filename = NULL, bucket = NULL) {
   data
 }
 
+#' Read a campaign CSV from a local path, hashing it for provenance
+#'
+#' Local-source sibling of \code{s160_gcs_pull_csv()}. Reads the CSV
+#' via \code{utils::read.csv()} and stamps \code{source_csv_hash} and
+#' \code{source_csv_path} attributes on the returned data frame so
+#' downstream \code{latency_report()} / \code{latency_run()} surface
+#' them on \code{result$meta}. Use for backfills (archived campaign
+#' CSVs stored on disk, Dropbox, S3 mounts, etc.).
+#'
+#' @param path Path to the CSV. Recorded verbatim on
+#'   \code{attr(., "source_csv_path")}.
+#' @param ... Forwarded to \code{utils::read.csv()}.
+#'   \code{stringsAsFactors} defaults to \code{FALSE}.
+#' @return A data frame with \code{source_csv_hash} and
+#'   \code{source_csv_path} attributes set.
+#' @examples
+#' \dontrun{
+#' data <- s160_read_csv("~/Dropbox/archive/campaign_500.csv")
+#' attr(data, "source_csv_hash")
+#' latency_run(500, data, field_timezone = "America/New_York")
+#' }
+#' @export
+s160_read_csv <- function(path, ...) {
+  if (!file.exists(path)) {
+    stop(sprintf("s160_read_csv: file not found: %s", path),
+         call. = FALSE)
+  }
+  args <- list(...)
+  if (is.null(args$stringsAsFactors)) args$stringsAsFactors <- FALSE
+  args$file <- path
+  data <- do.call(utils::read.csv, args)
+  attr(data, "source_csv_hash") <- paste0(
+    "sha256:", digest::digest(file = path, algo = "sha256"))
+  attr(data, "source_csv_path") <- path
+  data
+}
+
 #' Check campaign results export status
 #'
 #' Returns GCS file metadata for the campaign's export file without

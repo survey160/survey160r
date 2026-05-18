@@ -82,27 +82,39 @@ status$size     # file size
 
 Compute a per-campaign recipient-latency report from a raw campaign CSV and return it as an in-memory R object. Replaces the per-wave inline scripts that the analytics team used to maintain by hand: one algorithm, one output schema, one config shape per campaign.
 
-This package is **algorithm-only**. `latency_report(data, config)` is the pure function -- deterministic, no I/O, no globals -- and is the recommended entry point for tests and ad-hoc analysis. `latency_run(campaign_id)` is a thin convenience that pulls the campaign CSV from GCS and runs the algorithm in one call, returning the result list. Persisting outputs as Parquet, walking the fleet, and scheduling all live in [survey160-shiny](https://github.com/survey160/survey160-shiny) (`scripts/run_latency.R`).
+This package is **algorithm-only and source-agnostic**. `latency_report(data, config)` is the pure function -- deterministic, no I/O, no globals -- and is the recommended entry point for tests and ad-hoc analysis. `latency_run(campaign_id, data, ...)` composes `latency_build_config()` + `latency_report()` over a caller-supplied data frame; pair it with `s160_gcs_pull_csv()` for the GCS source path, or read the CSV yourself for any other source. Persisting outputs as Parquet, walking the fleet, and scheduling all live in [survey160-shiny](https://github.com/survey160/survey160-shiny) (`scripts/run_latency.R`).
 
-### Happy path (one campaign, in-memory)
+### Happy path -- GCS source
 
 ```r
 library(survey160r)
 s160_gcs_init(bucket = "campaign_results")
 
-# Zero-config: flow.questions are derived from the CSV header. Defaults
-# are field_timezone = "UTC", project_id = campaign_id.
-result <- latency_run(1234)
+data   <- s160_gcs_pull_csv(1234)
+result <- latency_run(1234, data, field_timezone = "America/New_York")
 head(result$consolidated)
 result$meta$source_csv_hash    # sha256 of the source CSV
 result$meta$source_csv_path    # canonical gs:// path
-
-# Operator-local bucketing + an explicit project id:
-result <- latency_run(1234,
-                      field_timezone = "America/New_York",
-                      project_id = 9999,
-                      run_by = "lshimokawa")
 ```
+
+### Backfill -- archived CSV on disk / Dropbox
+
+```r
+data   <- s160_read_csv("~/Dropbox/archive/campaign_500.csv")
+result <- latency_run(500, data, field_timezone = "America/New_York")
+result$meta$source_csv_hash    # sha256 of the local file
+result$meta$source_csv_path    # the path you passed
+```
+
+`s160_read_csv()` is the local-source sibling of `s160_gcs_pull_csv()`
+-- both produce a data frame with `source_csv_hash` and
+`source_csv_path` attributes set, which `latency_run()` then surfaces
+on `result$meta`. Pick the reader that matches where the CSV lives;
+the algorithm call is identical.
+
+For ad-hoc invocations with a hand-built data frame (synthetic /
+testing), pass `data` to `latency_run()` directly -- `result$meta`
+provenance will be `NA`, which is correct for that case.
 
 ### Pure function
 

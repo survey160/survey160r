@@ -4,16 +4,27 @@
 
 * The package is now algorithm-only. Fleet orchestration, GCS writes, and
   scheduling have moved to the survey160-shiny repo (SUR-1313).
-* `run_latency()` is renamed to `latency_run()` to match the
-  `latency_*` family. It no longer writes to GCS. The signature drops
-  the destination `bucket`, `uploader`, and `source_bucket` arguments
-  (the remaining single bucket is now just `bucket =`), gains an
-  optional `config =` argument that lets callers pass a pre-built
-  config (skipping the automatic `latency_build_config()` call), and
-  forwards `...` to `latency_build_config()` in the auto-build path.
-  It returns the in-memory result list from `latency_report()`.
+* `run_latency()` is renamed to `latency_run()` and is now
+  source-agnostic. The signature is
+  \code{latency_run(campaign_id, data, config = NULL, run_at = NULL,
+  run_by = NULL, ...)}: `data` is a caller-supplied data frame, so the
+  function works equally well for CSVs pulled from GCS via
+  `s160_gcs_pull_csv()` and for off-GCS sources (Dropbox, local disk,
+  S3, etc.). `bucket`, `source_bucket`, `uploader`, `field_timezone`,
+  `project_id`, `date_filter`, and `respondent_id_column` are no
+  longer arguments on `latency_run()` itself; the build-config knobs
+  flow through `...` to `latency_build_config()`. Optional `config =`
+  lets callers pre-build (and mutate) the config, skipping the
+  auto-build. The function returns the result list from
+  `latency_report()`.
 * `pull_csv_from_gcs()` is renamed to `s160_gcs_pull_csv()` to match
   the `s160_gcs_*` family; behaviour unchanged.
+* New exported reader `s160_read_csv(path, ...)` reads a CSV from a
+  local path and stamps the same `source_csv_hash` /
+  `source_csv_path` attributes that `s160_gcs_pull_csv()` does. Use
+  for backfilling archived campaigns from disk / Dropbox / S3 mounts;
+  hand the result to `latency_run()` and provenance flows through to
+  `result$meta` like it does for active GCS campaigns.
 * `latency_report()` now populates `result$meta$source_csv_hash` and
   `result$meta$source_csv_path` from the input data's attributes (in
   addition to stamping `consolidated$source_csv_hash` per-row). Meta
