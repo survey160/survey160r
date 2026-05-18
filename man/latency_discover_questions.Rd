@@ -14,7 +14,7 @@ A character vector of question ids in flow order.
 }
 \description{
 Scans the column names of an in-memory CSV data frame (as returned by
-\code{read.csv} / \code{pull_csv_from_gcs}) for \code{id.<q>.scriptDate}
+\code{read.csv} / \code{s160_gcs_pull_csv}) for \code{id.<q>.scriptDate}
 columns and returns the question ids in their original column order.
 Terminal flow states (\code{refusal}, \code{ineligible}) are dropped so
 the result is usable directly as \code{config$flow$questions}.

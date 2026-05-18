@@ -4,12 +4,21 @@
 
 * The package is now algorithm-only. Fleet orchestration, GCS writes, and
   scheduling have moved to the survey160-shiny repo (SUR-1313).
-* `run_latency()` no longer writes to GCS. Its signature drops the
-  destination `bucket` and `uploader` arguments and gains a top-level
-  `source_bucket` argument; it returns the in-memory result list from
-  `latency_report()` with the source CSV's sha256 attached as the
-  `source_csv_hash` attribute. Callers that need persisted Parquet
-  should use the fleet runner in survey160-shiny.
+* `run_latency()` is renamed to `latency_run()` to match the
+  `latency_*` family. It no longer writes to GCS. The signature drops
+  the destination `bucket`, `uploader`, and `source_bucket` arguments
+  (the remaining single bucket is now just `bucket =`), gains an
+  optional `config =` argument that lets callers pass a pre-built
+  config (skipping the automatic `latency_build_config()` call), and
+  forwards `...` to `latency_build_config()` in the auto-build path.
+  It returns the in-memory result list from `latency_report()`.
+* `pull_csv_from_gcs()` is renamed to `s160_gcs_pull_csv()` to match
+  the `s160_gcs_*` family; behaviour unchanged.
+* `latency_report()` now populates `result$meta$source_csv_hash` and
+  `result$meta$source_csv_path` from the input data's attributes (in
+  addition to stamping `consolidated$source_csv_hash` per-row). Meta
+  survives data-frame subsetting and is the contract downstream
+  persistence layers should read.
 * `run_latency_all()`, `write_to_gcs()`, `s160_gcs_latency_output_status()`,
   and `read_latency()` are removed. The first three move to
   survey160-shiny; `read_latency()` had no in-tree consumers and is
@@ -19,9 +28,7 @@
 * `future`, `future.apply`, `duckdb`, and `DBI` leave Suggests. `arrow`
   leaves Imports (no remaining call sites in this package).
 
-## Breaking changes (continued)
-
-* The consolidated Parquet now carries **two grains** in one file: hour
+* The consolidated frame now carries **two grains** in one file: hour
   rows (one per `(campaign_id, date, hour_local, segment, threshold_min)`
   with `hour_local` 0-23) for time-of-day analysis, plus day rollup rows
   (`hour_local = NA`) carrying correct day-grain `n`, `pct_le`, and
@@ -47,7 +54,7 @@
   can see which hours had high volume directly from the hour rows.
   Diagnostics field `n_out_of_window_dropped` and
   `windows_normalized_utc` are dropped along with the feature.
-  `latency_build_config()` and `run_latency()` no longer accept a
+  `latency_build_config()` and `latency_run()` no longer accept a
   `texting_windows` argument (SUR-1304).
 
 ## Internal

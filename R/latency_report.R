@@ -52,7 +52,7 @@ latency_report <- function(data, config, run_at = NULL) {
   resp_id_col <- config$filters$respondent_id_column
 
   # Stash source_csv_hash from the input attribute before any subsetting (R
-  # drops custom attributes on `[`). pull_csv_from_gcs() sets this; manual
+  # drops custom attributes on `[`). s160_gcs_pull_csv() sets this; manual
   # callers can attach it themselves. Falls back to NA so downstream writers
   # can still override it at persist time for ad-hoc invocations.
   src_csv_hash <- attr(data, "source_csv_hash") %||% NA_character_
@@ -118,11 +118,18 @@ latency_report <- function(data, config, run_at = NULL) {
     config_hash = cfg_hash
   )
 
+  # Surface CSV-level provenance on `meta` as well as on every row of
+  # `consolidated`. Meta survives data-frame subsetting and is the
+  # documented contract for downstream persistence layers (e.g.
+  # survey160-shiny's writer reads result$meta$source_csv_hash); the
+  # per-row column is what ends up in the persisted Parquet.
   meta <- list(
     algorithm_version = .algorithm_version,
     schema_version = .schema_version,
     config_hash = cfg_hash,
-    run_at_utc = run_at
+    run_at_utc = run_at,
+    source_csv_hash = src_csv_hash,
+    source_csv_path = attr(data, "source_csv_path") %||% NA_character_
   )
 
   list(

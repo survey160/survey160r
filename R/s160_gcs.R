@@ -349,11 +349,15 @@ s160_gcs_campaign_results_list <- function(bucket = NULL) {
   sort(campaign_ids)
 }
 
-#' Read campaign CSV from GCS for latency analysis
+#' Read a campaign CSV from GCS, hashing it for provenance
 #'
-#' Thin wrapper over \code{s160_gcs_campaign_results_read} that also computes
-#' a sha256 of the downloaded CSV bytes for provenance. The hash travels back
-#' on the returned object as the \code{source_csv_hash} attribute.
+#' Thin wrapper over \code{s160_gcs_campaign_results_read} that also
+#' computes a sha256 of the downloaded CSV bytes. The hash and the
+#' canonical \code{gs://} path travel back on the returned data frame
+#' as the \code{source_csv_hash} and \code{source_csv_path}
+#' attributes; \code{latency_report()} reads them and copies them onto
+#' \code{result$meta} so downstream consumers (e.g. persistence layers)
+#' don't have to fish them off attributes.
 #'
 #' @param campaign_id Campaign id (numeric or character).
 #' @param filename Optional override for the CSV filename.
@@ -363,7 +367,7 @@ s160_gcs_campaign_results_list <- function(bucket = NULL) {
 #' @return A data frame with attributes \code{source_csv_hash} and
 #'   \code{source_csv_path} set.
 #' @export
-pull_csv_from_gcs <- function(campaign_id, filename = NULL, bucket = NULL) {
+s160_gcs_pull_csv <- function(campaign_id, filename = NULL, bucket = NULL) {
   bucket <- resolve_bucket(bucket)
   tmpdir <- tempfile(pattern = "s160_latency_")
   dir.create(tmpdir)
