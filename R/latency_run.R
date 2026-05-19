@@ -1,354 +1,98 @@
-# Stateless runner for the latency pipeline.
-# Pulls the campaign CSV from GCS, derives the config from the CSV header,
-# runs latency_report(), and writes the result to the analytics bucket.
-#
-# Pre-condition: caller must have run s160_gcs_init(bucket = "campaign_results")
-# in the current R session. No API auth needed -- the config is derived from
-# the CSV alone.
+# Analyst-facing entry point for the latency algorithm.
+# Pure composition of latency_build_config() + latency_report() over a
+# caller-supplied data frame. No I/O: pair with s160_gcs_pull_csv() for
+# the GCS source path, or bring your own data frame from anywhere
+# (Dropbox, local disk, S3, an email attachment).
 
-#' Run the full latency pipeline for one campaign
+#' Run the latency report for one campaign
 #'
-#' Stateless: every invocation re-derives the report config from the CSV
-#' header. No YAML, no API call, no auth precondition beyond GCS.
+#' Analyst-facing one-campaign runner. Given an in-memory campaign CSV
+#' (already read by the caller), (optionally) builds the report config
+#' from the CSV header and runs the latency algorithm. No I/O; pair
+#' with \code{s160_gcs_pull_csv()} for the GCS source path or
+#' \code{read.csv()} / \code{readr::read_csv()} / anything else for
+#' off-GCS sources.
 #'
-#' Sensible defaults are baked in; override per-call when needed. The
-#' \code{field_timezone} default is \code{"UTC"} (matches the CSV format and
-#' is fully reproducible); production callers running operator-local
-#' dashboards typically pass \code{"America/New_York"}. The \code{project_id}
-#' default is the campaign id, matching the legacy \code{bulk_reprocess.R}
-#' placeholder behaviour; callers that know the real Survey160 project id
-#' should pass it explicitly.
+#' Two call shapes:
+#'
+#' \itemize{
+#'   \item Convenience -- omit \code{config} and pass any
+#'         \code{latency_build_config()} overrides through \code{...}.
+#'         \code{latency_run()} derives the config from the CSV header.
+#'   \item Custom -- pre-build the config with
+#'         \code{latency_build_config()} (mutating as needed) and pass
+#'         it via \code{config}. \code{...} is ignored in that case.
+#' }
+#'
+#' Provenance: if \code{data} carries \code{source_csv_hash} or
+#' \code{source_csv_path} attributes (set by \code{s160_gcs_pull_csv}
+#' for GCS reads), \code{latency_report()} surfaces them on
+#' \code{result$meta}. Analysts pulling CSVs from other sources can
+#' attach the attributes themselves before calling, e.g.
+#' \preformatted{
+#' attr(df, "source_csv_path") <- "dropbox:campaign_1234.csv"
+#' attr(df, "source_csv_hash") <- paste0(
+#'   "sha256:", digest::digest(file = local_path, algo = "sha256"))
+#' }
 #'
 #' @param campaign_id Campaign id (numeric or character).
-#' @param bucket Destination analytics bucket.
-#' @param source_bucket Source GCS bucket containing the campaign CSV.
-#'   \code{NULL} (default) falls back to the global bucket set by
-#'   \code{s160_gcs_init()}; pass an explicit value to skip the global.
-#' @param field_timezone Tz used to bucket the Parquet \code{date} and
-#'   \code{hour_local} columns. Default \code{"UTC"}.
-#' @param project_id Optional Survey160 project id; defaults to the
-#'   campaign id (placeholder, see Details).
-#' @param date_filter Optional character/Date vector restricting which
-#'   survey dates are processed (in \code{field_timezone}).
-#' @param respondent_id_column Optional column name used to dedupe rows by
-#'   respondent. Default \code{NULL} (no dedupe; matches legacy R scripts).
-#' @param run_by Optional string for the \code{run_by} provenance column.
-#' @param run_at Optional \code{POSIXct} timestamp to stamp on every row's
-#'   \code{run_at_utc} column. \code{NULL} (default) uses \code{Sys.time()}.
-#'   \code{run_latency_all()} passes one stamp here so every campaign in a
-#'   fleet pass shares the same \code{run_at_utc}.
-#' @param uploader Forwarded to \code{write_to_gcs()}; see its docs.
-#' @return The full \code{gs://...} path written.
+#' @param data In-memory campaign CSV as a data frame (one row per
+#'   respondent, columns named \code{id.<q>.scriptDate} /
+#'   \code{id.<q>.batchDate} per question plus the population-filter
+#'   column \code{id.intro.finalText} and the campaign id column).
+#' @param config Optional pre-built config. When \code{NULL} (default),
+#'   the config is auto-built from \code{data}'s header; pass any
+#'   \code{latency_build_config()} overrides (\code{field_timezone},
+#'   \code{project_id}, \code{date_filter}, \code{respondent_id_column})
+#'   through \code{...}. Mutually exclusive with \code{...}.
+#' @param run_at Optional \code{POSIXct} timestamp stamped on every
+#'   row's \code{run_at_utc} column. \code{NULL} (default) uses
+#'   \code{Sys.time()}. Fleet runners pass one stamp here so every
+#'   campaign in a pass shares the same \code{run_at_utc}.
+#' @param run_by Optional string stamped on every row's \code{run_by}
+#'   provenance column. \code{NULL} (default) leaves the column as
+#'   \code{NA_character_}; callers persisting the result typically
+#'   fill it at write time.
+#' @param ... Forwarded to \code{latency_build_config()} when
+#'   \code{config} is \code{NULL}. Ignored otherwise.
+#' @return The list returned by \code{latency_report()}:
+#'   \code{consolidated}, \code{latency_frame}, \code{diagnostics},
+#'   \code{meta} (with \code{source_csv_hash} and
+#'   \code{source_csv_path} from \code{data}'s attributes, or \code{NA}
+#'   when absent).
 #' @examples
 #' \dontrun{
+#' # GCS source -- pair with s160_gcs_pull_csv().
 #' s160_gcs_init(bucket = "campaign_results")
-#' run_latency(1980, "s160_analytics_prod")
-#' run_latency(1980, "s160_analytics_prod",
-#'             field_timezone = "America/New_York",
-#'             project_id = 9999)
+#' data   <- s160_gcs_pull_csv(1980)
+#' result <- latency_run(1980, data, field_timezone = "America/New_York")
+#' result$meta$source_csv_hash
+#'
+#' # Off-GCS source -- bring your own CSV.
+#' data   <- read.csv("~/Dropbox/campaign_1980.csv", stringsAsFactors = FALSE)
+#' result <- latency_run(1980, data)
+#'
+#' # Custom config (mutate before running).
+#' config <- latency_build_config(1980, data, field_timezone = "America/New_York")
+#' config$flow$questions <- c("intro", "q1_custom")
+#' latency_run(1980, data, config = config)
 #' }
 #' @export
-run_latency <- function(campaign_id, bucket,
-                        source_bucket = NULL,
-                        field_timezone = "UTC",
-                        project_id = NULL,
-                        date_filter = NULL,
-                        respondent_id_column = NULL,
-                        run_by = NULL,
+latency_run <- function(campaign_id, data,
+                        config = NULL,
                         run_at = NULL,
-                        uploader = upload_object) {
-  data <- pull_csv_from_gcs(campaign_id, bucket = source_bucket)
-  source_csv_hash <- attr(data, "source_csv_hash")
-  config <- latency_build_config(
-    campaign_id, data,
-    field_timezone = field_timezone,
-    project_id = project_id,
-    date_filter = date_filter,
-    respondent_id_column = respondent_id_column
-  )
+                        run_by = NULL,
+                        ...) {
+  if (is.null(config)) {
+    config <- latency_build_config(campaign_id, data, ...)
+  } else if (...length() > 0L) {
+    stop("latency_run: pass either `config` or `latency_build_config()` ",
+         "overrides via `...`, not both.", call. = FALSE)
+  }
   result <- latency_report(data, config, run_at = run_at)
-  write_to_gcs(
-    result = result,
-    campaign_id = campaign_id,
-    bucket = bucket,
-    source_csv_hash = source_csv_hash,
-    run_by = run_by,
-    uploader = uploader
-  )
-}
-
-#' Run the latency pipeline for every campaign in a source bucket
-#'
-#' Discovers every campaign with an export CSV under \code{source_bucket} via
-#' \code{s160_gcs_campaign_results_list()} and runs \code{run_latency()} for
-#' each, writing the per-campaign Parquet to \code{bucket}. Per-campaign
-#' failures are caught and recorded; the loop continues so one bad CSV does
-#' not block the rest of the fleet.
-#'
-#' Reads and writes use explicit \code{bucket} arguments throughout, so this
-#' function never touches the session-global GCS bucket.
-#'
-#' All override arguments (\code{field_timezone}, \code{date_filter},
-#' \code{respondent_id_column}) apply uniformly to every campaign.
-#' \code{project_id} is always set to \code{campaign_id} (placeholder) --
-#' callers needing per-campaign project ids should iterate
-#' \code{run_latency()} themselves with their own mapping.
-#'
-#' @param source_bucket Source GCS bucket containing per-campaign CSV exports
-#'   (e.g. \code{"campaign_results"}).
-#' @param bucket Destination GCS bucket for the Parquet outputs
-#'   (e.g. \code{"s160_analytics_dev"}).
-#' @param campaign_ids Optional character/numeric vector of campaign ids to
-#'   process. \code{NULL} (default) processes every campaign found in
-#'   \code{source_bucket}.
-#' @param field_timezone Forwarded to \code{run_latency()}. Default
-#'   \code{"UTC"}; pass \code{"America/New_York"} to match historical fleet
-#'   bucketing.
-#' @param date_filter,respondent_id_column Forwarded to
-#'   \code{run_latency()}.
-#' @param run_by Forwarded to \code{run_latency()}. Default
-#'   \code{"run_latency_all"}.
-#' @param uploader Forwarded to \code{run_latency()}; see \code{write_to_gcs}.
-#' @param continue_on_error Logical. \code{TRUE} (default) records the
-#'   error and moves on; \code{FALSE} re-raises the first error.
-#' @param workers Integer >= 1. \code{1L} (default) processes campaigns
-#'   serially. Values > 1 dispatch the per-campaign work via
-#'   \code{future.apply::future_lapply()}, which must be installed.
-#'   The caller is responsible for setting up the future plan; the most
-#'   common choice for local runs is \code{future::plan(future::multisession,
-#'   workers = N)}. With \code{multisession}, each worker re-uses the
-#'   cached gargle OAuth token from disk on its first GCS call; the
-#'   session-global bucket set by \code{s160_gcs_init()} is not propagated
-#'   to workers, which is harmless here because every read and write threads
-#'   \code{bucket}/\code{source_bucket} explicitly.
-#' @param skip_unchanged Logical. \code{FALSE} (default) reprocesses every
-#'   campaign. \code{TRUE} compares the source CSV's GCS \code{updated}
-#'   timestamp against the existing destination Parquet's \code{updated}
-#'   timestamp and skips campaigns whose output is at least as new as the
-#'   source. Skipped campaigns appear in the result with \code{status =
-#'   "skipped"} and the existing \code{parquet_uri}. The comparison is made
-#'   once at dispatch time; concurrent uploads of the source CSV during the
-#'   run are not detected.
-#' @return A data frame with one row per attempted campaign:
-#'   \code{campaign_id}, \code{status} (\code{"ok"} / \code{"failed"} /
-#'   \code{"skipped"}), \code{parquet_uri} (NA on failure), \code{error_message}
-#'   (NA on success and skip), \code{elapsed_s}.
-#' @examples
-#' \dontrun{
-#' s160_gcs_init(bucket = "campaign_results")  # any session GCS auth works
-#' results <- run_latency_all(
-#'   source_bucket = "campaign_results",
-#'   bucket = "s160_analytics_dev",
-#'   field_timezone = "America/New_York",
-#'   run_by = "bulk_reprocess"
-#' )
-#' subset(results, status == "failed")
-#' }
-#' @export
-run_latency_all <- function(source_bucket, bucket,
-                            campaign_ids = NULL,
-                            field_timezone = "UTC",
-                            date_filter = NULL,
-                            respondent_id_column = NULL,
-                            run_by = "run_latency_all",
-                            uploader = upload_object,
-                            continue_on_error = TRUE,
-                            workers = 1L,
-                            skip_unchanged = FALSE) {
-  workers <- .validate_run_latency_all_args(source_bucket, bucket, workers)
-
-  if (is.null(campaign_ids)) {
-    campaign_ids <- s160_gcs_campaign_results_list(bucket = source_bucket)
+  if (!is.null(run_by) && !is.null(result$consolidated) &&
+        nrow(result$consolidated) > 0L) {
+    result$consolidated$run_by <- rep(run_by, nrow(result$consolidated))
   }
-  campaign_ids <- as.character(campaign_ids)
-
-  # Single fleet-wide timestamp. Every per-campaign Parquet in this run
-  # carries the same `run_at_utc`, so "show me the latest fleet pass" is a
-  # one-liner: SELECT * FROM latency WHERE run_at_utc = (SELECT MAX(...)).
-  fleet_run_at <- Sys.time()
-  attr(fleet_run_at, "tzone") <- "UTC"
-
-  n <- length(campaign_ids)
-  results <- vector("list", n)
-  needs_run <- rep(TRUE, n)
-  if (skip_unchanged) {
-    skip_decisions <- .resolve_skip_decisions(
-      campaign_ids, source_bucket, bucket
-    )
-    results <- skip_decisions$results
-    needs_run <- skip_decisions$needs_run
-  }
-
-  run_idx <- which(needs_run)
-  if (length(run_idx) > 0L) {
-    # Capture the parent's OAuth client options. Multisession workers start
-    # with empty options() and no gargle auth state; we re-establish both
-    # inside the worker so the cached token on disk is honored. The session
-    # global bucket is intentionally NOT propagated -- every read and write
-    # below threads `bucket`/`source_bucket` explicitly.
-    parent_oauth <- list(
-      client_id = getOption("googleAuthR.client_id"),
-      client_secret = getOption("googleAuthR.client_secret")
-    )
-    runner <- function(i) {
-      if (workers > 1L) .ensure_worker_gcs_auth(parent_oauth)
-      cid <- campaign_ids[[i]]
-      message(sprintf("[%d/%d] %s", i, n, cid))
-      .run_one_campaign(
-        cid, source_bucket, bucket, field_timezone,
-        date_filter, respondent_id_column, run_by, fleet_run_at, uploader,
-        continue_on_error
-      )
-    }
-    run_results <- if (workers > 1L) {
-      # Workers spawned by multisession futures start fresh and need our
-      # package loaded so `.run_one_campaign` and the downstream pipeline
-      # helpers are resolvable. Bypassed harmlessly under `sequential`.
-      future.apply::future_lapply(
-        run_idx, runner, future.seed = TRUE,
-        future.packages = "survey160r"
-      )
-    } else {
-      lapply(run_idx, runner)
-    }
-    for (k in seq_along(run_idx)) {
-      results[[run_idx[k]]] <- run_results[[k]]
-    }
-  }
-
-  do.call(rbind, results)
-}
-
-# Re-establish gargle auth state inside a future worker so cached OAuth
-# tokens on disk are picked up. Idempotent. Silent on success. Marked
-# # nocov because exercising it requires a real multisession worker; the
-# behavior is integration-tested by scripts/smoke_SUR-1305.R.
-.ensure_worker_gcs_auth <- function(parent_oauth) { # nocov start
-  if (!is.null(parent_oauth$client_id)) {
-    options(googleAuthR.client_id = parent_oauth$client_id)
-  }
-  if (!is.null(parent_oauth$client_secret)) {
-    options(googleAuthR.client_secret = parent_oauth$client_secret)
-  }
-  suppressMessages(googleCloudStorageR::gcs_auth(email = TRUE))
-  invisible(NULL)
-} # nocov end
-
-# Validate the three argument shapes that gate everything else. Returns the
-# coerced workers value; raises with a stable message on any failure.
-.validate_run_latency_all_args <- function(source_bucket, bucket, workers) {
-  .require_nonempty_string(source_bucket, "source_bucket")
-  .require_nonempty_string(bucket, "bucket")
-  .validate_workers(workers)
-}
-
-.require_nonempty_string <- function(x, name) {
-  ok <- is.character(x) && length(x) == 1L && nzchar(trimws(x))
-  if (!ok) stop(sprintf("%s must be a non-empty string.", name), call. = FALSE)
-  invisible(x)
-}
-
-.validate_workers <- function(workers) {
-  bad <- !is.numeric(workers) || length(workers) != 1L ||
-    is.na(workers) || workers < 1L
-  if (bad) stop("workers must be a positive integer.", call. = FALSE)
-  workers <- as.integer(workers)
-  if (workers > 1L && !requireNamespace("future.apply", quietly = TRUE)) {
-    stop("workers > 1 requires the 'future.apply' package.", call. = FALSE)
-  }
-  workers
-}
-
-# Build the pre-filled `results` and `needs_run` vectors for the skip path.
-# Cheap serial GCS metadata calls; campaigns whose existing Parquet is at
-# least as new as the source CSV are recorded with status = "skipped" and
-# marked as not needing a recompute.
-.resolve_skip_decisions <- function(campaign_ids, source_bucket, dest_bucket) {
-  n <- length(campaign_ids)
-  results <- vector("list", n)
-  needs_run <- rep(TRUE, n)
-  for (i in seq_len(n)) {
-    cid <- campaign_ids[[i]]
-    skip_uri <- .skip_unchanged_uri(cid, source_bucket, dest_bucket)
-    if (!is.null(skip_uri)) {
-      message(sprintf("[%d/%d] %s: skipped (unchanged)", i, n, cid))
-      results[[i]] <- data.frame(
-        campaign_id = cid, status = "skipped",
-        parquet_uri = skip_uri,
-        error_message = NA_character_,
-        elapsed_s = 0,
-        stringsAsFactors = FALSE
-      )
-      needs_run[i] <- FALSE
-    }
-  }
-  list(results = results, needs_run = needs_run)
-}
-
-# Returns the existing destination Parquet's gs:// URI when the source CSV
-# is no newer than the destination (i.e., safe to skip). Returns NULL when
-# the campaign should be processed (either side missing, or source newer).
-.skip_unchanged_uri <- function(campaign_id, source_bucket, dest_bucket) {
-  src <- tryCatch(
-    s160_gcs_campaign_results_status(campaign_id, bucket = source_bucket),
-    error = function(e) NULL
-  )
-  if (is.null(src) || is.null(src$updated)) return(NULL)
-  dst <- tryCatch(
-    s160_gcs_latency_output_status(campaign_id, bucket = dest_bucket),
-    error = function(e) NULL
-  )
-  if (is.null(dst) || is.null(dst$updated)) return(NULL)
-  src_t <- tryCatch(suppressWarnings(as.POSIXct(src$updated, tz = "UTC")),
-                    error = function(e) NA)
-  dst_t <- tryCatch(suppressWarnings(as.POSIXct(dst$updated, tz = "UTC")),
-                    error = function(e) NA)
-  if (is.na(src_t) || is.na(dst_t)) return(NULL)
-  if (dst_t < src_t) return(NULL)
-  sprintf("gs://%s/%s", dest_bucket,
-          .latency_object_path(as.character(campaign_id)))
-}
-
-# Single-campaign worker for run_latency_all(). Extracted to keep the outer
-# function's cyclomatic complexity under the linter threshold.
-.run_one_campaign <- function(cid, source_bucket, bucket, field_timezone,
-                              date_filter, respondent_id_column, run_by,
-                              run_at, uploader, continue_on_error) {
-  t0 <- Sys.time()
-  path <- tryCatch(
-    run_latency(
-      campaign_id = cid,
-      bucket = bucket,
-      source_bucket = source_bucket,
-      field_timezone = field_timezone,
-      date_filter = date_filter,
-      respondent_id_column = respondent_id_column,
-      run_by = run_by,
-      run_at = run_at,
-      uploader = uploader
-    ),
-    error = function(e) {
-      if (!continue_on_error) stop(e)
-      e
-    }
-  )
-  elapsed <- as.numeric(difftime(Sys.time(), t0, units = "secs"))
-  if (inherits(path, "error")) {
-    message(sprintf("  failed: %s", conditionMessage(path)))
-    return(data.frame(
-      campaign_id = cid, status = "failed",
-      parquet_uri = NA_character_,
-      error_message = conditionMessage(path),
-      elapsed_s = elapsed,
-      stringsAsFactors = FALSE
-    ))
-  }
-  message(sprintf("  ok: %s (%.1fs)", path, elapsed))
-  data.frame(
-    campaign_id = cid, status = "ok",
-    parquet_uri = path,
-    error_message = NA_character_,
-    elapsed_s = elapsed,
-    stringsAsFactors = FALSE
-  )
+  result
 }

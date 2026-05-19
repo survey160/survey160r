@@ -3,7 +3,7 @@
 [![R-CMD-check](https://github.com/survey160/survey160r/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/survey160/survey160r/actions/workflows/R-CMD-check.yaml)
 [![R-universe](https://survey160.r-universe.dev/badges/survey160r)](https://survey160.r-universe.dev/survey160r)
 
-R package for accessing Survey160 campaign data -- read results from Google Cloud Storage, trigger fresh exports via the API, and compute per-campaign recipient-latency reports written as Parquet to GCS.
+R package for accessing Survey160 campaign data -- read results from Google Cloud Storage, trigger fresh exports via the API, and compute per-campaign recipient-latency reports as in-memory R objects. Fleet orchestration and Parquet persistence live in [survey160-shiny](https://github.com/survey160/survey160-shiny).
 
 ## Installation
 
@@ -80,50 +80,58 @@ status$size     # file size
 
 ## Latency analysis
 
-Compute a per-campaign recipient-latency report from a raw campaign CSV and write it as a single Parquet file to a dedicated analytics bucket. Replaces the per-wave inline scripts that the analytics team used to maintain by hand: one algorithm, one output schema, one YAML config per campaign.
+Compute a per-campaign recipient-latency report from a raw campaign CSV and return it as an in-memory R object. Replaces the per-wave inline scripts that the analytics team used to maintain by hand: one algorithm, one output schema, one config shape per campaign.
 
-The pipeline has three layers. `latency_report(data, config)` is the pure function -- deterministic, no I/O, no globals -- and is the recommended entry point for tests and ad-hoc analysis. `pull_csv_from_gcs()` / `write_to_gcs()` are thin I/O wrappers. `run_latency()` glues them together for the manual happy path.
+This package is **algorithm-only and source-agnostic**. `latency_report(data, config)` is the pure function -- deterministic, no I/O, no globals -- and is the recommended entry point for tests and ad-hoc analysis. `latency_run(campaign_id, data, ...)` composes `latency_build_config()` + `latency_report()` over a caller-supplied data frame; pair it with `s160_gcs_pull_csv()` for the GCS source path, or read the CSV yourself for any other source. Persisting outputs as Parquet, walking the fleet, and scheduling all live in [survey160-shiny](https://github.com/survey160/survey160-shiny) (`scripts/run_latency.R`).
 
-### Happy path
+### Happy path -- GCS source
 
 ```r
 library(survey160r)
 s160_gcs_init(bucket = "campaign_results")
 
-# Zero-config run: flow.questions are derived from the CSV header. Defaults
-# are field_timezone = "UTC", project_id = campaign_id,
-# texting_windows = list() (all-in-window).
-run_latency(
-  campaign_id = 1234,
-  bucket = "s160_analytics",
-  run_by = "lshimokawa"
-)
-# -> writes gs://s160_analytics/latency/1234_latency.parquet
-
-# Production dashboards typically want operator-local bucketing and a real
-# project id; pass them explicitly:
-run_latency(1234, "s160_analytics",
-            field_timezone = "America/New_York",
-            project_id = 9999,
-            run_by = "lshimokawa")
+data   <- s160_gcs_pull_csv(1234)
+result <- latency_run(1234, data, field_timezone = "America/New_York")
+head(result$consolidated)
+result$meta$source_csv_hash    # sha256 of the source CSV
+result$meta$source_csv_path    # canonical gs:// path
 ```
+
+### Backfill -- archived CSV on disk / Dropbox
+
+```r
+data   <- s160_read_csv("~/Dropbox/archive/campaign_500.csv")
+result <- latency_run(500, data, field_timezone = "America/New_York")
+result$meta$source_csv_hash    # sha256 of the local file
+result$meta$source_csv_path    # the path you passed
+```
+
+`s160_read_csv()` is the local-source sibling of `s160_gcs_pull_csv()`
+-- both produce a data frame with `source_csv_hash` and
+`source_csv_path` attributes set, which `latency_run()` then surfaces
+on `result$meta`. Pick the reader that matches where the CSV lives;
+the algorithm call is identical.
+
+For ad-hoc invocations with a hand-built data frame (synthetic /
+testing), pass `data` to `latency_run()` directly -- `result$meta`
+provenance will be `NA`, which is correct for that case.
 
 ### Pure function
 
 ```r
-data <- pull_csv_from_gcs(campaign_id = 1234)
+data <- s160_gcs_pull_csv(campaign_id = 1234)
 config <- latency_build_config(1234, data)
 result <- latency_report(data, config)
 
 result$consolidated     # one row per (campaign_id, date, hour_local, segment, threshold_min)
 result$latency_frame    # one row per (respondent, segment) with na_reason classification
 result$diagnostics      # parse failures, NA-by-reason counts, clamped negatives, respondent summary
-result$meta             # algorithm_version, schema_version, config_hash, run_at_utc
+result$meta             # algorithm_version, schema_version, config_hash, run_at_utc, source_csv_hash, source_csv_path
 ```
 
-### Output schema
+### Result shape
 
-The Parquet at `gs://<bucket>/latency/<campaign_id>_latency.parquet` carries provenance columns alongside the metrics, so each row stands on its own without sidecar manifests:
+`result$consolidated` (the data frame this package returns) is also the column shape of the Parquet that survey160-shiny writes. Each row stands on its own without sidecar manifests:
 
 | Column | Purpose |
 |---|---|
@@ -135,14 +143,6 @@ The Parquet at `gs://<bucket>/latency/<campaign_id>_latency.parquet` carries pro
 | `n_respondents`, `pct_resp_hit_gt`, `pct_resp_worst_gt` | Respondent-cascade metrics |
 | `algorithm_version`, `config_hash`, `source_csv_hash`, `run_at_utc`, `run_by` | Provenance |
 
-### Reading results back
-
-```r
-view <- read_latency(bucket = "s160_analytics")
-DBI::dbGetQuery(view$con, "SELECT campaign_id, segment, pct_le FROM latency WHERE threshold_min = 5")
-DBI::dbDisconnect(view$con, shutdown = TRUE)
-```
-
 ### Config
 
 `latency_build_config(campaign_id, data, ...)` assembles the config from the CSV header alone -- pure function, no I/O. Override defaults via named args:
@@ -150,19 +150,15 @@ DBI::dbDisconnect(view$con, shutdown = TRUE)
 ```r
 config <- latency_build_config(
   campaign_id = 1234,
-  data = pull_csv_from_gcs(1234),
+  data = s160_gcs_pull_csv(1234),
   field_timezone = "America/New_York",
   project_id = 9999,
-  texting_windows = list(
-    list(date = "2026-01-26", start_hour = 16, end_hour = 24)
-  ),
   date_filter = "2026-01-26",
-  respondent_id_column = NULL,   # `userid` is agent login, not per-respondent
-  time_bucket = "day"
+  respondent_id_column = NULL    # `userid` is agent login, not per-respondent
 )
 ```
 
-`latency_validate_config()` runs fail-fast checks: required columns present, flow order matches the data, texting windows cover survey dates, no unknown keys, no terminal states (`refusal`, `ineligible`) in `flow.questions`.
+`latency_validate_config()` runs fail-fast checks: required columns present, flow order matches the data, no unknown keys, no terminal states (`refusal`, `ineligible`) in `flow.questions`.
 
 ## First-time setup
 
@@ -182,10 +178,10 @@ You may also be asked to allow OAuth token caching (say yes) and to
 install the `httpuv` package for a smoother auth experience (say yes).
 
 Your Google account needs **Storage Object Viewer** permission on the
-campaign-results source bucket. Producing latency outputs via
-`write_to_gcs()` or `run_latency()` additionally needs **Storage Object
-Creator** on the destination analytics bucket. Contact a sysadmin if you
-get 403 errors after authenticating.
+campaign-results source bucket. Persisting latency outputs (via the
+survey160-shiny fleet runner) additionally needs **Storage Object
+Creator** on the destination analytics bucket. Contact a sysadmin if
+you get 403 errors after authenticating.
 
 ### API (`s160_api_auth`)
 
