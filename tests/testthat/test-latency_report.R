@@ -280,3 +280,152 @@ test_that("latency_report negative-clamp counter is exposed in diagnostics", {
   result <- latency_report(data, fx$config)
   expect_gte(result$diagnostics$n_negative_latencies_clamped, 1L)
 })
+
+test_that("latency_report consolidated carries the new distribution and NA-reason columns", {
+  fx <- .load_synthetic()
+  cons <- latency_report(fx$data, fx$config)$consolidated
+  expect_true(all(c("mean_delta_min", "p50_delta_min", "p90_delta_min",
+                    "p95_delta_min", "n_na_parse", "n_na_missing",
+                    "n_na_chain") %in% names(cons)))
+  expect_type(cons$mean_delta_min, "double")
+  expect_type(cons$p50_delta_min, "double")
+  expect_type(cons$p90_delta_min, "double")
+  expect_type(cons$p95_delta_min, "double")
+  expect_type(cons$n_na_parse, "integer")
+  expect_type(cons$n_na_missing, "integer")
+  expect_type(cons$n_na_chain, "integer")
+})
+
+test_that("distribution columns are threshold-independent within a cell", {
+  # The four threshold rows of the same (date, hour_local, segment) cell
+  # must carry identical mean/p50/p90/p95 values -- they are properties of
+  # the Δ vector, not of any threshold. Guards against a future refactor
+  # accidentally folding the quantile call inside a threshold-dependent
+  # filter.
+  fx <- .load_synthetic()
+  cons <- latency_report(fx$data, fx$config)$consolidated
+  per_cell <- dplyr::summarise(
+    dplyr::group_by(cons, .data$date, .data$hour_local, .data$segment),
+    distinct_p50 = dplyr::n_distinct(.data$p50_delta_min),
+    distinct_p95 = dplyr::n_distinct(.data$p95_delta_min),
+    distinct_mean = dplyr::n_distinct(.data$mean_delta_min),
+    .groups = "drop"
+  )
+  expect_true(all(per_cell$distinct_p50 == 1L))
+  expect_true(all(per_cell$distinct_p95 == 1L))
+  expect_true(all(per_cell$distinct_mean == 1L))
+})
+
+test_that("single-respondent cell has p50 == p95 == mean equal to the Δ", {
+  # In the clean synthetic fixture each hour cell has exactly one
+  # respondent, so p50 / p90 / p95 / mean must all collapse to the same
+  # value -- the respondent's Δ for that segment. Hour 21 ET corresponds
+  # to r1's intro->q1 batch_prior; intro.batchDate=21:00:30 -> q1.scriptDate
+  # =21:00:40, Δ = 10s = 1/6 min.
+  fx <- .load_synthetic()
+  cons <- latency_report(fx$data, fx$config)$consolidated
+  r1_intro_q1 <- cons[!is.na(cons$hour_local) &
+                        cons$hour_local == 16L &
+                        cons$segment == "intro→q1" &
+                        cons$threshold_min == 1L, ]
+  expect_equal(nrow(r1_intro_q1), 1L)
+  expected <- 10 / 60
+  expect_equal(r1_intro_q1$mean_delta_min, expected, tolerance = 1e-9)
+  expect_equal(r1_intro_q1$p50_delta_min, expected, tolerance = 1e-9)
+  expect_equal(r1_intro_q1$p95_delta_min, expected, tolerance = 1e-9)
+})
+
+test_that("day rollup quantiles span the full Δ distribution across hours", {
+  # The day rollup row aggregates every respondent's segment Δs for the
+  # day, so p95 should be the largest Δ in the segment (or close to it).
+  # For q1->q2: r1=0.5min, r3≈0.5min, r2=4min. p95 should be ~4min.
+  fx <- .load_synthetic()
+  cons <- latency_report(fx$data, fx$config)$consolidated
+  day_q1q2 <- cons[is.na(cons$hour_local) &
+                     cons$segment == "q1→q2" &
+                     cons$threshold_min == 1L, ]
+  expect_equal(nrow(day_q1q2), 1L)
+  expect_equal(day_q1q2$p95_delta_min, 4, tolerance = 0.5)
+  # Mean over the three Δs (~0.5, ~0.5, 4) is between p50 and p95.
+  expect_gt(day_q1q2$mean_delta_min, day_q1q2$p50_delta_min)
+  expect_lte(day_q1q2$mean_delta_min, day_q1q2$p95_delta_min)
+})
+
+test_that("n_na_parse counts parse failures in the matching cell only", {
+  # Inject a garbage timestamp on r1's q1.batchDate. q1.batchDate is the
+  # batch_prior endpoint for the q1->q2 segment, so that segment's
+  # hour_local becomes NA (the hour is derived from batch_prior, which is
+  # unparseable). The parse_failure row therefore lands in the
+  # hour_local IS NA partition of q1->q2 -- both the hour-grain NA cell
+  # (a side effect of NA being a distinct dplyr group) and the day-rollup
+  # row pick it up.
+  fx <- .load_synthetic()
+  data <- fx$data
+  data$id.q1.batchDate[data$userid == "r1"] <- "not-a-date"
+  cons <- latency_report(data, fx$config)$consolidated
+  q1q2_t1 <- cons[cons$segment == "q1→q2" & cons$threshold_min == 1L, ]
+  expect_gte(sum(q1q2_t1$n_na_parse), 1L)
+  expect_equal(sum(q1q2_t1$n_na_missing), 0L)
+  expect_equal(sum(q1q2_t1$n_na_chain), 0L)
+  # The unaffected hour cells for other respondents still record zero
+  # parse failures.
+  r2_cell <- cons[!is.na(cons$hour_local) &
+                    cons$hour_local == 17L &
+                    cons$segment == "q1→q2" &
+                    cons$threshold_min == 1L, ]
+  expect_equal(nrow(r2_cell), 1L)
+  expect_equal(r2_cell$n_na_parse, 0L)
+})
+
+test_that("n_na_missing counts blank-endpoint NAs in the matching cell", {
+  # Blank r2's q1.batchDate. Affected segment: q1->q2. The blanked
+  # batch_prior nukes hour_local for that segment row, so the
+  # missing_endpoint count lands in the hour_local IS NA partition.
+  fx <- .load_synthetic()
+  data <- fx$data
+  data$id.q1.batchDate[data$userid == "r2"] <- ""
+  cons <- latency_report(data, fx$config)$consolidated
+  q1q2_t1 <- cons[cons$segment == "q1→q2" & cons$threshold_min == 1L, ]
+  expect_gte(sum(q1q2_t1$n_na_missing), 1L)
+  expect_equal(sum(q1q2_t1$n_na_parse), 0L)
+  expect_equal(sum(q1q2_t1$n_na_chain), 0L)
+  # r1's cell (hour 16 ET) is unaffected.
+  r1_cell <- cons[!is.na(cons$hour_local) &
+                    cons$hour_local == 16L &
+                    cons$segment == "q1→q2" &
+                    cons$threshold_min == 1L, ]
+  expect_equal(nrow(r1_cell), 1L)
+  expect_equal(r1_cell$n_na_missing, 0L)
+})
+
+test_that("n_na_chain counts chain-break NAs on segments after an NA prior batchDate", {
+  # Blank r1's intro.batchDate. The intro->q1 segment itself becomes
+  # missing_endpoint (its own batch_prior endpoint is NA), and the
+  # downstream q1->q2 / q2->close segments become chain_break (their own
+  # endpoints are clean but a strictly-prior batchDate is NA). Check the
+  # chain_break cell for q1->q2.
+  fx <- .load_synthetic()
+  data <- fx$data
+  data$id.intro.batchDate[data$userid == "r1"] <- ""
+  cons <- latency_report(data, fx$config)$consolidated
+  cell <- cons[!is.na(cons$hour_local) &
+                 cons$hour_local == 16L &
+                 cons$segment == "q1→q2" &
+                 cons$threshold_min == 1L, ]
+  expect_equal(nrow(cell), 1L)
+  expect_gte(cell$n_na_chain, 1L)
+  expect_equal(cell$n_na_parse, 0L)
+})
+
+test_that("empty consolidated declares the new columns with the right types", {
+  fx <- .load_synthetic()
+  data <- fx$data
+  data$id.intro.finalText <- "No"
+  cons <- latency_report(data, fx$config)$consolidated
+  expect_equal(nrow(cons), 0L)
+  expect_true(all(c("mean_delta_min", "p50_delta_min", "p90_delta_min",
+                    "p95_delta_min", "n_na_parse", "n_na_missing",
+                    "n_na_chain") %in% names(cons)))
+  expect_type(cons$p95_delta_min, "double")
+  expect_type(cons$n_na_chain, "integer")
+})

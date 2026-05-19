@@ -23,6 +23,22 @@ safe_pct <- function(num, denom) {
   ifelse(!is.na(denom) & denom > 0, 100 * num / denom, NA_real_)
 }
 
+# Quantile / mean over a vector, returning NA_real_ when no non-NA values
+# exist. Wraps stats::quantile/mean for the per-cell distribution columns:
+# cells with zero valid Δ would otherwise error (quantile) or warn-and-NaN
+# (mean) and the consolidated table needs honest NA in those slots.
+safe_quantile <- function(x, prob) {
+  vals <- x[!is.na(x)]
+  if (length(vals) == 0L) return(NA_real_)
+  unname(stats::quantile(vals, probs = prob, names = FALSE))
+}
+
+safe_mean <- function(x) {
+  vals <- x[!is.na(x)]
+  if (length(vals) == 0L) return(NA_real_)
+  mean(vals)
+}
+
 aggregate_consolidated <- function(frame, config, cfg_hash, run_at,
                                    src_csv_hash = NA_character_) {
   project_id <- as.integer(config$project_id)
@@ -101,6 +117,17 @@ aggregate_segment_cells <- function(bucketed, thresholds) {
 }
 
 segment_cells_chunk <- function(bucketed, t) {
+  # mean_delta_min and the p50/p90/p95 quantiles are threshold-independent,
+  # so the values emitted here are identical across the four threshold rows
+  # of the same (campaign_id, date, hour_local, segment) cell. Kept inline
+  # rather than split into a sidecar table so the Shiny query model stays
+  # a single wide consolidated.
+  #
+  # n_na_parse / n_na_missing / n_na_chain count rows in this group with
+  # the matching value of `na_reason` set by classify_na_reason() in
+  # R/latency_frame.R. The enum strings stay longer ("parse_failure" etc.)
+  # for debugging the latency_frame; cell-column names use the n_na_*
+  # prefix family so they group together in column listings and tooltips.
   cells <- dplyr::summarise(
     dplyr::group_by(
       bucketed,
@@ -112,6 +139,14 @@ segment_cells_chunk <- function(bucketed, t) {
     n_resp_over = dplyr::n_distinct(
       .data$respondent_index[!is.na(.data$delta_min) & .data$delta_min > t]
     ),
+    mean_delta_min = safe_mean(.data$delta_min),
+    p50_delta_min = safe_quantile(.data$delta_min, 0.50),
+    p90_delta_min = safe_quantile(.data$delta_min, 0.90),
+    p95_delta_min = safe_quantile(.data$delta_min, 0.95),
+    n_na_parse = sum(.data$na_reason == "parse_failure", na.rm = TRUE),
+    n_na_missing = sum(.data$na_reason == "missing_endpoint",
+                       na.rm = TRUE),
+    n_na_chain = sum(.data$na_reason == "chain_break", na.rm = TRUE),
     .groups = "drop"
   )
   cells$threshold_min <- as.integer(t)
@@ -156,6 +191,13 @@ assemble_consolidated <- function(cells, totals, cascade,
     pct_resp_hit_gt = joined$pct_resp_hit_gt,
     n_respondents = as.integer(joined$n_respondents),
     pct_resp_worst_gt = as.numeric(joined$pct_resp_worst_gt),
+    mean_delta_min = as.numeric(joined$mean_delta_min),
+    p50_delta_min = as.numeric(joined$p50_delta_min),
+    p90_delta_min = as.numeric(joined$p90_delta_min),
+    p95_delta_min = as.numeric(joined$p95_delta_min),
+    n_na_parse = as.integer(joined$n_na_parse),
+    n_na_missing = as.integer(joined$n_na_missing),
+    n_na_chain = as.integer(joined$n_na_chain),
     algorithm_version = .algorithm_version,
     config_hash = cfg_hash,
     source_csv_hash = src_csv_hash %||% NA_character_,
@@ -183,6 +225,13 @@ empty_consolidated <- function(project_id, cfg_hash, run_at) {
     pct_resp_hit_gt = numeric(0),
     n_respondents = integer(0),
     pct_resp_worst_gt = numeric(0),
+    mean_delta_min = numeric(0),
+    p50_delta_min = numeric(0),
+    p90_delta_min = numeric(0),
+    p95_delta_min = numeric(0),
+    n_na_parse = integer(0),
+    n_na_missing = integer(0),
+    n_na_chain = integer(0),
     algorithm_version = character(0),
     config_hash = character(0),
     source_csv_hash = character(0),

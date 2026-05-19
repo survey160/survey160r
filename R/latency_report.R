@@ -11,7 +11,7 @@
 # Algorithm + schema versions stamped onto every result. Used by
 # latency_aggregate.R and latency_diagnostics.R; package-namespace visible.
 .algorithm_version <- "2.0.0"
-.schema_version <- "2"
+.schema_version <- "3"
 
 # Fleet-locked thresholds (minutes). Per spec §8.1 O2, every campaign uses the
 # same set so cross-campaign analytics is uniform and the respondent-cascade
