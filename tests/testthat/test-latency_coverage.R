@@ -105,22 +105,7 @@ test_that("validate_flow_order short-circuits when no rows have parseable pairs"
 
 test_that("s160_gcs_pull_csv honors a caller-supplied filename", {
   stub_gcs_base()
-  # Stub the download so it writes a file with the OVERRIDE filename instead
-  # of the auto-derived one. The hash attribute should still be populated.
-  local_mocked_bindings(
-    gcs_get_object = function(object_name, saveToDisk, ...) { # nolint
-      writeLines(c("a,b", "1,2"), saveToDisk)
-      TRUE
-    },
-    gcs_list_objects = function(prefix = NULL, ...) {
-      tmp <- tempfile()
-      writeLines(c("a,b", "1,2"), tmp)
-      sz <- file.info(tmp)$size
-      unlink(tmp)
-      data.frame(name = "1980/custom_export.csv",
-                 size = sz, stringsAsFactors = FALSE)
-    }
-  )
+  stub_gcs_download_ok(name_override = "1980/custom_export.csv")
   data <- suppressMessages(
     s160_gcs_pull_csv(1980, filename = "custom_export.csv")
   )

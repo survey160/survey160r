@@ -7,62 +7,13 @@
 # Uses inline synthetic data with two respondents whose segments cross the
 # hour boundary so the naive-rollup over-count is visible.
 
-# ---- Inline synthetic fixture -------------------------------------------
+# ---- Synthetic fixture --------------------------------------------------
 
-# 4 respondents on 2026-01-26 in UTC. r3 spans hours 20:55 -> 21:01 (UTC),
-# which is 15:55 -> 16:01 in field_tz = America/New_York -- crossing the
-# hour boundary. r4 spans 22:58 -> 23:02 UTC = 17:58 -> 18:02 ET, also
-# crossing. r1 and r2 stay within a single hour each.
-.cross_hour_data <- function() {
-  data.frame(
-    campaignid = c(1L, 1L, 1L, 1L),
-    userid = c("r1", "r2", "r3", "r4"),
-    id.intro.finalText = c("Yes", "Yes", "Yes", "Yes"),
-    id.intro.scriptDate = c(
-      "2026-01-26 21:30:00.000000Z",
-      "2026-01-26 22:30:00.000000Z",
-      "2026-01-26 20:55:00.000000Z",
-      "2026-01-26 22:58:00.000000Z"
-    ),
-    id.intro.batchDate = c(
-      "2026-01-26 21:30:30.000000Z",  # r1 ET 16:30
-      "2026-01-26 22:30:30.000000Z",  # r2 ET 17:30
-      "2026-01-26 20:55:30.000000Z",  # r3 ET 15:55 (out of window 16-24)
-      "2026-01-26 22:58:30.000000Z"   # r4 ET 17:58
-    ),
-    id.q1.scriptDate = c(
-      "2026-01-26 21:30:40.000000Z",
-      "2026-01-26 22:31:00.000000Z",
-      "2026-01-26 20:55:45.000000Z",
-      "2026-01-26 22:58:45.000000Z"
-    ),
-    id.q1.batchDate = c(
-      "2026-01-26 21:31:00.000000Z",  # r1 ET 16:31 (same hour as intro)
-      "2026-01-26 22:32:00.000000Z",  # r2 ET 17:32 (same hour)
-      "2026-01-26 21:01:30.000000Z",  # r3 ET 16:01 (CROSSES hour 15 -> 16)
-      "2026-01-26 23:02:00.000000Z"   # r4 ET 18:02 (CROSSES hour 17 -> 18)
-    ),
-    id.q2.scriptDate = c(
-      "2026-01-26 21:31:30.000000Z",
-      "2026-01-26 22:35:00.000000Z",
-      "2026-01-26 21:02:00.000000Z",
-      "2026-01-26 23:03:00.000000Z"
-    ),
-    id.q2.batchDate = c(
-      "2026-01-26 21:32:00.000000Z",
-      "2026-01-26 22:36:00.000000Z",
-      "2026-01-26 21:02:30.000000Z",
-      "2026-01-26 23:04:00.000000Z"
-    ),
-    id.close.scriptDate = c(
-      "2026-01-26 21:32:30.000000Z",
-      "2026-01-26 22:37:00.000000Z",
-      "2026-01-26 21:03:00.000000Z",
-      "2026-01-26 23:05:00.000000Z"
-    ),
-    stringsAsFactors = FALSE
-  )
-}
+# fixtures/synthetic_cross_hour.csv: 4 respondents on 2026-01-26 in UTC.
+# r3 spans 20:55->21:01 UTC = 15:55->16:01 in field_tz America/New_York
+# (crosses the hour boundary, ET 15:55 is out of the 16-24 window).
+# r4 spans 22:58->23:02 UTC = 17:58->18:02 ET (also crosses). r1 and r2
+# stay within a single hour each. Loaded via load_synthetic_cross_hour().
 
 .cross_hour_config <- function() {
   list(
@@ -95,7 +46,7 @@
 # ---- Tests --------------------------------------------------------------
 
 test_that("the fixture actually crosses hour boundaries", {
-  data <- .cross_hour_data()
+  data <- load_synthetic_cross_hour()
   config <- .cross_hour_config()
   result <- latency_report(data, config)
   # Two respondents (r3 and r4) have segments in two different hours.
@@ -106,7 +57,7 @@ test_that("the fixture actually crosses hour boundaries", {
 })
 
 test_that("the day rollup rows match a weighted-mean rollup of the hour rows for n and pct_le", {
-  data <- .cross_hour_data()
+  data <- load_synthetic_cross_hour()
   config <- .cross_hour_config()
   result <- latency_report(data, config)
   g <- .split_grains(result$consolidated)
@@ -132,7 +83,7 @@ test_that("the day rollup rows match a weighted-mean rollup of the hour rows for
 })
 
 test_that("day rollup rows carry distinct-respondent cascade matching re-derivation from frame", {
-  data <- .cross_hour_data()
+  data <- load_synthetic_cross_hour()
   config <- .cross_hour_config()
   result <- latency_report(data, config)
   day_grain <- .split_grains(result$consolidated)$day
@@ -168,7 +119,7 @@ test_that("day rollup rows carry distinct-respondent cascade matching re-derivat
 })
 
 test_that("naive SUM(n_respondents) over the hour rows over-counts cross-hour respondents", {
-  data <- .cross_hour_data()
+  data <- load_synthetic_cross_hour()
   config <- .cross_hour_config()
   result <- latency_report(data, config)
   g <- .split_grains(result$consolidated)

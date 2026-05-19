@@ -64,65 +64,9 @@
 # operates on (>= 2 questions, one terminal close with no batchDate).
 .parity_questions <- c("intro", "q1", "q2", "q3", "q4", "q5", "q6", "close")
 
-# Build a (respondent x question) timestamp grid. Each respondent gets a per-
-# segment latency vector designed to land in a specific bucket in the legacy
-# cascade (below 1 / 1-3 / 3-5 / 5-10 / over 10).
-.build_parity_data <- function() {
-  base_day <- "2026-01-10"
-  deltas <- list(
-    r1 = c(0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5),   # all <= 1
-    r2 = c(0.5, 2.0, 0.5, 0.5, 0.5, 0.5, 0.5),   # one in (1,3]
-    r3 = c(0.5, 0.5, 4.0, 0.5, 0.5, 0.5, 0.5),   # one in (3,5]
-    r4 = c(0.5, 0.5, 0.5, 7.0, 0.5, 0.5, 0.5),   # one in (5,10]
-    r5 = c(0.5, 0.5, 0.5, 0.5, 12.0, 0.5, 0.5),  # one > 10
-    r6 = c(2.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5)
-  )
-  questions <- .parity_questions
-  rows <- list()
-  for (rid in names(deltas)) {
-    intro_hour <- 18 + (which(rid == names(deltas)) %% 4) # 18..21 UTC
-    intro_script <- as.POSIXct(
-      sprintf("%s %02d:00:00", base_day, intro_hour), tz = "UTC"
-    )
-    row <- list(
-      campaignid = 1L,
-      userid = rid,
-      id.intro.finalText = "Yes",
-      id.intro.scriptDate = intro_script
-    )
-    prev_batch <- intro_script + 30
-    row[["id.intro.batchDate"]] <- prev_batch
-    for (i in seq_along(questions[-1])) {
-      q_next <- questions[i + 1]
-      next_script <- prev_batch + deltas[[rid]][i] * 60
-      row[[sprintf("id.%s.scriptDate", q_next)]] <- next_script
-      if (q_next != "close") {
-        # close has no batchDate (matches the legacy script convention).
-        next_batch <- next_script + 30
-        row[[sprintf("id.%s.batchDate", q_next)]] <- next_batch
-        prev_batch <- next_batch
-      }
-    }
-    rows[[rid]] <- row
-  }
-  to_iso <- function(x) {
-    if (inherits(x, "POSIXct")) {
-      paste0(format(x, "%Y-%m-%d %H:%M:%OS6", tz = "UTC"), "Z")
-    } else {
-      x
-    }
-  }
-  all_cols <- unique(unlist(lapply(rows, names)))
-  out <- lapply(all_cols, function(col) {
-    vapply(rows, function(r) {
-      if (is.null(r[[col]])) NA_character_ else as.character(to_iso(r[[col]]))
-    }, character(1))
-  })
-  names(out) <- all_cols
-  df <- as.data.frame(out, stringsAsFactors = FALSE)
-  df$campaignid <- as.integer(df$campaignid)
-  df
-}
+# Fixture: tests/testthat/fixtures/synthetic_parity.csv. Six respondents,
+# each with a per-segment latency vector landing in a specific cascade
+# bucket (below 1 / 1-3 / 3-5 / 5-10 / over 10). See load_synthetic_parity().
 
 .parity_config <- function() {
   list(
@@ -144,7 +88,7 @@
 # --- Parity tests ----------------------------------------------------------
 
 test_that("legacy parity: pct_le matches per segment per threshold", {
-  data <- .build_parity_data()
+  data <- load_synthetic_parity()
   config <- .parity_config()
   thresholds <- c(1, 3, 5, 10)
   date_windows <- data.frame(date = "2026-01-10",
@@ -192,7 +136,7 @@ test_that("legacy parity: pct_le matches per segment per threshold", {
 })
 
 test_that("legacy parity: respondent cascade matches over-threshold bucket pcts", {
-  data <- .build_parity_data()
+  data <- load_synthetic_parity()
   config <- .parity_config()
   thresholds <- c(1, 3, 5, 10)
 

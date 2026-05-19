@@ -2,17 +2,10 @@
 # both the convenience (auto-build) and custom-config paths. The runner
 # takes caller-supplied data; no I/O, no source mocking required.
 
-.fixture_data <- function(csv_path = test_path("fixtures/synthetic.csv")) {
-  d <- read.csv(csv_path, stringsAsFactors = FALSE)
-  attr(d, "source_csv_hash") <- "sha256:fixture"
-  attr(d, "source_csv_path") <- "gs://campaign_results/1/1_raw_data_download.csv"
-  d
-}
-
 test_that("latency_run wires build_config -> report and returns result", {
   result <- latency_run(
     campaign_id = 1,
-    data = .fixture_data(),
+    data = load_synthetic_data(),
     run_by = "test_runner"
   )
 
@@ -27,15 +20,14 @@ test_that("latency_run wires build_config -> report and returns result", {
 })
 
 test_that("latency_run leaves run_by as NA when not supplied", {
-  result <- latency_run(campaign_id = 1, data = .fixture_data())
+  result <- latency_run(campaign_id = 1, data = load_synthetic_data())
   expect_true(all(is.na(result$consolidated$run_by)))
 })
 
-test_that("latency_run propagates NA provenance for off-GCS sources", {
-  # Caller pulled the CSV from somewhere other than GCS and did not
-  # stamp the provenance attributes -- meta carries NA, the algorithm
-  # still runs.
-  data <- .fixture_data()
+test_that("latency_run propagates NA provenance for un-stamped sources", {
+  # Caller built `data` without the GCS-style attrs -- meta carries NA,
+  # the algorithm still runs.
+  data <- load_synthetic_data()
   attr(data, "source_csv_hash") <- NULL
   attr(data, "source_csv_path") <- NULL
   result <- latency_run(campaign_id = 1, data = data)
@@ -45,8 +37,10 @@ test_that("latency_run propagates NA provenance for off-GCS sources", {
 
 test_that("latency_run surfaces validate_config failures on a malformed CSV", {
   # Strip the population-filter column so validate_columns_present aborts.
-  data <- .fixture_data()
-  data$id.intro.finalText <- NULL
+  data <- load_synthetic_data(mutate = function(d) {
+    d$id.intro.finalText <- NULL
+    d
+  })
   expect_error(
     latency_run(campaign_id = 1, data = data),
     "id\\.intro\\.finalText"
@@ -54,8 +48,7 @@ test_that("latency_run surfaces validate_config failures on a malformed CSV", {
 })
 
 test_that("latency_run forwards `...` overrides to latency_build_config", {
-  captured <- new.env(parent = emptyenv())
-  captured$cfg <- NULL
+  captured <- new_capture()
   local_mocked_bindings(
     latency_report = function(data, config, run_at = NULL) {
       captured$cfg <- config
@@ -67,7 +60,7 @@ test_that("latency_run forwards `...` overrides to latency_build_config", {
 
   latency_run(
     campaign_id = 7,
-    data = .fixture_data(),
+    data = load_synthetic_data(),
     field_timezone = "America/New_York",
     project_id = 9999,
     date_filter = c("2026-01-26"),
@@ -82,11 +75,11 @@ test_that("latency_run forwards `...` overrides to latency_build_config", {
 })
 
 test_that("latency_run accepts a pre-built config and skips build_config", {
-  data <- .fixture_data()
+  data <- load_synthetic_data()
   custom_cfg <- latency_build_config(1, data,
                                      field_timezone = "America/New_York")
 
-  captured <- new.env(parent = emptyenv())
+  captured <- new_capture()
   build_called <- FALSE
   local_mocked_bindings(
     latency_build_config = function(...) {
@@ -106,7 +99,7 @@ test_that("latency_run accepts a pre-built config and skips build_config", {
 })
 
 test_that("latency_run rejects both `config` and `...` being supplied", {
-  data <- .fixture_data()
+  data <- load_synthetic_data()
   cfg <- latency_build_config(1, data)
   expect_error(
     latency_run(campaign_id = 1, data = data,
@@ -116,7 +109,7 @@ test_that("latency_run rejects both `config` and `...` being supplied", {
 })
 
 test_that("latency_run forwards an explicit run_at to latency_report", {
-  captured <- new.env(parent = emptyenv())
+  captured <- new_capture()
   fixed_at <- as.POSIXct("2026-01-01 00:00:00", tz = "UTC")
   local_mocked_bindings(
     latency_report = function(data, config, run_at = NULL) {
@@ -124,6 +117,6 @@ test_that("latency_run forwards an explicit run_at to latency_report", {
       list(consolidated = data.frame(), diagnostics = list(), meta = list())
     }
   )
-  latency_run(campaign_id = 1, data = .fixture_data(), run_at = fixed_at)
+  latency_run(campaign_id = 1, data = load_synthetic_data(), run_at = fixed_at)
   expect_equal(captured$run_at, fixed_at)
 })
