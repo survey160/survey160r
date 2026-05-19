@@ -1,5 +1,17 @@
 # survey160r (development version)
 
+## New features
+
+* `consolidated` now carries seven new per-cell columns (SUR-1316):
+  `mean_delta_min`, `p50_delta_min`, `p90_delta_min`, `p95_delta_min`
+  (distribution shape, threshold-independent so identical across the
+  four threshold rows of a cell) and `n_na_parse`, `n_na_missing`,
+  `n_na_chain` (per-cell NA-reason counts derived from
+  `na_reason`). `.schema_version` bumps to `"3"`. The new columns
+  unlock per-cell distribution and data-quality visualisations
+  downstream; existing consumers that read columns by name are
+  unaffected.
+
 ## Breaking changes
 
 * The package is now algorithm-only. Fleet orchestration, GCS writes, and
