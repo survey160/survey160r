@@ -1,5 +1,29 @@
 # survey160r (development version)
 
+## New features
+
+* `consolidated` now carries four denormalised **summary metrics**
+  columns (Phase 1 PR 4, spec §4): `n_texted`, `n_consented`,
+  `n_completed`, `n_ineligible`. Counts are anchored by
+  `id.intro.batchDate` -- cohort-by-send-time, matching the latency
+  view's hour bucketing. `n_texted` is the count of rows with a
+  non-NA `id.intro.batchDate` (intro dispatched); `n_consented` is
+  the subset that passes `config$filters$population` (re-using the
+  existing consent definition rather than a parallel
+  finalValue/finalText anchor); `n_completed` is the subset with a
+  non-NA `id.close.scriptDate`. `n_ineligible` is per-segment: the
+  count of respondents whose `id.ineligible.scriptDate` is non-NA
+  AND whose last reached question lands at the segment's endpoint,
+  joined to latency cells on `(campaign_id, date, hour_local,
+  segment_index)`. The four counts denormalise across the latency
+  rows that share their bucket keys; Parquet RLE compresses the
+  repetition. `.algorithm_version` bumps to `"2.1.0"`,
+  `.schema_version` to `"4"`. Consumers that don't read the new
+  columns are unaffected; consumers that do can gate on a
+  `has_summary_data` probe (see survey160-shiny#TBD).
+
+# survey160r 0.13.0
+
 ## Breaking changes
 
 * The latency pipeline is renamed to the **campaign pipeline** -- the

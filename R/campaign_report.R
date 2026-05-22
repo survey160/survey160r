@@ -7,11 +7,13 @@
 #   latency_frame.R        -- per-respondent x per-segment frame builder
 #   latency_aggregate.R    -- consolidated table (Parquet payload)
 #   latency_diagnostics.R  -- diagnostics list per spec §3.3
+#   summary_primitives.R   -- pre-filter mask + last-reached helpers
+#   summary_aggregate.R    -- per-bucket texted/consented/completed/ineligible
 
 # Algorithm + schema versions stamped onto every result. Used by
 # latency_aggregate.R and latency_diagnostics.R; package-namespace visible.
-.algorithm_version <- "2.0.0"
-.schema_version <- "3"
+.algorithm_version <- "2.1.0"
+.schema_version <- "4"
 
 # Fleet-locked thresholds (minutes). Per spec §8.1 O2, every campaign uses the
 # same set so cross-campaign analytics is uniform and the respondent-cascade
@@ -57,12 +59,25 @@ campaign_report <- function(data, config, run_at = NULL) {
   # can still override it at persist time for ad-hoc invocations.
   src_csv_hash <- attr(data, "source_csv_hash") %||% NA_character_
 
-  # Step 1: population filter.
+  # Step 0: na_if_blank up-front so both the summary computation (pre-filter)
+  # and the latency parse step (post-filter) see NA where the CSV had "".
+  data <- na_if_blank(data)
+
+  # Step 1: pre-filter summary metrics (spec §4). Counts texted /
+  # consented / completed at the (campaign, date, hour_local) grain,
+  # plus per-segment ineligible counts. Computed on the full pre-filter
+  # population so the denominators reflect every respondent the platform
+  # dispatched the intro to, not just those who consented.
+  summary_hour <- build_summary_frame(data, config)
+  ineligible_hour <- build_ineligible_frame(data, config)
+  summary_day <- collapse_summary_to_day(summary_hour)
+  ineligible_day <- collapse_ineligible_to_day(ineligible_hour)
+
+  # Step 2: population filter.
   data <- apply_population_filter(data, config$filters$population)
   n_in <- nrow(data)
 
-  # Step 2: blanks -> NA, parse timestamps.
-  data <- na_if_blank(data)
+  # Step 3: parse timestamps. (Blanks were already replaced in step 0.)
   ts_cols <- required_timestamp_columns(questions)
   parsed <- parse_timestamps(data, ts_cols)
   data <- parsed$data
@@ -103,11 +118,15 @@ campaign_report <- function(data, config, run_at = NULL) {
   # consumers filter on `hour_local IS NULL` for day rollups,
   # `hour_local IS NOT NULL` for time-of-day.
   hour_grain <- aggregate_consolidated(frame, config, cfg_hash, run_at,
-                                       src_csv_hash)
+                                       src_csv_hash,
+                                       summary_frame = summary_hour,
+                                       ineligible_frame = ineligible_hour)
   day_frame <- frame
   if (nrow(day_frame) > 0L) day_frame$hour_local <- NA_integer_
   day_grain <- aggregate_consolidated(day_frame, config, cfg_hash, run_at,
-                                      src_csv_hash)
+                                      src_csv_hash,
+                                      summary_frame = summary_day,
+                                      ineligible_frame = ineligible_day)
   consolidated <- rbind(hour_grain, day_grain)
 
   # Step 7: diagnostics.

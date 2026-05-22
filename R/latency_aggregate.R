@@ -40,8 +40,12 @@ safe_mean <- function(x) {
 }
 
 aggregate_consolidated <- function(frame, config, cfg_hash, run_at,
-                                   src_csv_hash = NA_character_) {
+                                   src_csv_hash = NA_character_,
+                                   summary_frame = NULL,
+                                   ineligible_frame = NULL) {
   project_id <- as.integer(config$project_id)
+  if (is.null(summary_frame)) summary_frame <- empty_summary_frame()
+  if (is.null(ineligible_frame)) ineligible_frame <- empty_ineligible_frame()
   if (nrow(frame) == 0) {
     return(empty_consolidated(project_id, cfg_hash, run_at))
   }
@@ -58,7 +62,9 @@ aggregate_consolidated <- function(frame, config, cfg_hash, run_at,
                         project_id = project_id,
                         cfg_hash = cfg_hash,
                         run_at = run_at,
-                        src_csv_hash = src_csv_hash)
+                        src_csv_hash = src_csv_hash,
+                        summary_frame = summary_frame,
+                        ineligible_frame = ineligible_frame)
 }
 
 # Total respondents per bucket -- the denominator for pct_resp_hit_gt.
@@ -158,7 +164,8 @@ segment_cells_chunk <- function(bucketed, t) {
 # order, and sort. Returns the data.frame written to Parquet.
 assemble_consolidated <- function(cells, totals, cascade,
                                   project_id, cfg_hash, run_at,
-                                  src_csv_hash) {
+                                  src_csv_hash,
+                                  summary_frame, ineligible_frame) {
   joined <- dplyr::left_join(cells, totals, by = .bucket_keys)
   # pct_resp_hit_gt is gated on `n > 0` (the cell has at least one valid
   # Δ). safe_pct() handles the denominator side; we still need the explicit
@@ -177,6 +184,22 @@ assemble_consolidated <- function(cells, totals, cascade,
   # had any valid Δ in this bucket."
   joined <- dplyr::left_join(joined, cascade,
                              by = c(.bucket_keys, "threshold_min"))
+
+  # Summary metrics join. n_texted/n_consented/n_completed denormalise
+  # across every (segment, threshold) row sharing the bucket key. NA on
+  # buckets that exist in the latency frame but had zero pre-filter
+  # respondents -- shouldn't happen in practice but handled defensively
+  # (the latency cells must have come from some respondent who got an
+  # intro.batchDate, so summary should always have a matching row).
+  joined <- dplyr::left_join(joined, summary_frame, by = .bucket_keys)
+  # Ineligible join is per (bucket, segment_index): a cell either has an
+  # ineligible count for its segment or it doesn't. Convert NA to 0 so
+  # the column reads as "no ineligibles at this segment" rather than
+  # "ineligible count unknown" -- ineligible is fully observable in the
+  # raw CSV when intro.batchDate exists, unlike the cascade NAs above.
+  joined <- dplyr::left_join(joined, ineligible_frame,
+                             by = c(.bucket_keys, "segment_index"))
+  joined$n_ineligible[is.na(joined$n_ineligible)] <- 0L
 
   out <- data.frame(
     campaign_id = as.integer(joined$campaign_id),
@@ -198,6 +221,10 @@ assemble_consolidated <- function(cells, totals, cascade,
     n_na_parse = as.integer(joined$n_na_parse),
     n_na_missing = as.integer(joined$n_na_missing),
     n_na_chain = as.integer(joined$n_na_chain),
+    n_texted = as.integer(joined$n_texted),
+    n_consented = as.integer(joined$n_consented),
+    n_completed = as.integer(joined$n_completed),
+    n_ineligible = as.integer(joined$n_ineligible),
     algorithm_version = .algorithm_version,
     config_hash = cfg_hash,
     source_csv_hash = src_csv_hash %||% NA_character_,
@@ -232,6 +259,10 @@ empty_consolidated <- function(project_id, cfg_hash, run_at) {
     n_na_parse = integer(0),
     n_na_missing = integer(0),
     n_na_chain = integer(0),
+    n_texted = integer(0),
+    n_consented = integer(0),
+    n_completed = integer(0),
+    n_ineligible = integer(0),
     algorithm_version = character(0),
     config_hash = character(0),
     source_csv_hash = character(0),

@@ -79,7 +79,7 @@ test_that("campaign_report consolidated has hour and day rollup rows", {
   expect_equal(unique(as.character(cons$date)), "2026-01-26")
   expect_equal(unique(cons$campaign_id), 1L)
   expect_equal(unique(cons$project_id), 1L)
-  expect_equal(unique(cons$algorithm_version), "2.0.0")
+  expect_equal(unique(cons$algorithm_version), "2.1.0")
 
   # n per hour cell is 1 (the single respondent in that hour). All three
   # respondents now count -- there's no texting-window exclusion.
