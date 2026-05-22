@@ -22,6 +22,31 @@
   columns are unaffected; consumers that do can gate on a
   `has_summary_data` probe (see survey160-shiny#TBD).
 
+* **Scaffold-first consolidated seeding.** `aggregate_consolidated()`
+  now builds output rows from the UNION of latency-frame and
+  summary-frame bucket keys (cross-joined with segments × thresholds),
+  not just from latency cells. This preserves summary-only buckets:
+  hours where every respondent was filtered out (e.g. 100 texted, 0
+  consented) still appear in the parquet with `n_texted` populated
+  and latency cell counts at 0 / NA. Without this, the pre-filter
+  summary contract would be defeated whenever the population filter
+  rejected an entire hour.
+
+* **Symmetric NA → 0 backfill for count columns.** Scaffold rows with
+  no matching summary or ineligible row fill all four summary counts
+  (`n_texted`, `n_consented`, `n_completed`, `n_ineligible`) plus the
+  existing latency count columns (`n`, `n_le`, `n_resp_over`,
+  `n_na_*`) with 0L. The previous design left summary counts as NA
+  and only filled `n_ineligible` to 0 -- consumers couldn't tell
+  "no data" from "no respondents", and the asymmetry was a footgun.
+
+* **`date_filter` now restricts the summary view too.** Previously
+  `date_filter` only narrowed the latency frame; the summary
+  computation ran on the full pre-filter population. Symmetric
+  semantics ("show me this date's data") matches user intent and
+  avoids the case where a date_filter that excludes everyone still
+  emits summary rows for the excluded dates.
+
 # survey160r 0.13.0
 
 ## Breaking changes

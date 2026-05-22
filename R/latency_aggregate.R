@@ -257,8 +257,13 @@ assemble_consolidated <- function(scaffold, cells, totals, cascade,
   # denormalises across the 4 threshold rows of the same
   # (bucket, segment_index): one value per (bucket, segment) repeats
   # across the threshold ladder. Consumers SUM-ming across threshold
-  # rows will quadruple-count; group by (campaign, date, hour, segment)
-  # and take MAX, or filter to one threshold_min before aggregating.
+  # rows will quadruple-count. To get the correct total:
+  #   - Per (campaign, date, hour, segment): filter to ONE threshold_min
+  #     (any value works since the row is the same across thresholds).
+  #   - Per (campaign, date, segment) day rollup: filter
+  #     `hour_local IS NULL AND threshold_min = 1` (or any one threshold).
+  # The MAX-across-thresholds aggregate also works but composes less
+  # cleanly with the day/hour grain split.
   joined <- dplyr::left_join(joined, ineligible_frame,
                              by = c(.bucket_keys, "segment_index"))
 

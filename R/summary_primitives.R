@@ -20,6 +20,14 @@
 # population, in contrast to apply_population_filter() which subsets.
 # Returns all-TRUE when `expr` is NULL/empty so the consent count
 # matches the texted count -- the same default as filter behaviour.
+#
+# NA-coercion: rows where the expression evaluates to NA (e.g. a
+# respondent whose `id.intro.finalText` is NA against
+# `id.intro.finalText == "Yes"`) are treated as FALSE. The contract is
+# "consented means the row matched", and NA → unknown is closer to "did
+# not match" than to "matched". Operators who want to surface NA as a
+# distinct bucket (n_unknown) should compute it from the raw CSV
+# separately; this function does not split it out.
 population_filter_mask <- function(data, expr) {
   if (is.null(expr) || !nzchar(expr)) return(rep(TRUE, nrow(data)))
   parsed <- tryCatch(parse(text = expr),
