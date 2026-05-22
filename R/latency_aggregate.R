@@ -250,27 +250,28 @@ assemble_consolidated <- function(scaffold, cells, totals, cascade,
                              by = c(.bucket_keys, "threshold_min"))
 
   # Summary metrics join. n_texted/n_consented/n_completed denormalise
-  # across every (segment, threshold) row sharing the bucket key. Stays
-  # NA on buckets that exist in the latency frame but were never in the
-  # raw pre-filter input -- shouldn't happen now that the scaffold is
-  # union-sourced.
+  # across every (segment, threshold) row sharing the bucket key (one
+  # value per bucket repeats across N-1 segments × 4 thresholds).
   joined <- dplyr::left_join(joined, summary_frame, by = .bucket_keys)
-  # Ineligible join is per (bucket, segment_index): a cell either has an
-  # ineligible count for its segment or it doesn't. Convert NA to 0 so
-  # the column reads as "no ineligibles at this segment" rather than
-  # "ineligible count unknown" -- ineligible is fully observable in the
-  # raw CSV when intro.batchDate exists, unlike the cascade NAs above.
+  # Ineligible join is per (bucket, segment_index). n_ineligible
+  # denormalises across the 4 threshold rows of the same
+  # (bucket, segment_index): one value per (bucket, segment) repeats
+  # across the threshold ladder. Consumers SUM-ming across threshold
+  # rows will quadruple-count; group by (campaign, date, hour, segment)
+  # and take MAX, or filter to one threshold_min before aggregating.
   joined <- dplyr::left_join(joined, ineligible_frame,
                              by = c(.bucket_keys, "segment_index"))
-  joined$n_ineligible[is.na(joined$n_ineligible)] <- 0L
 
-  # Scaffold-only rows (bucket had no latency activity at this segment ×
-  # threshold) get 0 for COUNT columns and NA for distribution columns.
-  # 0 is the semantically correct value -- "no segment events occurred,
-  # so 0 of any classification" -- whereas mean / quantile over zero
-  # observations is genuinely undefined and stays NA.
+  # Scaffold-only rows (bucket × segment × threshold combinations with
+  # no matching latency cell or summary row) get 0 for every COUNT
+  # column and NA for distribution columns (mean / quantile over zero
+  # observations is genuinely undefined). All four summary counts plus
+  # ineligible are filled symmetrically: a bucket with no summary-frame
+  # row means "no respondents in this bucket" -> 0, not "unknown".
   count_cols <- c("n", "n_le", "n_resp_over",
-                  "n_na_parse", "n_na_missing", "n_na_chain")
+                  "n_na_parse", "n_na_missing", "n_na_chain",
+                  "n_texted", "n_consented", "n_completed",
+                  "n_ineligible")
   for (col in count_cols) {
     if (col %in% names(joined)) {
       joined[[col]][is.na(joined[[col]])] <- 0L

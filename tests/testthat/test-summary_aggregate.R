@@ -252,6 +252,97 @@ test_that("campaign_report integrates summary columns into consolidated", {
   }
 })
 
+test_that("build_consolidated_scaffold: latency-only buckets produce full grid", {
+  cfg <- synthetic_config()
+  thresholds <- c(1L, 3L, 5L, 10L)
+  bucketed <- data.frame(
+    campaign_id = c(1L, 1L),
+    date = as.Date(c("2026-01-26", "2026-01-26")),
+    hour_local = c(15L, 16L),
+    stringsAsFactors = FALSE
+  )
+  scaffold <- build_consolidated_scaffold(bucketed, empty_summary_frame(),
+                                          cfg, thresholds)
+  # 2 hours × 3 segments × 4 thresholds = 24 rows
+  expect_equal(nrow(scaffold), 24L)
+  expect_setequal(scaffold$segment_index, c(1L, 2L, 3L))
+  expect_setequal(scaffold$threshold_min, thresholds)
+  expect_setequal(scaffold$hour_local, c(15L, 16L))
+})
+
+test_that("build_consolidated_scaffold: summary-only buckets included in scaffold", {
+  cfg <- synthetic_config()
+  thresholds <- c(1L, 3L, 5L, 10L)
+  empty_bucketed <- data.frame(campaign_id = integer(0),
+                               date = as.Date(character(0)),
+                               hour_local = integer(0),
+                               stringsAsFactors = FALSE)
+  summary_only <- data.frame(
+    campaign_id = c(1L, 1L),
+    date = as.Date(c("2026-01-26", "2026-01-26")),
+    hour_local = c(20L, 21L),
+    n_texted = c(50L, 75L),
+    n_consented = c(0L, 0L),
+    n_completed = c(0L, 0L),
+    stringsAsFactors = FALSE
+  )
+  scaffold <- build_consolidated_scaffold(empty_bucketed, summary_only,
+                                          cfg, thresholds)
+  # Latency empty + 2 summary hours -> 2 × 3 × 4 = 24
+  expect_equal(nrow(scaffold), 24L)
+  expect_setequal(scaffold$hour_local, c(20L, 21L))
+})
+
+test_that("build_consolidated_scaffold: union of latency + summary buckets, deduped", {
+  cfg <- synthetic_config()
+  thresholds <- c(1L, 3L, 5L, 10L)
+  bucketed <- data.frame(
+    campaign_id = c(1L, 1L),
+    date = as.Date(c("2026-01-26", "2026-01-26")),
+    hour_local = c(15L, 16L),  # overlap with summary on 16, latency-only on 15
+    stringsAsFactors = FALSE
+  )
+  summary <- data.frame(
+    campaign_id = c(1L, 1L),
+    date = as.Date(c("2026-01-26", "2026-01-26")),
+    hour_local = c(16L, 17L),  # overlap on 16, summary-only on 17
+    n_texted = c(5L, 5L),
+    n_consented = c(5L, 5L),
+    n_completed = c(5L, 5L),
+    stringsAsFactors = FALSE
+  )
+  scaffold <- build_consolidated_scaffold(bucketed, summary, cfg, thresholds)
+  # Union {15, 16, 17} × 3 segments × 4 thresholds = 36 rows; hour 16
+  # MUST NOT appear twice (rbind+unique semantics).
+  expect_equal(nrow(scaffold), 36L)
+  expect_setequal(scaffold$hour_local, c(15L, 16L, 17L))
+})
+
+test_that("build_consolidated_scaffold: NA hour_local dedups (day-rollup grain)", {
+  cfg <- synthetic_config()
+  thresholds <- c(1L, 3L, 5L, 10L)
+  # Both frames carry hour_local = NA (day rollup). unique.data.frame
+  # must collapse these to a single row -- otherwise the day rollup
+  # double-counts.
+  bucketed <- data.frame(
+    campaign_id = 1L,
+    date = as.Date("2026-01-26"),
+    hour_local = NA_integer_,
+    stringsAsFactors = FALSE
+  )
+  summary <- data.frame(
+    campaign_id = 1L,
+    date = as.Date("2026-01-26"),
+    hour_local = NA_integer_,
+    n_texted = 10L, n_consented = 8L, n_completed = 6L,
+    stringsAsFactors = FALSE
+  )
+  scaffold <- build_consolidated_scaffold(bucketed, summary, cfg, thresholds)
+  # 1 bucket × 3 segments × 4 thresholds = 12, not 24
+  expect_equal(nrow(scaffold), 12L)
+  expect_true(all(is.na(scaffold$hour_local)))
+})
+
 test_that("aggregate_consolidated tolerates NULL summary/ineligible (defensive default)", {
   # Synthetic config + a single-respondent frame to exercise the
   # `is.null(summary_frame)` defaulting path. The frame still needs the
@@ -264,8 +355,12 @@ test_that("aggregate_consolidated tolerates NULL summary/ineligible (defensive d
   frame <- build_latency_frame(parsed$data, cfg, parsed$parse_failed_mask)
   cons <- aggregate_consolidated(frame, cfg, cfg_hash = "h",
                                  run_at = as.POSIXct("2026-05-21", tz = "UTC"))
-  # NULL inputs default to empty frames; n_texted/etc become NA
-  # via the left_join. n_ineligible is filled to 0 in assemble_consolidated.
-  expect_true(all(is.na(cons$n_texted)))
+  # NULL inputs default to empty frames; every summary count is then
+  # filled with 0 in assemble_consolidated -- symmetric with n_ineligible.
+  # "No summary row for this bucket" semantically means "no respondents
+  # in this bucket" -> 0, not "unknown".
+  expect_true(all(cons$n_texted == 0L))
+  expect_true(all(cons$n_consented == 0L))
+  expect_true(all(cons$n_completed == 0L))
   expect_true(all(cons$n_ineligible == 0L))
 })
