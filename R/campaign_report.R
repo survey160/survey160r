@@ -70,6 +70,16 @@ campaign_report <- function(data, config, run_at = NULL) {
   # dispatched the intro to, not just those who consented.
   summary_hour <- build_summary_frame(data, config)
   ineligible_hour <- build_ineligible_frame(data, config)
+  # date_filter, when set, restricts both views to the listed dates --
+  # not just latency. The user's intent ("show me this date's data") is
+  # symmetric across summary and latency.
+  if (!is.null(config$filters$date_filter)) {
+    target_dates <- as.Date(config$filters$date_filter)
+    summary_hour <- summary_hour[summary_hour$date %in% target_dates,
+                                 , drop = FALSE]
+    ineligible_hour <- ineligible_hour[ineligible_hour$date %in% target_dates,
+                                       , drop = FALSE]
+  }
   summary_day <- collapse_summary_to_day(summary_hour)
   ineligible_day <- collapse_ineligible_to_day(ineligible_hour)
 

@@ -168,12 +168,20 @@ test_that("campaign_report dedupes by respondent_id keeping earliest intro", {
   expect_equal(result$diagnostics$n_respondents_used, 3L)
 })
 
-test_that("campaign_report emits an empty consolidated when no respondents pass filter", {
+test_that("campaign_report preserves summary metrics when no respondents pass filter", {
   fx <- .load_synthetic()
   data <- fx$data
   data$id.intro.finalText <- "No"
   result <- campaign_report(data, fx$config)
-  expect_equal(nrow(result$consolidated), 0L)
+  cons <- result$consolidated
+  # Scaffold-first seeding (post-CodeRabbit-PR26): summary-only buckets
+  # still appear in the output so the "we texted N but nobody consented"
+  # denominator isn't lost. Latency cell counts are 0 across the board.
+  expect_gt(nrow(cons), 0L)
+  expect_true(all(cons$n_consented == 0L))
+  expect_true(any(cons$n_texted >= 1L))
+  expect_true(all(cons$n == 0L))
+  expect_true(all(is.na(cons$pct_le)))
   expect_equal(result$diagnostics$n_respondents_in, 0L)
 })
 
@@ -417,15 +425,20 @@ test_that("n_na_chain counts chain-break NAs on segments after an NA prior batch
   expect_equal(cell$n_na_parse, 0L)
 })
 
-test_that("empty consolidated declares the new columns with the right types", {
+test_that("consolidated declares the new columns with the right types when latency is empty", {
   fx <- .load_synthetic()
   data <- fx$data
   data$id.intro.finalText <- "No"
   cons <- campaign_report(data, fx$config)$consolidated
-  expect_equal(nrow(cons), 0L)
+  # Scaffold path: rows come from summary buckets, latency cols are
+  # 0 (counts) / NA (means + quantiles). Schema must still declare every
+  # documented column with its declared type.
+  expect_gt(nrow(cons), 0L)
   expect_true(all(c("mean_delta_min", "p50_delta_min", "p90_delta_min",
                     "p95_delta_min", "n_na_parse", "n_na_missing",
-                    "n_na_chain") %in% names(cons)))
+                    "n_na_chain", "n_texted", "n_consented", "n_completed",
+                    "n_ineligible") %in% names(cons)))
   expect_type(cons$p95_delta_min, "double")
   expect_type(cons$n_na_chain, "integer")
+  expect_type(cons$n_texted, "integer")
 })
