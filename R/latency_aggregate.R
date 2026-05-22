@@ -40,25 +40,87 @@ safe_mean <- function(x) {
 }
 
 aggregate_consolidated <- function(frame, config, cfg_hash, run_at,
-                                   src_csv_hash = NA_character_) {
+                                   src_csv_hash = NA_character_,
+                                   summary_frame = NULL,
+                                   ineligible_frame = NULL) {
   project_id <- as.integer(config$project_id)
-  if (nrow(frame) == 0) {
+  if (is.null(summary_frame)) summary_frame <- empty_summary_frame()
+  if (is.null(ineligible_frame)) ineligible_frame <- empty_ineligible_frame()
+  if (nrow(frame) == 0L && nrow(summary_frame) == 0L) {
     return(empty_consolidated(project_id, cfg_hash, run_at))
   }
 
   thresholds <- UNIVERSAL_THRESHOLDS_MIN
   bucketed <- frame
-  bucketed$date <- bucketed$segment_date_local
+  # Always materialise `date` so downstream group_by()s don't trip on a
+  # missing column when the latency frame is empty (summary-only path).
+  bucketed$date <- if (nrow(bucketed) > 0L) bucketed$segment_date_local else
+    as.Date(character(0))
 
   totals <- aggregate_totals(bucketed)
   cascade <- aggregate_worst_cascade(bucketed, thresholds)
   cells <- aggregate_segment_cells(bucketed, thresholds)
 
-  assemble_consolidated(cells, totals, cascade,
+  # Scaffold: union of bucket keys from latency frame and summary frame.
+  # Without this, hours where every respondent was filtered out (e.g.
+  # 100 texted, 0 consented) lose their n_texted denominator because
+  # the latency frame has no rows for those buckets. CodeRabbit
+  # (PR #26) flagged the original cells-only seeding as defeating the
+  # pre-filter summary contract. Scaffolding from the union preserves
+  # the denominator while still emitting one row per
+  # (bucket, segment, threshold) for query uniformity.
+  scaffold <- build_consolidated_scaffold(bucketed, summary_frame, config,
+                                          thresholds)
+
+  assemble_consolidated(scaffold, cells, totals, cascade,
                         project_id = project_id,
                         cfg_hash = cfg_hash,
                         run_at = run_at,
-                        src_csv_hash = src_csv_hash)
+                        src_csv_hash = src_csv_hash,
+                        summary_frame = summary_frame,
+                        ineligible_frame = ineligible_frame)
+}
+
+# Build the (bucket × segment × threshold) scaffold the assemble step
+# left-joins everything onto. Buckets are the union of those present in
+# the latency frame and the summary frame; segments come from the
+# configured question flow; thresholds are universal. The scaffold
+# guarantees that summary-only buckets (texted but no consents) appear
+# in the output even though they have no latency rows.
+build_consolidated_scaffold <- function(bucketed, summary_frame, config,
+                                        thresholds) {
+  latency_buckets <- if (nrow(bucketed) > 0L) {
+    unique(bucketed[, c("campaign_id", "date", "hour_local")])
+  } else {
+    data.frame(campaign_id = integer(0),
+               date = as.Date(character(0)),
+               hour_local = integer(0),
+               stringsAsFactors = FALSE)
+  }
+  summary_buckets <- summary_frame[, c("campaign_id", "date", "hour_local"),
+                                   drop = FALSE]
+  all_buckets <- unique(rbind(latency_buckets, summary_buckets))
+  # Force types so merge() in the cross-join below treats bucket keys
+  # identically across the two source frames (latency hour_local can
+  # arrive as numeric from build_latency_frame).
+  all_buckets$campaign_id <- as.integer(all_buckets$campaign_id)
+  all_buckets$hour_local <- as.integer(all_buckets$hour_local)
+
+  questions <- config$flow$questions
+  segments_df <- data.frame(
+    segment = sprintf("%s\u2192%s", questions[-length(questions)],
+                      questions[-1]),
+    segment_index = seq_len(length(questions) - 1L),
+    stringsAsFactors = FALSE
+  )
+  thresholds_df <- data.frame(
+    threshold_min = as.integer(thresholds),
+    stringsAsFactors = FALSE
+  )
+  # merge(by = NULL) is the cross join. Three-way cross produces
+  # buckets × segments × thresholds with no duplicates.
+  merge(merge(all_buckets, segments_df, by = NULL),
+        thresholds_df, by = NULL)
 }
 
 # Total respondents per bucket -- the denominator for pct_resp_hit_gt.
@@ -154,18 +216,27 @@ segment_cells_chunk <- function(bucketed, t) {
   cells
 }
 
-# Join the three aggregations, stamp provenance, coerce to the final schema
-# order, and sort. Returns the data.frame written to Parquet.
-assemble_consolidated <- function(cells, totals, cascade,
+# Left-join every aggregation onto the (bucket × segment × threshold)
+# scaffold, stamp provenance, coerce to the final schema order, and
+# sort. Scaffold-first seeding ensures summary-only buckets (texted but
+# zero consents) appear in the output even though they have no latency
+# rows. Returns the data.frame written to Parquet.
+assemble_consolidated <- function(scaffold, cells, totals, cascade,
                                   project_id, cfg_hash, run_at,
-                                  src_csv_hash) {
-  joined <- dplyr::left_join(cells, totals, by = .bucket_keys)
+                                  src_csv_hash,
+                                  summary_frame, ineligible_frame) {
+  # Latency cell stats. NA on scaffold rows whose bucket has no latency
+  # frame entries -- the new summary-only path.
+  joined <- dplyr::left_join(scaffold, cells,
+                             by = c(.bucket_keys, "segment",
+                                    "segment_index", "threshold_min"))
+  joined <- dplyr::left_join(joined, totals, by = .bucket_keys)
   # pct_resp_hit_gt is gated on `n > 0` (the cell has at least one valid
-  # Δ). safe_pct() handles the denominator side; we still need the explicit
-  # `joined$n > 0` mask layered on top so cells with no valid endpoints
-  # don't report a percentage built from cross-segment cascade rollups.
+  # Δ). safe_pct() handles the denominator side; the explicit `n > 0`
+  # mask layered on top covers scaffold rows that came in with NA `n`
+  # (summary-only buckets) -- those become NA pct_resp_hit_gt, not 0.
   joined$pct_resp_hit_gt <- ifelse(
-    joined$n > 0,
+    !is.na(joined$n) & joined$n > 0,
     safe_pct(joined$n_resp_over, joined$.total_resp),
     NA_real_
   )
@@ -177,6 +248,40 @@ assemble_consolidated <- function(cells, totals, cascade,
   # had any valid Δ in this bucket."
   joined <- dplyr::left_join(joined, cascade,
                              by = c(.bucket_keys, "threshold_min"))
+
+  # Summary metrics join. n_texted/n_consented/n_completed denormalise
+  # across every (segment, threshold) row sharing the bucket key (one
+  # value per bucket repeats across N-1 segments × 4 thresholds).
+  joined <- dplyr::left_join(joined, summary_frame, by = .bucket_keys)
+  # Ineligible join is per (bucket, segment_index). n_ineligible
+  # denormalises across the 4 threshold rows of the same
+  # (bucket, segment_index): one value per (bucket, segment) repeats
+  # across the threshold ladder. Consumers SUM-ming across threshold
+  # rows will quadruple-count. To get the correct total:
+  #   - Per (campaign, date, hour, segment): filter to ONE threshold_min
+  #     (any value works since the row is the same across thresholds).
+  #   - Per (campaign, date, segment) day rollup: filter
+  #     `hour_local IS NULL AND threshold_min = 1` (or any one threshold).
+  # The MAX-across-thresholds aggregate also works but composes less
+  # cleanly with the day/hour grain split.
+  joined <- dplyr::left_join(joined, ineligible_frame,
+                             by = c(.bucket_keys, "segment_index"))
+
+  # Scaffold-only rows (bucket × segment × threshold combinations with
+  # no matching latency cell or summary row) get 0 for every COUNT
+  # column and NA for distribution columns (mean / quantile over zero
+  # observations is genuinely undefined). All four summary counts plus
+  # ineligible are filled symmetrically: a bucket with no summary-frame
+  # row means "no respondents in this bucket" -> 0, not "unknown".
+  count_cols <- c("n", "n_le", "n_resp_over",
+                  "n_na_parse", "n_na_missing", "n_na_chain",
+                  "n_texted", "n_consented", "n_completed",
+                  "n_ineligible")
+  for (col in count_cols) {
+    if (col %in% names(joined)) {
+      joined[[col]][is.na(joined[[col]])] <- 0L
+    }
+  }
 
   out <- data.frame(
     campaign_id = as.integer(joined$campaign_id),
@@ -198,6 +303,10 @@ assemble_consolidated <- function(cells, totals, cascade,
     n_na_parse = as.integer(joined$n_na_parse),
     n_na_missing = as.integer(joined$n_na_missing),
     n_na_chain = as.integer(joined$n_na_chain),
+    n_texted = as.integer(joined$n_texted),
+    n_consented = as.integer(joined$n_consented),
+    n_completed = as.integer(joined$n_completed),
+    n_ineligible = as.integer(joined$n_ineligible),
     algorithm_version = .algorithm_version,
     config_hash = cfg_hash,
     source_csv_hash = src_csv_hash %||% NA_character_,
@@ -232,6 +341,10 @@ empty_consolidated <- function(project_id, cfg_hash, run_at) {
     n_na_parse = integer(0),
     n_na_missing = integer(0),
     n_na_chain = integer(0),
+    n_texted = integer(0),
+    n_consented = integer(0),
+    n_completed = integer(0),
+    n_ineligible = integer(0),
     algorithm_version = character(0),
     config_hash = character(0),
     source_csv_hash = character(0),
