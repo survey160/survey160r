@@ -32,7 +32,8 @@ survey dates are processed (interpreted in \code{field_timezone}).}
 respondent. Default \code{NULL} (no dedupe).}
 }
 \value{
-A validated config list ready to pass to \code{campaign_report()}.
+A config list ready to pass to \code{campaign_report()}, which
+  calls \code{campaign_validate_config()} before consuming it.
 }
 \description{
 Pure function. Derives \code{flow.questions} from the CSV column names

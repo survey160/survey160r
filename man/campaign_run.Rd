@@ -38,7 +38,8 @@ provenance column. \code{NULL} (default) leaves the column as
 fill it at write time.}
 
 \item{...}{Forwarded to \code{campaign_build_config()} when
-\code{config} is \code{NULL}. Ignored otherwise.}
+\code{config} is \code{NULL}. Must be empty when \code{config} is
+supplied (passing both errors).}
 }
 \value{
 The list returned by \code{campaign_report()}:
@@ -64,7 +65,8 @@ Two call shapes:
         \code{campaign_run()} derives the config from the CSV header.
   \item Custom -- pre-build the config with
         \code{campaign_build_config()} (mutating as needed) and pass
-        it via \code{config}. \code{...} is ignored in that case.
+        it via \code{config}. \code{...} must be empty in that case
+        (passing both errors).
 }
 
 Provenance: if \code{data} carries \code{source_csv_hash} or

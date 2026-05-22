@@ -66,7 +66,8 @@ campaign_discover_questions <- function(data) {
 #'   survey dates are processed (interpreted in \code{field_timezone}).
 #' @param respondent_id_column Optional column name used to dedupe rows by
 #'   respondent. Default \code{NULL} (no dedupe).
-#' @return A validated config list ready to pass to \code{campaign_report()}.
+#' @return A config list ready to pass to \code{campaign_report()}, which
+#'   calls \code{campaign_validate_config()} before consuming it.
 #' @export
 campaign_build_config <- function(campaign_id, data,
                          field_timezone = "UTC",

@@ -80,10 +80,10 @@ test_that("campaign_run accepts a pre-built config and skips build_config", {
                                      field_timezone = "America/New_York")
 
   captured <- new_capture()
-  build_called <- FALSE
+  captured$build_called <- FALSE
   local_mocked_bindings(
     campaign_build_config = function(...) {
-      build_called <<- TRUE
+      captured$build_called <- TRUE
       NULL
     },
     campaign_report = function(data, config, run_at = NULL) {
@@ -94,7 +94,7 @@ test_that("campaign_run accepts a pre-built config and skips build_config", {
 
   campaign_run(campaign_id = 1, data = data, config = custom_cfg)
 
-  expect_false(build_called)
+  expect_false(captured$build_called)
   expect_identical(captured$cfg, custom_cfg)
 })
 
