@@ -108,7 +108,7 @@ build_consolidated_scaffold <- function(bucketed, summary_frame, config,
 
   questions <- config$flow$questions
   segments_df <- data.frame(
-    segment = sprintf("%s→%s", questions[-length(questions)],
+    segment = sprintf("%s\u2192%s", questions[-length(questions)],
                       questions[-1]),
     segment_index = seq_len(length(questions) - 1L),
     stringsAsFactors = FALSE
