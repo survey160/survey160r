@@ -1,5 +1,36 @@
 # survey160r (development version)
 
+## Breaking changes
+
+* The latency pipeline is renamed to the **campaign pipeline** -- the
+  per-campaign Parquet is becoming a general per-campaign metrics
+  artifact (latency view today, summary metrics view next). All
+  orchestrator exports rename:
+
+  | Before | After |
+  |---|---|
+  | `latency_run()` | `campaign_run()` |
+  | `latency_report()` | `campaign_report()` |
+  | `latency_build_config()` | `campaign_build_config()` |
+  | `latency_validate_config()` | `campaign_validate_config()` |
+  | `latency_config_hash()` | `campaign_config_hash()` |
+  | `latency_discover_questions()` | `campaign_discover_questions()` |
+
+  The latency sub-view files (`R/latency_aggregate.R`,
+  `R/latency_frame.R`, `R/latency_filter.R`,
+  `R/latency_diagnostics.R`, `R/latency_primitives.R`) keep their
+  names -- they implement latency-specific computations and sit
+  alongside the new orchestrator files as one named view of the
+  campaign pipeline. Behaviour is unchanged; output Parquet schema
+  is byte-identical to 0.12.0. `algorithm_version` stays `"2.0.0"`
+  because the algorithm did not change; the rename is API only.
+
+* The algorithm spec doc moves from `r-scripts/latency_scripts.md` to
+  `r-scripts/campaign_scripts.md` (lives in the meta-workspace, not
+  this repo).
+
+# survey160r 0.12.0
+
 ## New features
 
 * `consolidated` now carries seven new per-cell columns (SUR-1316):

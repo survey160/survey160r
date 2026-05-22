@@ -355,7 +355,7 @@ s160_gcs_campaign_results_list <- function(bucket = NULL) {
 #' computes a sha256 of the downloaded CSV bytes. The hash and the
 #' canonical \code{gs://} path travel back on the returned data frame
 #' as the \code{source_csv_hash} and \code{source_csv_path}
-#' attributes; \code{latency_report()} reads them and copies them onto
+#' attributes; \code{campaign_report()} reads them and copies them onto
 #' \code{result$meta} so downstream consumers (e.g. persistence layers)
 #' don't have to fish them off attributes.
 #'
@@ -402,7 +402,7 @@ s160_gcs_pull_csv <- function(campaign_id, filename = NULL, bucket = NULL) {
 #' Local-source sibling of \code{s160_gcs_pull_csv()}. Reads the CSV
 #' via \code{utils::read.csv()} and stamps \code{source_csv_hash} and
 #' \code{source_csv_path} attributes on the returned data frame so
-#' downstream \code{latency_report()} / \code{latency_run()} surface
+#' downstream \code{campaign_report()} / \code{campaign_run()} surface
 #' them on \code{result$meta}. Use for backfills (archived campaign
 #' CSVs stored on disk, Dropbox, S3 mounts, etc.).
 #'
@@ -416,7 +416,7 @@ s160_gcs_pull_csv <- function(campaign_id, filename = NULL, bucket = NULL) {
 #' \dontrun{
 #' data <- s160_read_csv("~/Dropbox/archive/campaign_500.csv")
 #' attr(data, "source_csv_hash")
-#' latency_run(500, data, field_timezone = "America/New_York")
+#' campaign_run(500, data, field_timezone = "America/New_York")
 #' }
 #' @export
 s160_read_csv <- function(path, ...) {

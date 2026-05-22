@@ -21,7 +21,7 @@ A data frame with \code{source_csv_hash} and
 Local-source sibling of \code{s160_gcs_pull_csv()}. Reads the CSV
 via \code{utils::read.csv()} and stamps \code{source_csv_hash} and
 \code{source_csv_path} attributes on the returned data frame so
-downstream \code{latency_report()} / \code{latency_run()} surface
+downstream \code{campaign_report()} / \code{campaign_run()} surface
 them on \code{result$meta}. Use for backfills (archived campaign
 CSVs stored on disk, Dropbox, S3 mounts, etc.).
 }
@@ -29,6 +29,6 @@ CSVs stored on disk, Dropbox, S3 mounts, etc.).
 \dontrun{
 data <- s160_read_csv("~/Dropbox/archive/campaign_500.csv")
 attr(data, "source_csv_hash")
-latency_run(500, data, field_timezone = "America/New_York")
+campaign_run(500, data, field_timezone = "America/New_York")
 }
 }

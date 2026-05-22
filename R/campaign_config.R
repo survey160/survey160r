@@ -1,12 +1,12 @@
 # Latency report configuration: defaults, validation, hash.
-# Configs are built programmatically via latency_build_config() or as
+# Configs are built programmatically via campaign_build_config() or as
 # hand-written lists with the same shape. The historical YAML schema and
 # the per-wave API metadata layer have both been retired; only the fields
-# latency_report() actually consults are kept.
+# campaign_report() actually consults are kept.
 
-# Allowed top-level config keys. latency_validate_config() rejects anything
+# Allowed top-level config keys. campaign_validate_config() rejects anything
 # else so typos in caller-supplied lists fail loud. The set matches exactly
-# what latency_report() reads -- no provenance or YAML-only slots.
+# what campaign_report() reads -- no provenance or YAML-only slots.
 .config_keys <- c(
   "project_id", "campaign_id", "field_timezone", "flow",
   "filters"
@@ -34,7 +34,7 @@
 #' @param data A data frame or character vector of column names.
 #' @return A character vector of question ids in flow order.
 #' @export
-latency_discover_questions <- function(data) {
+campaign_discover_questions <- function(data) {
   cols <- if (is.data.frame(data)) names(data) else as.character(data)
   # Match either bracket form (raw header) or dot form (post read.csv).
   m_dot <- regmatches(cols, regexec("^id\\.([A-Za-z0-9_]+)\\.scriptDate$", cols))
@@ -52,7 +52,7 @@ latency_discover_questions <- function(data) {
 #' Build a latency config from a campaign id and its CSV
 #'
 #' Pure function. Derives \code{flow.questions} from the CSV column names
-#' via \code{latency_discover_questions()} and assembles the rest of the
+#' via \code{campaign_discover_questions()} and assembles the rest of the
 #' config from the named arguments. No I/O, no API call, no auth precondition.
 #'
 #' @param campaign_id Campaign id (numeric or character).
@@ -66,14 +66,15 @@ latency_discover_questions <- function(data) {
 #'   survey dates are processed (interpreted in \code{field_timezone}).
 #' @param respondent_id_column Optional column name used to dedupe rows by
 #'   respondent. Default \code{NULL} (no dedupe).
-#' @return A validated config list ready to pass to \code{latency_report()}.
+#' @return A config list ready to pass to \code{campaign_report()}, which
+#'   calls \code{campaign_validate_config()} before consuming it.
 #' @export
-latency_build_config <- function(campaign_id, data,
+campaign_build_config <- function(campaign_id, data,
                          field_timezone = "UTC",
                          project_id = NULL,
                          date_filter = NULL,
                          respondent_id_column = NULL) {
-  questions <- latency_discover_questions(data)
+  questions <- campaign_discover_questions(data)
   if (length(questions) < 2L) {
     stop(paste(
       "Could not discover at least two questions from CSV columns;",
@@ -102,11 +103,11 @@ latency_build_config <- function(campaign_id, data,
 #' on the first failing rule.
 #'
 #' @param config The config list (typically from
-#'   \code{latency_build_config}).
+#'   \code{campaign_build_config}).
 #' @param data The data frame the report will run against.
 #' @return Invisible \code{TRUE} on success; otherwise stops with an error.
 #' @export
-latency_validate_config <- function(config, data) {
+campaign_validate_config <- function(config, data) {
   unknown <- setdiff(names(config), .config_keys)
   if (length(unknown) > 0) {
     stop(sprintf("Unknown config keys: %s", paste(unknown, collapse = ", ")),
@@ -197,7 +198,7 @@ validate_flow_order <- function(config, data) {
 #' @param config The config list.
 #' @return A hex sha256 string.
 #' @export
-latency_config_hash <- function(config) {
+campaign_config_hash <- function(config) {
   canonical <- canonicalize_config(config)
   digest::digest(canonical, algo = "sha256", serialize = TRUE)
 }

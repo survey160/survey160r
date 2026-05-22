@@ -1,8 +1,8 @@
 # Shared test stubs -- loaded automatically by testthat before all tests
 
 # Inline replacement for the old tests/testthat/fixtures/synthetic_config.yaml.
-# Used by test-latency_report.R and test-latency_io.R to drive latency_report
-# against the synthetic.csv fixture. Field shape matches what latency_build_config()
+# Used by test-campaign_report.R to drive campaign_report
+# against the synthetic.csv fixture. Field shape matches what campaign_build_config()
 # returns.
 synthetic_config <- function() {
   list(
@@ -80,7 +80,7 @@ stub_gcs_download_ok <- function(capture_env = NULL,
   )
 }
 
-# --- latency_run helpers --------------------------------------------------
+# --- campaign_run helpers --------------------------------------------------
 
 # Capture env for mock-recorded values. Use `<<-` or `env$field <- ...` from
 # inside a mock body; read fields back after the call under test returns.
@@ -104,7 +104,7 @@ load_synthetic_data <- function(
 # Load the 8-question parity fixture used by test-latency_parity_legacy.R.
 # Six respondents, one day, designed so each cascade bucket has exactly one
 # respondent. Returns a plain data frame (no GCS attrs) -- the parity tests
-# call latency_report() directly.
+# call campaign_report() directly.
 load_synthetic_parity <- function() {
   read.csv(testthat::test_path("fixtures/synthetic_parity.csv"),
            stringsAsFactors = FALSE)
@@ -119,7 +119,7 @@ load_synthetic_cross_hour <- function() {
 # Build a minimal valid Survey160 v2 data frame matching `questions`.
 # The terminal question has only a scriptDate (no batchDate), matching the
 # real export convention. `with_rows = FALSE` returns a column-only frame
-# (useful for latency_build_config tests that only inspect column names).
+# (useful for campaign_build_config tests that only inspect column names).
 minimal_synthetic_data <- function(questions = c("intro", "q1", "close"),
                                    with_rows = TRUE) {
   cols <- c("campaignid", "userid", "id.intro.finalText")

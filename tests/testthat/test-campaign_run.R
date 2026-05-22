@@ -1,9 +1,9 @@
-# Coverage for R/latency_run.R: build_config -> report orchestration in
+# Coverage for R/campaign_run.R: build_config -> report orchestration in
 # both the convenience (auto-build) and custom-config paths. The runner
 # takes caller-supplied data; no I/O, no source mocking required.
 
-test_that("latency_run wires build_config -> report and returns result", {
-  result <- latency_run(
+test_that("campaign_run wires build_config -> report and returns result", {
+  result <- campaign_run(
     campaign_id = 1,
     data = load_synthetic_data(),
     run_by = "test_runner"
@@ -19,38 +19,38 @@ test_that("latency_run wires build_config -> report and returns result", {
   }
 })
 
-test_that("latency_run leaves run_by as NA when not supplied", {
-  result <- latency_run(campaign_id = 1, data = load_synthetic_data())
+test_that("campaign_run leaves run_by as NA when not supplied", {
+  result <- campaign_run(campaign_id = 1, data = load_synthetic_data())
   expect_true(all(is.na(result$consolidated$run_by)))
 })
 
-test_that("latency_run propagates NA provenance for un-stamped sources", {
+test_that("campaign_run propagates NA provenance for un-stamped sources", {
   # Caller built `data` without the GCS-style attrs -- meta carries NA,
   # the algorithm still runs.
   data <- load_synthetic_data()
   attr(data, "source_csv_hash") <- NULL
   attr(data, "source_csv_path") <- NULL
-  result <- latency_run(campaign_id = 1, data = data)
+  result <- campaign_run(campaign_id = 1, data = data)
   expect_true(is.na(result$meta$source_csv_hash))
   expect_true(is.na(result$meta$source_csv_path))
 })
 
-test_that("latency_run surfaces validate_config failures on a malformed CSV", {
+test_that("campaign_run surfaces validate_config failures on a malformed CSV", {
   # Strip the population-filter column so validate_columns_present aborts.
   data <- load_synthetic_data(mutate = function(d) {
     d$id.intro.finalText <- NULL
     d
   })
   expect_error(
-    latency_run(campaign_id = 1, data = data),
+    campaign_run(campaign_id = 1, data = data),
     "id\\.intro\\.finalText"
   )
 })
 
-test_that("latency_run forwards `...` overrides to latency_build_config", {
+test_that("campaign_run forwards `...` overrides to campaign_build_config", {
   captured <- new_capture()
   local_mocked_bindings(
-    latency_report = function(data, config, run_at = NULL) {
+    campaign_report = function(data, config, run_at = NULL) {
       captured$cfg <- config
       list(consolidated = data.frame(), diagnostics = list(),
            meta = list(algorithm_version = "2.0.0", config_hash = "h",
@@ -58,7 +58,7 @@ test_that("latency_run forwards `...` overrides to latency_build_config", {
     }
   )
 
-  latency_run(
+  campaign_run(
     campaign_id = 7,
     data = load_synthetic_data(),
     field_timezone = "America/New_York",
@@ -74,49 +74,49 @@ test_that("latency_run forwards `...` overrides to latency_build_config", {
   expect_equal(captured$cfg$filters$date_filter, "2026-01-26")
 })
 
-test_that("latency_run accepts a pre-built config and skips build_config", {
+test_that("campaign_run accepts a pre-built config and skips build_config", {
   data <- load_synthetic_data()
-  custom_cfg <- latency_build_config(1, data,
+  custom_cfg <- campaign_build_config(1, data,
                                      field_timezone = "America/New_York")
 
   captured <- new_capture()
-  build_called <- FALSE
+  captured$build_called <- FALSE
   local_mocked_bindings(
-    latency_build_config = function(...) {
-      build_called <<- TRUE
+    campaign_build_config = function(...) {
+      captured$build_called <- TRUE
       NULL
     },
-    latency_report = function(data, config, run_at = NULL) {
+    campaign_report = function(data, config, run_at = NULL) {
       captured$cfg <- config
       list(consolidated = data.frame(), diagnostics = list(), meta = list())
     }
   )
 
-  latency_run(campaign_id = 1, data = data, config = custom_cfg)
+  campaign_run(campaign_id = 1, data = data, config = custom_cfg)
 
-  expect_false(build_called)
+  expect_false(captured$build_called)
   expect_identical(captured$cfg, custom_cfg)
 })
 
-test_that("latency_run rejects both `config` and `...` being supplied", {
+test_that("campaign_run rejects both `config` and `...` being supplied", {
   data <- load_synthetic_data()
-  cfg <- latency_build_config(1, data)
+  cfg <- campaign_build_config(1, data)
   expect_error(
-    latency_run(campaign_id = 1, data = data,
+    campaign_run(campaign_id = 1, data = data,
                 config = cfg, field_timezone = "UTC"),
     "either .*config.* or"
   )
 })
 
-test_that("latency_run forwards an explicit run_at to latency_report", {
+test_that("campaign_run forwards an explicit run_at to campaign_report", {
   captured <- new_capture()
   fixed_at <- as.POSIXct("2026-01-01 00:00:00", tz = "UTC")
   local_mocked_bindings(
-    latency_report = function(data, config, run_at = NULL) {
+    campaign_report = function(data, config, run_at = NULL) {
       captured$run_at <- run_at
       list(consolidated = data.frame(), diagnostics = list(), meta = list())
     }
   )
-  latency_run(campaign_id = 1, data = load_synthetic_data(), run_at = fixed_at)
+  campaign_run(campaign_id = 1, data = load_synthetic_data(), run_at = fixed_at)
   expect_equal(captured$run_at, fixed_at)
 })

@@ -117,7 +117,7 @@ test_that("legacy parity: pct_le matches per segment per threshold", {
     )
   })
 
-  result <- latency_report(data, config)
+  result <- campaign_report(data, config)
   # Compare against the day rollup rows in the output (hour_local = NA),
   # which carry the legacy single-value-per-(segment, threshold) shape.
   day_rows <- result$consolidated[is.na(result$consolidated$hour_local), ]
@@ -151,7 +151,7 @@ test_that("legacy parity: respondent cascade matches over-threshold bucket pcts"
   indicators <- .legacy_latency_indicator_vars(diffs, thresholds)
   legacy_pct_worst_gt <- vapply(indicators, mean, numeric(1)) * 100
 
-  result <- latency_report(data, config)
+  result <- campaign_report(data, config)
   # Cascade can't be rolled up from hour-grained consolidated rows (respondents
   # who appear in multiple hours are counted in each hour's denominator). Derive
   # the wave-level cascade from the per-respondent latency_frame instead --
