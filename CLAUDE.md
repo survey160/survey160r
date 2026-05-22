@@ -40,6 +40,6 @@ After any change under `R/`, run `make verify` -- it loads the package once and 
 
 ## Reference
 
-- Latency algorithm spec: `../latency-scripts/latency_scripts.md` (lives outside this repo, in the meta-workspace).
+- Campaign pipeline spec: `../r-scripts/campaign_scripts.md` (lives outside this repo, in the meta-workspace; covers the latency view today, will gain a summary metrics view in a follow-up).
 - Survey160 v2 CSV column semantics for latency configs: see meta-workspace memory `reference_latency_configs.md`.
 - API base URL pattern: `https://{env}-api.survey160.com`.

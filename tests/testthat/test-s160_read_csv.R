@@ -35,13 +35,13 @@ test_that("s160_read_csv forwards `...` to read.csv (e.g., sep)", {
   expect_equal(data$b, 2L)
 })
 
-test_that("s160_read_csv result is consumable by latency_run downstream", {
+test_that("s160_read_csv result is consumable by campaign_run downstream", {
   # Use the same synthetic fixture the algorithm tests rely on. The
   # reader's job is to produce a stamped data frame; the algorithm
   # surfaces source_csv_hash / source_csv_path on result$meta.
   fx_path <- test_path("fixtures/synthetic.csv")
   data <- s160_read_csv(fx_path)
-  result <- latency_run(campaign_id = 1, data = data)
+  result <- campaign_run(campaign_id = 1, data = data)
   expect_equal(result$meta$source_csv_path, fx_path)
   expect_true(grepl("^sha256:", result$meta$source_csv_hash))
 })
