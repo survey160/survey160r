@@ -47,6 +47,20 @@
   avoids the case where a date_filter that excludes everyone still
   emits summary rows for the excluded dates.
 
+## Bug fixes
+
+* `pct_le` is now always a numeric (double) column, even when a
+  campaign has no valid latency cells and every value is NA. The
+  populated assembly path took `pct_le` straight from the joined
+  frame without the `as.numeric()` coercion its sibling numeric
+  columns use, so an all-NA join result collapsed to a logical
+  vector. Downstream the fleet writer casts this column to a
+  float64 Arrow schema; a logical vector failed that cast
+  (`Invalid: cannot convert`) and silently dropped the campaign's
+  Parquet output. Affected campaigns are valid but degenerate --
+  every recipient hit a carrier delivery error or sat in limbo, so
+  none produced a measurable latency delta (SUR-1365).
+
 # survey160r 0.13.0
 
 ## Breaking changes
