@@ -318,6 +318,12 @@ assemble_consolidated <- function(scaffold, cells, totals, cascade,
     run_by = NA_character_,
     stringsAsFactors = FALSE
   )
+  # Text-to-Web on an external platform with no webhook (SUR-1368): completion
+  # cannot be computed from the export, so n_completed is NA (not 0/consent) --
+  # n_texted / n_consented remain valid.
+  if (identical(survey_mode, "t2w_external")) {
+    out$n_completed <- NA_integer_
+  }
   out <- out[order(out$campaign_id, out$date, out$hour_local,
                    out$segment_index, out$threshold_min), , drop = FALSE]
   rownames(out) <- NULL
