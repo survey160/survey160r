@@ -4,10 +4,14 @@
 \alias{s160_csv_header}
 \title{Read just the header (column names) of a CSV}
 \usage{
-s160_csv_header(path)
+s160_csv_header(path, encoding = "UTF-8")
 }
 \arguments{
 \item{path}{Path to the CSV.}
+
+\item{encoding}{File encoding for the header peek (\code{"UTF-8"} default),
+kept consistent with the body read so a UTF-8/BOM file munges to the same
+names regardless of reader.}
 }
 \value{
 Character vector of dot-form column names.

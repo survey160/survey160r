@@ -129,6 +129,20 @@ download_with_verify <- function(object_name, local_path, max_retries = 2L,
   invisible(local_path)
 }
 
+# Read just the raw (un-munged) header names of a CSV, without parsing the body.
+# Uses fread when available, else read.csv; `encoding` is honoured in BOTH so a
+# UTF-8/BOM file maps to the same names regardless of reader. Shared by
+# fast_read_csv (to map a munged projection set back to file names) and
+# s160_csv_header (which munges the result).
+read_header_raw <- function(path, encoding = "UTF-8") {
+  if (requireNamespace("data.table", quietly = TRUE)) {
+    return(names(data.table::fread(path, nrows = 0L, check.names = FALSE,
+                                   encoding = encoding, showProgress = FALSE)))
+  }
+  names(utils::read.csv(path, nrows = 0L, check.names = FALSE,
+                        fileEncoding = encoding))
+}
+
 # Fast CSV reader. Uses data.table::fread when available (multithreaded, with
 # native column projection via `select`), falling back to utils::read.csv.
 #
@@ -139,37 +153,51 @@ download_with_verify <- function(object_name, local_path, max_retries = 2L,
 # the swap byte-for-byte safe (guarded by the parity test suites).
 #
 # Types are pinned to read.csv-like behaviour for interactive callers:
-# stringsAsFactors = FALSE and integer64 = "character" (so large IDs come back
-# as character, not a bit64::integer64 class that surprises View()/joins/==).
+# stringsAsFactors = FALSE, integer64 = "character" (so large IDs come back as
+# character, not a bit64::integer64 class that surprises View()/joins/==), and
+# strip.white = FALSE (fread strips unquoted-field whitespace by default, which
+# read.csv does not -- pinning it off keeps a value like " Yes" byte-identical
+# so population-filter equality and dedupe keys do not silently shift).
 # Callers can override any of these (and pass reader-specific args like `sep`,
 # `na.strings`, `nrows`) through `...`.
 #
 # `columns`, when supplied, is a vector of *munged* (dot-form) names to keep.
 # fread selects by raw header name, so we peek the header, map munged -> raw,
 # and project at parse time. The read.csv fallback reads in full then subsets
-# (no parse-time saving, but the same result).
+# to the same set, so both readers return identical columns. If columns are
+# requested but NONE match the header (a desync, e.g. a renamed export), we
+# warn and read in full -- identical in both branches, and visible rather than
+# a silent OOM-inducing full read.
 fast_read_csv <- function(path, columns = NULL, encoding = "UTF-8", ...) {
   extra <- list(...)
+  select_raw <- NULL
+  if (!is.null(columns)) {
+    raw <- read_header_raw(path, encoding = encoding)
+    select_raw <- raw[make.names(raw) %in% columns]
+    if (length(select_raw) == 0L) {
+      warning(sprintf(paste0(
+        "fast_read_csv: none of the %d requested column(s) matched the header ",
+        "of '%s'; reading all columns."), length(columns), path), call. = FALSE)
+      select_raw <- NULL
+    }
+  }
   if (requireNamespace("data.table", quietly = TRUE)) {
     args <- list(input = path, data.table = FALSE, check.names = TRUE,
                  stringsAsFactors = FALSE, integer64 = "character",
-                 encoding = encoding, showProgress = FALSE)
+                 strip.white = FALSE, encoding = encoding, showProgress = FALSE)
     args[names(extra)] <- extra
-    if (!is.null(columns)) {
-      raw <- names(data.table::fread(path, nrows = 0L, check.names = FALSE,
-                                     showProgress = FALSE))
-      select_raw <- raw[make.names(raw) %in% columns]
-      if (length(select_raw) > 0L) args$select <- select_raw
-    }
+    if (!is.null(select_raw)) args$select <- select_raw
     return(do.call(data.table::fread, args))
   }
-  # Fallback: base read.csv (full read), then project to `columns`.
+  # Fallback: base read.csv (full read), then project to the same set. read.csv
+  # munges names, so match on make.names(select_raw); intersect with the actual
+  # names guards against make.unique renaming a duplicate header.
   args <- list(file = path, check.names = TRUE, stringsAsFactors = FALSE,
                fileEncoding = encoding)
   args[names(extra)] <- extra
   data <- do.call(utils::read.csv, args)
-  if (!is.null(columns)) {
-    data <- data[, intersect(columns, names(data)), drop = FALSE]
+  if (!is.null(select_raw)) {
+    data <- data[, intersect(make.names(select_raw), names(data)), drop = FALSE]
   }
   data
 }
@@ -515,18 +543,16 @@ s160_read_csv <- function(path, columns = NULL, hash = TRUE, ...) {
 #' }
 #'
 #' @param path Path to the CSV.
+#' @param encoding File encoding for the header peek (\code{"UTF-8"} default),
+#'   kept consistent with the body read so a UTF-8/BOM file munges to the same
+#'   names regardless of reader.
 #' @return Character vector of dot-form column names.
 #' @export
-s160_csv_header <- function(path) {
+s160_csv_header <- function(path, encoding = "UTF-8") {
   if (!file.exists(path)) {
     stop(sprintf("s160_csv_header: file not found: %s", path), call. = FALSE)
   }
-  if (requireNamespace("data.table", quietly = TRUE)) {
-    raw <- names(data.table::fread(path, nrows = 0L, check.names = FALSE,
-                                   showProgress = FALSE))
-    return(make.names(raw))
-  }
-  names(utils::read.csv(path, nrows = 0L, check.names = TRUE))
+  make.names(read_header_raw(path, encoding = encoding))
 }
 
 #' Check campaign results export status

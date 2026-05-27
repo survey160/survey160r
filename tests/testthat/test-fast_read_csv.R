@@ -56,14 +56,38 @@ test_that("columns projection keeps only requested names -- fallback", {
   expect_equal(names(data), c("id.q1.scriptDate", "campaignid"))
 })
 
-test_that("columns with no header match falls back to a full read", {
+test_that("columns with no header match warns and reads in full -- fread", {
   tmp <- withr::local_tempfile(fileext = ".csv")
   writeLines(c("a,b", "1,2"), tmp)
 
-  # No requested column matches -> select is skipped, every column returned.
-  data <- fast_read_csv(tmp, columns = c("does.not.exist"))
-
+  # No requested column matches -> warn (visible, not a silent OOM) + full read.
+  expect_warning(data <- fast_read_csv(tmp, columns = c("does.not.exist")),
+                 "none of the")
   expect_equal(names(data), c("a", "b"))
+})
+
+test_that("columns with no header match warns and reads in full -- fallback", {
+  tmp <- withr::local_tempfile(fileext = ".csv")
+  writeLines(c("a,b", "1,2"), tmp)
+
+  stub_no_data_table()
+  # Symmetric with the fread branch: full read (not a 0-column frame).
+  expect_warning(data <- fast_read_csv(tmp, columns = c("does.not.exist")),
+                 "none of the")
+  expect_equal(names(data), c("a", "b"))
+})
+
+test_that("field whitespace is preserved (no fread strip.white drift) -- both readers", {
+  tmp <- withr::local_tempfile(fileext = ".csv")
+  writeLines(c("consent,n", " Yes ,1"), tmp)
+
+  # read.csv keeps surrounding whitespace; fread would strip it by default, so
+  # we pin strip.white = FALSE. A population filter like consent == " Yes "
+  # must behave identically across readers.
+  expect_equal(fast_read_csv(tmp)$consent, " Yes ")
+
+  stub_no_data_table()
+  expect_equal(fast_read_csv(tmp)$consent, " Yes ")
 })
 
 test_that("`...` overrides the pinned defaults (e.g. sep)", {
