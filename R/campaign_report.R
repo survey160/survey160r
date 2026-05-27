@@ -63,12 +63,17 @@ campaign_report <- function(data, config, run_at = NULL) {
   # and the latency parse step (post-filter) see NA where the CSV had "".
   data <- na_if_blank(data)
 
+  # Survey mode (sms vs t2w) is detected once from the pre-filter data. It
+  # drives the completion signal in build_summary_frame and is stamped on
+  # every consolidated row so downstream consumers (Shiny) can filter (SUR-1368).
+  survey_mode <- detect_survey_mode(data)
+
   # Step 1: pre-filter summary metrics (spec §4). Counts texted /
   # consented / completed at the (campaign, date, hour_local) grain,
   # plus per-segment ineligible counts. Computed on the full pre-filter
   # population so the denominators reflect every respondent the platform
   # dispatched the intro to, not just those who consented.
-  summary_hour <- build_summary_frame(data, config)
+  summary_hour <- build_summary_frame(data, config, survey_mode)
   ineligible_hour <- build_ineligible_frame(data, config)
   # date_filter, when set, restricts both views to the listed dates --
   # not just latency. The user's intent ("show me this date's data") is
@@ -130,13 +135,15 @@ campaign_report <- function(data, config, run_at = NULL) {
   hour_grain <- aggregate_consolidated(frame, config, cfg_hash, run_at,
                                        src_csv_hash,
                                        summary_frame = summary_hour,
-                                       ineligible_frame = ineligible_hour)
+                                       ineligible_frame = ineligible_hour,
+                                       survey_mode = survey_mode)
   day_frame <- frame
   if (nrow(day_frame) > 0L) day_frame$hour_local <- NA_integer_
   day_grain <- aggregate_consolidated(day_frame, config, cfg_hash, run_at,
                                       src_csv_hash,
                                       summary_frame = summary_day,
-                                      ineligible_frame = ineligible_day)
+                                      ineligible_frame = ineligible_day,
+                                      survey_mode = survey_mode)
   consolidated <- rbind(hour_grain, day_grain)
 
   # Step 7: diagnostics.

@@ -42,7 +42,8 @@ safe_mean <- function(x) {
 aggregate_consolidated <- function(frame, config, cfg_hash, run_at,
                                    src_csv_hash = NA_character_,
                                    summary_frame = NULL,
-                                   ineligible_frame = NULL) {
+                                   ineligible_frame = NULL,
+                                   survey_mode = "sms") {
   project_id <- as.integer(config$project_id)
   if (is.null(summary_frame)) summary_frame <- empty_summary_frame()
   if (is.null(ineligible_frame)) ineligible_frame <- empty_ineligible_frame()
@@ -78,7 +79,8 @@ aggregate_consolidated <- function(frame, config, cfg_hash, run_at,
                         run_at = run_at,
                         src_csv_hash = src_csv_hash,
                         summary_frame = summary_frame,
-                        ineligible_frame = ineligible_frame)
+                        ineligible_frame = ineligible_frame,
+                        survey_mode = survey_mode)
 }
 
 # Build the (bucket × segment × threshold) scaffold the assemble step
@@ -224,7 +226,8 @@ segment_cells_chunk <- function(bucketed, t) {
 assemble_consolidated <- function(scaffold, cells, totals, cascade,
                                   project_id, cfg_hash, run_at,
                                   src_csv_hash,
-                                  summary_frame, ineligible_frame) {
+                                  summary_frame, ineligible_frame,
+                                  survey_mode = "sms") {
   # Latency cell stats. NA on scaffold rows whose bucket has no latency
   # frame entries -- the new summary-only path.
   joined <- dplyr::left_join(scaffold, cells,
@@ -286,6 +289,7 @@ assemble_consolidated <- function(scaffold, cells, totals, cascade,
   out <- data.frame(
     campaign_id = as.integer(joined$campaign_id),
     project_id = rep(project_id, nrow(joined)),
+    survey_mode = rep(survey_mode, nrow(joined)),
     date = joined$date,
     hour_local = joined$hour_local,
     segment = joined$segment,
@@ -324,6 +328,7 @@ empty_consolidated <- function(project_id, cfg_hash, run_at) {
   data.frame(
     campaign_id = integer(0),
     project_id = integer(0),
+    survey_mode = character(0),
     date = as.Date(character(0)),
     hour_local = integer(0),
     segment = character(0),
