@@ -182,6 +182,11 @@ test_that("campaign_report preserves summary metrics when no respondents pass fi
   expect_true(any(cons$n_texted >= 1L))
   expect_true(all(cons$n == 0L))
   expect_true(all(is.na(cons$pct_le)))
+  # SUR-1365: an all-NA pct_le must stay a double, not collapse to logical.
+  # The fleet writer casts this column to a float64 Arrow schema; a logical
+  # NA vector fails that cast ("Invalid: cannot convert") and drops the
+  # campaign's Parquet output.
+  expect_type(cons$pct_le, "double")
   expect_equal(result$diagnostics$n_respondents_in, 0L)
 })
 
