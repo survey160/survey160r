@@ -61,8 +61,16 @@ build_summary_frame <- function(data, config, survey_mode = "sms") {
   # Completion signal is survey-mode dependent (SUR-1368): t2w campaigns
   # complete via the web_complete callback, sms via reaching close.
   completed <- if (identical(survey_mode, "t2w")) {
-    wc <- suppressWarnings(as.integer(as.character(data[["web_complete"]])))
-    !is.na(wc) & wc == 1L & texted
+    # Null-safe: detect_survey_mode only returns "t2w" when web_complete
+    # exists, but build_summary_frame shouldn't assume the caller paired
+    # the mode with the column -- a missing column means zero completions.
+    wc_raw <- data[["web_complete"]]
+    if (is.null(wc_raw)) {
+      rep(FALSE, nrow(data))
+    } else {
+      wc <- suppressWarnings(as.integer(as.character(wc_raw)))
+      !is.na(wc) & wc == 1L & texted
+    }
   } else {
     !is.na(close_script) & texted
   }

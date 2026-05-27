@@ -345,6 +345,17 @@ test_that("build_summary_frame: t2w completion counts web_complete, not close", 
   expect_equal(day_t2w$n_consented, 3L)
 })
 
+test_that("build_summary_frame: t2w with no web_complete column -> 0 completed", {
+  # Defensive path: if a caller passes survey_mode="t2w" but the data has no
+  # web_complete column, completion is zero (not an error). detect_survey_mode
+  # never produces this pairing, but build_summary_frame must not assume it.
+  d <- load_synthetic_data()  # synthetic fixture has no web_complete column
+  cfg <- synthetic_config()
+  day <- collapse_summary_to_day(build_summary_frame(d, cfg, "t2w"))
+  expect_equal(day$n_completed, 0L)
+  expect_equal(day$n_texted, 3L)
+})
+
 test_that("campaign_report stamps survey_mode on every consolidated row", {
   cfg <- synthetic_config()
   run_at <- as.POSIXct("2026-05-21", tz = "UTC")
