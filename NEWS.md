@@ -3,16 +3,24 @@
 ## New features
 
 * **Text-to-Web support + `survey_mode` column (SUR-1368).**
-  `consolidated` gains a per-campaign `survey_mode` column (`"sms"` or
-  `"t2w"`), detected from the source CSV (`"t2w"` when any
-  `web_complete == 1`). For `t2w` campaigns `n_completed` now counts the
-  `web_complete` callback instead of `id.close.scriptDate`; for
-  Text-to-Web the `close` script is just the web-survey link sent to
-  every consenter, so the old signal made `n_completed == n_consented`
-  and overstated completion 2-7x. `"sms"` campaigns are unchanged. The
-  authoritative campaign flag (`campaigns.use_web_completes`) is not in
-  the CSV export, so a `t2w` campaign with zero web completions
-  classifies as `"sms"` (documented limitation).
+  `consolidated` gains a per-campaign `survey_mode` column with three
+  values, classified from the source CSV:
+  * `"t2w"` -- web completes present; `n_completed` counts the
+    `web_complete` callback (not `id.close.scriptDate`, which for
+    Text-to-Web is just the link sent to every consenter and overstated
+    completion 2-7x, making `n_completed == n_consented`).
+  * `"t2w_external"` -- a personalized survey link in the close message
+    but no web completes (external platform, no webhook). Completion is
+    not computable from the export, so `n_completed` is `NA`
+    (`n_texted` / `n_consented` remain valid).
+  * `"sms"` -- no web completes and no survey link; live SMS, completes
+    on `id.close.scriptDate` (unchanged).
+
+  A "survey link" is detected as a personalized URL in the close message
+  (one that varies per respondent); a single static stimulus link (e.g.
+  a shared video URL) is not. The authoritative campaign flag
+  (`campaigns.use_web_completes`) is not in the CSV export, so this is a
+  data-only heuristic.
 
 * `consolidated` now carries four denormalised **summary metrics**
   columns (Phase 1 PR 4, spec §4): `n_texted`, `n_consented`,

@@ -318,13 +318,30 @@ test_that("build_consolidated_scaffold: union of latency + summary buckets, dedu
   expect_setequal(scaffold$hour_local, c(15L, 16L, 17L))
 })
 
-test_that("detect_survey_mode: t2w when any web_complete==1, else sms", {
+test_that("detect_survey_mode: web completes -> t2w (3-way classifier)", {
   d <- load_synthetic_data()
-  expect_equal(detect_survey_mode(d), "sms")        # no web_complete column
+  expect_equal(detect_survey_mode(d), "sms")        # no web, no link
   d$web_complete <- rep("0", nrow(d))
-  expect_equal(detect_survey_mode(d), "sms")        # present but all zero
+  expect_equal(detect_survey_mode(d), "sms")        # web col all zero, no link
   d$web_complete[1] <- "1"
   expect_equal(detect_survey_mode(d), "t2w")        # at least one callback
+})
+
+test_that("detect_survey_mode: personalized close link + no web -> t2w_external", {
+  d <- load_synthetic_data()
+  d$web_complete <- rep("0", nrow(d))
+  # Distinct per-respondent survey URLs (personalized -> t2w_external).
+  d$id.close.scriptText <- sprintf(
+    "Finish here https://survey.example.org/s?uid=%s", seq_len(nrow(d)))
+  expect_equal(detect_survey_mode(d), "t2w_external")
+})
+
+test_that("detect_survey_mode: single static stimulus link -> sms", {
+  d <- load_synthetic_data()
+  d$web_complete <- rep("0", nrow(d))
+  # Same URL for everyone (a stimulus video, not a personalized survey link).
+  d$id.close.scriptText <- "Watch https://youtube.com/shorts/abc123"
+  expect_equal(detect_survey_mode(d), "sms")
 })
 
 test_that("build_summary_frame: t2w completion counts web_complete, not close", {
@@ -375,6 +392,23 @@ test_that("campaign_report stamps survey_mode on every consolidated row", {
   cons_t2w <- campaign_report(d_t2w, cfg, run_at)$consolidated
   expect_equal(unique(cons_t2w$survey_mode), "t2w")
   expect_true(all(cons_t2w[is.na(cons_t2w$hour_local), ]$n_completed == 1L))
+})
+
+test_that("campaign_report: t2w_external nulls n_completed to NA, keeps texted", {
+  cfg <- synthetic_config()
+  run_at <- as.POSIXct("2026-05-21", tz = "UTC")
+  d <- load_synthetic_data(mutate = function(d) {
+    d$web_complete <- rep("0", nrow(d))   # external platform, no webhook
+    d$id.close.scriptText <- sprintf(
+      "Finish here https://survey.example.org/s?uid=%s", seq_len(nrow(d)))
+    d
+  })
+  cons <- campaign_report(d, cfg, run_at)$consolidated
+  expect_equal(unique(cons$survey_mode), "t2w_external")
+  expect_true(all(is.na(cons$n_completed)))          # completion not computable
+  day <- cons[is.na(cons$hour_local) & cons$threshold_min == 1L, ]
+  expect_true(all(day$n_texted == 3L))               # texted/consented still valid
+  expect_true(all(day$n_consented == 3L))
 })
 
 test_that("build_consolidated_scaffold: NA hour_local dedups (day-rollup grain)", {

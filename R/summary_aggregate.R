@@ -12,17 +12,46 @@
 # Shiny consumer on one read; the doc decided in favour of that over a
 # sidecar parquet (campaign_scripts.md §4.3, decision: one parquet).
 
-# Detect a campaign's survey mode from the source data. Text-to-Web ("t2w")
-# when any web_complete == 1 is present; otherwise "sms". The authoritative
-# campaign-level flag (campaigns.use_web_completes in the v2 DB) is not carried
-# in the CSV export, so this presence heuristic is the best signal from the
-# data alone. Documented limitation: a Text-to-Web campaign with zero web
-# completions classifies as "sms" (and completes on close.scriptDate).
+# Classify a campaign's survey mode from the source data (SUR-1368), per the
+# Survey Manager's rule:
+#   * web completes present                  -> "t2w"           (web survey,
+#                                               completion = web_complete)
+#   * a personalized survey link but no web   -> "t2w_external"  (web survey on
+#                                               an external platform with no
+#                                               webhook; completion not
+#                                               computable -> n_completed = NA)
+#   * no web completes and no survey link     -> "sms"           (live SMS)
+#
+# A "survey link" is a personalized URL in the close message -- one that varies
+# per respondent (carries a per-recipient token). A single static link shared
+# by all respondents (e.g. a youtube/temu stimulus) is NOT a survey link.
+# Platforms use different token params (__userid / rid / uid / ...), so a fixed
+# token-name list is brittle; we test personalization directly via the distinct
+# close-URL count instead. The authoritative flag (campaigns.use_web_completes
+# in the v2 DB) is not in the CSV export, hence this data-only heuristic.
 detect_survey_mode <- function(data) {
   wc <- data[["web_complete"]]
-  if (is.null(wc)) return("sms")
-  wc_int <- suppressWarnings(as.integer(as.character(wc)))
-  if (any(!is.na(wc_int) & wc_int == 1L)) "t2w" else "sms"
+  if (!is.null(wc)) {
+    wc_int <- suppressWarnings(as.integer(as.character(wc)))
+    if (any(!is.na(wc_int) & wc_int == 1L)) return("t2w")
+  }
+  if (has_personalized_close_link(data)) "t2w_external" else "sms"
+}
+
+# TRUE when the close message carries a personalized (per-respondent) survey
+# URL, detected as more than one distinct URL across respondents. A single
+# shared static URL (stimulus link) yields one distinct URL and is ignored.
+has_personalized_close_link <- function(data) {
+  close_cols <- grep("^id\\.close[A-Za-z0-9_]*\\.(script|batch)Text$",
+                     names(data), value = TRUE)
+  if (length(close_cols) == 0L) return(FALSE)
+  urls <- character(0)
+  for (col in close_cols) {
+    txt <- as.character(data[[col]])
+    hit <- regmatches(txt, regexpr("https?://\\S+", txt))
+    urls <- c(urls, hit[nzchar(hit)])
+  }
+  length(unique(urls)) > 1L
 }
 
 # Build the per-(campaign_id, date, hour_local) summary frame at hourly
@@ -31,10 +60,10 @@ detect_survey_mode <- function(data) {
 # frame with the correct schema if `data` has no respondents -- callers
 # rbind multiple of these for day rollups without special-casing empties.
 #
-# `survey_mode` selects the completion signal: "sms" (default) completes on
-# id.close.scriptDate (reaching the close question); "t2w" completes on the
-# web_complete callback column (the SMS close is just the link, sent to every
-# consenter, so close.scriptDate would overstate completion -- see SUR-1368).
+# `survey_mode` selects the completion signal (SUR-1368): "sms" (default)
+# completes on id.close.scriptDate; "t2w" on the web_complete callback;
+# "t2w_external" is not computable (n_completed nulled to NA downstream, since
+# the SMS close is just the external survey link sent to every consenter).
 build_summary_frame <- function(data, config, survey_mode = "sms") {
   if (nrow(data) == 0L) return(empty_summary_frame())
   campaign_col <- config$filters$campaign_id_column
@@ -58,8 +87,11 @@ build_summary_frame <- function(data, config, survey_mode = "sms") {
   # reuse it as the canonical consent definition.
   consented <- population_filter_mask(data, config$filters$population)
   consented <- consented & texted
-  # Completion signal is survey-mode dependent (SUR-1368): t2w campaigns
-  # complete via the web_complete callback, sms via reaching close.
+  # Completion signal is survey-mode dependent (SUR-1368):
+  #   t2w          -> the web_complete callback
+  #   t2w_external -> not computable; n_completed is nulled to NA in
+  #                   assemble_consolidated, so the count here is a placeholder
+  #   sms          -> reaching close (id.close.scriptDate)
   completed <- if (identical(survey_mode, "t2w")) {
     # Null-safe: detect_survey_mode only returns "t2w" when web_complete
     # exists, but build_summary_frame shouldn't assume the caller paired
@@ -71,6 +103,8 @@ build_summary_frame <- function(data, config, survey_mode = "sms") {
       wc <- suppressWarnings(as.integer(as.character(wc_raw)))
       !is.na(wc) & wc == 1L & texted
     }
+  } else if (identical(survey_mode, "t2w_external")) {
+    rep(FALSE, nrow(data))
   } else {
     !is.na(close_script) & texted
   }
