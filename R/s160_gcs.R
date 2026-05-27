@@ -129,6 +129,51 @@ download_with_verify <- function(object_name, local_path, max_retries = 2L,
   invisible(local_path)
 }
 
+# Fast CSV reader. Uses data.table::fread when available (multithreaded, with
+# native column projection via `select`), falling back to utils::read.csv.
+#
+# Both branches return a plain data.frame whose names are make.names()-munged
+# (check.names = TRUE), because the latency algorithm assumes dot-form headers
+# (id.<q>.scriptDate) -- the on-disk Survey160 export emits bracket form
+# (id[<q>]scriptDate). Keeping the munge identical across readers is what makes
+# the swap byte-for-byte safe (guarded by the parity test suites).
+#
+# Types are pinned to read.csv-like behaviour for interactive callers:
+# stringsAsFactors = FALSE and integer64 = "character" (so large IDs come back
+# as character, not a bit64::integer64 class that surprises View()/joins/==).
+# Callers can override any of these (and pass reader-specific args like `sep`,
+# `na.strings`, `nrows`) through `...`.
+#
+# `columns`, when supplied, is a vector of *munged* (dot-form) names to keep.
+# fread selects by raw header name, so we peek the header, map munged -> raw,
+# and project at parse time. The read.csv fallback reads in full then subsets
+# (no parse-time saving, but the same result).
+fast_read_csv <- function(path, columns = NULL, encoding = "UTF-8", ...) {
+  extra <- list(...)
+  if (requireNamespace("data.table", quietly = TRUE)) {
+    args <- list(input = path, data.table = FALSE, check.names = TRUE,
+                 stringsAsFactors = FALSE, integer64 = "character",
+                 encoding = encoding, showProgress = FALSE)
+    args[names(extra)] <- extra
+    if (!is.null(columns)) {
+      raw <- names(data.table::fread(path, nrows = 0L, check.names = FALSE,
+                                     showProgress = FALSE))
+      select_raw <- raw[make.names(raw) %in% columns]
+      if (length(select_raw) > 0L) args$select <- select_raw
+    }
+    return(do.call(data.table::fread, args))
+  }
+  # Fallback: base read.csv (full read), then project to `columns`.
+  args <- list(file = path, check.names = TRUE, stringsAsFactors = FALSE,
+               fileEncoding = encoding)
+  args[names(extra)] <- extra
+  data <- do.call(utils::read.csv, args)
+  if (!is.null(columns)) {
+    data <- data[, intersect(columns, names(data)), drop = FALSE]
+  }
+  data
+}
+
 # --- Exported functions ------------------------------------------------------
 
 #' Initialize GCS connection
@@ -216,8 +261,13 @@ s160_gcs_init <- function(bucket) {
 #'   \code{"."} for the current directory.
 #' @param bucket Source GCS bucket. \code{NULL} (default) falls back to the
 #'   global bucket set by \code{s160_gcs_init()}.
-#' @param ... Additional arguments passed to \code{read.csv()}, e.g.
-#'   \code{stringsAsFactors}, \code{na.strings}, \code{nrows}.
+#' @param columns Optional character vector of (dot-form) column names to keep,
+#'   e.g. from \code{required_csv_columns()}. When set, only those columns are
+#'   parsed (via \code{data.table::fread}'s column projection), cutting read
+#'   time and memory on wide exports. \code{NULL} (default) reads every column.
+#' @param ... Additional arguments forwarded to the CSV reader
+#'   (\code{data.table::fread}, or \code{utils::read.csv} when data.table is
+#'   unavailable), e.g. \code{na.strings}, \code{nrows}, \code{sep}.
 #' @return A data frame with one row per survey response.
 #' @examples
 #' \dontrun{
@@ -227,10 +277,10 @@ s160_gcs_init <- function(bucket) {
 #' df <- s160_gcs_campaign_results_read(1980, destdir = "~/data")
 #' }
 #' @importFrom googleCloudStorageR gcs_get_object gcs_get_global_bucket
-#' @importFrom utils read.csv
 #' @export
 s160_gcs_campaign_results_read <- function(campaign_id, filename = NULL,
-                                           destdir = NULL, bucket = NULL, ...) {
+                                           destdir = NULL, bucket = NULL,
+                                           columns = NULL, ...) {
   campaign_id <- validate_campaign_id(campaign_id)
   bucket <- resolve_bucket(bucket)
 
@@ -274,7 +324,7 @@ s160_gcs_campaign_results_read <- function(campaign_id, filename = NULL,
     message(sprintf("Saved to: %s", local_path))
   }
 
-  read.csv(local_path, fileEncoding = "UTF-8", ...)
+  fast_read_csv(local_path, columns = columns, ...)
 }
 
 #' List files in a campaign's GCS folder
@@ -364,10 +414,14 @@ s160_gcs_campaign_results_list <- function(bucket = NULL) {
 #' @param bucket Source GCS bucket. \code{NULL} (default) falls back to the
 #'   global bucket set by \code{s160_gcs_init()}; pass an explicit value to
 #'   skip the global entirely.
+#' @param columns Optional character vector of (dot-form) column names to keep
+#'   (e.g. from \code{required_csv_columns()}). Forwarded to
+#'   \code{s160_gcs_campaign_results_read()} to parse only those columns.
 #' @return A data frame with attributes \code{source_csv_hash} and
 #'   \code{source_csv_path} set.
 #' @export
-s160_gcs_pull_csv <- function(campaign_id, filename = NULL, bucket = NULL) {
+s160_gcs_pull_csv <- function(campaign_id, filename = NULL, bucket = NULL,
+                              columns = NULL) {
   bucket <- resolve_bucket(bucket)
   tmpdir <- tempfile(pattern = "s160_latency_")
   dir.create(tmpdir)
@@ -376,7 +430,8 @@ s160_gcs_pull_csv <- function(campaign_id, filename = NULL, bucket = NULL) {
     campaign_id = campaign_id,
     filename = filename,
     destdir = tmpdir,
-    bucket = bucket
+    bucket = bucket,
+    columns = columns
   )
   fn <- if (is.null(filename)) {
     paste0(as.character(campaign_id), "_raw_data_download.csv")
@@ -400,16 +455,27 @@ s160_gcs_pull_csv <- function(campaign_id, filename = NULL, bucket = NULL) {
 #' Read a campaign CSV from a local path, hashing it for provenance
 #'
 #' Local-source sibling of \code{s160_gcs_pull_csv()}. Reads the CSV
-#' via \code{utils::read.csv()} and stamps \code{source_csv_hash} and
-#' \code{source_csv_path} attributes on the returned data frame so
-#' downstream \code{campaign_report()} / \code{campaign_run()} surface
-#' them on \code{result$meta}. Use for backfills (archived campaign
-#' CSVs stored on disk, Dropbox, S3 mounts, etc.).
+#' via \code{data.table::fread} (falling back to \code{utils::read.csv})
+#' and stamps \code{source_csv_hash} and \code{source_csv_path}
+#' attributes on the returned data frame so downstream
+#' \code{campaign_report()} / \code{campaign_run()} surface them on
+#' \code{result$meta}. Use for backfills (archived campaign CSVs stored
+#' on disk, Dropbox, S3 mounts, etc.).
 #'
 #' @param path Path to the CSV. Recorded verbatim on
 #'   \code{attr(., "source_csv_path")}.
-#' @param ... Forwarded to \code{utils::read.csv()}.
-#'   \code{stringsAsFactors} defaults to \code{FALSE}.
+#' @param columns Optional character vector of (dot-form) column names to keep
+#'   (e.g. from \code{required_csv_columns()}). When set, only those columns
+#'   are parsed, cutting read time and memory on wide exports. \code{NULL}
+#'   (default) reads every column.
+#' @param hash When \code{TRUE} (default), compute the sha256 of the file for
+#'   \code{source_csv_hash}. Set \code{FALSE} to skip the hashing pass (a full
+#'   second read of the file) on large backfills where provenance hashing is
+#'   not needed; \code{source_csv_hash} is then \code{NA}.
+#' @param ... Forwarded to the CSV reader (\code{data.table::fread}, or
+#'   \code{utils::read.csv} when data.table is unavailable), e.g.
+#'   \code{na.strings}, \code{sep}. \code{stringsAsFactors} defaults to
+#'   \code{FALSE}.
 #' @return A data frame with \code{source_csv_hash} and
 #'   \code{source_csv_path} attributes set.
 #' @examples
@@ -419,19 +485,48 @@ s160_gcs_pull_csv <- function(campaign_id, filename = NULL, bucket = NULL) {
 #' campaign_run(500, data, field_timezone = "America/New_York")
 #' }
 #' @export
-s160_read_csv <- function(path, ...) {
+s160_read_csv <- function(path, columns = NULL, hash = TRUE, ...) {
   if (!file.exists(path)) {
     stop(sprintf("s160_read_csv: file not found: %s", path),
          call. = FALSE)
   }
-  args <- list(...)
-  if (is.null(args$stringsAsFactors)) args$stringsAsFactors <- FALSE
-  args$file <- path
-  data <- do.call(utils::read.csv, args)
-  attr(data, "source_csv_hash") <- paste0(
-    "sha256:", digest::digest(file = path, algo = "sha256"))
+  data <- fast_read_csv(path, columns = columns, ...)
+  attr(data, "source_csv_hash") <- if (isTRUE(hash)) {
+    paste0("sha256:", digest::digest(file = path, algo = "sha256"))
+  } else {
+    NA_character_
+  }
   attr(data, "source_csv_path") <- path
   data
+}
+
+#' Read just the header (column names) of a CSV
+#'
+#' Peeks the first line of a CSV and returns its column names in the same
+#' \code{make.names()}-munged (dot-form) form the readers produce, without
+#' parsing the body. Pair with \code{campaign_build_config()} +
+#' \code{required_csv_columns()} to derive a column-projection set for a
+#' large file before reading it:
+#'
+#' \preformatted{
+#' header <- s160_csv_header(path)
+#' config <- campaign_build_config(id, header, field_timezone = tz)
+#' data   <- s160_read_csv(path, columns = required_csv_columns(config))
+#' }
+#'
+#' @param path Path to the CSV.
+#' @return Character vector of dot-form column names.
+#' @export
+s160_csv_header <- function(path) {
+  if (!file.exists(path)) {
+    stop(sprintf("s160_csv_header: file not found: %s", path), call. = FALSE)
+  }
+  if (requireNamespace("data.table", quietly = TRUE)) {
+    raw <- names(data.table::fread(path, nrows = 0L, check.names = FALSE,
+                                   showProgress = FALSE))
+    return(make.names(raw))
+  }
+  names(utils::read.csv(path, nrows = 0L, check.names = TRUE))
 }
 
 #' Check campaign results export status

@@ -45,3 +45,38 @@ test_that("s160_read_csv result is consumable by campaign_run downstream", {
   expect_equal(result$meta$source_csv_path, fx_path)
   expect_true(grepl("^sha256:", result$meta$source_csv_hash))
 })
+
+test_that("s160_read_csv hash = FALSE skips the hashing pass", {
+  tmp <- withr::local_tempfile(fileext = ".csv")
+  writeLines(c("a,b", "1,2"), tmp)
+
+  data <- s160_read_csv(tmp, hash = FALSE)
+
+  expect_true(is.na(attr(data, "source_csv_hash")))
+  expect_equal(attr(data, "source_csv_path"), tmp)
+})
+
+test_that("s160_read_csv columns = projects to the requested columns", {
+  tmp <- withr::local_tempfile(fileext = ".csv")
+  writeLines(c("campaignid,extra,userid", "5,junk,7"), tmp)
+
+  data <- s160_read_csv(tmp, columns = c("campaignid", "userid"))
+
+  expect_equal(names(data), c("campaignid", "userid"))
+})
+
+test_that("s160_csv_header returns munged names and errors on missing file", {
+  tmp <- withr::local_tempfile(fileext = ".csv")
+  writeLines(c("id[q1]scriptDate,campaignid", "2026-01-01,5"), tmp)
+
+  expect_equal(s160_csv_header(tmp), c("id.q1.scriptDate", "campaignid"))
+  expect_error(s160_csv_header("/no/such/file.csv"), "file not found")
+})
+
+test_that("s160_csv_header fallback (no data.table) returns munged names", {
+  tmp <- withr::local_tempfile(fileext = ".csv")
+  writeLines(c("id[q1]scriptDate,campaignid", "2026-01-01,5"), tmp)
+
+  stub_no_data_table()
+  expect_equal(s160_csv_header(tmp), c("id.q1.scriptDate", "campaignid"))
+})

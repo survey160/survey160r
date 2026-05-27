@@ -164,6 +164,60 @@ validate_columns_present <- function(config, data) {
   }
 }
 
+# Non-flow columns campaign_report() reads in addition to the per-question
+# scriptDate/batchDate set. KEEP IN SYNC with the data[[...]] reads elsewhere:
+#   id.intro.finalText        -- default population filter + validate_columns_present
+#   web_complete              -- detect_survey_mode() + t2w completion (summary_aggregate.R)
+#   id.ineligible.scriptDate  -- build_ineligible_frame() (a terminal state, so it
+#                                is NOT in config$flow$questions and would be missed
+#                                by required_timestamp_columns alone)
+# Dropping any of these silently changes output (e.g. a t2w campaign would
+# misclassify as "sms"), so they are always retained by required_csv_columns().
+# The projection parity test (test-required_csv_columns.R) guards against drift.
+.report_support_columns <- c(
+  "id.intro.finalText",
+  "web_complete",
+  "id.ineligible.scriptDate"
+)
+
+#' CSV columns the latency report reads for a given config
+#'
+#' Returns the (dot-form) column names \code{campaign_report()} touches for a
+#' given \code{config}: the per-question \code{scriptDate}/\code{batchDate}
+#' set, the population-filter columns (extracted from
+#' \code{config$filters$population}), the campaign-id and optional
+#' respondent-id columns, plus the fixed non-flow support columns
+#' (\code{id.intro.finalText}, \code{web_complete},
+#' \code{id.ineligible.scriptDate}).
+#'
+#' Pass the result as \code{columns =} to \code{s160_read_csv()} /
+#' \code{s160_gcs_pull_csv()} to parse only the columns the algorithm needs --
+#' the projection yields output identical to a full read.
+#'
+#' @param config A config list from \code{campaign_build_config()} (or one with
+#'   the same shape). Build it from a header-only peek
+#'   (\code{s160_csv_header()}) to avoid reading the file twice.
+#' @return A character vector of unique dot-form column names.
+#' @examples
+#' \dontrun{
+#' header <- s160_csv_header(path)
+#' config <- campaign_build_config(1980, header, field_timezone = "America/New_York")
+#' data   <- s160_read_csv(path, columns = required_csv_columns(config))
+#' }
+#' @export
+required_csv_columns <- function(config) {
+  cols <- required_timestamp_columns(config$flow$questions)
+  cols <- c(cols, .report_support_columns)
+  pop <- config$filters$population
+  if (!is.null(pop) && nzchar(pop)) {
+    cols <- c(cols, all.vars(parse(text = pop)))
+  }
+  cols <- c(cols, config$filters$campaign_id_column)
+  rid <- config$filters$respondent_id_column
+  if (!is.null(rid)) cols <- c(cols, rid)
+  unique(cols)
+}
+
 # Verify scriptDate(qᵢ₊₁) >= batchDate(qᵢ) for ≥90% of rows. Drift below that
 # typically indicates the question flow is mis-ordered in config.
 validate_flow_order <- function(config, data) {

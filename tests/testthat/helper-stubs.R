@@ -18,6 +18,19 @@ synthetic_config <- function() {
   )
 }
 
+# Force the read.csv fallback in fast_read_csv / s160_csv_header by making
+# requireNamespace("data.table") report FALSE for the duration of a test.
+stub_no_data_table <- function(env = parent.frame()) {
+  testthat::local_mocked_bindings(
+    requireNamespace = function(package, ...) {
+      if (identical(package, "data.table")) FALSE
+      else base::requireNamespace(package, ...)
+    },
+    .package = "base",
+    .env = env
+  )
+}
+
 # Stub GCS dependencies for functions that call check_gcs_ready + validate_campaign_id
 stub_gcs_base <- function(env = parent.frame()) {
   testthat::local_mocked_bindings(

@@ -4,7 +4,7 @@
 \alias{s160_gcs_pull_csv}
 \title{Read a campaign CSV from GCS, hashing it for provenance}
 \usage{
-s160_gcs_pull_csv(campaign_id, filename = NULL, bucket = NULL)
+s160_gcs_pull_csv(campaign_id, filename = NULL, bucket = NULL, columns = NULL)
 }
 \arguments{
 \item{campaign_id}{Campaign id (numeric or character).}
@@ -14,6 +14,10 @@ s160_gcs_pull_csv(campaign_id, filename = NULL, bucket = NULL)
 \item{bucket}{Source GCS bucket. \code{NULL} (default) falls back to the
 global bucket set by \code{s160_gcs_init()}; pass an explicit value to
 skip the global entirely.}
+
+\item{columns}{Optional character vector of (dot-form) column names to keep
+(e.g. from \code{required_csv_columns()}). Forwarded to
+\code{s160_gcs_campaign_results_read()} to parse only those columns.}
 }
 \value{
 A data frame with attributes \code{source_csv_hash} and
