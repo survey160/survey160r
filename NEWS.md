@@ -2,6 +2,18 @@
 
 ## New features
 
+* **Text-to-Web support + `survey_mode` column (SUR-1368).**
+  `consolidated` gains a per-campaign `survey_mode` column (`"sms"` or
+  `"t2w"`), detected from the source CSV (`"t2w"` when any
+  `web_complete == 1`). For `t2w` campaigns `n_completed` now counts the
+  `web_complete` callback instead of `id.close.scriptDate`; for
+  Text-to-Web the `close` script is just the web-survey link sent to
+  every consenter, so the old signal made `n_completed == n_consented`
+  and overstated completion 2-7x. `"sms"` campaigns are unchanged. The
+  authoritative campaign flag (`campaigns.use_web_completes`) is not in
+  the CSV export, so a `t2w` campaign with zero web completions
+  classifies as `"sms"` (documented limitation).
+
 * `consolidated` now carries four denormalised **summary metrics**
   columns (Phase 1 PR 4, spec §4): `n_texted`, `n_consented`,
   `n_completed`, `n_ineligible`. Counts are anchored by

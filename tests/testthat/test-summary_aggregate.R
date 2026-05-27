@@ -318,6 +318,54 @@ test_that("build_consolidated_scaffold: union of latency + summary buckets, dedu
   expect_setequal(scaffold$hour_local, c(15L, 16L, 17L))
 })
 
+test_that("detect_survey_mode: t2w when any web_complete==1, else sms", {
+  d <- load_synthetic_data()
+  expect_equal(detect_survey_mode(d), "sms")        # no web_complete column
+  d$web_complete <- rep("0", nrow(d))
+  expect_equal(detect_survey_mode(d), "sms")        # present but all zero
+  d$web_complete[1] <- "1"
+  expect_equal(detect_survey_mode(d), "t2w")        # at least one callback
+})
+
+test_that("build_summary_frame: t2w completion counts web_complete, not close", {
+  d <- load_synthetic_data(mutate = function(d) {
+    # All three consenters reach `close` (fixture sets close.scriptDate), but
+    # only r1 returned a web-completion callback. sms would count 3, t2w 1.
+    d$web_complete <- rep("0", nrow(d))
+    d$web_complete[1] <- "1"
+    d
+  })
+  cfg <- synthetic_config()
+  day_sms <- collapse_summary_to_day(build_summary_frame(d, cfg, "sms"))
+  day_t2w <- collapse_summary_to_day(build_summary_frame(d, cfg, "t2w"))
+
+  expect_equal(day_sms$n_completed, 3L)   # reached close
+  expect_equal(day_t2w$n_completed, 1L)   # only r1 web_complete==1
+  expect_equal(day_t2w$n_texted, 3L)      # texted/consented unaffected by mode
+  expect_equal(day_t2w$n_consented, 3L)
+})
+
+test_that("campaign_report stamps survey_mode on every consolidated row", {
+  cfg <- synthetic_config()
+  run_at <- as.POSIXct("2026-05-21", tz = "UTC")
+
+  # sms (default): no web_complete column.
+  cons_sms <- campaign_report(load_synthetic_data(), cfg, run_at)$consolidated
+  expect_true("survey_mode" %in% names(cons_sms))
+  expect_equal(unique(cons_sms$survey_mode), "sms")
+  expect_true(all(cons_sms[is.na(cons_sms$hour_local), ]$n_completed == 3L))
+
+  # t2w: web_complete present with a callback; completion drops to web count.
+  d_t2w <- load_synthetic_data(mutate = function(d) {
+    d$web_complete <- rep("0", nrow(d))
+    d$web_complete[1] <- "1"
+    d
+  })
+  cons_t2w <- campaign_report(d_t2w, cfg, run_at)$consolidated
+  expect_equal(unique(cons_t2w$survey_mode), "t2w")
+  expect_true(all(cons_t2w[is.na(cons_t2w$hour_local), ]$n_completed == 1L))
+})
+
 test_that("build_consolidated_scaffold: NA hour_local dedups (day-rollup grain)", {
   cfg <- synthetic_config()
   thresholds <- c(1L, 3L, 5L, 10L)

@@ -12,12 +12,30 @@
 # Shiny consumer on one read; the doc decided in favour of that over a
 # sidecar parquet (campaign_scripts.md §4.3, decision: one parquet).
 
+# Detect a campaign's survey mode from the source data. Text-to-Web ("t2w")
+# when any web_complete == 1 is present; otherwise "sms". The authoritative
+# campaign-level flag (campaigns.use_web_completes in the v2 DB) is not carried
+# in the CSV export, so this presence heuristic is the best signal from the
+# data alone. Documented limitation: a Text-to-Web campaign with zero web
+# completions classifies as "sms" (and completes on close.scriptDate).
+detect_survey_mode <- function(data) {
+  wc <- data[["web_complete"]]
+  if (is.null(wc)) return("sms")
+  wc_int <- suppressWarnings(as.integer(as.character(wc)))
+  if (any(!is.na(wc_int) & wc_int == 1L)) "t2w" else "sms"
+}
+
 # Build the per-(campaign_id, date, hour_local) summary frame at hourly
 # grain. Output columns: campaign_id, date (Date), hour_local (int 0..23),
 # n_texted, n_consented, n_completed (all int32-safe). Returns a zero-row
 # frame with the correct schema if `data` has no respondents -- callers
 # rbind multiple of these for day rollups without special-casing empties.
-build_summary_frame <- function(data, config) {
+#
+# `survey_mode` selects the completion signal: "sms" (default) completes on
+# id.close.scriptDate (reaching the close question); "t2w" completes on the
+# web_complete callback column (the SMS close is just the link, sent to every
+# consenter, so close.scriptDate would overstate completion -- see SUR-1368).
+build_summary_frame <- function(data, config, survey_mode = "sms") {
   if (nrow(data) == 0L) return(empty_summary_frame())
   campaign_col <- config$filters$campaign_id_column
   field_tz <- config$field_timezone
@@ -40,7 +58,14 @@ build_summary_frame <- function(data, config) {
   # reuse it as the canonical consent definition.
   consented <- population_filter_mask(data, config$filters$population)
   consented <- consented & texted
-  completed <- !is.na(close_script) & texted
+  # Completion signal is survey-mode dependent (SUR-1368): t2w campaigns
+  # complete via the web_complete callback, sms via reaching close.
+  completed <- if (identical(survey_mode, "t2w")) {
+    wc <- suppressWarnings(as.integer(as.character(data[["web_complete"]])))
+    !is.na(wc) & wc == 1L & texted
+  } else {
+    !is.na(close_script) & texted
+  }
 
   campaign_id <- as.integer(data[[campaign_col]])
   # Bucket by intro.batchDate in field timezone. Rows with no batchDate
