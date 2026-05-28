@@ -180,6 +180,14 @@ validate_columns_present <- function(config, data) {
   "id.ineligible.scriptDate"
 )
 
+# Non-flow columns whose names are NOT fixed -- detect_survey_mode()'s
+# has_personalized_close_link() greps the close-message Text columns
+# (id.close<...>.scriptText / .batchText) to classify t2w_external vs sms.
+# These can only be matched against the actual header, so required_csv_columns()
+# retains them when the caller passes `available`. KEEP IN SYNC with
+# has_personalized_close_link() in summary_aggregate.R.
+.report_support_patterns <- "^id\\.close[A-Za-z0-9_]*\\.(script|batch)Text$"
+
 #' CSV columns the latency report reads for a given config
 #'
 #' Returns the (dot-form) column names \code{campaign_report()} touches for a
@@ -190,6 +198,14 @@ validate_columns_present <- function(config, data) {
 #' (\code{id.intro.finalText}, \code{web_complete},
 #' \code{id.ineligible.scriptDate}).
 #'
+#' Some columns the report reads have data-dependent names -- the close-message
+#' Text columns (\code{id.close*.scriptText}/\code{batchText}) that
+#' \code{detect_survey_mode()} greps to tell \code{t2w_external} from
+#' \code{sms}. Pass \code{available} (e.g. the result of \code{s160_csv_header()})
+#' so these are matched against the real header and retained; omitting it risks
+#' projecting them away and misclassifying a \code{t2w_external} campaign as
+#' \code{sms}.
+#'
 #' Pass the result as \code{columns =} to \code{s160_read_csv()} /
 #' \code{s160_gcs_pull_csv()} to parse only the columns the algorithm needs --
 #' the projection yields output identical to a full read.
@@ -197,15 +213,19 @@ validate_columns_present <- function(config, data) {
 #' @param config A config list from \code{campaign_build_config()} (or one with
 #'   the same shape). Build it from a header-only peek
 #'   (\code{s160_csv_header()}) to avoid reading the file twice.
+#' @param available Optional character vector of the actual (dot-form) column
+#'   names present in the file (e.g. from \code{s160_csv_header()}). When
+#'   supplied, columns matching the report's data-dependent patterns (the
+#'   close-message Text columns) are retained. Strongly recommended.
 #' @return A character vector of unique dot-form column names.
 #' @examples
 #' \dontrun{
 #' header <- s160_csv_header(path)
 #' config <- campaign_build_config(1980, header, field_timezone = "America/New_York")
-#' data   <- s160_read_csv(path, columns = required_csv_columns(config))
+#' data   <- s160_read_csv(path, columns = required_csv_columns(config, header))
 #' }
 #' @export
-required_csv_columns <- function(config) {
+required_csv_columns <- function(config, available = NULL) {
   cols <- required_timestamp_columns(config$flow$questions)
   cols <- c(cols, .report_support_columns)
   pop <- config$filters$population
@@ -215,6 +235,11 @@ required_csv_columns <- function(config) {
   cols <- c(cols, config$filters$campaign_id_column)
   rid <- config$filters$respondent_id_column
   if (!is.null(rid)) cols <- c(cols, rid)
+  if (!is.null(available)) {
+    for (pat in .report_support_patterns) {
+      cols <- c(cols, grep(pat, available, value = TRUE))
+    }
+  }
   unique(cols)
 }
 

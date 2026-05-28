@@ -4,12 +4,17 @@
 \alias{required_csv_columns}
 \title{CSV columns the latency report reads for a given config}
 \usage{
-required_csv_columns(config)
+required_csv_columns(config, available = NULL)
 }
 \arguments{
 \item{config}{A config list from \code{campaign_build_config()} (or one with
 the same shape). Build it from a header-only peek
 (\code{s160_csv_header()}) to avoid reading the file twice.}
+
+\item{available}{Optional character vector of the actual (dot-form) column
+names present in the file (e.g. from \code{s160_csv_header()}). When
+supplied, columns matching the report's data-dependent patterns (the
+close-message Text columns) are retained. Strongly recommended.}
 }
 \value{
 A character vector of unique dot-form column names.
@@ -24,6 +29,14 @@ respondent-id columns, plus the fixed non-flow support columns
 \code{id.ineligible.scriptDate}).
 }
 \details{
+Some columns the report reads have data-dependent names -- the close-message
+Text columns (\code{id.close*.scriptText}/\code{batchText}) that
+\code{detect_survey_mode()} greps to tell \code{t2w_external} from
+\code{sms}. Pass \code{available} (e.g. the result of \code{s160_csv_header()})
+so these are matched against the real header and retained; omitting it risks
+projecting them away and misclassifying a \code{t2w_external} campaign as
+\code{sms}.
+
 Pass the result as \code{columns =} to \code{s160_read_csv()} /
 \code{s160_gcs_pull_csv()} to parse only the columns the algorithm needs --
 the projection yields output identical to a full read.
@@ -32,6 +45,6 @@ the projection yields output identical to a full read.
 \dontrun{
 header <- s160_csv_header(path)
 config <- campaign_build_config(1980, header, field_timezone = "America/New_York")
-data   <- s160_read_csv(path, columns = required_csv_columns(config))
+data   <- s160_read_csv(path, columns = required_csv_columns(config, header))
 }
 }
