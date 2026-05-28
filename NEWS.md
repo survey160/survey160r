@@ -2,6 +2,34 @@
 
 ## New features
 
+* **Faster CSV reads via `data.table::fread`.** `s160_read_csv()` and
+  `s160_gcs_campaign_results_read()` now read through `data.table::fread`
+  (multithreaded; ~5-10x faster than `utils::read.csv` on large exports),
+  falling back to `read.csv` if `data.table` is unavailable. `data.table`
+  is now a hard dependency -- on Windows it installs as a precompiled
+  R-universe/CRAN binary (no Rtools needed) and is usually already present.
+  Output is pinned to stay close to the old `read.csv` behaviour
+  (`stringsAsFactors = FALSE`, `check.names = TRUE`, and crucially
+  `integer64 = "character"` so large IDs come back as character strings
+  rather than a `bit64::integer64` class). Existing calls are unchanged --
+  this is a transparent speedup.
+
+* **Column projection for the latency pipeline.** New exported helpers
+  `required_csv_columns(config)` and `s160_csv_header(path)`, plus a
+  `columns =` argument on `s160_read_csv()` /
+  `s160_gcs_campaign_results_read()` / `s160_gcs_pull_csv()`. Passing the
+  algorithm's required column set lets `fread` parse only those columns,
+  cutting read time and (importantly for parallel fleet runs) per-worker
+  memory on very wide survey exports. The projection keeps the
+  non-flow columns the report depends on (`id.intro.finalText`,
+  `web_complete`, `id.ineligible.scriptDate`) so output is identical to a
+  full read.
+
+* **Optional provenance hashing.** `s160_read_csv(path, hash = FALSE)`
+  skips the sha256 `digest()` pass (a full second read of the file),
+  setting `source_csv_hash = NA`. Useful for large local backfills where
+  the per-file hash is not needed.
+
 * **Text-to-Web support + `survey_mode` column (SUR-1368).**
   `consolidated` gains a per-campaign `survey_mode` column with three
   values, classified from the source CSV:

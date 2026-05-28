@@ -4,14 +4,26 @@
 \alias{s160_read_csv}
 \title{Read a campaign CSV from a local path, hashing it for provenance}
 \usage{
-s160_read_csv(path, ...)
+s160_read_csv(path, columns = NULL, hash = TRUE, ...)
 }
 \arguments{
 \item{path}{Path to the CSV. Recorded verbatim on
 \code{attr(., "source_csv_path")}.}
 
-\item{...}{Forwarded to \code{utils::read.csv()}.
-\code{stringsAsFactors} defaults to \code{FALSE}.}
+\item{columns}{Optional character vector of (dot-form) column names to keep
+(e.g. from \code{required_csv_columns()}). When set, only those columns
+are parsed, cutting read time and memory on wide exports. \code{NULL}
+(default) reads every column.}
+
+\item{hash}{When \code{TRUE} (default), compute the sha256 of the file for
+\code{source_csv_hash}. Set \code{FALSE} to skip the hashing pass (a full
+second read of the file) on large backfills where provenance hashing is
+not needed; \code{source_csv_hash} is then \code{NA}.}
+
+\item{...}{Forwarded to the CSV reader (\code{data.table::fread}, or
+\code{utils::read.csv} when data.table is unavailable), e.g.
+\code{na.strings}, \code{sep}. \code{stringsAsFactors} defaults to
+\code{FALSE}.}
 }
 \value{
 A data frame with \code{source_csv_hash} and
@@ -19,11 +31,12 @@ A data frame with \code{source_csv_hash} and
 }
 \description{
 Local-source sibling of \code{s160_gcs_pull_csv()}. Reads the CSV
-via \code{utils::read.csv()} and stamps \code{source_csv_hash} and
-\code{source_csv_path} attributes on the returned data frame so
-downstream \code{campaign_report()} / \code{campaign_run()} surface
-them on \code{result$meta}. Use for backfills (archived campaign
-CSVs stored on disk, Dropbox, S3 mounts, etc.).
+via \code{data.table::fread} (falling back to \code{utils::read.csv})
+and stamps \code{source_csv_hash} and \code{source_csv_path}
+attributes on the returned data frame so downstream
+\code{campaign_report()} / \code{campaign_run()} surface them on
+\code{result$meta}. Use for backfills (archived campaign CSVs stored
+on disk, Dropbox, S3 mounts, etc.).
 }
 \examples{
 \dontrun{

@@ -164,6 +164,85 @@ validate_columns_present <- function(config, data) {
   }
 }
 
+# Non-flow columns campaign_report() reads in addition to the per-question
+# scriptDate/batchDate set. KEEP IN SYNC with the data[[...]] reads elsewhere:
+#   id.intro.finalText        -- default population filter + validate_columns_present
+#   web_complete              -- detect_survey_mode() + t2w completion (summary_aggregate.R)
+#   id.ineligible.scriptDate  -- build_ineligible_frame() (a terminal state, so it
+#                                is NOT in config$flow$questions and would be missed
+#                                by required_timestamp_columns alone)
+# Dropping any of these silently changes output (e.g. a t2w campaign would
+# misclassify as "sms"), so they are always retained by required_csv_columns().
+# The projection parity test (test-required_csv_columns.R) guards against drift.
+.report_support_columns <- c(
+  "id.intro.finalText",
+  "web_complete",
+  "id.ineligible.scriptDate"
+)
+
+# Non-flow columns whose names are NOT fixed -- detect_survey_mode()'s
+# has_personalized_close_link() greps the close-message Text columns
+# (id.close<...>.scriptText / .batchText) to classify t2w_external vs sms.
+# These can only be matched against the actual header, so required_csv_columns()
+# retains them when the caller passes `available`. KEEP IN SYNC with
+# has_personalized_close_link() in summary_aggregate.R.
+.report_support_patterns <- "^id\\.close[A-Za-z0-9_]*\\.(script|batch)Text$"
+
+#' CSV columns the latency report reads for a given config
+#'
+#' Returns the (dot-form) column names \code{campaign_report()} touches for a
+#' given \code{config}: the per-question \code{scriptDate}/\code{batchDate}
+#' set, the population-filter columns (extracted from
+#' \code{config$filters$population}), the campaign-id and optional
+#' respondent-id columns, plus the fixed non-flow support columns
+#' (\code{id.intro.finalText}, \code{web_complete},
+#' \code{id.ineligible.scriptDate}).
+#'
+#' Some columns the report reads have data-dependent names -- the close-message
+#' Text columns (\code{id.close*.scriptText}/\code{batchText}) that
+#' \code{detect_survey_mode()} greps to tell \code{t2w_external} from
+#' \code{sms}. Pass \code{available} (e.g. the result of \code{s160_csv_header()})
+#' so these are matched against the real header and retained; omitting it risks
+#' projecting them away and misclassifying a \code{t2w_external} campaign as
+#' \code{sms}.
+#'
+#' Pass the result as \code{columns =} to \code{s160_read_csv()} /
+#' \code{s160_gcs_pull_csv()} to parse only the columns the algorithm needs --
+#' the projection yields output identical to a full read.
+#'
+#' @param config A config list from \code{campaign_build_config()} (or one with
+#'   the same shape). Build it from a header-only peek
+#'   (\code{s160_csv_header()}) to avoid reading the file twice.
+#' @param available Optional character vector of the actual (dot-form) column
+#'   names present in the file (e.g. from \code{s160_csv_header()}). When
+#'   supplied, columns matching the report's data-dependent patterns (the
+#'   close-message Text columns) are retained. Strongly recommended.
+#' @return A character vector of unique dot-form column names.
+#' @examples
+#' \dontrun{
+#' header <- s160_csv_header(path)
+#' config <- campaign_build_config(1980, header, field_timezone = "America/New_York")
+#' data   <- s160_read_csv(path, columns = required_csv_columns(config, header))
+#' }
+#' @export
+required_csv_columns <- function(config, available = NULL) {
+  cols <- required_timestamp_columns(config$flow$questions)
+  cols <- c(cols, .report_support_columns)
+  pop <- config$filters$population
+  if (!is.null(pop) && nzchar(pop)) {
+    cols <- c(cols, all.vars(parse(text = pop)))
+  }
+  cols <- c(cols, config$filters$campaign_id_column)
+  rid <- config$filters$respondent_id_column
+  if (!is.null(rid)) cols <- c(cols, rid)
+  if (!is.null(available)) {
+    for (pat in .report_support_patterns) {
+      cols <- c(cols, grep(pat, available, value = TRUE))
+    }
+  }
+  unique(cols)
+}
+
 # Verify scriptDate(qᵢ₊₁) >= batchDate(qᵢ) for ≥90% of rows. Drift below that
 # typically indicates the question flow is mis-ordered in config.
 validate_flow_order <- function(config, data) {

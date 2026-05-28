@@ -9,6 +9,7 @@ s160_gcs_campaign_results_read(
   filename = NULL,
   destdir = NULL,
   bucket = NULL,
+  columns = NULL,
   ...
 )
 }
@@ -26,8 +27,14 @@ Must not contain path separators.}
 \item{bucket}{Source GCS bucket. \code{NULL} (default) falls back to the
 global bucket set by \code{s160_gcs_init()}.}
 
-\item{...}{Additional arguments passed to \code{read.csv()}, e.g.
-\code{stringsAsFactors}, \code{na.strings}, \code{nrows}.}
+\item{columns}{Optional character vector of (dot-form) column names to keep,
+e.g. from \code{required_csv_columns()}. When set, only those columns are
+parsed (via \code{data.table::fread}'s column projection), cutting read
+time and memory on wide exports. \code{NULL} (default) reads every column.}
+
+\item{...}{Additional arguments forwarded to the CSV reader
+(\code{data.table::fread}, or \code{utils::read.csv} when data.table is
+unavailable), e.g. \code{na.strings}, \code{nrows}, \code{sep}.}
 }
 \value{
 A data frame with one row per survey response.
