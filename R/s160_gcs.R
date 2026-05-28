@@ -171,9 +171,19 @@ read_header_raw <- function(path, encoding = "UTF-8") {
 fast_read_csv <- function(path, columns = NULL, encoding = "UTF-8", ...) {
   extra <- list(...)
   select_raw <- NULL
+  munged_keep <- NULL
   if (!is.null(columns)) {
     raw <- read_header_raw(path, encoding = encoding)
-    select_raw <- raw[make.names(raw) %in% columns]
+    # make.names(unique = TRUE) reproduces what check.names = TRUE does on the
+    # body read (both fread and read.csv), so the requested set, the selected
+    # raw names, and the parsed column names stay aligned even when two raw
+    # headers munge to the same syntactic name (e.g. id[q1]scriptDate vs
+    # id.q1.scriptDate). s160_csv_header() munges identically, so `columns`
+    # derived from it matches `munged` here.
+    munged <- make.names(raw, unique = TRUE)
+    keep <- munged %in% columns
+    select_raw <- raw[keep]       # fread selects by raw (file) name
+    munged_keep <- munged[keep]   # read.csv fallback subsets by munged name
     if (length(select_raw) == 0L) {
       warning(sprintf(paste0(
         "fast_read_csv: none of the %d requested column(s) matched the header ",
@@ -190,14 +200,14 @@ fast_read_csv <- function(path, columns = NULL, encoding = "UTF-8", ...) {
     return(do.call(data.table::fread, args))
   }
   # Fallback: base read.csv (full read), then project to the same set. read.csv
-  # munges names, so match on make.names(select_raw); intersect with the actual
-  # names guards against make.unique renaming a duplicate header.
+  # munges names with the same unique make.names rule, so `munged_keep` matches
+  # the parsed names; intersect guards against any residual divergence.
   args <- list(file = path, check.names = TRUE, stringsAsFactors = FALSE,
                fileEncoding = encoding)
   args[names(extra)] <- extra
   data <- do.call(utils::read.csv, args)
   if (!is.null(select_raw)) {
-    data <- data[, intersect(make.names(select_raw), names(data)), drop = FALSE]
+    data <- data[, intersect(munged_keep, names(data)), drop = FALSE]
   }
   data
 }
@@ -518,8 +528,11 @@ s160_read_csv <- function(path, columns = NULL, hash = TRUE, ...) {
     stop(sprintf("s160_read_csv: file not found: %s", path),
          call. = FALSE)
   }
+  if (!is.logical(hash) || length(hash) != 1L || is.na(hash)) {
+    stop("hash must be a single TRUE or FALSE.", call. = FALSE)
+  }
   data <- fast_read_csv(path, columns = columns, ...)
-  attr(data, "source_csv_hash") <- if (isTRUE(hash)) {
+  attr(data, "source_csv_hash") <- if (hash) {
     paste0("sha256:", digest::digest(file = path, algo = "sha256"))
   } else {
     NA_character_
@@ -552,7 +565,7 @@ s160_csv_header <- function(path, encoding = "UTF-8") {
   if (!file.exists(path)) {
     stop(sprintf("s160_csv_header: file not found: %s", path), call. = FALSE)
   }
-  make.names(read_header_raw(path, encoding = encoding))
+  make.names(read_header_raw(path, encoding = encoding), unique = TRUE)
 }
 
 #' Check campaign results export status
