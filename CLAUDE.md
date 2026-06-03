@@ -29,9 +29,6 @@ R client for Survey160 data. Reads campaign results from Google Cloud Storage, t
 
 ## Workflow
 
-- Branch: `SUR-XXXX-kebab-case-title` off `main`, created as a git worktree at `../survey160r-SUR-XXXX-<slug>/` (sibling of this repo). The worktree convention keeps `main` checked out in the primary path for quick diff/log reads without disturbing in-flight work.
-- Commit prefix: `SUR-XXXX`, single line, no body.
-- PR target: `main` (no QA branch in this repo).
 - Releases are documented in `RELEASING.md`. Distribution is R-universe (auto-rebuild from `main`); tags are historical anchors only.
 
 ## Verifying changes
