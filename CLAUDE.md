@@ -29,8 +29,8 @@ R client for Survey160 data. Reads campaign results from Google Cloud Storage, t
 
 ## Workflow
 
-- Branch: `SUR-XXXX-kebab-case-title` off `main`, created as a git worktree at `../survey160r-SUR-XXXX-<slug>/` (sibling of this repo). The worktree convention keeps `main` checked out in the primary path for quick diff/log reads without disturbing in-flight work.
-- Commit prefix: `SUR-XXXX`, single line, no body.
+- Branch: free-form `<type>/<slug>` off `main`. Use a harness-native worktree (`EnterWorktree`, nested under `.claude/worktrees/`, branched from clean `origin/main`); this keeps `main` checked out in the primary path for quick diff/log reads without disturbing in-flight work, and the worktree auto-cleans on exit.
+- Commit: free-form, single line, no body. No `SUR-XXXX` prefix required (survey160r is not a Jira-prefix-gated repo; that gate applies only to survey160-v2 and k8s-deploy PRs).
 - PR target: `main` (no QA branch in this repo).
 - Releases are documented in `RELEASING.md`. Distribution is R-universe (auto-rebuild from `main`); tags are historical anchors only.
 
