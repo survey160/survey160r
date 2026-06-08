@@ -39,11 +39,24 @@ build_diagnostics <- function(frame, n_respondents_in, parse_failures,
   total_segments <- nrow(frame)
   na_segments <- sum(is.na(frame$delta_min))
 
-  worst <- by_resp$max_delta
-  worst[!is.finite(worst)] <- NA_real_
-  pct_clean <- 100 * mean(!is.na(worst) & worst <= 5)
-  pct_5_10 <- 100 * mean(!is.na(worst) & worst > 5 & worst <= 10)
-  pct_over_10 <- 100 * mean(!is.na(worst) & worst > 10)
+  # Cascade percentages are over the *measured* respondents (those with at
+  # least one valid Delta), matching respondent_summary$n_respondents = used,
+  # the consolidated cascade (aggregate_worst_cascade), and the legacy-parity
+  # definition. Dividing by total_resp_observed instead would deflate the
+  # buckets by the no-valid-segment fraction and make them sum to < 100%, so
+  # that n_respondents * pct / 100 no longer recovers a respondent count.
+  # When used == 0 the percentages are undefined -> NA (same as the empty-frame
+  # path above).
+  worst <- by_resp$max_delta[by_resp$has_valid]
+  if (used > 0L) {
+    pct_clean <- 100 * mean(worst <= 5)
+    pct_5_10 <- 100 * mean(worst > 5 & worst <= 10)
+    pct_over_10 <- 100 * mean(worst > 10)
+  } else {
+    pct_clean <- NA_real_
+    pct_5_10 <- NA_real_
+    pct_over_10 <- NA_real_
+  }
 
   list(
     n_respondents_in = n_respondents_in,
