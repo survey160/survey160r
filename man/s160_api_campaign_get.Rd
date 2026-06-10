@@ -4,7 +4,7 @@
 \alias{s160_api_campaign_get}
 \title{Read a single campaign's attributes}
 \usage{
-s160_api_campaign_get(campaign_id, conn = .s160_api_env)
+s160_api_campaign_get(campaign_id, conn = NULL)
 }
 \arguments{
 \item{campaign_id}{Campaign ID (numeric or character).}

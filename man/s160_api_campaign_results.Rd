@@ -10,7 +10,7 @@ s160_api_campaign_results(
   timeout = 300,
   poll_interval = 5,
   destdir = NULL,
-  conn = .s160_api_env,
+  conn = NULL,
   ...
 )
 }

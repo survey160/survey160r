@@ -175,6 +175,20 @@ test_that("prod and staging connections are independent; default tracks latest",
   expect_equal(env$bucket, "campaign_results_staging")
 })
 
+test_that("a connection prints as an opaque handle, masking the key", {
+  withr::local_envvar(S160_API_USERID = "svc", S160_PROD_API_KEY = "secret-key")
+  local_mocked_bindings(api_do_auth = fake_do_auth_capture(new_capture()))
+  .defer_api_env_reset()
+
+  conn <- suppressMessages(s160_api_auth("prod"))
+  expect_s3_class(conn, "s160_api_conn")
+
+  out <- capture.output(print(conn))
+  expect_true(any(grepl("survey160 API connection: prod", out)))
+  expect_true(any(grepl("hidden", out)))
+  expect_false(any(grepl("secret-key", out)))   # the key is never printed
+})
+
 # --- api_do_auth credential guard ---------------------------------------------
 
 test_that("api_do_auth rejects missing credentials before POSTing", {

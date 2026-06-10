@@ -25,7 +25,8 @@
 # functions default `conn` to it.
 .s160_api_env <- new.env(parent = emptyenv())
 
-check_api_ready <- function(conn = .s160_api_env) {
+check_api_ready <- function(conn = NULL) {
+  conn <- conn %||% .s160_api_env
   if (is.null(conn$jwt) || conn$jwt == "") {
     stop("API not initialized. Run s160_api_auth() first.", call. = FALSE)
   }
@@ -143,7 +144,8 @@ resolve_env_api_key <- function(candidates, prompt_var) {
 }
 
 # Authenticated HTTP request with auto JWT refresh, against a given connection.
-s160_api_request <- function(method, path, body = NULL, conn = .s160_api_env) {
+s160_api_request <- function(method, path, body = NULL, conn = NULL) {
+  conn <- conn %||% .s160_api_env
   check_api_ready(conn)
 
   # Re-auth if JWT is older than 8 minutes, reusing the credentials stored on
@@ -257,10 +259,22 @@ s160_api_auth <- function(env = c("prod", "staging")) {
   conn$env <- env
   conn$bucket <- cfg$bucket
   api_do_auth(conn, cfg$url, userid, api_key)
+  # Class the handle so it prints as an opaque connection (masking the key)
+  # rather than a bare <environment>. The mirrored default stays unclassed.
+  class(conn) <- c("s160_api_conn", "environment")
   copy_connection(conn, .s160_api_env)
 
   message(sprintf("API authenticated (%s).", env))
   invisible(conn)
+}
+
+#' @export
+print.s160_api_conn <- function(x, ...) {
+  cat(sprintf("<survey160 API connection: %s -> %s>\n",
+              x$env %||% "?", x$base_url %||% "?"))
+  cat("  credentials: present (hidden)\n")
+  if (!is.null(x$bucket)) cat(sprintf("  bucket: %s\n", x$bucket))
+  invisible(x)
 }
 
 #' Download campaign results via API
@@ -302,8 +316,9 @@ s160_api_auth <- function(env = c("prod", "staging")) {
 #' @export
 s160_api_campaign_results <- function(campaign_id, filter_open = FALSE,
                                       timeout = 300, poll_interval = 5,
-                                      destdir = NULL, conn = .s160_api_env,
+                                      destdir = NULL, conn = NULL,
                                       ...) {
+  conn <- conn %||% .s160_api_env
   check_api_ready(conn)
   check_gcs_ready()
   campaign_id <- validate_campaign_id(campaign_id)
@@ -400,7 +415,8 @@ s160_api_campaign_results <- function(campaign_id, filter_open = FALSE,
 #' info$script[[1]]  # parsed JSON
 #' }
 #' @export
-s160_api_campaign_get <- function(campaign_id, conn = .s160_api_env) {
+s160_api_campaign_get <- function(campaign_id, conn = NULL) {
+  conn <- conn %||% .s160_api_env
   check_api_ready(conn)
   campaign_id <- validate_campaign_id(campaign_id)
 
