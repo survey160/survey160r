@@ -9,21 +9,23 @@
   withr::defer(rm(list = ls(e), envir = e), envir = env)
 }
 
-# --- s160_api_auth ------------------------------------------------------------
+# --- s160_api_auth (env-addressed) --------------------------------------------
 
-test_that("auth succeeds and stores JWT", {
+test_that("auth succeeds and stores JWT (default env = prod)", {
   withr::local_envvar(S160_API_USERID = "svc", S160_API_KEY = "key123")
   stub_httr_response(
     body = list(success = TRUE, data = "jwt-token-123", userid = "svc")
   )
   .defer_api_env_reset()
 
-  suppressMessages(s160_api_auth(base_url = "https://api.example.com"))
+  suppressMessages(s160_api_auth())
 
   env <- .api_env()
   expect_equal(env$jwt, "jwt-token-123")
   expect_equal(env$userid, "svc")
-  expect_equal(env$base_url, "https://api.example.com")
+  expect_equal(env$base_url, "https://api.survey160.com")
+  expect_equal(env$env, "prod")
+  expect_equal(env$bucket, "campaign_results")
 })
 
 test_that("auth fails with clear error on 401", {
@@ -33,46 +35,24 @@ test_that("auth fails with clear error on 401", {
     body = list(error = "Invalid API key"),
     http_error = TRUE
   )
-  expect_error(
-    s160_api_auth(base_url = "https://api.example.com"),
-    "Authentication failed.*Invalid API key"
-  )
+  expect_error(s160_api_auth(), "Authentication failed.*Invalid API key")
 })
 
 test_that("auth errors when S160_API_USERID not set in non-interactive mode", {
-  withr::local_envvar(S160_API_USERID = NA, S160_API_KEY = "key123")
+  withr::local_envvar(S160_API_USERID = NA, S160_PROD_API_KEY = "key123")
   local_mocked_bindings(interactive = function() FALSE, .package = "base")
   expect_error(s160_api_auth(), "S160_API_USERID not set")
 })
 
-test_that("auth errors when S160_API_KEY not set in non-interactive mode", {
-  withr::local_envvar(S160_API_USERID = "svc", S160_API_KEY = NA)
+test_that("auth errors when no prod key var is set in non-interactive mode", {
+  withr::local_envvar(S160_API_USERID = "svc", S160_PROD_API_KEY = NA,
+                      S160_API_KEY = NA)
   local_mocked_bindings(interactive = function() FALSE, .package = "base")
-  expect_error(s160_api_auth(), "S160_API_KEY not set")
+  expect_error(s160_api_auth("prod"), "S160_PROD_API_KEY not set")
 })
 
-test_that("auth strips trailing slash from base_url", {
-  withr::local_envvar(S160_API_USERID = "svc", S160_API_KEY = "key")
-  stub_httr_response(
-    body = list(success = TRUE, data = "jwt", userid = "svc")
-  )
-  .defer_api_env_reset()
-
-  suppressMessages(s160_api_auth(base_url = "https://api.example.com/"))
-  expect_equal(.api_env()$base_url, "https://api.example.com")
-})
-
-test_that("auth defaults to production base_url", {
-  withr::local_envvar(S160_API_USERID = "svc", S160_API_KEY = "key")
-  captured <- new_capture()
-  stub_httr_response(
-    body = list(success = TRUE, data = "jwt", userid = "svc"),
-    capture = captured
-  )
-  .defer_api_env_reset()
-
-  suppressMessages(s160_api_auth())
-  expect_equal(captured$url, "https://api.survey160.com/auth/serviceAccount")
+test_that("auth rejects an unknown environment", {
+  expect_error(s160_api_auth("banana"), "should be one of")
 })
 
 test_that("auth errors on unexpected response format", {
@@ -92,6 +72,142 @@ test_that("auth falls back to http_status when error field is NULL", {
   expect_error(s160_api_auth(), "Authentication failed.*Service Unavailable")
 })
 
+test_that("auth errors clearly when the response body is not a list", {
+  # A gateway/proxy returning HTML (not JSON) parses to a bare string; the
+  # is.list() guard must surface the format error, not crash on `parsed$success`.
+  withr::local_envvar(S160_API_USERID = "svc", S160_API_KEY = "key")
+  stub_httr_response(body = "a gateway returned HTML, not JSON")
+  expect_error(s160_api_auth(), "unexpected response format")
+})
+
+test_that("auth tolerates a multi-element error field, falling back to status", {
+  # A vector `error` field must not crash nzchar(); http_error_message
+  # short-circuits on length and falls back to the HTTP status text.
+  withr::local_envvar(S160_API_USERID = "svc", S160_API_KEY = "key")
+  stub_httr_response(
+    status = 500L,
+    body = list(error = c("err1", "err2")),
+    http_error = TRUE,
+    status_msg = "Server Error"
+  )
+  expect_error(s160_api_auth(), "Authentication failed.*Server Error")
+})
+
+# --- s160_api_auth: env resolution + multi-env connections --------------------
+
+# Mock api_do_auth to capture the resolved (url, userid, key) without a network
+# call, mimicking the real field writes onto the connection.
+fake_do_auth_capture <- function(seen) {
+  function(conn, base_url, userid, api_key) {
+    seen$base_url <- base_url
+    seen$userid <- userid
+    seen$api_key <- api_key
+    conn$jwt <- "fake-jwt"
+    conn$userid <- userid
+    conn$api_key <- api_key
+    conn$base_url <- base_url
+    conn$auth_time <- Sys.time()
+  }
+}
+
+test_that("env name resolves url + bucket atomically; prod prefers S160_PROD_API_KEY", {
+  withr::local_envvar(S160_API_USERID = "svc",
+                      S160_PROD_API_KEY = "prod-key", S160_API_KEY = "legacy")
+  seen <- new_capture()
+  local_mocked_bindings(api_do_auth = fake_do_auth_capture(seen))
+  .defer_api_env_reset()
+
+  conn <- suppressMessages(s160_api_auth("prod"))
+  expect_equal(seen$base_url, "https://api.survey160.com")
+  expect_equal(seen$api_key, "prod-key")           # not the legacy fallback
+  expect_equal(conn$bucket, "campaign_results")
+  expect_equal(conn$env, "prod")
+})
+
+test_that("prod falls back to legacy S160_API_KEY when S160_PROD_API_KEY unset", {
+  withr::local_envvar(S160_API_USERID = "svc",
+                      S160_PROD_API_KEY = NA, S160_API_KEY = "legacy-key")
+  seen <- new_capture()
+  local_mocked_bindings(api_do_auth = fake_do_auth_capture(seen))
+  .defer_api_env_reset()
+
+  suppressMessages(s160_api_auth("prod"))
+  expect_equal(seen$api_key, "legacy-key")
+})
+
+test_that("staging resolves its own url, bucket, and key var", {
+  withr::local_envvar(S160_API_USERID = "svc", S160_STAGING_API_KEY = "stg-key")
+  seen <- new_capture()
+  local_mocked_bindings(api_do_auth = fake_do_auth_capture(seen))
+  .defer_api_env_reset()
+
+  conn <- suppressMessages(s160_api_auth("staging"))
+  expect_equal(seen$base_url, "https://staging-api.survey160.com")
+  expect_equal(seen$api_key, "stg-key")
+  expect_equal(conn$bucket, "campaign_results_staging")
+  expect_equal(conn$env, "staging")
+})
+
+test_that("prod and staging connections are independent; default tracks latest", {
+  withr::local_envvar(S160_API_USERID = "svc",
+                      S160_PROD_API_KEY = "pk", S160_STAGING_API_KEY = "sk")
+  local_mocked_bindings(api_do_auth = function(conn, base_url, userid, api_key) {
+    conn$jwt <- paste0("jwt-", api_key)
+    conn$base_url <- base_url
+    conn$userid <- userid
+    conn$api_key <- api_key
+    conn$auth_time <- Sys.time()
+  })
+  .defer_api_env_reset()
+
+  prod <- suppressMessages(s160_api_auth("prod"))
+  stg  <- suppressMessages(s160_api_auth("staging"))
+
+  expect_false(identical(prod, stg))
+  expect_equal(prod$base_url, "https://api.survey160.com")
+  expect_equal(prod$bucket, "campaign_results")
+  expect_equal(stg$base_url, "https://staging-api.survey160.com")
+  expect_equal(stg$bucket, "campaign_results_staging")
+
+  # default mirrors the most recent auth (staging)
+  env <- .api_env()
+  expect_equal(env$env, "staging")
+  expect_equal(env$bucket, "campaign_results_staging")
+})
+
+test_that("a connection prints as an opaque handle, masking the key", {
+  withr::local_envvar(S160_API_USERID = "svc", S160_PROD_API_KEY = "secret-key")
+  local_mocked_bindings(api_do_auth = fake_do_auth_capture(new_capture()))
+  .defer_api_env_reset()
+
+  conn <- suppressMessages(s160_api_auth("prod"))
+  expect_s3_class(conn, "s160_api_conn")
+
+  out <- capture.output(print(conn))
+  expect_true(any(grepl("survey160 API connection: prod", out)))
+  expect_true(any(grepl("hidden", out)))
+  expect_false(any(grepl("secret-key", out)))   # the key is never printed
+})
+
+# --- api_do_auth credential guard ---------------------------------------------
+
+test_that("api_do_auth rejects missing credentials before POSTing", {
+  conn <- new.env(parent = emptyenv())
+  expect_error(survey160r:::api_do_auth(conn, "https://x", NULL, "k"),
+               "userid must be a non-empty string")
+  expect_error(survey160r:::api_do_auth(conn, "https://x", "u", NULL),
+               "api_key must be a non-empty string")
+  expect_error(survey160r:::api_do_auth(conn, "  ", "u", "k"),
+               "base_url must be a non-empty string")
+})
+
+test_that("api_do_auth strips a trailing slash from base_url", {
+  conn <- new.env(parent = emptyenv())
+  stub_httr_response(body = list(success = TRUE, data = "jwt", userid = "u"))
+  survey160r:::api_do_auth(conn, "https://api.example.com/", "u", "k")
+  expect_equal(conn$base_url, "https://api.example.com")
+})
+
 # --- get_credential -----------------------------------------------------------
 
 test_that("get_credential returns value when env var is set", {
@@ -109,17 +225,6 @@ test_that("get_credential errors in non-interactive when env var missing", {
   )
 })
 
-# --- base_url validation ------------------------------------------------------
-
-test_that("auth errors on empty base_url", {
-  expect_error(s160_api_auth(base_url = ""), "non-empty")
-})
-
-test_that("auth errors on non-string base_url", {
-  expect_error(s160_api_auth(base_url = 123), "non-empty")
-  expect_error(s160_api_auth(base_url = NULL), "non-empty")
-})
-
 # --- check_api_ready ----------------------------------------------------------
 
 test_that("check_api_ready errors when not authenticated", {
@@ -135,10 +240,10 @@ test_that("request refreshes JWT when older than 8 minutes", {
 
   auth_called <- FALSE
   local_mocked_bindings(
-    s160_api_auth = function(...) {
+    api_do_auth = function(conn, base_url, userid, api_key) {
       auth_called <<- TRUE
-      env$jwt <- "refreshed-jwt"
-      env$auth_time <- Sys.time()
+      conn$jwt <- "refreshed-jwt"
+      conn$auth_time <- Sys.time()
     }
   )
   stub_httr_response(body = list(ok = TRUE))
@@ -150,11 +255,77 @@ test_that("request refreshes JWT when older than 8 minutes", {
 test_that("request does not refresh JWT when fresh", {
   stub_api_base()
   auth_called <- FALSE
-  local_mocked_bindings(s160_api_auth = function(...) auth_called <<- TRUE)
+  local_mocked_bindings(api_do_auth = function(...) auth_called <<- TRUE)
   stub_httr_response(body = list(ok = TRUE))
 
   survey160r:::s160_api_request("GET", "/test")
   expect_false(auth_called)
+})
+
+test_that("request refresh reuses the connection's stored credentials", {
+  # The refresh must re-auth with the creds that authenticated THIS connection
+  # (stored on the env by api_do_auth), not re-read the S160_API_* env vars --
+  # otherwise a connection pointed at a non-default environment silently breaks
+  # at the 8-minute mark. Decoy env vars; assert the refresh ignored them.
+  stub_api_base()                       # sets userid = "test-user"
+  env <- .api_env()
+  env$api_key <- "stored-key"
+  env$auth_time <- Sys.time() - 600
+  withr::local_envvar(S160_API_USERID = "DECOY", S160_API_KEY = "DECOY-KEY")
+
+  seen <- new_capture()
+  local_mocked_bindings(
+    api_do_auth = function(conn, base_url, userid, api_key) {
+      seen$base_url <- base_url
+      seen$userid <- userid
+      seen$api_key <- api_key
+      conn$auth_time <- Sys.time()
+    }
+  )
+  stub_httr_response(body = list(ok = TRUE))
+
+  survey160r:::s160_api_request("GET", "/test")
+  expect_equal(seen$base_url, "https://test-api.survey160.com")
+  expect_equal(seen$userid, "test-user")
+  expect_equal(seen$api_key, "stored-key")
+})
+
+test_that("refresh on a captured connection uses its creds, default untouched", {
+  # The multi-env isolation guarantee: refreshing a held prod handle must
+  # re-auth with prod's creds and leave the (staging) default connection alone.
+  env <- .api_env()                                   # default = staging
+  env$jwt <- "stg-jwt"
+  env$base_url <- "https://staging-api.survey160.com"
+  env$userid <- "stg-u"
+  env$api_key <- "stg-key"
+  env$auth_time <- Sys.time()
+  .defer_api_env_reset()
+
+  prod <- new.env(parent = emptyenv())                # captured prod handle, stale JWT
+  prod$jwt <- "prod-jwt"
+  prod$base_url <- "https://api.survey160.com"
+  prod$userid <- "prod-u"
+  prod$api_key <- "prod-key"
+  prod$auth_time <- Sys.time() - 600
+
+  seen <- new_capture()
+  local_mocked_bindings(
+    api_do_auth = function(conn, base_url, userid, api_key) {
+      seen$refreshed_prod <- identical(conn, prod)
+      seen$userid <- userid
+      seen$api_key <- api_key
+      conn$auth_time <- Sys.time()
+    }
+  )
+  stub_httr_response(body = list(ok = TRUE))
+
+  survey160r:::s160_api_request("GET", "/x", conn = prod)
+
+  expect_true(seen$refreshed_prod)        # refreshed the prod handle, not the default
+  expect_equal(seen$userid, "prod-u")     # with prod's credentials
+  expect_equal(seen$api_key, "prod-key")
+  expect_equal(env$userid, "stg-u")       # default (staging) left untouched
+  expect_equal(env$jwt, "stg-jwt")
 })
 
 test_that("request refreshes JWT just past the 480-second threshold", {
@@ -166,9 +337,9 @@ test_that("request refreshes JWT just past the 480-second threshold", {
   env$auth_time <- Sys.time() - 481
 
   auth_called <- FALSE
-  local_mocked_bindings(s160_api_auth = function(...) {
+  local_mocked_bindings(api_do_auth = function(conn, ...) {
     auth_called <<- TRUE
-    env$auth_time <- Sys.time()
+    conn$auth_time <- Sys.time()
   })
   stub_httr_response(body = list(ok = TRUE))
 
@@ -182,7 +353,7 @@ test_that("request does NOT refresh when auth is just inside the threshold", {
   env$auth_time <- Sys.time() - 470  # 10s of slack below 480
 
   auth_called <- FALSE
-  local_mocked_bindings(s160_api_auth = function(...) auth_called <<- TRUE)
+  local_mocked_bindings(api_do_auth = function(...) auth_called <<- TRUE)
   stub_httr_response(body = list(ok = TRUE))
 
   survey160r:::s160_api_request("GET", "/test")
@@ -229,7 +400,7 @@ test_that("results triggers export and returns data frame after GCS update", {
       poll_count <<- poll_count + 1
       if (poll_count <= 1) "2024-01-01T00:00:00Z" else "2024-01-01T01:00:00Z"
     },
-    s160_api_request = function(method, path, body = NULL) {
+    s160_api_request = function(method, path, body = NULL, ...) {
       list(status = "processing")
     },
     s160_gcs_campaign_results_read = function(campaign_id, ...) {
@@ -252,7 +423,7 @@ test_that("results works when no prior export exists (baseline is NULL)", {
       poll_count <<- poll_count + 1
       if (poll_count <= 1) NULL else "2024-01-01T01:00:00Z"
     },
-    s160_api_request = function(method, path, body = NULL) {
+    s160_api_request = function(method, path, body = NULL, ...) {
       list(status = "processing")
     },
     s160_gcs_campaign_results_read = function(campaign_id, ...) {
@@ -273,7 +444,7 @@ test_that("results propagates the trigger error before polling starts", {
       poll_called <<- TRUE
       "2024-01-01T00:00:00Z"
     },
-    s160_api_request = function(method, path, body = NULL) {
+    s160_api_request = function(method, path, body = NULL, ...) {
       stop("API error (POST /startCampaignResultsExport): Service Unavailable",
            call. = FALSE)
     }
@@ -294,7 +465,7 @@ test_that("results times out when GCS never updates", {
 
   local_mocked_bindings(
     get_gcs_file_updated = function(campaign_id, filename) "2024-01-01T00:00:00Z",
-    s160_api_request = function(method, path, body = NULL) {
+    s160_api_request = function(method, path, body = NULL, ...) {
       list(status = "processing")
     }
   )
@@ -328,6 +499,49 @@ test_that("results errors on invalid poll_interval", {
   stub_gcs_base()
   expect_error(s160_api_campaign_results(1980, poll_interval = 0), "positive number")
   expect_error(s160_api_campaign_results(1980, poll_interval = -5), "positive number")
+})
+
+# --- s160_api_campaign_results: per-connection bucket -------------------------
+
+test_that("results targets the connection's bucket for poll and read", {
+  stub_gcs_base()
+  conn <- new.env(parent = emptyenv())
+  conn$jwt <- "jwt"
+  conn$base_url <- "https://staging-api.survey160.com"
+  conn$userid <- "analytics"
+  conn$auth_time <- Sys.time()
+  conn$bucket <- "campaign_results_staging"
+
+  seen <- new_capture()
+  poll_count <- 0
+  local_mocked_bindings(
+    get_gcs_file_updated = function(campaign_id, filename, bucket = NULL) {
+      seen$poll_bucket <- bucket
+      poll_count <<- poll_count + 1
+      if (poll_count <= 1) "t0" else "t1"
+    },
+    s160_api_request = function(method, path, body = NULL, conn = NULL) {
+      seen$req_userid <- body$userid
+      seen$req_conn <- conn
+      list(status = "processing")
+    },
+    s160_gcs_campaign_results_read = function(campaign_id, ..., bucket = NULL) {
+      seen$read_bucket <- bucket
+      data.frame(campaignid = 744)
+    }
+  )
+
+  df <- suppressMessages(
+    s160_api_campaign_results(744, timeout = 10, poll_interval = 0.1, conn = conn)
+  )
+  expect_equal(df$campaignid, 744)
+  expect_equal(seen$poll_bucket, "campaign_results_staging")
+  expect_equal(seen$read_bucket, "campaign_results_staging")
+  expect_equal(seen$req_userid, "analytics")
+  # The trigger must route through THIS connection (its base_url decides which
+  # environment the export fires against), not the default one.
+  expect_identical(seen$req_conn, conn)
+  expect_equal(seen$req_conn$base_url, "https://staging-api.survey160.com")
 })
 
 # --- get_gcs_file_updated -----------------------------------------------------
@@ -372,13 +586,29 @@ test_that("get_gcs_file_updated returns NULL on GCS error", {
   expect_null(survey160r:::get_gcs_file_updated("1980", "1980_raw_data_download.csv"))
 })
 
+test_that("get_gcs_file_updated lists the given bucket when provided", {
+  seen <- new_capture()
+  local_mocked_bindings(
+    gcs_list_objects = function(prefix = NULL, ...) {
+      seen$bucket <- list(...)$bucket
+      data.frame(name = "744/744_raw_data_download.csv",
+                 updated = "2024-06-15T10:00:00Z", stringsAsFactors = FALSE)
+    }
+  )
+  result <- survey160r:::get_gcs_file_updated(
+    "744", "744_raw_data_download.csv", bucket = "campaign_results_staging"
+  )
+  expect_equal(result, "2024-06-15T10:00:00Z")
+  expect_equal(seen$bucket, "campaign_results_staging")
+})
+
 # --- s160_api_campaign_get ----------------------------------------------------
 
 test_that("campaign_get returns single-row data frame with base columns", {
   stub_api_base()
 
   local_mocked_bindings(
-    s160_api_request = function(method, path, body = NULL) {
+    s160_api_request = function(method, path, body = NULL, ...) {
       list(
         success = TRUE,
         data = list(
@@ -428,7 +658,7 @@ test_that("campaign_get returns single-row data frame with base columns", {
 test_that("campaign_get treats NULL fields as NA", {
   stub_api_base()
   local_mocked_bindings(
-    s160_api_request = function(method, path, body = NULL) {
+    s160_api_request = function(method, path, body = NULL, ...) {
       list(success = TRUE,
            data = list(campaignid = 5, archive_scheduled_date = NULL))
     }
@@ -441,7 +671,7 @@ test_that("campaign_get treats NULL fields as NA", {
 test_that("campaign_get maps 400 not-found to clear error", {
   stub_api_base()
   local_mocked_bindings(
-    s160_api_request = function(method, path, body = NULL) {
+    s160_api_request = function(method, path, body = NULL, ...) {
       stop("API error (GET /campaigns/9999): Bad Request", call. = FALSE)
     }
   )
@@ -452,7 +682,7 @@ test_that("campaign_get maps 400 not-found to clear error", {
 test_that("campaign_get maps 404 to clear error", {
   stub_api_base()
   local_mocked_bindings(
-    s160_api_request = function(method, path, body = NULL) {
+    s160_api_request = function(method, path, body = NULL, ...) {
       stop("API error (GET /campaigns/9999): Not Found", call. = FALSE)
     }
   )
@@ -463,7 +693,7 @@ test_that("campaign_get maps 404 to clear error", {
 test_that("campaign_get propagates non-not-found errors unchanged", {
   stub_api_base()
   local_mocked_bindings(
-    s160_api_request = function(method, path, body = NULL) {
+    s160_api_request = function(method, path, body = NULL, ...) {
       stop("API error (GET /campaigns/1): Internal Server Error", call. = FALSE)
     }
   )
@@ -474,7 +704,7 @@ test_that("campaign_get propagates non-not-found errors unchanged", {
 test_that("campaign_get errors on success=false response", {
   stub_api_base()
   local_mocked_bindings(
-    s160_api_request = function(method, path, body = NULL) {
+    s160_api_request = function(method, path, body = NULL, ...) {
       list(success = FALSE)
     }
   )
@@ -495,7 +725,7 @@ test_that("campaign_get errors on invalid campaign_id", {
 test_that("campaign_get parses ISO-8601 timestamp columns to POSIXct", {
   stub_api_base()
   local_mocked_bindings(
-    s160_api_request = function(method, path, body = NULL) {
+    s160_api_request = function(method, path, body = NULL, ...) {
       list(success = TRUE, data = list(
         campaignid = 1,
         startdate = "2026-01-15 09:30:00",
@@ -515,7 +745,7 @@ test_that("campaign_get parses ISO-8601 timestamp columns to POSIXct", {
 test_that("campaign_get leaves unparseable timestamp-shaped strings unchanged", {
   stub_api_base()
   local_mocked_bindings(
-    s160_api_request = function(method, path, body = NULL) {
+    s160_api_request = function(method, path, body = NULL, ...) {
       list(success = TRUE, data = list(
         campaignid = 1,
         weird = "2026-13-45 99:99:99"  # ISO-8601 shape, invalid values
@@ -531,7 +761,7 @@ test_that("campaign_get leaves unparseable timestamp-shaped strings unchanged", 
 test_that("campaign_get parses sub-second-precision timestamps", {
   stub_api_base()
   local_mocked_bindings(
-    s160_api_request = function(method, path, body = NULL) {
+    s160_api_request = function(method, path, body = NULL, ...) {
       list(success = TRUE, data = list(
         campaignid = 1,
         startdate = "2026-01-15T09:30:00.123456Z"
@@ -547,7 +777,7 @@ test_that("campaign_get parses sub-second-precision timestamps", {
 test_that("campaign_get normalizes numeric UTC offsets when parsing timestamps", {
   stub_api_base()
   local_mocked_bindings(
-    s160_api_request = function(method, path, body = NULL) {
+    s160_api_request = function(method, path, body = NULL, ...) {
       list(success = TRUE, data = list(
         campaignid = 1,
         startdate    = "2026-01-15T09:30:00+05:30",
@@ -562,4 +792,24 @@ test_that("campaign_get normalizes numeric UTC offsets when parsing timestamps",
   expect_s3_class(df$archive_scheduled_date, "POSIXct")
   expect_equal(format(df$archive_scheduled_date, tz = "UTC"),
                "2026-02-20 12:00:00")
+})
+
+test_that("campaign_get routes the request through the supplied connection", {
+  conn <- new.env(parent = emptyenv())
+  conn$jwt <- "jwt"
+  conn$base_url <- "https://staging-api.survey160.com"
+  conn$userid <- "analytics"
+  conn$auth_time <- Sys.time()
+
+  seen <- new_capture()
+  local_mocked_bindings(
+    s160_api_request = function(method, path, body = NULL, conn = NULL) {
+      seen$conn <- conn
+      list(success = TRUE, data = list(campaignid = 7))
+    }
+  )
+
+  df <- s160_api_campaign_get(7, conn = conn)
+  expect_identical(seen$conn, conn)
+  expect_equal(df$campaignid, 7)
 })

@@ -1,8 +1,8 @@
 # End-to-end test for survey160r
 #
-# Runs against real GCS and the Survey160 API (QA environment).
+# Runs against real GCS and the Survey160 API (staging environment).
 # Requires ~/.Renviron with: S160_GCS_CLIENT_SECRET, S160_API_USERID,
-#   S160_API_KEY. Also requires a cached OAuth token.
+#   S160_STAGING_API_KEY. Also requires a cached OAuth token.
 #
 # Usage:  make e2e
 
@@ -51,7 +51,7 @@ for (pkg in c("pkgload", "rappdirs")) {
 # Credentials (read from ~/.Renviron)
 if (Sys.getenv("S160_GCS_CLIENT_SECRET") == "") abort("  S160_GCS_CLIENT_SECRET not set in ~/.Renviron")
 if (Sys.getenv("S160_API_USERID") == "") abort("  S160_API_USERID not set in ~/.Renviron")
-if (Sys.getenv("S160_API_KEY") == "") abort("  S160_API_KEY not set in ~/.Renviron")
+if (Sys.getenv("S160_STAGING_API_KEY") == "") abort("  S160_STAGING_API_KEY not set in ~/.Renviron")
 
 # OAuth cache
 cache_path <- rappdirs::user_cache_dir("gargle")
@@ -61,7 +61,7 @@ if (length(tokens) == 0) {
     "  No cached OAuth token found.\n",
     "  Run interactively first:\n\n",
     "    pkgload::load_all(\".\")\n",
-    "    s160_gcs_init(bucket = \"campaign_results_qa\")\n"
+    "    s160_gcs_init(bucket = \"campaign_results_staging\")\n"
   ))
 }
 message(sprintf("  OAuth: %d cached token(s)", length(tokens)))
@@ -76,7 +76,7 @@ message("  OK")
 # -- GCS: init -----------------------------------------------------------------
 
 message("\n== GCS: init ==")
-s160_gcs_init(bucket = "campaign_results_qa")
+s160_gcs_init(bucket = "campaign_results_staging")
 
 # -- GCS: list campaigns -------------------------------------------------------
 
@@ -136,8 +136,10 @@ unlink(expected_file)
 # -- API: auth -----------------------------------------------------------------
 
 message("\n== API: auth ==")
-s160_api_auth(base_url = "https://qa-api.survey160.com")
-check("JWT stored", !is.null(survey160r:::.s160_api_env$jwt))
+conn <- s160_api_auth("staging")
+check("returns a connection", is.environment(conn))
+check("JWT stored", !is.null(conn$jwt))
+check("paired with staging bucket", identical(conn$bucket, "campaign_results_staging"))
 
 # -- API: export and download --------------------------------------------------
 

@@ -2,6 +2,33 @@
 
 ## New features
 
+* **Multi-environment API sessions, one entry point.** `s160_api_auth(env)`
+  now takes an environment *name* -- `"prod"` (default) or `"staging"` -- and
+  *returns a connection*: an opaque handle carrying the JWT, credentials, base
+  URL, environment name, and the paired campaign-results GCS bucket. Addressing
+  by name resolves the URL, bucket, and key var **together**, so they cannot be
+  mismatched (no pointing a prod URL at a staging key/bucket). Credentials come
+  from `~/.Renviron`: `S160_API_USERID` for the user, and a per-environment key
+  var -- `S160_STAGING_API_KEY` for staging, `S160_PROD_API_KEY` (falling back
+  to the legacy `S160_API_KEY`) for prod -- prompted and saved on first
+  interactive run.
+  - **Single environment**: ignore the return value -- `s160_api_auth()`
+    refreshes the package default connection and conn-less
+    `s160_api_campaign_results()` / `s160_api_campaign_get()` calls use it.
+  - **Both environments at once**: capture each connection and pass it as the
+    new `conn =` argument. `prod <- s160_api_auth("prod"); stg <-
+    s160_api_auth("staging")`, then `s160_api_campaign_results(744, conn = stg)`.
+    Prod and staging stay live in the same session -- e.g. comparing a campaign
+    across both. Each connection's paired bucket makes the export trigger,
+    completion poll, and read all target its own environment (closing the
+    footgun where a staging export was polled against the production bucket).
+
+  The in-session JWT refresh reuses the credentials stored on the connection, so
+  a staging connection held alongside prod keeps refreshing against staging.
+  **Breaking:** `s160_api_auth()` no longer takes a `base_url` argument (use
+  `env`) and now returns a connection object (invisibly) instead of `NULL`;
+  existing zero-argument single-environment calls are unaffected.
+
 * **Faster CSV reads via `data.table::fread`.** `s160_read_csv()` and
   `s160_gcs_campaign_results_read()` now read through `data.table::fread`
   (multithreaded; ~5-10x faster than `utils::read.csv` on large exports),

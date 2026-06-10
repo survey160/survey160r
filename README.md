@@ -42,16 +42,19 @@ download the data in one step. This is useful when you need the latest
 data rather than whatever was last exported to GCS.
 
 Requires both GCS auth (`s160_gcs_init`) and API auth (`s160_api_auth`).
-On first run, `s160_api_auth()` prompts for your user ID and API key
-(get these from your survey manager) and saves them to `~/.Renviron`.
+`s160_api_auth(env)` authenticates to a named environment -- `"prod"`
+(default) or `"staging"` -- and returns a *connection*. Addressing by
+name resolves the API URL, the campaign-results bucket, and the API key
+together, so they can't be mismatched. On first run it prompts for any
+missing credentials and saves them to `~/.Renviron`.
 
 ```r
 library(survey160r)
 
-# 1. Authenticate to GCS (same as above)
+# 1. Authenticate to GCS once -- one Google sign-in reads every bucket
 s160_gcs_init(bucket = "campaign_results")
 
-# 2. Authenticate to the Survey160 API (prompts on first run)
+# 2. Authenticate to the Survey160 API (defaults to prod; prompts on first run)
 s160_api_auth()
 
 # 3. Export and download -- triggers a fresh export, polls until ready,
@@ -67,6 +70,27 @@ df <- s160_api_campaign_results(campaign_id, timeout = 600)
 # Save the CSV locally instead of using a temp file
 df <- s160_api_campaign_results(campaign_id, destdir = ".")
 ```
+
+### Comparing production and staging
+
+`s160_api_auth(env)` returns a connection you can capture and pass as
+`conn =`, so prod and staging stay live in the same session -- e.g. to
+A/B compare the same campaign. Each connection carries its own paired
+bucket, so the export trigger, poll, and read all target the right
+environment.
+
+```r
+s160_gcs_init(bucket = "campaign_results")   # one GCS auth covers all buckets
+
+prod <- s160_api_auth("prod")
+stg  <- s160_api_auth("staging")
+
+df_prod <- s160_api_campaign_results(campaign_id, conn = prod)
+df_stg  <- s160_api_campaign_results(campaign_id, conn = stg)
+```
+
+A conn-less call uses the most recent `s160_api_auth()`, so
+single-environment use needs no `conn =`.
 
 ### Check export status
 
@@ -185,18 +209,22 @@ you get 403 errors after authenticating.
 
 ### API (`s160_api_auth`)
 
-On the first call to `s160_api_auth()`, you'll be prompted for:
+Credentials live in `~/.Renviron` and are read per environment:
 
-1. **User ID** -- your Survey160 API user ID.
-2. **API key** -- your Survey160 API key.
+1. **User ID** -- `S160_API_USERID` (shared across environments).
+2. **API key** -- a per-environment variable: `S160_PROD_API_KEY` for
+   prod (falling back to the legacy `S160_API_KEY` if unset), and
+   `S160_STAGING_API_KEY` for staging.
 
-Both are saved to `~/.Renviron` so you won't be asked again. Get
-these from your survey manager.
+Any missing value is prompted on the first `s160_api_auth(env)` call for
+that environment and saved to `~/.Renviron`, so you won't be asked
+again. Get these from your survey manager.
 
 ## End-to-end testing
 
-Runs against the QA environment with real GCS and API calls. Requires
-a cached OAuth token and API credentials in `~/.Renviron`.
+Runs against the staging environment with real GCS and API calls.
+Requires a cached OAuth token and `S160_API_USERID` +
+`S160_STAGING_API_KEY` in `~/.Renviron`.
 
 ```bash
 make e2e
@@ -209,8 +237,9 @@ Reset credentials (edit `~/.Renviron`, remove the relevant line, restart R):
 ```r
 file.edit("~/.Renviron")
 # S160_GCS_CLIENT_SECRET  -- GCS OAuth client secret
-# S160_API_USERID         -- API user ID
-# S160_API_KEY            -- API key
+# S160_API_USERID         -- API user ID (all environments)
+# S160_PROD_API_KEY       -- prod API key (or legacy S160_API_KEY)
+# S160_STAGING_API_KEY    -- staging API key
 ```
 
 Clear cached OAuth tokens:

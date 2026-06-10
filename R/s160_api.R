@@ -2,22 +2,77 @@
 #
 # Auth strategy: API key-based service account authentication.
 #
-# Credentials (S160_API_USERID, S160_API_KEY) are read from ~/.Renviron.
-# On first interactive run, the user is prompted and values are saved
-# automatically.
+# Credentials are read from ~/.Renviron: S160_API_USERID for the user, and an
+# environment-specific API key (S160_STAGING_API_KEY for staging;
+# S160_PROD_API_KEY, falling back to the legacy S160_API_KEY, for prod). On
+# first interactive run, missing values are prompted and saved automatically.
 #
 # JWT refresh: Access tokens expire after 10 minutes. Rather than
 # implementing a refresh token flow, we re-authenticate with the stored
 # API key when the JWT is older than 8 minutes.
+#
+# Connections: a "connection" is an environment holding one authenticated
+# session's state (jwt, userid, api_key, base_url, env, and the paired GCS
+# bucket). The package owns one default connection (.s160_api_env) that every
+# API function defaults to. Each s160_api_auth() call builds a fresh, independent
+# connection AND mirrors it into the default, so a caller can either ignore the
+# return value (single environment -- conn-less calls use the latest auth) or
+# capture it and pass `conn =` to hold prod and staging live at once.
 
 # --- Internal state -----------------------------------------------------------
 
+# The default connection. s160_api_auth() authenticates into this one; all API
+# functions default `conn` to it.
 .s160_api_env <- new.env(parent = emptyenv())
 
-check_api_ready <- function() {
-  if (is.null(.s160_api_env$jwt) || .s160_api_env$jwt == "") {
+check_api_ready <- function(conn = NULL) {
+  conn <- conn %||% .s160_api_env
+  if (is.null(conn$jwt) || conn$jwt == "") {
     stop("API not initialized. Run s160_api_auth() first.", call. = FALSE)
   }
+}
+
+# POST service-account credentials and store the resulting JWT (and its
+# provenance) into `conn`. Shared by s160_api_auth() (which builds the fresh
+# connection) and the in-session refresh in s160_api_request() (re-auth into
+# whichever connection issued the request). Stashing userid/api_key on `conn`
+# is what lets the refresh reuse the exact credentials that authenticated the
+# session rather than re-reading the environment -- critical when a connection
+# points at a non-default environment.
+api_do_auth <- function(conn, base_url, userid, api_key) {
+  # Defensive: s160_api_auth resolves these before calling, but the refresh path
+  # reuses whatever is stored on `conn`, so guard against a half-built
+  # connection rather than POSTing "ApiKey " / userid = NULL / a relative URL.
+  validate_required_cred(userid, "userid")
+  validate_required_cred(api_key, "api_key")
+  validate_required_cred(base_url, "base_url")
+  base_url <- sub("/$", "", trimws(base_url))
+
+  url <- paste0(base_url, "/auth/serviceAccount")
+  resp <- httr::POST(
+    url,
+    httr::add_headers(Authorization = paste("ApiKey", api_key)),
+    httr::content_type_json(),
+    body = list(userid = userid),
+    encode = "json"
+  )
+
+  if (httr::http_error(resp)) {
+    stop(sprintf("Authentication failed: %s", http_error_message(resp)),
+         call. = FALSE)
+  }
+
+  parsed <- httr::content(resp, as = "parsed")
+  if (!is.list(parsed) || !isTRUE(parsed$success) || is.null(parsed$data)) {
+    stop("Authentication failed: unexpected response format.", call. = FALSE)
+  }
+
+  conn$jwt <- parsed$data
+  conn$userid <- userid
+  conn$api_key <- api_key
+  conn$base_url <- base_url
+  conn$auth_time <- Sys.time()
+  invisible(conn)
 }
 
 # Read a credential from env, prompting interactively if missing
@@ -37,18 +92,74 @@ get_credential <- function(var_name, prompt_msg, secret = FALSE) {
   prompt_and_save_renviron(var_name, prompt_msg, secret = secret) # nocov # nolint object_usage_linter.
 }
 
-# Authenticated HTTP request with auto JWT refresh
-s160_api_request <- function(method, path, body = NULL) {
-  check_api_ready()
+# Validate a credential is a single non-empty string -- used at the point where
+# it is about to be sent (api_do_auth), guarding against a half-built
+# connection.
+validate_required_cred <- function(x, name) {
+  if (!is.character(x) || length(x) != 1L || !nzchar(trimws(x))) {
+    stop(sprintf("%s must be a non-empty string.", name), call. = FALSE)
+  }
+  x
+}
 
-  # Re-auth if JWT is older than 8 minutes
-  elapsed <- as.numeric(difftime(Sys.time(), .s160_api_env$auth_time, units = "secs"))
+# Extract a single human-readable error message from an httr error response.
+# The API normally returns {"error": "..."}, but a gateway/proxy can return
+# HTML or a multi-element body; coerce defensively to one string (the
+# length != 1 guard short-circuits before nzchar() would choke on a vector) and
+# fall back to the HTTP status text.
+http_error_message <- function(resp) {
+  msg <- tryCatch(
+    httr::content(resp, as = "parsed")$error,
+    error = function(e) NULL
+  )
+  if (is.null(msg) || !is.character(msg) || length(msg) != 1L || !nzchar(msg)) {
+    msg <- httr::http_status(resp)$message
+  }
+  msg
+}
+
+# Copy every field of connection `src` into connection `dst` (both environments).
+# Used to mirror a freshly authenticated connection into the package default so
+# that conn-less calls track the most recent s160_api_auth().
+copy_connection <- function(src, dst) {
+  for (k in ls(src, all.names = TRUE)) {
+    assign(k, get(k, envir = src), envir = dst)
+  }
+  invisible(dst)
+}
+
+# Resolve an environment's API key from an ordered list of candidate env vars
+# (e.g. prod tries S160_PROD_API_KEY then falls back to S160_API_KEY). When none
+# is set, defer to get_credential on the canonical variable so the first-run
+# interactive prompt + save still works (and a clear error in non-interactive
+# mode).
+resolve_env_api_key <- function(candidates, prompt_var) {
+  for (v in candidates) {
+    val <- Sys.getenv(v)
+    if (nzchar(trimws(val))) return(val)
+  }
+  get_credential(prompt_var,
+                 sprintf("Enter your Survey160 API key (%s).", prompt_var),
+                 secret = TRUE)
+}
+
+# Authenticated HTTP request with auto JWT refresh, against a given connection.
+s160_api_request <- function(method, path, body = NULL, conn = NULL) {
+  conn <- conn %||% .s160_api_env
+  check_api_ready(conn)
+
+  # Re-auth if JWT is older than 8 minutes, reusing the credentials stored on
+  # this connection (set by api_do_auth) rather than re-reading the
+  # environment. A connection authenticated via explicit params -- e.g. a
+  # staging connection while the default env points at prod -- must refresh
+  # against its own credentials, not the global S160_API_* vars.
+  elapsed <- as.numeric(difftime(Sys.time(), conn$auth_time, units = "secs"))
   if (elapsed > 480) {
-    s160_api_auth(base_url = .s160_api_env$base_url)
+    api_do_auth(conn, conn$base_url, conn$userid, conn$api_key)
   }
 
-  url <- paste0(.s160_api_env$base_url, path)
-  auth_header <- httr::add_headers(Authorization = .s160_api_env$jwt)
+  url <- paste0(conn$base_url, path)
+  auth_header <- httr::add_headers(Authorization = conn$jwt)
 
   if (method == "GET") {
     resp <- httr::GET(url, auth_header)
@@ -61,12 +172,8 @@ s160_api_request <- function(method, path, body = NULL) {
   }
 
   if (httr::http_error(resp)) {
-    msg <- tryCatch(
-      httr::content(resp, as = "parsed")$error,
-      error = function(e) NULL
-    )
-    if (is.null(msg) || !nzchar(msg)) msg <- httr::http_status(resp)$message
-    stop(sprintf("API error (%s %s): %s", method, path, msg), call. = FALSE)
+    stop(sprintf("API error (%s %s): %s", method, path,
+                 http_error_message(resp)), call. = FALSE)
   }
 
   httr::content(resp, as = "parsed")
@@ -74,68 +181,100 @@ s160_api_request <- function(method, path, body = NULL) {
 
 # --- Exported functions -------------------------------------------------------
 
-#' Authenticate to the Survey160 API
+#' Authenticate to a Survey160 environment and return a connection
 #'
-#' Reads service account credentials (\code{S160_API_USERID} and
-#' \code{S160_API_KEY}) from \code{~/.Renviron}. On first interactive run,
-#' prompts for both values and saves them automatically.
+#' One entry point, addressed by environment \emph{name} so the base URL, the
+#' campaign-results GCS bucket, and the API key are resolved together and cannot
+#' be mismatched. It authenticates and returns a \emph{connection} -- an opaque
+#' handle holding the JWT, credentials, base URL, environment name, and paired
+#' bucket. How you use the return value gives single- or multi-environment
+#' behaviour from the same call:
 #'
-#' @param base_url API base URL. Defaults to
-#'   \code{"https://api.survey160.com"}.
-#' @return Invisible NULL. Stores JWT as side effect.
+#' \itemize{
+#'   \item \strong{Single environment}: ignore the return value. The call also
+#'     refreshes the package's default connection, so subsequent
+#'     \code{\link{s160_api_campaign_results}} / \code{\link{s160_api_campaign_get}}
+#'     calls with no \code{conn} use it. \code{s160_api_auth(); df <-
+#'     s160_api_campaign_results(744)}.
+#'   \item \strong{Both environments at once}: capture each connection and pass
+#'     it as \code{conn =}. \code{prod <- s160_api_auth("prod"); stg <-
+#'     s160_api_auth("staging")}, then \code{s160_api_campaign_results(744, conn
+#'     = stg)}. Each connection is independent, so prod and staging can be held
+#'     live in the same session -- e.g. to compare a campaign across both.
+#' }
+#'
+#' Credentials come from \code{~/.Renviron} (never typed into code): the user ID
+#' from \code{S160_API_USERID}, and the API key from a per-environment variable
+#' -- \code{S160_STAGING_API_KEY} for staging, and \code{S160_PROD_API_KEY} (or,
+#' as a fallback, the legacy \code{S160_API_KEY}) for prod. Missing values prompt
+#' once on an interactive run and are saved.
+#'
+#' The in-session JWT refresh (tokens expire after 10 minutes; re-auth at 8)
+#' reuses the credentials stored on the connection, so a staging connection held
+#' alongside prod keeps refreshing against staging rather than the default.
+#'
+#' @param env Environment name: \code{"prod"} (default) or \code{"staging"}.
+#' @return A connection object (an environment) to pass as \code{conn}, returned
+#'   invisibly. As a side effect, the package's default connection is updated to
+#'   this one so conn-less calls use the most recent authentication.
 #' @examples
 #' \dontrun{
-#' s160_api_auth()
+#' # Single environment -- ignore the return, use the default connection:
+#' s160_api_auth()                     # defaults to prod
+#' df <- s160_api_campaign_results(744)
+#'
+#' # Both environments at once -- capture each, pass conn =:
+#' s160_gcs_init(bucket = "campaign_results")  # one GCS auth covers all buckets
+#' prod <- s160_api_auth("prod")
+#' stg  <- s160_api_auth("staging")
+#' df_prod <- s160_api_campaign_results(744, conn = prod)
+#' df_stg  <- s160_api_campaign_results(744, conn = stg)
 #' }
 #' @importFrom httr GET POST add_headers content_type_json content http_error http_status
 #' @export
-s160_api_auth <- function(base_url = "https://api.survey160.com") {
-  if (!is.character(base_url) || length(base_url) != 1 || !nzchar(trimws(base_url))) {
-    stop("base_url must be a non-empty string.", call. = FALSE)
-  }
+s160_api_auth <- function(env = c("prod", "staging")) {
+  env <- match.arg(env)
+  cfg <- list(
+    prod = list(
+      url = "https://api.survey160.com", bucket = "campaign_results",
+      key_candidates = c("S160_PROD_API_KEY", "S160_API_KEY"),
+      key_prompt = "S160_PROD_API_KEY"
+    ),
+    staging = list(
+      url = "https://staging-api.survey160.com", bucket = "campaign_results_staging",
+      key_candidates = "S160_STAGING_API_KEY", key_prompt = "S160_STAGING_API_KEY"
+    )
+  )[[env]]
 
   userid <- get_credential(
     "S160_API_USERID",
     "Enter your Survey160 API user ID (ask your survey manager)."
   )
-  api_key <- get_credential(
-    "S160_API_KEY",
-    "Enter your Survey160 API key (ask your survey manager).",
-    secret = TRUE
-  )
+  api_key <- resolve_env_api_key(cfg$key_candidates, cfg$key_prompt)
 
-  base_url <- sub("/$", "", trimws(base_url))
+  # Build an independent connection so prod and staging can coexist in one
+  # session, then mirror it into the package default so conn-less calls track
+  # the most recent authentication.
+  conn <- new.env(parent = emptyenv())
+  conn$env <- env
+  conn$bucket <- cfg$bucket
+  api_do_auth(conn, cfg$url, userid, api_key)
+  # Class the handle so it prints as an opaque connection (masking the key)
+  # rather than a bare <environment>. The mirrored default stays unclassed.
+  class(conn) <- c("s160_api_conn", "environment")
+  copy_connection(conn, .s160_api_env)
 
-  url <- paste0(base_url, "/auth/serviceAccount")
-  resp <- httr::POST(
-    url,
-    httr::add_headers(Authorization = paste("ApiKey", api_key)),
-    httr::content_type_json(),
-    body = list(userid = userid),
-    encode = "json"
-  )
+  message(sprintf("API authenticated (%s).", env))
+  invisible(conn)
+}
 
-  if (httr::http_error(resp)) {
-    msg <- tryCatch(
-      httr::content(resp, as = "parsed")$error,
-      error = function(e) NULL
-    )
-    if (is.null(msg) || !nzchar(msg)) msg <- httr::http_status(resp)$message
-    stop(sprintf("Authentication failed: %s", msg), call. = FALSE)
-  }
-
-  parsed <- httr::content(resp, as = "parsed")
-  if (!isTRUE(parsed$success) || is.null(parsed$data)) {
-    stop("Authentication failed: unexpected response format.", call. = FALSE)
-  }
-
-  .s160_api_env$jwt <- parsed$data
-  .s160_api_env$userid <- userid
-  .s160_api_env$base_url <- base_url
-  .s160_api_env$auth_time <- Sys.time()
-
-  message("API authenticated.")
-  invisible(NULL)
+#' @export
+print.s160_api_conn <- function(x, ...) {
+  cat(sprintf("<survey160 API connection: %s -> %s>\n",
+              x$env %||% "?", x$base_url %||% "?"))
+  cat("  credentials: present (hidden)\n")
+  if (!is.null(x$bucket)) cat(sprintf("  bucket: %s\n", x$bucket))
+  invisible(x)
 }
 
 #' Download campaign results via API
@@ -153,6 +292,11 @@ s160_api_auth <- function(base_url = "https://api.survey160.com") {
 #'   this value, capped at this value.
 #' @param destdir Directory to save the downloaded CSV. \code{NULL} (default)
 #'   uses a temporary file.
+#' @param conn Connection to use. Defaults to the package's default connection
+#'   (the most recent \code{\link{s160_api_auth}}). Pass a connection returned by
+#'   \code{\link{s160_api_auth}} to target a specific environment; the export
+#'   trigger, the completion poll, and the CSV read all use that connection's
+#'   environment and paired GCS bucket.
 #' @param ... Additional arguments passed to \code{read.csv()}.
 #' @return A data frame with one row per survey response.
 #' @examples
@@ -161,13 +305,21 @@ s160_api_auth <- function(base_url = "https://api.survey160.com") {
 #' s160_api_auth()
 #' df <- s160_api_campaign_results(1980)
 #' df <- s160_api_campaign_results(1980, filter_open = TRUE, timeout = 600)
+#'
+#' # Compare the same campaign across two environments concurrently:
+#' prod <- s160_api_auth("prod")
+#' stg  <- s160_api_auth("staging")
+#' df_prod <- s160_api_campaign_results(744, conn = prod)
+#' df_stg  <- s160_api_campaign_results(744, conn = stg)
 #' }
 #' @importFrom googleCloudStorageR gcs_list_objects
 #' @export
 s160_api_campaign_results <- function(campaign_id, filter_open = FALSE,
                                       timeout = 300, poll_interval = 5,
-                                      destdir = NULL, ...) {
-  check_api_ready()
+                                      destdir = NULL, conn = NULL,
+                                      ...) {
+  conn <- conn %||% .s160_api_env
+  check_api_ready(conn)
   check_gcs_ready()
   campaign_id <- validate_campaign_id(campaign_id)
 
@@ -181,15 +333,29 @@ s160_api_campaign_results <- function(campaign_id, filter_open = FALSE,
 
   export_filename <- paste0(campaign_id, "_raw_data_download.csv")
 
+  # The export trigger, the completion poll, and the read all target this
+  # connection's GCS bucket, which s160_api_auth() pairs with the environment.
+  # `bucket` is only NULL for a connection not built by s160_api_auth() (a
+  # hand-constructed env, or a test seed); that path falls back to the global
+  # bucket set by s160_gcs_init().
+  bucket <- conn$bucket
+  poll_updated <- function() {
+    if (is.null(bucket)) {
+      get_gcs_file_updated(campaign_id, export_filename)
+    } else {
+      get_gcs_file_updated(campaign_id, export_filename, bucket = bucket)
+    }
+  }
+
   # Step 1: Get baseline GCS timestamp
-  baseline_updated <- get_gcs_file_updated(campaign_id, export_filename)
+  baseline_updated <- poll_updated()
 
   # Step 2: Trigger export
   s160_api_request("POST", "/startCampaignResultsExport", body = list(
     campaignid = as.integer(campaign_id),
-    userid = .s160_api_env$userid,
+    userid = conn$userid,
     filterOpen = filter_open
-  ))
+  ), conn = conn)
   message("Export triggered. Polling GCS for completion...")
 
   # Step 3: Poll GCS until timestamp changes
@@ -199,11 +365,12 @@ s160_api_campaign_results <- function(campaign_id, filter_open = FALSE,
     Sys.sleep(interval)
     elapsed <- elapsed + interval
 
-    current_updated <- get_gcs_file_updated(campaign_id, export_filename)
+    current_updated <- poll_updated()
     if (!is.null(current_updated) &&
           (is.null(baseline_updated) || current_updated != baseline_updated)) {
       message("Export complete.")
-      return(s160_gcs_campaign_results_read(campaign_id, destdir = destdir, ...)) # nolint object_usage_linter
+      return(s160_gcs_campaign_results_read(campaign_id, destdir = destdir, # nolint object_usage_linter
+                                            bucket = bucket, ...))
     }
 
     interval <- min(interval * 2, poll_interval)
@@ -234,6 +401,9 @@ s160_api_campaign_results <- function(campaign_id, filter_open = FALSE,
 #' A batch variant would need a backend extension and is out of scope.
 #'
 #' @param campaign_id Campaign ID (numeric or character).
+#' @param conn Connection to use. Defaults to the package's default connection
+#'   (the most recent \code{\link{s160_api_auth}}). Pass a connection returned by
+#'   \code{\link{s160_api_auth}} to target a specific environment.
 #' @return A single-row data frame. Scalar columns are scalar; ISO-8601
 #'   timestamp columns are coerced to \code{POSIXct} in UTC; JSON columns
 #'   are list-columns of length 1.
@@ -245,13 +415,14 @@ s160_api_campaign_results <- function(campaign_id, filter_open = FALSE,
 #' info$script[[1]]  # parsed JSON
 #' }
 #' @export
-s160_api_campaign_get <- function(campaign_id) {
-  check_api_ready()
+s160_api_campaign_get <- function(campaign_id, conn = NULL) {
+  conn <- conn %||% .s160_api_env
+  check_api_ready(conn)
   campaign_id <- validate_campaign_id(campaign_id)
 
   path <- paste0("/campaigns/", campaign_id)
   resp <- tryCatch(
-    s160_api_request("GET", path),
+    s160_api_request("GET", path, conn = conn),
     error = function(e) {
       msg <- conditionMessage(e)
       # The endpoint returns HTTP 400 with {"success":"false"} when no row is
@@ -315,11 +486,18 @@ s160_api_campaign_get <- function(campaign_id) {
 # --- Internal helpers ---------------------------------------------------------
 
 # Get the GCS `updated` timestamp for a specific export file.
-# Returns NULL if the file does not exist.
-get_gcs_file_updated <- function(campaign_id, filename) {
+# Returns NULL if the file does not exist. `bucket` defaults to NULL, which
+# lists against the global bucket (set by s160_gcs_init); a connection with a
+# paired bucket passes it explicitly so the poll targets the same environment
+# as the export it triggered.
+get_gcs_file_updated <- function(campaign_id, filename, bucket = NULL) {
   prefix <- paste0(campaign_id, "/")
   objects <- tryCatch(
-    gcs_list_objects(prefix = prefix),
+    if (is.null(bucket)) {
+      gcs_list_objects(prefix = prefix)
+    } else {
+      gcs_list_objects(prefix = prefix, bucket = bucket)
+    },
     error = function(e) NULL
   )
 

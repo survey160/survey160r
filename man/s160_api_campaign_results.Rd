@@ -10,6 +10,7 @@ s160_api_campaign_results(
   timeout = 300,
   poll_interval = 5,
   destdir = NULL,
+  conn = NULL,
   ...
 )
 }
@@ -28,6 +29,12 @@ this value, capped at this value.}
 \item{destdir}{Directory to save the downloaded CSV. \code{NULL} (default)
 uses a temporary file.}
 
+\item{conn}{Connection to use. Defaults to the package's default connection
+(the most recent \code{\link{s160_api_auth}}). Pass a connection returned by
+\code{\link{s160_api_auth}} to target a specific environment; the export
+trigger, the completion poll, and the CSV read all use that connection's
+environment and paired GCS bucket.}
+
 \item{...}{Additional arguments passed to \code{read.csv()}.}
 }
 \value{
@@ -44,5 +51,11 @@ s160_gcs_init(bucket = "campaign_results")
 s160_api_auth()
 df <- s160_api_campaign_results(1980)
 df <- s160_api_campaign_results(1980, filter_open = TRUE, timeout = 600)
+
+# Compare the same campaign across two environments concurrently:
+prod <- s160_api_auth("prod")
+stg  <- s160_api_auth("staging")
+df_prod <- s160_api_campaign_results(744, conn = prod)
+df_stg  <- s160_api_campaign_results(744, conn = stg)
 }
 }
