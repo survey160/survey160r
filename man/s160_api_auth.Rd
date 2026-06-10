@@ -2,24 +2,61 @@
 % Please edit documentation in R/s160_api.R
 \name{s160_api_auth}
 \alias{s160_api_auth}
-\title{Authenticate to the Survey160 API}
+\title{Authenticate to a Survey160 environment and return a connection}
 \usage{
-s160_api_auth(base_url = "https://api.survey160.com")
+s160_api_auth(env = c("prod", "staging"))
 }
 \arguments{
-\item{base_url}{API base URL. Defaults to
-\code{"https://api.survey160.com"}.}
+\item{env}{Environment name: \code{"prod"} (default) or \code{"staging"}.}
 }
 \value{
-Invisible NULL. Stores JWT as side effect.
+A connection object (an environment) to pass as \code{conn}, returned
+  invisibly. As a side effect, the package's default connection is updated to
+  this one so conn-less calls use the most recent authentication.
 }
 \description{
-Reads service account credentials (\code{S160_API_USERID} and
-\code{S160_API_KEY}) from \code{~/.Renviron}. On first interactive run,
-prompts for both values and saves them automatically.
+One entry point, addressed by environment \emph{name} so the base URL, the
+campaign-results GCS bucket, and the API key are resolved together and cannot
+be mismatched. It authenticates and returns a \emph{connection} -- an opaque
+handle holding the JWT, credentials, base URL, environment name, and paired
+bucket. How you use the return value gives single- or multi-environment
+behaviour from the same call:
+}
+\details{
+\itemize{
+  \item \strong{Single environment}: ignore the return value. The call also
+    refreshes the package's default connection, so subsequent
+    \code{\link{s160_api_campaign_results}} / \code{\link{s160_api_campaign_get}}
+    calls with no \code{conn} use it. \code{s160_api_auth(); df <-
+    s160_api_campaign_results(744)}.
+  \item \strong{Both environments at once}: capture each connection and pass
+    it as \code{conn =}. \code{prod <- s160_api_auth("prod"); stg <-
+    s160_api_auth("staging")}, then \code{s160_api_campaign_results(744, conn
+    = stg)}. Each connection is independent, so prod and staging can be held
+    live in the same session -- e.g. to compare a campaign across both.
+}
+
+Credentials come from \code{~/.Renviron} (never typed into code): the user ID
+from \code{S160_API_USERID}, and the API key from a per-environment variable
+-- \code{S160_STAGING_API_KEY} for staging, and \code{S160_PROD_API_KEY} (or,
+as a fallback, the legacy \code{S160_API_KEY}) for prod. Missing values prompt
+once on an interactive run and are saved.
+
+The in-session JWT refresh (tokens expire after 10 minutes; re-auth at 8)
+reuses the credentials stored on the connection, so a staging connection held
+alongside prod keeps refreshing against staging rather than the default.
 }
 \examples{
 \dontrun{
-s160_api_auth()
+# Single environment -- ignore the return, use the default connection:
+s160_api_auth()                     # defaults to prod
+df <- s160_api_campaign_results(744)
+
+# Both environments at once -- capture each, pass conn =:
+s160_gcs_init(bucket = "campaign_results")  # one GCS auth covers all buckets
+prod <- s160_api_auth("prod")
+stg  <- s160_api_auth("staging")
+df_prod <- s160_api_campaign_results(744, conn = prod)
+df_stg  <- s160_api_campaign_results(744, conn = stg)
 }
 }

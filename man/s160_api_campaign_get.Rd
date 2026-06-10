@@ -4,10 +4,14 @@
 \alias{s160_api_campaign_get}
 \title{Read a single campaign's attributes}
 \usage{
-s160_api_campaign_get(campaign_id)
+s160_api_campaign_get(campaign_id, conn = .s160_api_env)
 }
 \arguments{
 \item{campaign_id}{Campaign ID (numeric or character).}
+
+\item{conn}{Connection to use. Defaults to the package's default connection
+(the most recent \code{\link{s160_api_auth}}). Pass a connection returned by
+\code{\link{s160_api_auth}} to target a specific environment.}
 }
 \value{
 A single-row data frame. Scalar columns are scalar; ISO-8601
