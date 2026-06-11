@@ -1,5 +1,7 @@
 # survey160r (development version)
 
+# survey160r 0.16.0
+
 ## New features
 
 * **Faster CSV reads via `data.table::fread`.** `s160_read_csv()` and
@@ -30,25 +32,55 @@
   setting `source_csv_hash = NA`. Useful for large local backfills where
   the per-file hash is not needed.
 
+# survey160r 0.15.1
+
+## New features
+
+* **Three-way `survey_mode` (SUR-1368).** Adds a third `survey_mode`
+  value `"t2w_external"` -- a personalized survey link in the close
+  message but no web completes (external platform, no webhook).
+  Completion is not computable from the export, so `n_completed` is
+  `NA` (`n_texted` / `n_consented` remain valid). A "survey link" is
+  detected as a personalized URL in the close message (one that varies
+  per respondent); a single static stimulus link (e.g. a shared video
+  URL) is not.
+
+# survey160r 0.15.0
+
+## New features
+
 * **Text-to-Web support + `survey_mode` column (SUR-1368).**
-  `consolidated` gains a per-campaign `survey_mode` column with three
-  values, classified from the source CSV:
+  `consolidated` gains a per-campaign `survey_mode` column, classified
+  from the source CSV:
   * `"t2w"` -- web completes present; `n_completed` counts the
     `web_complete` callback (not `id.close.scriptDate`, which for
     Text-to-Web is just the link sent to every consenter and overstated
     completion 2-7x, making `n_completed == n_consented`).
-  * `"t2w_external"` -- a personalized survey link in the close message
-    but no web completes (external platform, no webhook). Completion is
-    not computable from the export, so `n_completed` is `NA`
-    (`n_texted` / `n_consented` remain valid).
   * `"sms"` -- no web completes and no survey link; live SMS, completes
     on `id.close.scriptDate` (unchanged).
 
-  A "survey link" is detected as a personalized URL in the close message
-  (one that varies per respondent); a single static stimulus link (e.g.
-  a shared video URL) is not. The authoritative campaign flag
-  (`campaigns.use_web_completes`) is not in the CSV export, so this is a
-  data-only heuristic.
+  The authoritative campaign flag (`campaigns.use_web_completes`) is not
+  in the CSV export, so this is a data-only heuristic.
+
+# survey160r 0.14.1
+
+## Bug fixes
+
+* `pct_le` is now always a numeric (double) column, even when a
+  campaign has no valid latency cells and every value is NA. The
+  populated assembly path took `pct_le` straight from the joined
+  frame without the `as.numeric()` coercion its sibling numeric
+  columns use, so an all-NA join result collapsed to a logical
+  vector. Downstream the fleet writer casts this column to a
+  float64 Arrow schema; a logical vector failed that cast
+  (`Invalid: cannot convert`) and silently dropped the campaign's
+  Parquet output. Affected campaigns are valid but degenerate --
+  every recipient hit a carrier delivery error or sat in limbo, so
+  none produced a measurable latency delta (SUR-1365).
+
+# survey160r 0.14.0
+
+## New features
 
 * `consolidated` now carries four denormalised **summary metrics**
   columns (Phase 1 PR 4, spec §4): `n_texted`, `n_consented`,
@@ -95,32 +127,6 @@
   avoids the case where a date_filter that excludes everyone still
   emits summary rows for the excluded dates.
 
-## Bug fixes
-
-* `diagnostics$respondent_summary` cascade percentages
-  (`pct_clean_at_5min`, `pct_worst_in_5_to_10`, `pct_worst_over_10`) are now
-  computed over the *measured* respondents (those with at least one valid
-  Delta), matching `respondent_summary$n_respondents`. They previously
-  divided by every observed respondent, including those with no valid
-  segment, so the buckets were deflated by the no-valid fraction and summed
-  to less than 100% -- and `n_respondents * pct / 100` did not recover a
-  respondent count. The consolidated cascade and legacy-parity definitions
-  already used the measured-respondent denominator; the diagnostics summary
-  now agrees. When no respondent has a valid segment the percentages are
-  `NA` (as on the empty-frame path) rather than `0`.
-
-* `pct_le` is now always a numeric (double) column, even when a
-  campaign has no valid latency cells and every value is NA. The
-  populated assembly path took `pct_le` straight from the joined
-  frame without the `as.numeric()` coercion its sibling numeric
-  columns use, so an all-NA join result collapsed to a logical
-  vector. Downstream the fleet writer casts this column to a
-  float64 Arrow schema; a logical vector failed that cast
-  (`Invalid: cannot convert`) and silently dropped the campaign's
-  Parquet output. Affected campaigns are valid but degenerate --
-  every recipient hit a carrier delivery error or sat in limbo, so
-  none produced a measurable latency delta (SUR-1365).
-
 # survey160r 0.13.0
 
 ## Breaking changes
@@ -166,6 +172,8 @@
   downstream; existing consumers that read columns by name are
   unaffected.
 
+# survey160r 0.11.0
+
 ## Breaking changes
 
 * The package is now algorithm-only. Fleet orchestration, GCS writes, and
@@ -205,6 +213,34 @@
 * `future`, `future.apply`, `duckdb`, and `DBI` leave Suggests. `arrow`
   leaves Imports (no remaining call sites in this package).
 
+# survey160r 0.10.1
+
+## Internal
+
+* Cleanup pass on the latency internals: unified Survey160 CSV timestamp
+  parsing behind `parse_s160_timestamps_chr()`, added a `safe_pct()` helper
+  for the "percent of X, NA if denominator is zero" pattern, encapsulated
+  the data + parse-failed-mask plumbing behind `subset_parsed_input()`,
+  extracted `classify_na_reason()` from the segment loop, and split
+  `aggregate_consolidated()` into per-aggregation helpers
+  (`aggregate_totals()`, `aggregate_worst_cascade()`,
+  `aggregate_segment_cells()`, `assemble_consolidated()`). Numeric output
+  is unchanged; the refactor only reshapes the call graph (SUR-1305).
+
+# survey160r 0.10.0
+
+## New features
+
+* Parallel fleet runs and skip-unchanged campaigns (SUR-1305, #20).
+  `run_latency_all()` parallelizes per-campaign processing and skips
+  campaigns whose source CSV is unchanged since the last run.
+  (`run_latency_all()` itself is later removed in 0.11.0, when fleet
+  orchestration moved to survey160-shiny.)
+
+# survey160r 0.9.0
+
+## Breaking changes
+
 * The consolidated frame now carries **two grains** in one file: hour
   rows (one per `(campaign_id, date, hour_local, segment, threshold_min)`
   with `hour_local` 0-23) for time-of-day analysis, plus day rollup rows
@@ -233,18 +269,6 @@
   `windows_normalized_utc` are dropped along with the feature.
   `latency_build_config()` and `latency_run()` no longer accept a
   `texting_windows` argument (SUR-1304).
-
-## Internal
-
-* Cleanup pass on the latency internals: unified Survey160 CSV timestamp
-  parsing behind `parse_s160_timestamps_chr()`, added a `safe_pct()` helper
-  for the "percent of X, NA if denominator is zero" pattern, encapsulated
-  the data + parse-failed-mask plumbing behind `subset_parsed_input()`,
-  extracted `classify_na_reason()` from the segment loop, and split
-  `aggregate_consolidated()` into per-aggregation helpers
-  (`aggregate_totals()`, `aggregate_worst_cascade()`,
-  `aggregate_segment_cells()`, `assemble_consolidated()`). Numeric output
-  is unchanged; the refactor only reshapes the call graph (SUR-1305).
 
 # survey160r 0.8.0
 
@@ -346,12 +370,30 @@
   TRUE/FALSE needed". A non-numeric size is now treated as "unknown" and
   the download proceeds without verification. Discovered while running
   `run_latency` against the production `campaign_results` bucket (SUR-1299).
+
+## Documentation
+
+* Declare `R (>= 4.1)` in `DESCRIPTION` to match what the current `arrow`,
+  `dplyr`, and `lubridate` imports already require.
+* README latency YAML example sets `respondent_id_column: ~` instead of
+  the misleading `userid`, which in Survey160 v2 CSVs is the agent login
+  rather than a per-respondent identifier.
+* README first-time-setup notes that producing latency outputs requires
+  Storage Object Creator on the destination analytics bucket, in addition
+  to Storage Object Viewer on the source bucket.
+
+# survey160r 0.7.1
+
+## Bug fixes
+
 * `s160_api_campaign_get()` now strips sub-second precision when parsing
   ISO-8601 timestamp columns, so values like
   `"2026-01-15T09:30:00.123456Z"` (which PostgreSQL can emit) come back as
   `POSIXct` rather than falling through to the string fallback. Numeric UTC
   offsets (`+05:30`, `-0400`) are also covered. The `httr::GET` import is
-  now declared explicitly to match the other `httr` imports.
+  now declared explicitly to match the other `httr` imports (SUR-1253).
+
+# survey160r 0.7.0
 
 ## New features
 
@@ -369,16 +411,8 @@
 
 ## Documentation
 
-* Declare `R (>= 4.1)` in `DESCRIPTION` to match what the current `arrow`,
-  `dplyr`, and `lubridate` imports already require.
 * `RELEASING.md` clarifies that the release tag must point at the release
   PR's merge SHA, not `HEAD` (#14).
-* README latency YAML example sets `respondent_id_column: ~` instead of
-  the misleading `userid`, which in Survey160 v2 CSVs is the agent login
-  rather than a per-respondent identifier.
-* README first-time-setup notes that producing latency outputs requires
-  Storage Object Creator on the destination analytics bucket, in addition
-  to Storage Object Viewer on the source bucket.
 
 # survey160r 0.6.0
 
