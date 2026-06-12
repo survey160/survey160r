@@ -1,6 +1,6 @@
 # survey160r (development version)
 
-# survey160r 0.16.0
+# survey160r 0.17.0
 
 ## New features
 
@@ -30,6 +30,26 @@
   **Breaking:** `s160_api_auth()` no longer takes a `base_url` argument (use
   `env`) and now returns a connection object (invisibly) instead of `NULL`;
   existing zero-argument single-environment calls are unaffected.
+
+# survey160r 0.16.1
+
+## Bug fixes
+
+* `diagnostics$respondent_summary` cascade percentages
+  (`pct_clean_at_5min`, `pct_worst_in_5_to_10`, `pct_worst_over_10`) are now
+  computed over the *measured* respondents (those with at least one valid
+  Delta), matching `respondent_summary$n_respondents`. They previously
+  divided by every observed respondent, including those with no valid
+  segment, so the buckets were deflated by the no-valid fraction and summed
+  to less than 100% -- and `n_respondents * pct / 100` did not recover a
+  respondent count. The consolidated cascade and legacy-parity definitions
+  already used the measured-respondent denominator; the diagnostics summary
+  now agrees. When no respondent has a valid segment the percentages are
+  `NA` (as on the empty-frame path) rather than `0`.
+
+# survey160r 0.16.0
+
+## New features
 
 * **Faster CSV reads via `data.table::fread`.** `s160_read_csv()` and
   `s160_gcs_campaign_results_read()` now read through `data.table::fread`
