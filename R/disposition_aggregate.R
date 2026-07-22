@@ -1,7 +1,7 @@
-# Per-respondent disposition frame (SUR-1512, epic SUR-1359 "Disposition Table").
+# Per-respondent disposition frame for the Disposition Table.
 #
-# Turns one campaign's per-respondent results CSV into the disposition frame
-# defined by SUR-1518: one row per phone carrying 0/1 funnel flags plus the
+# Turns one campaign's per-respondent results CSV into the disposition frame:
+# one row per phone carrying 0/1 funnel flags plus the
 # campaign's survey mode. This is the algorithm-only half of the disposition
 # pipeline. GCS reads, the pinned Parquet schema, the Tracker-sourced
 # (loi/topic) and NA-filled (error/date_closed_on) columns, and the writer all
@@ -71,7 +71,7 @@
   !is.na(wc_int) & wc_int == 1L
 }
 
-# complete: survey-mode dependent (SUR-1368).
+# complete: survey-mode dependent.
 #   t2w          -> the web_complete callback
 #   sms          -> reaching id.close.scriptDate
 #   t2w_external -> not computable (external platform, no webhook) -> NA
@@ -114,7 +114,7 @@ empty_disposition_frame <- function() {
 #' Build the per-respondent disposition frame for one campaign
 #'
 #' Turns an in-memory campaign results CSV (one row per respondent) into the
-#' per-respondent disposition frame defined by SUR-1518: one row per phone,
+#' per-respondent disposition frame: one row per phone,
 #' with 0/1 funnel flags (\code{started}, \code{engaged}, \code{opt_in},
 #' \code{complete}, \code{web_complete}, \code{terminated}) and the campaign's
 #' \code{mode}. Pure function, no I/O -- pair with \code{s160_gcs_pull_csv()}
@@ -127,7 +127,7 @@ empty_disposition_frame <- function() {
 #' campaign export, so the function stops if it finds a duplicate phone rather
 #' than silently collapsing rows.
 #'
-#' The \code{complete} flag is survey-mode dependent (SUR-1368): for a
+#' The \code{complete} flag is survey-mode dependent: for a
 #' \code{t2w} campaign it is the \code{web_complete} callback; for \code{sms} it
 #' is reaching \code{id.close.scriptDate}; for \code{t2w_external} it is not
 #' computable and is \code{NA} for every row. Mode is classified per campaign by

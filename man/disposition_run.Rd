@@ -28,7 +28,7 @@ A data frame with one row per respondent and columns \code{phone}
 }
 \description{
 Turns an in-memory campaign results CSV (one row per respondent) into the
-per-respondent disposition frame defined by SUR-1518: one row per phone,
+per-respondent disposition frame: one row per phone,
 with 0/1 funnel flags (\code{started}, \code{engaged}, \code{opt_in},
 \code{complete}, \code{web_complete}, \code{terminated}) and the campaign's
 \code{mode}. Pure function, no I/O -- pair with \code{s160_gcs_pull_csv()}
@@ -42,7 +42,7 @@ Grain: one row per \code{(phone, campaign_id)}. Phone is unique within a
 campaign export, so the function stops if it finds a duplicate phone rather
 than silently collapsing rows.
 
-The \code{complete} flag is survey-mode dependent (SUR-1368): for a
+The \code{complete} flag is survey-mode dependent: for a
 \code{t2w} campaign it is the \code{web_complete} callback; for \code{sms} it
 is reaching \code{id.close.scriptDate}; for \code{t2w_external} it is not
 computable and is \code{NA} for every row. Mode is classified per campaign by

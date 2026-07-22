@@ -1,4 +1,4 @@
-# Coverage for R/disposition_aggregate.R (SUR-1512).
+# Coverage for R/disposition_aggregate.R.
 # Disposition frames are constructed inline -- the shared fixtures
 # (synthetic.csv) predate the disposition columns (phone, finalValue,
 # web_complete, ineligible/refusal), so they cannot exercise these masks.
