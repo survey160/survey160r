@@ -1,5 +1,19 @@
 # survey160r (development version)
 
+# survey160r 0.18.0
+
+## New features
+
+* **Disposition table transform.** `disposition_run(campaign_id, data)` turns a
+  campaign's per-respondent results CSV into the disposition frame defined by
+  SUR-1518: one row per phone with 0/1 funnel flags (`started`, `engaged`,
+  `opt_in`, `complete`, `web_complete`, `terminated`) plus the campaign's
+  `mode`. Grain is one row per `(phone, campaign_id)`, enforced with a
+  duplicate-phone guard. `complete` follows the survey-mode rule from SUR-1368
+  (`web_complete` for t2w, `id.close.scriptDate` for sms, `NA` for
+  t2w_external). Algorithm only -- the Parquet schema, writer, and
+  Tracker-sourced columns live in survey160-shiny (SUR-1512).
+
 # survey160r 0.17.0
 
 ## New features
