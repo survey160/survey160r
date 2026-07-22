@@ -50,7 +50,7 @@ computable and is \code{NA} for every row. Mode is classified per campaign by
 }
 \examples{
 \dontrun{
-data <- s160_gcs_pull_csv(2292)
-disp <- disposition_run(2292, data)
+data <- s160_gcs_pull_csv(1234)
+disp <- disposition_run(1234, data)
 }
 }

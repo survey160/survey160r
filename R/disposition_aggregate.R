@@ -149,8 +149,8 @@ empty_disposition_frame <- function() {
 #'   zero-row frame with the same columns.
 #' @examples
 #' \dontrun{
-#' data <- s160_gcs_pull_csv(2292)
-#' disp <- disposition_run(2292, data)
+#' data <- s160_gcs_pull_csv(1234)
+#' disp <- disposition_run(1234, data)
 #' }
 #' @export
 disposition_run <- function(campaign_id, data, population = NULL) {
