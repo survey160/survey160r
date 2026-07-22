@@ -49,8 +49,15 @@
 
 # opt_in: passed the population filter (default id.intro.finalText == "Yes")
 # AND was texted. Reuses population_filter_mask() so consent is defined exactly
-# as the latency view defines n_consented.
+# as the latency view defines n_consented. Null-safe like the other masks: if a
+# column the (parseable) filter references is absent from the export, nobody
+# opted in (all FALSE) rather than erroring. A filter that will not parse falls
+# through to population_filter_mask(), which raises the "not valid R" error.
 .mask_optin <- function(data, population, started) {
+  vars <- tryCatch(all.vars(parse(text = population)), error = function(e) NULL)
+  if (!is.null(vars) && !all(vars %in% names(data))) {
+    return(rep(FALSE, nrow(data)))
+  }
   population_filter_mask(data, population) & started
 }
 

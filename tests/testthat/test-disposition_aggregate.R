@@ -157,3 +157,59 @@ test_that("zero-row input returns the empty disposition frame", {
   expect_true(is.integer(res$started))
   expect_true(is.character(res$phone))
 })
+
+test_that("opt_in is null-safe when the population column is absent", {
+  # No id.intro.finalText at all -> default population can't be evaluated;
+  # opt_in degrades to 0 like the other masks rather than erroring.
+  d <- disp_frame(
+    phone = c("+15551001", "+15551002"),
+    id.intro.batchDate = c(TS, TS)
+  )
+  res <- disposition_run(2292, d)
+  expect_equal(res$opt_in, c(0L, 0L))
+  expect_equal(res$started, c(1L, 1L))
+})
+
+test_that("an unparseable population expression still errors", {
+  d <- disp_frame(
+    phone = "+15551101",
+    id.intro.batchDate = TS,
+    id.intro.finalText = "Yes"
+  )
+  expect_error(disposition_run(2292, d, population = "finalText =="),
+               "not valid R")
+})
+
+test_that("engaged ignores a whitespace-only finalValue", {
+  d <- disp_frame(
+    phone = c("+15551201", "+15551202"),
+    id.intro.batchDate = c(TS, TS),
+    id.intro.finalText = c("Yes", "Yes"),
+    id.intro.finalValue = c("1", "   ")   # r2 replied only whitespace
+  )
+  res <- disposition_run(2292, d)
+  expect_equal(res$engaged, c(1L, 0L))
+})
+
+test_that("duplicate-phone error message does not leak the phone value (PII)", {
+  d <- disp_frame(
+    phone = c("+15551301", "+15551301"),
+    id.intro.batchDate = c(TS, TS),
+    id.intro.finalText = c("Yes", "Yes")
+  )
+  err <- tryCatch(disposition_run(2292, d), error = function(e) conditionMessage(e))
+  expect_no_match(err, "\\+1555", fixed = FALSE)
+})
+
+test_that("campaign_id is stamped from the argument, not a column", {
+  # campaignid column (2292) differs from the argument (999) so the assertion
+  # pins the source to the argument.
+  d <- disp_frame(
+    phone = c("+15551401", "+15551402"),
+    campaignid = c(2292L, 2292L),
+    id.intro.batchDate = c(TS, TS),
+    id.intro.finalText = c("Yes", "Yes")
+  )
+  res <- disposition_run(999, d)
+  expect_true(all(res$campaign_id == 999L))
+})
