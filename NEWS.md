@@ -10,8 +10,8 @@
   `web_complete`, `terminated`) plus the campaign's `mode`. Grain is one row per
   `(phone, campaign_id)`, enforced with a duplicate-phone guard. `complete`
   follows the survey-mode rule (`web_complete` for t2w, `id.close.scriptDate`
-  for sms, `NA` for t2w_external). Algorithm only -- the Parquet schema, writer,
-  and Tracker-sourced columns live in survey160-shiny.
+  for sms, `NA` for t2w_external). Algorithm only -- persistence (enrichment
+  and Parquet output) lives in consumer projects.
 
 # survey160r 0.17.0
 

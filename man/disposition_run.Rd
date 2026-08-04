@@ -28,25 +28,23 @@ A data frame with one row per respondent and columns \code{phone}
 }
 \description{
 Turns an in-memory campaign results CSV (one row per respondent) into the
-per-respondent disposition frame: one row per phone,
-with 0/1 funnel flags (\code{started}, \code{engaged}, \code{opt_in},
-\code{complete}, \code{web_complete}, \code{terminated}) and the campaign's
-\code{mode}. Pure function, no I/O -- pair with \code{s160_gcs_pull_csv()}
-for the GCS source, and hand the result to the survey160-shiny writer, which
-adds the Tracker-sourced (\code{loi}, \code{topic}) and NA-filled
-(\code{error}, \code{date_closed_on}) columns plus provenance before writing
-the Parquet.
+per-respondent disposition frame: one row per phone, with 0/1 funnel flags
+(\code{started}, \code{engaged}, \code{opt_in}, \code{complete},
+\code{web_complete}, \code{terminated}) and the campaign's \code{mode}. Pure
+function, no I/O -- pair with \code{s160_gcs_pull_csv()} for the GCS source.
+Persisting the frame (any enrichment, provenance, and Parquet output) is
+handled by consumer projects.
 }
 \details{
 Grain: one row per \code{(phone, campaign_id)}. Phone is unique within a
 campaign export, so the function stops if it finds a duplicate phone rather
 than silently collapsing rows.
 
-The \code{complete} flag is survey-mode dependent: for a
-\code{t2w} campaign it is the \code{web_complete} callback; for \code{sms} it
-is reaching \code{id.close.scriptDate}; for \code{t2w_external} it is not
-computable and is \code{NA} for every row. Mode is classified per campaign by
-\code{detect_survey_mode()}.
+The \code{complete} flag is survey-mode dependent: for a \code{t2w} campaign
+it is the \code{web_complete} callback; for \code{sms} it is reaching
+\code{id.close.scriptDate}; for \code{t2w_external} it is not computable and
+is \code{NA} for every row. \code{mode} is classified per campaign from the
+data.
 }
 \examples{
 \dontrun{

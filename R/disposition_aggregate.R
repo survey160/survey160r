@@ -1,12 +1,10 @@
 # Per-respondent disposition frame for the Disposition Table.
 #
 # Turns one campaign's per-respondent results CSV into the disposition frame:
-# one row per phone carrying 0/1 funnel flags plus the
-# campaign's survey mode. This is the algorithm-only half of the disposition
-# pipeline. GCS reads, the pinned Parquet schema, the Tracker-sourced
-# (loi/topic) and NA-filled (error/date_closed_on) columns, and the writer all
-# live in survey160-shiny (disposition/pipeline.R) -- the same split the
-# latency pipeline uses (algorithm here, Parquet I/O in shiny).
+# one row per phone carrying 0/1 funnel flags plus the campaign's survey mode.
+# This is the algorithm-only half; GCS reads, the Parquet schema, enrichment,
+# and persistence live in the consumer project, mirroring the latency split
+# (algorithm here, persistence downstream).
 #
 # Grain: one row per (phone, campaign_id). Phone is unique within a campaign
 # export (verified across production campaigns), so disposition_run() enforces
@@ -124,24 +122,22 @@ empty_disposition_frame <- function() {
 #' Build the per-respondent disposition frame for one campaign
 #'
 #' Turns an in-memory campaign results CSV (one row per respondent) into the
-#' per-respondent disposition frame: one row per phone,
-#' with 0/1 funnel flags (\code{started}, \code{engaged}, \code{opt_in},
-#' \code{complete}, \code{web_complete}, \code{terminated}) and the campaign's
-#' \code{mode}. Pure function, no I/O -- pair with \code{s160_gcs_pull_csv()}
-#' for the GCS source, and hand the result to the survey160-shiny writer, which
-#' adds the Tracker-sourced (\code{loi}, \code{topic}) and NA-filled
-#' (\code{error}, \code{date_closed_on}) columns plus provenance before writing
-#' the Parquet.
+#' per-respondent disposition frame: one row per phone, with 0/1 funnel flags
+#' (\code{started}, \code{engaged}, \code{opt_in}, \code{complete},
+#' \code{web_complete}, \code{terminated}) and the campaign's \code{mode}. Pure
+#' function, no I/O -- pair with \code{s160_gcs_pull_csv()} for the GCS source.
+#' Persisting the frame (any enrichment, provenance, and Parquet output) is
+#' handled by consumer projects.
 #'
 #' Grain: one row per \code{(phone, campaign_id)}. Phone is unique within a
 #' campaign export, so the function stops if it finds a duplicate phone rather
 #' than silently collapsing rows.
 #'
-#' The \code{complete} flag is survey-mode dependent: for a
-#' \code{t2w} campaign it is the \code{web_complete} callback; for \code{sms} it
-#' is reaching \code{id.close.scriptDate}; for \code{t2w_external} it is not
-#' computable and is \code{NA} for every row. Mode is classified per campaign by
-#' \code{detect_survey_mode()}.
+#' The \code{complete} flag is survey-mode dependent: for a \code{t2w} campaign
+#' it is the \code{web_complete} callback; for \code{sms} it is reaching
+#' \code{id.close.scriptDate}; for \code{t2w_external} it is not computable and
+#' is \code{NA} for every row. \code{mode} is classified per campaign from the
+#' data.
 #'
 #' @param campaign_id Campaign id (numeric or character). Stamped on every row
 #'   as an integer.
