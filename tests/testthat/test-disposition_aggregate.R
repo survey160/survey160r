@@ -170,6 +170,18 @@ test_that("opt_in is null-safe when the population column is absent", {
   expect_equal(res$started, c(1L, 1L))
 })
 
+test_that("opt_in handles a base symbol in the population expression", {
+  # `T` is a base constant, not a data column -- it must not be misread as an
+  # absent column (which would wrongly zero opt_in for every row).
+  d <- disp_frame(
+    phone = c("+15551501", "+15551502"),
+    id.intro.batchDate = c(TS, TS),
+    id.intro.finalText = c("Yes", "No")
+  )
+  res <- disposition_run(1234, d, population = 'id.intro.finalText == "Yes" & T')
+  expect_equal(res$opt_in, c(1L, 0L))
+})
+
 test_that("an unparseable population expression still errors", {
   d <- disp_frame(
     phone = "+15551101",

@@ -55,8 +55,18 @@
 # through to population_filter_mask(), which raises the "not valid R" error.
 .mask_optin <- function(data, population, started) {
   vars <- tryCatch(all.vars(parse(text = population)), error = function(e) NULL)
-  if (!is.null(vars) && !all(vars %in% names(data))) {
-    return(rep(FALSE, nrow(data)))
+  if (!is.null(vars)) {
+    # A referenced symbol is a genuinely-absent data column only if it is
+    # neither in `data` nor resolvable in the eval environment.
+    # population_filter_mask() binds columns with parent = baseenv(), so base
+    # symbols (T/F/pi/Inf) and function names still resolve -- treating those
+    # as "absent" would wrongly zero a valid filter such as `col == T`.
+    missing <- setdiff(vars, names(data))
+    missing <- missing[!vapply(missing, exists, logical(1),
+                               envir = baseenv(), inherits = TRUE)]
+    if (length(missing) > 0L) {
+      return(rep(FALSE, nrow(data)))
+    }
   }
   population_filter_mask(data, population) & started
 }
