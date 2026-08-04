@@ -160,7 +160,7 @@
   repetition. `.algorithm_version` bumps to `"2.1.0"`,
   `.schema_version` to `"4"`. Consumers that don't read the new
   columns are unaffected; consumers that do can gate on a
-  `has_summary_data` probe (see survey160-shiny#TBD).
+  `has_summary_data` probe.
 
 * **Scaffold-first consolidated seeding.** `aggregate_consolidated()`
   now builds output rows from the UNION of latency-frame and
@@ -237,7 +237,7 @@
 ## Breaking changes
 
 * The package is now algorithm-only. Fleet orchestration, GCS writes, and
-  scheduling have moved to the survey160-shiny repo (SUR-1313).
+  scheduling have moved to a consumer project (SUR-1313).
 * `run_latency()` is renamed to `latency_run()` and is now
   source-agnostic. The signature is
   \code{latency_run(campaign_id, data, config = NULL, run_at = NULL,
@@ -266,10 +266,10 @@
   persistence layers should read.
 * `run_latency_all()`, `write_to_gcs()`, `s160_gcs_latency_output_status()`,
   and `read_latency()` are removed. The first three move to
-  survey160-shiny; `read_latency()` had no in-tree consumers and is
+  a consumer project; `read_latency()` had no in-tree consumers and is
   dropped (reintroduce if a real consumer surfaces).
-* `scripts/bulk_reprocess.R` is removed; survey160-shiny's
-  `scripts/run_latency.R` is now the supported fleet entry point.
+* `scripts/bulk_reprocess.R` is removed; a consumer project's fleet
+  entry point is now the supported path.
 * `future`, `future.apply`, `duckdb`, and `DBI` leave Suggests. `arrow`
   leaves Imports (no remaining call sites in this package).
 
@@ -295,7 +295,7 @@
   `run_latency_all()` parallelizes per-campaign processing and skips
   campaigns whose source CSV is unchanged since the last run.
   (`run_latency_all()` itself is later removed in 0.11.0, when fleet
-  orchestration moved to survey160-shiny.)
+  orchestration moved to a consumer project.)
 
 # survey160r 0.9.0
 
@@ -313,7 +313,7 @@
   `time_bucket` argument, and `validate_config()` rejects `reports` as
   an unknown key. Existing Parquets in `gs://s160_analytics_*/latency/`
   (which carried only one grain) must be regenerated via the
-  survey160-shiny fleet runner (SUR-1304, SUR-1313).
+  a consumer project's fleet runner (SUR-1304, SUR-1313).
 * Note for naive aggregators: summing the hour rows' `n_respondents`
   over-counts cross-hour respondents (a respondent active in two hours
   appears in both hours' distinct-respondent counts). Always read the

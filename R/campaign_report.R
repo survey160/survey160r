@@ -157,7 +157,7 @@ campaign_report <- function(data, config, run_at = NULL) {
   # Surface CSV-level provenance on `meta` as well as on every row of
   # `consolidated`. Meta survives data-frame subsetting and is the
   # documented contract for downstream persistence layers (e.g.
-  # survey160-shiny's writer reads result$meta$source_csv_hash); the
+  # a consumer project's writer reads result$meta$source_csv_hash); the
   # per-row column is what ends up in the persisted Parquet.
   meta <- list(
     algorithm_version = .algorithm_version,

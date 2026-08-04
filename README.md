@@ -3,7 +3,7 @@
 [![R-CMD-check](https://github.com/survey160/survey160r/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/survey160/survey160r/actions/workflows/R-CMD-check.yaml)
 [![R-universe](https://survey160.r-universe.dev/badges/survey160r)](https://survey160.r-universe.dev/survey160r)
 
-R package for accessing Survey160 campaign data -- read results from Google Cloud Storage, trigger fresh exports via the API, and compute per-campaign recipient-latency reports as in-memory R objects. Fleet orchestration and Parquet persistence live in [survey160-shiny](https://github.com/survey160/survey160-shiny).
+R package for accessing Survey160 campaign data -- read results from Google Cloud Storage, trigger fresh exports via the API, and compute per-campaign recipient-latency reports as in-memory R objects. Fleet orchestration and Parquet persistence live in downstream consumer projects.
 
 ## Installation
 
@@ -106,7 +106,7 @@ status$size     # file size
 
 Compute a per-campaign recipient-latency report from a raw campaign CSV and return it as an in-memory R object. Replaces the per-wave inline scripts that the analytics team used to maintain by hand: one algorithm, one output schema, one config shape per campaign.
 
-This package is **algorithm-only and source-agnostic**. `campaign_report(data, config)` is the pure function -- deterministic, no I/O, no globals -- and is the recommended entry point for tests and ad-hoc analysis. `campaign_run(campaign_id, data, ...)` composes `campaign_build_config()` + `campaign_report()` over a caller-supplied data frame; pair it with `s160_gcs_pull_csv()` for the GCS source path, or read the CSV yourself for any other source. Persisting outputs as Parquet, walking the fleet, and scheduling all live in [survey160-shiny](https://github.com/survey160/survey160-shiny) (`scripts/run_latency.R`).
+This package is **algorithm-only and source-agnostic**. `campaign_report(data, config)` is the pure function -- deterministic, no I/O, no globals -- and is the recommended entry point for tests and ad-hoc analysis. `campaign_run(campaign_id, data, ...)` composes `campaign_build_config()` + `campaign_report()` over a caller-supplied data frame; pair it with `s160_gcs_pull_csv()` for the GCS source path, or read the CSV yourself for any other source. Persisting outputs as Parquet, walking the fleet, and scheduling all live in downstream consumer projects.
 
 ### Happy path -- GCS source
 
@@ -155,7 +155,7 @@ result$meta             # algorithm_version, schema_version, config_hash, run_at
 
 ### Result shape
 
-`result$consolidated` (the data frame this package returns) is also the column shape of the Parquet that survey160-shiny writes. Each row stands on its own without sidecar manifests:
+`result$consolidated` (the data frame this package returns) is also the column shape of the Parquet a consumer project writes. Each row stands on its own without sidecar manifests:
 
 | Column | Purpose |
 |---|---|
@@ -203,7 +203,7 @@ install the `httpuv` package for a smoother auth experience (say yes).
 
 Your Google account needs **Storage Object Viewer** permission on the
 campaign-results source bucket. Persisting latency outputs (via the
-survey160-shiny fleet runner) additionally needs **Storage Object
+consumer project's fleet runner) additionally needs **Storage Object
 Creator** on the destination analytics bucket. Contact a sysadmin if
 you get 403 errors after authenticating.
 
