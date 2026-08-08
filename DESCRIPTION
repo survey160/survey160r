@@ -1,6 +1,6 @@
 Package: survey160r
 Title: R Client for Survey160 Data
-Version: 0.17.0
+Version: 0.18.0
 Authors@R: c(
     person("Lennon", "Shimokawa", email = "lshimokawa@survey160.com", role = c("aut", "cre"))
     )
@@ -8,7 +8,7 @@ Description: Access Survey160 campaign data from R. Reads campaign
     results from Google Cloud Storage, triggers fresh exports via the
     Survey160 API, and computes per-campaign recipient-latency reports
     as in-memory R objects. Persistence and fleet orchestration live in
-    consumer projects (see survey160-shiny).
+    consumer projects.
 License: MIT + file LICENSE
 URL: https://github.com/survey160/survey160r
 BugReports: https://github.com/survey160/survey160r/issues
