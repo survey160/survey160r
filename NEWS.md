@@ -1,5 +1,28 @@
 # survey160r (development version)
 
+# survey160r 0.19.0
+
+## New features
+
+* **`required_disposition_columns()`** returns the exact (dot-form) CSV columns
+  `disposition_run()` reads, so a caller can project a wide export down to just
+  those columns and get output identical to a full read -- the disposition
+  analogue of `required_csv_columns()`. It includes `phone` (the row key) and
+  excludes `campaignid` (the `campaign_id` is stamped from the argument). Pass
+  `available` (e.g. `s160_csv_header()`) so the data-dependent close-message
+  Text columns are retained.
+
+## Behavior changes
+
+* **`disposition_run()` now returns contacted records only by default.** A new
+  `contacted_only` argument (default `TRUE`) filters the frame to rows where an
+  intro was dispatched (`started == 1`) -- the contacted/attempted records a
+  disposition table represents. Non-responses (contacted but no reply) are kept;
+  only never-attempted rows are dropped. The uniqueness guard and survey-mode
+  classification still run on the full data, so the filter never changes `mode`
+  or masks a duplicate. Pass `contacted_only = FALSE` to restore one row per
+  input respondent.
+
 # survey160r 0.18.0
 
 ## New features

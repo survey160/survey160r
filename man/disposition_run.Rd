@@ -4,7 +4,7 @@
 \alias{disposition_run}
 \title{Build the per-respondent disposition frame for one campaign}
 \usage{
-disposition_run(campaign_id, data, population = NULL)
+disposition_run(campaign_id, data, population = NULL, contacted_only = TRUE)
 }
 \arguments{
 \item{campaign_id}{Campaign id (numeric or character). Stamped on every row
@@ -17,28 +17,42 @@ respondent). Must contain a \code{phone} column.}
 \code{opt_in}. \code{NULL} (default) uses the package default
 \code{id.intro.finalText == "Yes"} -- the same expression the latency view
 uses for \code{n_consented}.}
+
+\item{contacted_only}{A single logical. When \code{TRUE} (default), return
+only contacted records (rows where \code{started == 1}). When \code{FALSE},
+return one row per input respondent.}
 }
 \value{
-A data frame with one row per respondent and columns \code{phone}
-  (character), \code{campaign_id} (integer), the 0/1 integer flags
-  \code{started}, \code{engaged}, \code{opt_in}, \code{complete},
+A data frame with one row per (contacted) respondent and columns
+  \code{phone} (character), \code{campaign_id} (integer), the 0/1 integer
+  flags \code{started}, \code{engaged}, \code{opt_in}, \code{complete},
   \code{web_complete}, \code{terminated} (\code{complete} is \code{NA} under
-  \code{t2w_external}), and \code{mode} (character). A zero-row input yields a
-  zero-row frame with the same columns.
+  \code{t2w_external}), and \code{mode} (character). Under the default,
+  \code{started} is \code{1} for every returned row. A zero-row input, or a
+  campaign where nobody was contacted, yields a zero-row frame with the same
+  columns.
 }
 \description{
 Turns an in-memory campaign results CSV (one row per respondent) into the
-per-respondent disposition frame: one row per phone, with 0/1 funnel flags
-(\code{started}, \code{engaged}, \code{opt_in}, \code{complete},
+per-respondent disposition frame: one row per contacted phone, with 0/1
+funnel flags (\code{started}, \code{engaged}, \code{opt_in}, \code{complete},
 \code{web_complete}, \code{terminated}) and the campaign's \code{mode}. Pure
 function, no I/O -- pair with \code{s160_gcs_pull_csv()} for the GCS source.
 Persisting the frame (any enrichment, provenance, and Parquet output) is
 handled by consumer projects.
 }
 \details{
+By default (\code{contacted_only = TRUE}) the frame holds only records that
+were actually contacted -- rows where an intro was dispatched
+(\code{started == 1}). A never-attempted record has no disposition to report,
+so it is excluded; non-responses (contacted but no reply) are kept. Pass
+\code{contacted_only = FALSE} to emit one row per input respondent instead.
+
 Grain: one row per \code{(phone, campaign_id)}. Phone is unique within a
 campaign export, so the function stops if it finds a duplicate phone rather
-than silently collapsing rows.
+than silently collapsing rows. The uniqueness guard and survey-mode
+classification always run on the full data, so the \code{contacted_only}
+filter never changes \code{mode} or masks a duplicate.
 
 The \code{complete} flag is survey-mode dependent: for a \code{t2w} campaign
 it is the \code{web_complete} callback; for \code{sms} it is reaching

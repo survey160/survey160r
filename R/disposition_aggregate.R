@@ -119,19 +119,96 @@ empty_disposition_frame <- function() {
   )
 }
 
+# CSV columns disposition_run() reads directly, regardless of population or mode.
+# KEEP IN SYNC with the column reads in the masks + disposition_run():
+#   phone                     -- row key + dedup guard (disposition_run)
+#   id.intro.batchDate        -- .mask_started
+#   id.intro.finalValue       -- .mask_engaged
+#   web_complete              -- .mask_web_complete + detect_survey_mode
+#   id.close.scriptDate       -- .mask_complete (sms branch)
+#   id.ineligible.scriptDate  -- .mask_terminated
+#   id.refusal.scriptDate     -- .mask_terminated
+# Deliberately NOT `campaignid` (campaign_id is stamped from the argument) and
+# NOT a respondent-id column (disposition dedups by phone). The population
+# columns and the data-dependent close-message Text columns are added in
+# required_disposition_columns(). The projection-parity test guards drift.
+.disposition_input_columns <- c(
+  "phone",
+  "id.intro.batchDate",
+  "id.intro.finalValue",
+  "web_complete",
+  "id.close.scriptDate",
+  "id.ineligible.scriptDate",
+  "id.refusal.scriptDate"
+)
+
+#' CSV columns disposition_run() reads for a given population
+#'
+#' Returns the (dot-form) column names \code{disposition_run()} touches, so a
+#' caller can project a wide export down to just those columns and get output
+#' identical to a full read. This is the disposition analogue of
+#' \code{required_csv_columns()} (latency), with two deliberate differences:
+#' disposition is decoupled from the question flow (no \code{config} argument),
+#' it reads \code{phone} (the row key), and it does NOT read \code{campaignid}
+#' -- the \code{campaign_id} is stamped from the \code{disposition_run()}
+#' argument, not the data.
+#'
+#' Some columns are data-dependent: the close-message Text columns that
+#' \code{detect_survey_mode()} greps to tell \code{t2w_external} from
+#' \code{sms}. Pass \code{available} (e.g. the result of \code{s160_csv_header()})
+#' so those are matched against the real header and retained; omitting it risks
+#' projecting them away and misclassifying a \code{t2w_external} campaign as
+#' \code{sms}.
+#'
+#' @param available Optional character vector of the actual (dot-form) column
+#'   names present in the file (e.g. from \code{s160_csv_header()}). When
+#'   supplied, the close-message Text columns are retained. Strongly recommended.
+#' @param population Optional population-filter expression defining
+#'   \code{opt_in}. \code{NULL} (default) uses the package default
+#'   \code{id.intro.finalText == "Yes"}. Its columns are added so a custom
+#'   population's inputs are not projected away.
+#' @return A character vector of unique dot-form column names, including
+#'   \code{phone}. Pass it as \code{columns =} to \code{s160_read_csv()} /
+#'   \code{s160_gcs_pull_csv()}.
+#' @examples
+#' \dontrun{
+#' header <- s160_csv_header(path)
+#' data   <- s160_read_csv(path, columns = required_disposition_columns(header))
+#' disp   <- disposition_run(1234, data)
+#' }
+#' @export
+required_disposition_columns <- function(available = NULL, population = NULL) {
+  population <- population %||% .default_population
+  # `.report_support_patterns` is the close-message Text pattern shared with
+  # required_csv_columns(); detect_survey_mode() greps the same columns.
+  cols <- c(.disposition_input_columns, all.vars(parse(text = population)))
+  if (!is.null(available)) {
+    cols <- c(cols, grep(.report_support_patterns, available, value = TRUE))
+  }
+  unique(cols)
+}
+
 #' Build the per-respondent disposition frame for one campaign
 #'
 #' Turns an in-memory campaign results CSV (one row per respondent) into the
-#' per-respondent disposition frame: one row per phone, with 0/1 funnel flags
-#' (\code{started}, \code{engaged}, \code{opt_in}, \code{complete},
+#' per-respondent disposition frame: one row per contacted phone, with 0/1
+#' funnel flags (\code{started}, \code{engaged}, \code{opt_in}, \code{complete},
 #' \code{web_complete}, \code{terminated}) and the campaign's \code{mode}. Pure
 #' function, no I/O -- pair with \code{s160_gcs_pull_csv()} for the GCS source.
 #' Persisting the frame (any enrichment, provenance, and Parquet output) is
 #' handled by consumer projects.
 #'
+#' By default (\code{contacted_only = TRUE}) the frame holds only records that
+#' were actually contacted -- rows where an intro was dispatched
+#' (\code{started == 1}). A never-attempted record has no disposition to report,
+#' so it is excluded; non-responses (contacted but no reply) are kept. Pass
+#' \code{contacted_only = FALSE} to emit one row per input respondent instead.
+#'
 #' Grain: one row per \code{(phone, campaign_id)}. Phone is unique within a
 #' campaign export, so the function stops if it finds a duplicate phone rather
-#' than silently collapsing rows.
+#' than silently collapsing rows. The uniqueness guard and survey-mode
+#' classification always run on the full data, so the \code{contacted_only}
+#' filter never changes \code{mode} or masks a duplicate.
 #'
 #' The \code{complete} flag is survey-mode dependent: for a \code{t2w} campaign
 #' it is the \code{web_complete} callback; for \code{sms} it is reaching
@@ -147,24 +224,40 @@ empty_disposition_frame <- function() {
 #'   \code{opt_in}. \code{NULL} (default) uses the package default
 #'   \code{id.intro.finalText == "Yes"} -- the same expression the latency view
 #'   uses for \code{n_consented}.
-#' @return A data frame with one row per respondent and columns \code{phone}
-#'   (character), \code{campaign_id} (integer), the 0/1 integer flags
-#'   \code{started}, \code{engaged}, \code{opt_in}, \code{complete},
+#' @param contacted_only A single logical. When \code{TRUE} (default), return
+#'   only contacted records (rows where \code{started == 1}). When \code{FALSE},
+#'   return one row per input respondent.
+#' @return A data frame with one row per (contacted) respondent and columns
+#'   \code{phone} (character), \code{campaign_id} (integer), the 0/1 integer
+#'   flags \code{started}, \code{engaged}, \code{opt_in}, \code{complete},
 #'   \code{web_complete}, \code{terminated} (\code{complete} is \code{NA} under
-#'   \code{t2w_external}), and \code{mode} (character). A zero-row input yields a
-#'   zero-row frame with the same columns.
+#'   \code{t2w_external}), and \code{mode} (character). Under the default,
+#'   \code{started} is \code{1} for every returned row. A zero-row input, or a
+#'   campaign where nobody was contacted, yields a zero-row frame with the same
+#'   columns.
 #' @examples
 #' \dontrun{
 #' data <- s160_gcs_pull_csv(1234)
 #' disp <- disposition_run(1234, data)
 #' }
 #' @export
-disposition_run <- function(campaign_id, data, population = NULL) {
+disposition_run <- function(campaign_id, data, population = NULL,
+                            contacted_only = TRUE) {
   if (!is.data.frame(data)) {
     stop("disposition_run: `data` must be a data frame.", call. = FALSE)
   }
   if (!"phone" %in% names(data)) {
     stop("disposition_run: `data` must contain a `phone` column.", call. = FALSE)
+  }
+  if (length(campaign_id) != 1L) {
+    # A vector id would recycle into the frame and multiply rows past the
+    # dedup guard (which runs on the input phone), silently breaking the grain.
+    stop("disposition_run: `campaign_id` must be a single value.", call. = FALSE)
+  }
+  if (!is.logical(contacted_only) || length(contacted_only) != 1L ||
+        is.na(contacted_only)) {
+    stop("disposition_run: `contacted_only` must be a single TRUE or FALSE.",
+         call. = FALSE)
   }
   if (nrow(data) == 0L) {
     return(empty_disposition_frame())
@@ -186,9 +279,10 @@ disposition_run <- function(campaign_id, data, population = NULL) {
   survey_mode <- detect_survey_mode(data)
   started <- .mask_started(data)
 
-  data.frame(
+  out <- data.frame(
     phone = phone,
-    campaign_id = rep(as.integer(campaign_id), length(phone)),
+    # via as.character() so a factor id stamps its label, not its level code.
+    campaign_id = rep(as.integer(as.character(campaign_id)), length(phone)),
     started = as.integer(started),
     engaged = as.integer(.mask_engaged(data)),
     opt_in = as.integer(.mask_optin(data, population, started)),
@@ -198,4 +292,13 @@ disposition_run <- function(campaign_id, data, population = NULL) {
     mode = rep(survey_mode, length(phone)),
     stringsAsFactors = FALSE
   )
+
+  if (contacted_only) {
+    # `contacted_only` is validated as a single non-NA logical above, and
+    # `started` is a non-NA logical mask, so this cannot introduce phantom
+    # NA-indexed rows. Filter the OUTPUT (mode + dedup already ran on full data).
+    out <- out[started, , drop = FALSE]
+    rownames(out) <- NULL
+  }
+  out
 }
