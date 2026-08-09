@@ -238,6 +238,7 @@ test_that("contacted_only default drops never-attempted rows", {
   expect_equal(nrow(res), 2L)
   expect_true(all(res$started == 1L))
   expect_equal(res$phone, c("+15552001", "+15552003"))
+  expect_identical(rownames(res), c("1", "2"))    # rownames reset after the filter
 })
 
 test_that("contacted_only = FALSE emits one row per input respondent", {
@@ -326,12 +327,12 @@ test_that("duplicate phone is rejected even when a duplicate is never-attempted"
 
 # --- required_disposition_columns -------------------------------------------
 
-test_that("required_disposition_columns: default set includes phone, excludes campaignid", {
+test_that("required_disposition_columns: default set is exactly the read columns", {
   cols <- required_disposition_columns()
-  expect_true(all(c("phone", "id.intro.batchDate", "id.intro.finalValue",
-                    "web_complete", "id.close.scriptDate",
-                    "id.ineligible.scriptDate", "id.refusal.scriptDate",
-                    "id.intro.finalText") %in% cols))
+  expect_setequal(cols, c("phone", "id.intro.batchDate", "id.intro.finalValue",
+                          "web_complete", "id.close.scriptDate",
+                          "id.ineligible.scriptDate", "id.refusal.scriptDate",
+                          "id.intro.finalText"))
   expect_false("campaignid" %in% cols)           # stamped from the argument
 })
 
