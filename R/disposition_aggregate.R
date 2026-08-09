@@ -224,8 +224,8 @@ required_disposition_columns <- function(available = NULL, population = NULL) {
 #'   \code{opt_in}. \code{NULL} (default) uses the package default
 #'   \code{id.intro.finalText == "Yes"} -- the same expression the latency view
 #'   uses for \code{n_consented}.
-#' @param contacted_only Logical. When \code{TRUE} (default), return only
-#'   contacted records (rows where \code{started == 1}). When \code{FALSE},
+#' @param contacted_only A single logical. When \code{TRUE} (default), return
+#'   only contacted records (rows where \code{started == 1}). When \code{FALSE},
 #'   return one row per input respondent.
 #' @return A data frame with one row per (contacted) respondent and columns
 #'   \code{phone} (character), \code{campaign_id} (integer), the 0/1 integer
@@ -249,6 +249,16 @@ disposition_run <- function(campaign_id, data, population = NULL,
   if (!"phone" %in% names(data)) {
     stop("disposition_run: `data` must contain a `phone` column.", call. = FALSE)
   }
+  if (length(campaign_id) != 1L) {
+    # A vector id would recycle into the frame and multiply rows past the
+    # dedup guard (which runs on the input phone), silently breaking the grain.
+    stop("disposition_run: `campaign_id` must be a single value.", call. = FALSE)
+  }
+  if (!is.logical(contacted_only) || length(contacted_only) != 1L ||
+        is.na(contacted_only)) {
+    stop("disposition_run: `contacted_only` must be a single TRUE or FALSE.",
+         call. = FALSE)
+  }
   if (nrow(data) == 0L) {
     return(empty_disposition_frame())
   }
@@ -271,7 +281,8 @@ disposition_run <- function(campaign_id, data, population = NULL,
 
   out <- data.frame(
     phone = phone,
-    campaign_id = rep(as.integer(campaign_id), length(phone)),
+    # via as.character() so a factor id stamps its label, not its level code.
+    campaign_id = rep(as.integer(as.character(campaign_id)), length(phone)),
     started = as.integer(started),
     engaged = as.integer(.mask_engaged(data)),
     opt_in = as.integer(.mask_optin(data, population, started)),
@@ -282,7 +293,8 @@ disposition_run <- function(campaign_id, data, population = NULL,
     stringsAsFactors = FALSE
   )
 
-  if (isTRUE(contacted_only)) {
+  if (contacted_only) {
+    # `contacted_only` is validated as a single non-NA logical above, and
     # `started` is a non-NA logical mask, so this cannot introduce phantom
     # NA-indexed rows. Filter the OUTPUT (mode + dedup already ran on full data).
     out <- out[started, , drop = FALSE]

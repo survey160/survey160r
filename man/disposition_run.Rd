@@ -18,8 +18,8 @@ respondent). Must contain a \code{phone} column.}
 \code{id.intro.finalText == "Yes"} -- the same expression the latency view
 uses for \code{n_consented}.}
 
-\item{contacted_only}{Logical. When \code{TRUE} (default), return only
-contacted records (rows where \code{started == 1}). When \code{FALSE},
+\item{contacted_only}{A single logical. When \code{TRUE} (default), return
+only contacted records (rows where \code{started == 1}). When \code{FALSE},
 return one row per input respondent.}
 }
 \value{

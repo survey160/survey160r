@@ -226,6 +226,39 @@ test_that("campaign_id is stamped from the argument, not a column", {
   expect_true(all(res$campaign_id == 999L))
 })
 
+test_that("campaign_id must be a single value", {
+  # A vector id would recycle into the frame and multiply rows past the dedup
+  # guard, silently breaking the (phone, campaign_id) grain -- reject it.
+  d <- disp_frame(
+    phone = c("+15553001", "+15553002"),
+    id.intro.batchDate = c(TS, TS),
+    id.intro.finalText = c("Yes", "Yes")
+  )
+  expect_error(disposition_run(c(1234, 5678), d), "must be a single value")
+})
+
+test_that("a factor campaign_id stamps its label, not its level code", {
+  d <- disp_frame(
+    phone = c("+15553101", "+15553102"),
+    id.intro.batchDate = c(TS, TS),
+    id.intro.finalText = c("Yes", "Yes")
+  )
+  res <- disposition_run(factor("1234"), d)
+  expect_true(all(res$campaign_id == 1234L))
+})
+
+test_that("contacted_only must be a single non-NA logical", {
+  d <- disp_frame(
+    phone = c("+15553201", "+15553202"),
+    id.intro.batchDate = c(TS, TS),
+    id.intro.finalText = c("Yes", "Yes")
+  )
+  expect_error(disposition_run(1234, d, contacted_only = NA), "single TRUE or FALSE")
+  expect_error(disposition_run(1234, d, contacted_only = "yes"), "single TRUE or FALSE")
+  expect_error(disposition_run(1234, d, contacted_only = c(TRUE, FALSE)),
+               "single TRUE or FALSE")
+})
+
 # --- contacted_only ---------------------------------------------------------
 
 test_that("contacted_only default drops never-attempted rows", {
