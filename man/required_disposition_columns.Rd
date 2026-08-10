@@ -43,6 +43,6 @@ projecting them away and misclassifying a \code{t2w_external} campaign as
 \dontrun{
 header <- s160_csv_header(path)
 data   <- s160_read_csv(path, columns = required_disposition_columns(header))
-disp   <- disposition_run(1234, data)
+disp   <- disposition_run(1234, data)$consolidated
 }
 }

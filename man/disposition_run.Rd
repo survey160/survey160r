@@ -66,6 +66,7 @@ data.
 \examples{
 \dontrun{
 data <- s160_gcs_pull_csv(1234)
-disp <- disposition_run(1234, data)
+res  <- disposition_run(1234, data)
+res$consolidated  # the disposition frame; res$meta carries source provenance
 }
 }

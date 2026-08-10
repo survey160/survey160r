@@ -184,7 +184,7 @@ empty_disposition_frame <- function() {
 #' \dontrun{
 #' header <- s160_csv_header(path)
 #' data   <- s160_read_csv(path, columns = required_disposition_columns(header))
-#' disp   <- disposition_run(1234, data)
+#' disp   <- disposition_run(1234, data)$consolidated
 #' }
 #' @export
 required_disposition_columns <- function(available = NULL, population = NULL) {
@@ -251,7 +251,8 @@ required_disposition_columns <- function(available = NULL, population = NULL) {
 #' @examples
 #' \dontrun{
 #' data <- s160_gcs_pull_csv(1234)
-#' disp <- disposition_run(1234, data)
+#' res  <- disposition_run(1234, data)
+#' res$consolidated  # the disposition frame; res$meta carries source provenance
 #' }
 #' @export
 disposition_run <- function(campaign_id, data, population = NULL,
