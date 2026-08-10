@@ -15,23 +15,23 @@
 # single consolidated file, so a full read + in-R filter is sub-second.
 
 # Columns the summary reads (the Parquet read is projected to just these).
-.DQ_READ_COLS <- c("phone", "campaign_id", "engaged", "opt_in", "complete",
+.DISPOSITION_READ_COLS <- c("phone", "campaign_id", "engaged", "opt_in", "complete",
                    "web_complete", "terminated", "date_closed_on")
 
 # The derived disposition categories, in funnel order (least -> most advanced).
 # `never_contacted` is only produced for screened phones absent from the data.
-.DQ_CATEGORIES <- c("never_contacted", "non_response", "engaged", "opt_in",
+.DISPOSITION_CATEGORIES <- c("never_contacted", "non_response", "engaged", "opt_in",
                     "terminated", "complete", "web_complete")
 
 # Columns of the per-phone summary (also the block appended by _screen()).
-.DQ_SUMMARY_COLS <- c("phone", "ever_contacted", "n_campaigns", "ever_engaged",
+.DISPOSITION_SUMMARY_COLS <- c("phone", "ever_contacted", "n_campaigns", "ever_engaged",
                       "ever_opted_in", "ever_complete", "ever_terminated",
                       "latest_disposition", "campaigns")
 
 # Digit-normalize a phone for matching: strip non-digits, then drop a leading US
 # country code so an 11-digit "1NXXNXXXXXX" matches a stored 10-digit number.
 # Blank/NA -> NA.
-.dq_normalize_phone <- function(x) {
+.disposition_normalize_phone <- function(x) {
   x <- gsub("[^0-9]", "", as.character(x))
   x[!nzchar(x)] <- NA_character_
   eleven <- !is.na(x) & nchar(x) == 11L & startsWith(x, "1")
@@ -42,7 +42,7 @@
 # Derive one disposition category per row from the 0/1 funnel flags, by funnel
 # precedence (later assignment wins). A t2w_external row has complete = NA, so
 # it falls through to the last known in-channel step -- never a false complete.
-.dq_derive_disposition <- function(d) {
+.disposition_derive_category <- function(d) {
   is1 <- function(v) !is.na(v) & v == 1L
   out <- rep("non_response", nrow(d))   # data is contacted-only (started == 1)
   out[is1(d$engaged)] <- "engaged"
@@ -54,7 +54,7 @@
 }
 
 # One all-NA/FALSE summary row per never-contacted phone (screened but absent).
-.dq_never_contacted <- function(phones) {
+.disposition_never_contacted <- function(phones) {
   n <- length(phones)
   data.frame(
     phone = phones, ever_contacted = rep(FALSE, n), n_campaigns = rep(0L, n),
@@ -66,9 +66,9 @@
 }
 
 # Normalize phone and apply the row-scope filters (requested phones, campaigns,
-# date_closed_on range). Pure; `data` already has .DQ_READ_COLS.
-.dq_filter <- function(data, keep_phones, campaign_ids, date_from, date_to) {
-  data$phone <- .dq_normalize_phone(data$phone)
+# date_closed_on range). Pure; `data` already has .DISPOSITION_READ_COLS.
+.disposition_filter <- function(data, keep_phones, campaign_ids, date_from, date_to) {
+  data$phone <- .disposition_normalize_phone(data$phone)
   data <- data[!is.na(data$phone), , drop = FALSE]
   if (!is.null(keep_phones)) {
     data <- data[data$phone %in% keep_phones, , drop = FALSE]
@@ -91,8 +91,8 @@
 # Roll the (phone, campaign) rows up to one row per phone. Rows are ordered so
 # the latest campaign (max date_closed_on, NA last; tie -> max campaign_id) is
 # first per phone, so latest_disposition is a plain first-of-group pick.
-.dq_rollup <- function(d) {
-  d$.dispo <- .dq_derive_disposition(d)
+.disposition_rollup <- function(d) {
+  d$.dispo <- .disposition_derive_category(d)
   date_key <- as.numeric(d$date_closed_on)
   date_key[is.na(date_key)] <- -Inf
   d <- d[order(d$phone, -date_key, -as.numeric(d$campaign_id)), , drop = FALSE]
@@ -121,7 +121,7 @@
 }
 
 # 1-based page slice over the (phone-ordered) result. NULL page/size -> no-op.
-.dq_paginate <- function(summ, page, page_size) {
+.disposition_paginate <- function(summ, page, page_size) {
   if (is.null(page) && is.null(page_size)) return(summ)
   ps <- if (is.null(page_size)) nrow(summ) else page_size
   pg <- if (is.null(page)) 1L else page
@@ -137,14 +137,14 @@
 }
 
 # I/O: validate the path and read the projection, projected to the query columns.
-.dq_read_parquet <- function(dataset) {
+.disposition_read_parquet <- function(dataset) {
   if (!is.character(dataset) || length(dataset) != 1L || !nzchar(dataset)) {
     stop("dataset must be a single Parquet path.", call. = FALSE)
   }
   if (!file.exists(dataset)) {
     stop(sprintf("disposition dataset not found: %s", dataset), call. = FALSE)
   }
-  as.data.frame(nanoparquet::read_parquet(dataset, col_select = .DQ_READ_COLS))
+  as.data.frame(nanoparquet::read_parquet(dataset, col_select = .DISPOSITION_READ_COLS))
 }
 
 #' Summarize disposition rows to one row per phone
@@ -188,13 +188,13 @@ disposition_summary <- function(data, phones = NULL, campaign_ids = NULL,
   if (!is.data.frame(data)) {
     stop("disposition_summary: `data` must be a data frame.", call. = FALSE)
   }
-  missing_cols <- setdiff(.DQ_READ_COLS, names(data))
+  missing_cols <- setdiff(.DISPOSITION_READ_COLS, names(data))
   if (length(missing_cols) > 0L) {
     stop(sprintf("disposition_summary: `data` is missing column(s): %s.",
                  paste(missing_cols, collapse = ", ")), call. = FALSE)
   }
   if (!is.null(statuses)) {
-    bad <- setdiff(as.character(statuses), .DQ_CATEGORIES)
+    bad <- setdiff(as.character(statuses), .DISPOSITION_CATEGORIES)
     if (length(bad) > 0L) {
       stop(sprintf("disposition_summary: unknown status(es): %s.",
                    paste(bad, collapse = ", ")), call. = FALSE)
@@ -202,24 +202,24 @@ disposition_summary <- function(data, phones = NULL, campaign_ids = NULL,
   }
   req <- NULL
   if (!is.null(phones)) {
-    req <- unique(.dq_normalize_phone(phones))
+    req <- unique(.disposition_normalize_phone(phones))
     req <- req[!is.na(req)]
   }
 
-  d <- .dq_filter(data, req, campaign_ids, date_from, date_to)
-  summ <- if (nrow(d) == 0L) .dq_never_contacted(character(0)) else .dq_rollup(d)
+  d <- .disposition_filter(data, req, campaign_ids, date_from, date_to)
+  summ <- if (nrow(d) == 0L) .disposition_never_contacted(character(0)) else .disposition_rollup(d)
 
   # Screened phones absent from the (filtered) data come back as never-contacted.
   if (!is.null(req)) {
     missing <- setdiff(req, summ$phone)
-    if (length(missing) > 0L) summ <- rbind(summ, .dq_never_contacted(missing))
+    if (length(missing) > 0L) summ <- rbind(summ, .disposition_never_contacted(missing))
   }
   if (!is.null(statuses)) {
     summ <- summ[summ$latest_disposition %in% as.character(statuses), ,
                  drop = FALSE]
   }
   summ <- summ[order(summ$phone), , drop = FALSE]
-  summ <- .dq_paginate(summ, page, page_size)
+  summ <- .disposition_paginate(summ, page, page_size)
   rownames(summ) <- NULL
   summ
 }
@@ -241,7 +241,7 @@ s160_disposition_query <- function(dataset, phones = NULL, campaign_ids = NULL,
                                    statuses = NULL, date_from = NULL,
                                    date_to = NULL, page = NULL,
                                    page_size = NULL) {
-  disposition_summary(.dq_read_parquet(dataset), phones = phones,
+  disposition_summary(.disposition_read_parquet(dataset), phones = phones,
                       campaign_ids = campaign_ids, statuses = statuses,
                       date_from = date_from, date_to = date_to,
                       page = page, page_size = page_size)
@@ -282,18 +282,18 @@ s160_disposition_screen <- function(sample, dataset, phone_col = "phone",
     stop(sprintf("s160_disposition_screen: phone column %s not found in `sample`.",
                  deparse(phone_col)), call. = FALSE)
   }
-  dispo_cols <- setdiff(.DQ_SUMMARY_COLS, "phone")
+  dispo_cols <- setdiff(.DISPOSITION_SUMMARY_COLS, "phone")
   clash <- intersect(dispo_cols, names(sample))
   if (length(clash) > 0L) {
     stop(sprintf(paste0("s160_disposition_screen: `sample` already has ",
                         "disposition column(s) [%s]; rename them first."),
                  paste(clash, collapse = ", ")), call. = FALSE)
   }
-  summ <- disposition_summary(.dq_read_parquet(dataset),
+  summ <- disposition_summary(.disposition_read_parquet(dataset),
                               phones = sample[[phone_col]],
                               campaign_ids = campaign_ids,
                               date_from = date_from, date_to = date_to)
-  idx <- match(.dq_normalize_phone(sample[[phone_col]]), summ$phone)
+  idx <- match(.disposition_normalize_phone(sample[[phone_col]]), summ$phone)
   for (col in dispo_cols) sample[[col]] <- summ[[col]][idx]
   sample
 }
