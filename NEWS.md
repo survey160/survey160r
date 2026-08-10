@@ -1,5 +1,11 @@
 # survey160r (development version)
 
+* **New `s160_disposition_query()`** reads a disposition Parquet dataset and
+  returns a per-phone disposition summary -- one row per phone with its
+  cross-campaign screening flags (`ever_contacted` / `ever_complete` /
+  `ever_terminated` / ...) and `latest_disposition` -- for cleaning a sample
+  phone list. Adds a lightweight `nanoparquet` dependency for the Parquet read.
+
 # survey160r 0.20.0
 
 ## Breaking changes
