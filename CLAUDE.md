@@ -29,16 +29,18 @@ R client for Survey160 data. Reads campaign results from Google Cloud Storage, t
 
 ## Naming conventions
 
-Names split by LAYER, not by whether a function does I/O.
+The `s160_` prefix marks WHERE a function's data comes from, and it is exceptionless across the current surface.
 
-- **`s160_` prefix = the raw data-access layer.** Functions that reach Survey160's own systems and native export files: the REST API (`s160_api_*`), GCS (`s160_gcs_*`), and raw campaign-export CSVs (`s160_read_csv`, `s160_csv_header`). Non-deterministic plumbing, mocked in tests, fails on the environment (missing file, expired auth, network), and the boundary where PII and credentials cross the process. Mostly called by the pipeline and power users.
-- **Bare, domain-led names = the analytics surface.** What an analyst or Survey Manager calls to compute or screen: `latency_*` and `disposition_*`. Grouped by domain so a whole feature reads as one unit in the manual and in autocomplete: `disposition_run`, `disposition_summary`, `disposition_query`, `disposition_screen`.
+- **`s160_` = accesses a raw Survey160 data source.** Reaches Survey160's own campaign data: the REST API (`s160_api_*`), GCS (`s160_gcs_*`), or a raw campaign-export CSV (`s160_read_csv`, `s160_csv_header`). Non-deterministic, mocked in tests, fails on the environment (network, auth, missing file); the boundary where raw data (and, for the remote sources, credentials) enters the process. Building blocks for the pipeline and power users, not the analyst surface.
+- **Bare name = pure compute, or reads a survey160r-derived artifact.** Everything an analyst or Survey Manager calls: `latency_*` and `disposition_*`. Most are pure (`latency_run`, `disposition_run`, `disposition_summary`, `*_input_columns`); two read a file yet stay bare because it is a *derived* projection, not a raw source -- `disposition_query` and `disposition_screen` screen a sample against the disposition Parquet that survey160r itself produces.
 
-Most analytics functions are pure, but two (`disposition_query`, `disposition_screen`) read a local Parquet projection. They stay bare and in the disposition family on purpose: for the user-facing surface, feature cohesion beats tagging the I/O, and their I/O is confined to one private helper (`.disposition_read_parquet`). So the split is by layer and audience, not strictly by side effects -- `s160_read_csv` is plumbing (read a raw export), `disposition_query` is the disposition feature (screen a sample against the derived projection).
+The line is raw-source vs derived, not network-vs-local and not does-I/O: `s160_read_csv` reads a raw campaign export (prefixed), `disposition_query` reads the derived disposition projection (bare). Grouping the disposition functions by domain also keeps the whole feature together in the manual and in autocomplete.
+
+`s160_read_csv` / `s160_csv_header` keep the prefix even though they read a local file: a bare `read_csv` would collide with `readr::read_csv`, and the prefix signals Survey160's opinionated reader (dot-form column munging, source-hash stamping, column projection).
 
 Secondary conventions:
 
-- **Domain-leads-name for families**, so parallel functions group together: `latency_input_columns` / `disposition_input_columns`, `latency_run` / `disposition_run`.
+- **Domain-leads-name for families**, so parallel functions group: `latency_input_columns` / `disposition_input_columns`, `latency_run` / `disposition_run`.
 - **The token after `s160_`** names the salient concern -- the external system (`s160_gcs_*`) or the format/action (`s160_read_csv`, `s160_csv_header`).
 - **Spell names out**; avoid abbreviations (`disposition`, not `disp`/`dispo`; `.mask_opt_in` to match the `opt_in` column, not `.mask_optin`).
 - **`lintr::object_length_linter` caps names at 30 characters** -- keep helper names under it.
