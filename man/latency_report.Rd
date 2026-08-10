@@ -29,6 +29,8 @@ A list with \code{consolidated} (one row per
   \code{meta} (algorithm_version, config_hash, run_at_utc).
 }
 \description{
-Pure function: same \code{(data, config)} always yields identical output.
+Pure function of \code{(data, config, run_at)}: no I/O, no mutable globals.
+With a supplied \code{run_at} the output is fully deterministic; left
+\code{NULL} it stamps \code{run_at_utc} from \code{Sys.time()}.
 Implements the algorithm in \code{campaign_scripts.md} §2.
 }

@@ -22,7 +22,9 @@ UNIVERSAL_THRESHOLDS_MIN <- c(1L, 3L, 5L, 10L)
 
 #' Compute a latency report for one campaign
 #'
-#' Pure function: same \code{(data, config)} always yields identical output.
+#' Pure function of \code{(data, config, run_at)}: no I/O, no mutable globals.
+#' With a supplied \code{run_at} the output is fully deterministic; left
+#' \code{NULL} it stamps \code{run_at_utc} from \code{Sys.time()}.
 #' Implements the algorithm in \code{campaign_scripts.md} §2.
 #'
 #' @param data A data frame with one row per respondent and the per-question

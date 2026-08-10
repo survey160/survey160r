@@ -1,4 +1,4 @@
-# Coverage for R/campaign_config.R::required_latency_columns and the
+# Coverage for R/latency_config.R::required_latency_columns and the
 # column-projection parity contract: reading only the required columns must
 # produce identical latency_run() output to a full read. The projection guard
 # is what protects against silently dropping a non-flow column the algorithm

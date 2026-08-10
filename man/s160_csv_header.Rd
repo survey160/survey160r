@@ -25,8 +25,12 @@ large file before reading it:
 }
 \details{
 \preformatted{
+path <- "campaign_500.csv"
+campaign_id <- 500L
+field_timezone <- "America/New_York"
 header <- s160_csv_header(path)
-config <- latency_build_config(id, header, field_timezone = tz)
+config <- latency_build_config(campaign_id, header,
+                               field_timezone = field_timezone)
 data   <- s160_read_csv(path, columns = required_latency_columns(config))
 }
 }

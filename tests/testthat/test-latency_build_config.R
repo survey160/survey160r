@@ -1,4 +1,4 @@
-# Coverage for latency_discover_questions() and latency_build_config() in R/campaign_config.R:
+# Coverage for latency_discover_questions() and latency_build_config() in R/latency_config.R:
 # pure config derivation from a campaign id and CSV column names.
 
 test_that("discover_questions picks question ids in column order, drops terminal states", {
