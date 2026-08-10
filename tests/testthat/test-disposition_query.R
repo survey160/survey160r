@@ -1,15 +1,16 @@
 # Coverage for s160_disposition_query() + its helpers. Synthetic disposition
 # Parquet fixtures are written with nanoparquet (no arrow, no network).
 
-# One (phone, campaign) row with the columns the query reads and sensible funnel
-# defaults; override via args. (The reader `col_select`s exactly these columns;
-# reading them out of the wider 16-column production schema -- incl. an all-NA
-# date_closed_on and a timestamp column -- is validated separately.)
-.dq_row <- function(phone, campaign_id, started = 1L, engaged = 0L, opt_in = 0L,
+# One (phone, campaign) row with exactly the columns the query reads (`.DQ_READ_
+# COLS`) and sensible funnel defaults; override via args. Writing exactly the read
+# set means nanoparquet does a full read, not a `col_select` subset -- which
+# segfaults on multi-row nanoparquet-written files (a nanoparquet quirk; the real
+# reader subsets *arrow*-written files, validated separately on 2.2M rows).
+.dq_row <- function(phone, campaign_id, engaged = 0L, opt_in = 0L,
                     complete = 0L, web_complete = 0L, terminated = 0L,
                     date_closed_on = as.Date(NA)) {
   data.frame(phone = phone, campaign_id = as.integer(campaign_id),
-             started = as.integer(started), engaged = as.integer(engaged),
+             engaged = as.integer(engaged),
              opt_in = as.integer(opt_in), complete = as.integer(complete),
              web_complete = as.integer(web_complete),
              terminated = as.integer(terminated),
@@ -145,4 +146,50 @@ test_that("a blank stored phone is dropped, and all-invalid input yields no rows
 test_that("input validation on the dataset path", {
   expect_error(s160_disposition_query(character(0)), "single Parquet path")
   expect_error(s160_disposition_query("/no/such/file.parquet"), "not found")
+})
+
+# --- disposition_summary (pure core) ------------------------------------------
+
+test_that("disposition_summary works on an in-memory frame and validates input", {
+  d <- rbind(
+    .dq_row("2015550101", 2339, engaged = 1, opt_in = 1, complete = 1,
+            date_closed_on = "2026-03-01"),
+    .dq_row("2015550101", 2354, engaged = 1, date_closed_on = "2026-04-01"))
+  res <- disposition_summary(d, phones = c("2015550101", "2015559999"))
+  expect_setequal(res$phone, c("2015550101", "2015559999"))
+  expect_true(res[res$phone == "2015550101", "ever_complete"])
+  expect_false(res[res$phone == "2015559999", "ever_contacted"])
+  # validation branches (unreachable via the file reader, which always has cols)
+  expect_error(disposition_summary(list()), "must be a data frame")
+  expect_error(disposition_summary(d[, c("phone", "campaign_id")]),
+               "missing column")
+})
+
+# --- s160_disposition_screen --------------------------------------------------
+
+test_that("s160_disposition_screen annotates the sample in place, preserving it", {
+  sample <- data.frame(
+    phone = c("+1 (201) 555-0101", "2015550102", "2015559999"),  # fmt, present, absent
+    region = c("NE", "NE", "SW"), quota = c("A", "A", "B"),
+    stringsAsFactors = FALSE)
+  out <- s160_disposition_screen(sample, .dq_base())
+
+  expect_equal(out$phone, sample$phone)          # original formatting kept
+  expect_equal(out$region, c("NE", "NE", "SW"))  # original columns preserved
+  expect_true(all(c("ever_complete", "latest_disposition", "campaigns") %in%
+                    names(out)))
+  expect_true(out$ever_complete[1])                       # +1/formatted matched
+  expect_equal(out$latest_disposition[2], "terminated")
+  expect_false(out$ever_contacted[3])                    # absent -> never_contacted
+  expect_equal(out$latest_disposition[3], "never_contacted")
+})
+
+test_that("s160_disposition_screen validates sample, phone_col, and column clashes", {
+  p <- .dq_base()
+  expect_error(s160_disposition_screen(list(), p), "must be a data frame")
+  expect_error(s160_disposition_screen(data.frame(x = 1), p),
+               "phone column")
+  clash <- data.frame(phone = "2015550101", ever_complete = TRUE,
+                      stringsAsFactors = FALSE)
+  expect_error(s160_disposition_screen(clash, p), "already has")
 })

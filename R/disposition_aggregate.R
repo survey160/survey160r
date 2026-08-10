@@ -141,7 +141,7 @@ empty_disposition_frame <- function() {
 # Deliberately NOT `campaignid` (campaign_id is stamped from the argument) and
 # NOT a respondent-id column (disposition dedups by phone). The population
 # columns and the data-dependent close-message Text columns are added in
-# required_disposition_columns(). The projection-parity test guards drift.
+# disposition_input_columns(). The projection-parity test guards drift.
 .disposition_input_columns <- c(
   "phone",
   "id.intro.batchDate",
@@ -157,7 +157,7 @@ empty_disposition_frame <- function() {
 #' Returns the (dot-form) column names \code{disposition_run()} touches, so a
 #' caller can project a wide export down to just those columns and get output
 #' identical to a full read. This is the disposition analogue of
-#' \code{required_latency_columns()} (latency), with two deliberate differences:
+#' \code{latency_input_columns()} (latency), with two deliberate differences:
 #' disposition is decoupled from the question flow (no \code{config} argument),
 #' it reads \code{phone} (the row key), and it does NOT read \code{campaignid}
 #' -- the \code{campaign_id} is stamped from the \code{disposition_run()}
@@ -183,14 +183,14 @@ empty_disposition_frame <- function() {
 #' @examples
 #' \dontrun{
 #' header <- s160_csv_header(path)
-#' data   <- s160_read_csv(path, columns = required_disposition_columns(header))
+#' data   <- s160_read_csv(path, columns = disposition_input_columns(header))
 #' disp   <- disposition_run(1234, data)$consolidated
 #' }
 #' @export
-required_disposition_columns <- function(available = NULL, population = NULL) {
+disposition_input_columns <- function(available = NULL, population = NULL) {
   population <- population %||% .default_population
   # `.report_support_patterns` is the close-message Text pattern shared with
-  # required_latency_columns(); detect_survey_mode() greps the same columns.
+  # latency_input_columns(); detect_survey_mode() greps the same columns.
   cols <- c(.disposition_input_columns, all.vars(parse(text = population)))
   if (!is.null(available)) {
     cols <- c(cols, grep(.report_support_patterns, available, value = TRUE))

@@ -358,10 +358,10 @@ test_that("duplicate phone is rejected even when a duplicate is never-attempted"
   expect_error(disposition_run(1234, d), "duplicate phone")   # default TRUE
 })
 
-# --- required_disposition_columns -------------------------------------------
+# --- disposition_input_columns -------------------------------------------
 
-test_that("required_disposition_columns: default set is exactly the read columns", {
-  cols <- required_disposition_columns()
+test_that("disposition_input_columns: default set is exactly the read columns", {
+  cols <- disposition_input_columns()
   expect_setequal(cols, c("phone", "id.intro.batchDate", "id.intro.finalValue",
                           "web_complete", "id.close.scriptDate",
                           "id.ineligible.scriptDate", "id.refusal.scriptDate",
@@ -369,22 +369,22 @@ test_that("required_disposition_columns: default set is exactly the read columns
   expect_false("campaignid" %in% cols)           # stamped from the argument
 })
 
-test_that("required_disposition_columns: retains close-message Text cols from `available`", {
+test_that("disposition_input_columns: retains close-message Text cols from `available`", {
   header <- c("phone", "id.close.scriptText", "id.closeB.batchText",
               "id.intro.scriptText", "userid")
-  cols <- required_disposition_columns(available = header)
+  cols <- disposition_input_columns(available = header)
   expect_true(all(c("id.close.scriptText", "id.closeB.batchText") %in% cols))
   expect_false("id.intro.scriptText" %in% cols)  # not a close-message Text col
   expect_false("userid" %in% cols)
 })
 
-test_that("required_disposition_columns: a custom population adds its columns", {
-  cols <- required_disposition_columns(population = "some_flag == 1")
+test_that("disposition_input_columns: a custom population adds its columns", {
+  cols <- disposition_input_columns(population = "some_flag == 1")
   expect_true("some_flag" %in% cols)
   expect_false("id.intro.finalText" %in% cols)   # default population not used
 })
 
-test_that("required_disposition_columns: projected read matches a full read", {
+test_that("disposition_input_columns: projected read matches a full read", {
   # A rich frame: disposition columns + a t2w_external mode signal (2 distinct
   # close URLs) + columns disposition_run ignores (campaignid, userid, status).
   full <- disp_frame(
@@ -398,7 +398,7 @@ test_that("required_disposition_columns: projected read matches a full read", {
     userid = c("agent-1", "agent-2"),            # ignored by disposition_run
     status = c("complete", "open")               # ignored by disposition_run
   )
-  keep <- required_disposition_columns(available = names(full))
+  keep <- disposition_input_columns(available = names(full))
   projected <- full[, intersect(keep, names(full)), drop = FALSE]
   expect_equal(disposition_run(1234, projected, contacted_only = FALSE),
                disposition_run(1234, full, contacted_only = FALSE))

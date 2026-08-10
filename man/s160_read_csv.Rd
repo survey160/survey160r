@@ -11,7 +11,7 @@ s160_read_csv(path, columns = NULL, hash = TRUE, ...)
 \code{attr(., "source_csv_path")}.}
 
 \item{columns}{Optional character vector of (dot-form) column names to keep
-(e.g. from \code{required_latency_columns()}). When set, only those columns
+(e.g. from \code{latency_input_columns()}). When set, only those columns
 are parsed, cutting read time and memory on wide exports. \code{NULL}
 (default) reads every column.}
 

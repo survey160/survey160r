@@ -1,10 +1,28 @@
 # survey160r (development version)
 
-* **New `s160_disposition_query()`** reads a disposition Parquet dataset and
-  returns a per-phone disposition summary -- one row per phone with its
-  cross-campaign screening flags (`ever_contacted` / `ever_complete` /
-  `ever_terminated` / ...) and `latest_disposition` -- for cleaning a sample
-  phone list. Adds a lightweight `nanoparquet` dependency for the Parquet read.
+## Breaking changes
+
+* **`required_latency_columns()` renamed to `latency_input_columns()` and
+  `required_disposition_columns()` renamed to `disposition_input_columns()`** --
+  the domain now leads the name (grouping with `latency_*` / `disposition_*`, and
+  matching the internal `.disposition_input_columns` helper). Update call sites.
+
+## New features
+
+* **Disposition query surface** -- screen a phone sample against the disposition
+  dataset (one row per `(phone, campaign_id)`, contacted-only):
+  * `disposition_summary(data, ...)` -- pure core: roll an in-memory disposition
+    frame up to one row per phone (cross-campaign screening flags
+    `ever_contacted` / `ever_complete` / `ever_terminated` / ... plus
+    `latest_disposition`).
+  * `s160_disposition_query(dataset, ...)` -- reads the Parquet projection, then
+    `disposition_summary()` (the analyst engine).
+  * `s160_disposition_screen(sample, dataset, ...)` -- annotates a caller's
+    sample data frame in place with the disposition columns, preserving the
+    original rows/columns/formatting (the Survey-Manager sample-cleaning
+    surface).
+
+  Adds a lightweight `nanoparquet` dependency for the Parquet read.
 
 # survey160r 0.20.0
 

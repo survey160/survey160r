@@ -172,8 +172,8 @@ validate_columns_present <- function(config, data) {
 #                                is NOT in config$flow$questions and would be missed
 #                                by required_timestamp_columns alone)
 # Dropping any of these silently changes output (e.g. a t2w campaign would
-# misclassify as "sms"), so they are always retained by required_latency_columns().
-# The projection parity test (test-required_latency_columns.R) guards against drift.
+# misclassify as "sms"), so they are always retained by latency_input_columns().
+# The projection parity test (test-latency_input_columns.R) guards against drift.
 .report_support_columns <- c(
   "id.intro.finalText",
   "web_complete",
@@ -183,7 +183,7 @@ validate_columns_present <- function(config, data) {
 # Non-flow columns whose names are NOT fixed -- detect_survey_mode()'s
 # has_personalized_close_link() greps the close-message Text columns
 # (id.close<...>.scriptText / .batchText) to classify t2w_external vs sms.
-# These can only be matched against the actual header, so required_latency_columns()
+# These can only be matched against the actual header, so latency_input_columns()
 # retains them when the caller passes `available`. KEEP IN SYNC with
 # has_personalized_close_link() in summary_aggregate.R.
 .report_support_patterns <- "^id\\.close[A-Za-z0-9_]*\\.(script|batch)Text$"
@@ -222,10 +222,10 @@ validate_columns_present <- function(config, data) {
 #' \dontrun{
 #' header <- s160_csv_header(path)
 #' config <- latency_build_config(1980, header, field_timezone = "America/New_York")
-#' data   <- s160_read_csv(path, columns = required_latency_columns(config, header))
+#' data   <- s160_read_csv(path, columns = latency_input_columns(config, header))
 #' }
 #' @export
-required_latency_columns <- function(config, available = NULL) {
+latency_input_columns <- function(config, available = NULL) {
   cols <- required_timestamp_columns(config$flow$questions)
   cols <- c(cols, .report_support_columns)
   pop <- config$filters$population

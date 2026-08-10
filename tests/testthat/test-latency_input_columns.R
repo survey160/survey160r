@@ -1,13 +1,13 @@
-# Coverage for R/latency_config.R::required_latency_columns and the
+# Coverage for R/latency_config.R::latency_input_columns and the
 # column-projection parity contract: reading only the required columns must
 # produce identical latency_run() output to a full read. The projection guard
 # is what protects against silently dropping a non-flow column the algorithm
 # depends on (web_complete, id.ineligible.scriptDate, id.intro.finalText).
 
-test_that("required_latency_columns covers timestamps + support + id columns", {
+test_that("latency_input_columns covers timestamps + support + id columns", {
   cfg <- synthetic_config()  # questions intro, q1, q2, close; pop on finalText
 
-  cols <- required_latency_columns(cfg)
+  cols <- latency_input_columns(cfg)
 
   # Per-question scriptDate (all) + batchDate (all but last).
   expect_true(all(c("id.intro.scriptDate", "id.q1.scriptDate",
@@ -23,39 +23,39 @@ test_that("required_latency_columns covers timestamps + support + id columns", {
   expect_false(anyDuplicated(cols) > 0)
 })
 
-test_that("required_latency_columns retains close-message Text columns only via `available`", {
+test_that("latency_input_columns retains close-message Text columns only via `available`", {
   cfg <- synthetic_config()
   header <- c("campaignid", "id.intro.finalText", "id.close.scriptText",
               "id.closeB.batchText", "id.other.scriptText")
 
   # Without `available`, the data-dependent close-Text columns can't be matched.
   expect_false(any(c("id.close.scriptText", "id.closeB.batchText") %in%
-                     required_latency_columns(cfg)))
+                     latency_input_columns(cfg)))
 
   # With `available`, the close-message Text columns are retained (so
   # detect_survey_mode can still tell t2w_external from sms), but a non-close
   # *.scriptText column is not.
-  cols <- required_latency_columns(cfg, available = header)
+  cols <- latency_input_columns(cfg, available = header)
   expect_true(all(c("id.close.scriptText", "id.closeB.batchText") %in% cols))
   expect_false("id.other.scriptText" %in% cols)
 })
 
-test_that("required_latency_columns picks up a custom population column", {
+test_that("latency_input_columns picks up a custom population column", {
   cfg <- synthetic_config()
   cfg$filters$population <- 'consent_flag == 1 & id.intro.finalText == "Yes"'
 
-  cols <- required_latency_columns(cfg)
+  cols <- latency_input_columns(cfg)
 
   expect_true("consent_flag" %in% cols)
   expect_true("id.intro.finalText" %in% cols)
 })
 
-test_that("required_latency_columns omits respondent id when unset, handles empty population", {
+test_that("latency_input_columns omits respondent id when unset, handles empty population", {
   cfg <- synthetic_config()
   cfg$filters$respondent_id_column <- NULL
   cfg$filters$population <- ""
 
-  cols <- required_latency_columns(cfg)
+  cols <- latency_input_columns(cfg)
 
   expect_false("userid" %in% cols)
   # Empty population contributes no extra columns but support cols stay.
@@ -83,7 +83,7 @@ test_that("projection read yields identical latency_run output to a full read", 
 
   header <- s160_csv_header(tmp)
   cfg <- latency_build_config(1, header, field_timezone = "America/New_York")
-  pruned <- s160_read_csv(tmp, columns = required_latency_columns(cfg, header))
+  pruned <- s160_read_csv(tmp, columns = latency_input_columns(cfg, header))
   res_pruned <- latency_run(1, pruned, field_timezone = "America/New_York",
                              run_at = run_at)
 
@@ -111,7 +111,7 @@ test_that("projection retains close-Text cols so t2w_external survives pruning",
 
   header <- s160_csv_header(tmp)
   cfg <- latency_build_config(1, header, field_timezone = "America/New_York")
-  pruned <- s160_read_csv(tmp, columns = required_latency_columns(cfg, header))
+  pruned <- s160_read_csv(tmp, columns = latency_input_columns(cfg, header))
   res_pruned <- latency_run(1, pruned, field_timezone = "America/New_York",
                              run_at = run_at)
 
