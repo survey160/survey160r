@@ -27,6 +27,22 @@ R client for Survey160 data. Reads campaign results from Google Cloud Storage, t
 - **NEWS.md** keeps a `# survey160r (development version)` header at the top between releases as the scratch area for incoming PRs.
 - **Always `pkgload::load_all()` before running tests** interactively.
 
+## Naming conventions
+
+Exported names encode WHERE a function runs, not what it knows.
+
+- **`s160_` prefix = the I/O edge.** Prefix a function if and only if it touches external state (the REST API, GCS, the filesystem): `s160_api_*`, `s160_gcs_*`, `s160_read_csv`, `s160_disposition_query`. These are non-deterministic, are mocked in tests, fail on the environment (missing file, expired auth, network), and are the boundary where PII and credentials cross the process.
+- **No prefix = the pure core.** A transform over data already in memory is bare: `latency_run`, `latency_report`, `disposition_run`, `disposition_summary`, `latency_input_columns`. Referentially transparent; tested with plain in-memory fixtures. Domain-specificity does NOT earn a prefix -- these functions are as Survey160-specific as any, they just do no I/O.
+
+The rule is exceptionless across the current surface. When unsure, ask: does this line execute against something outside the R session? If yes, prefix it.
+
+Secondary conventions:
+
+- **Domain-leads-name for families**, so parallel functions group together: `latency_input_columns` / `disposition_input_columns`, `latency_run` / `disposition_run`.
+- **The token after `s160_`** names the salient concern -- the external system (`s160_gcs_*`), the format or action (`s160_read_csv`, `s160_csv_header`), or the domain the I/O serves (`s160_disposition_query`) -- whichever the caller thinks in.
+- **Spell names out**; avoid abbreviations (`disposition`, not `disp`/`dispo`; `.mask_opt_in` to match the `opt_in` column, not `.mask_optin`).
+- **`lintr::object_length_linter` caps names at 30 characters** -- keep helper names under it.
+
 ## Workflow
 
 - Releases are documented in `RELEASING.md`. Distribution is R-universe (auto-rebuild from `main`); tags are historical anchors only.
