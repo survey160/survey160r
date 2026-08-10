@@ -23,20 +23,23 @@ only contacted records (rows where \code{started == 1}). When \code{FALSE},
 return one row per input respondent.}
 }
 \value{
-A data frame with one row per (contacted) respondent and columns
-  \code{phone} (character), \code{campaign_id} (integer), the 0/1 integer
-  flags \code{started}, \code{engaged}, \code{opt_in}, \code{complete},
-  \code{web_complete}, \code{terminated} (\code{complete} is \code{NA} under
-  \code{t2w_external}), and \code{mode} (character). Under the default,
-  \code{started} is \code{1} for every returned row. A zero-row input, or a
-  campaign where nobody was contacted, yields a zero-row frame with the same
-  columns.
+A list mirroring \code{latency_run()}'s shape: \code{consolidated} (a
+  data frame, one row per (contacted) respondent, with columns \code{phone}
+  (character), \code{campaign_id} (integer), the 0/1 integer flags
+  \code{started}, \code{engaged}, \code{opt_in}, \code{complete},
+  \code{web_complete}, \code{terminated} -- \code{complete} is \code{NA} under
+  \code{t2w_external} -- and \code{mode} (character); under the default
+  \code{started} is \code{1} for every row) and \code{meta} (the source
+  \code{source_csv_hash} / \code{source_csv_path}, or \code{NA}). A zero-row
+  input, or a campaign where nobody was contacted, yields a zero-row
+  \code{consolidated} frame.
 }
 \description{
-Turns an in-memory campaign results CSV (one row per respondent) into the
-per-respondent disposition frame: one row per contacted phone, with 0/1
-funnel flags (\code{started}, \code{engaged}, \code{opt_in}, \code{complete},
-\code{web_complete}, \code{terminated}) and the campaign's \code{mode}. Pure
+Turns an in-memory campaign results CSV (one row per respondent) into a list
+carrying the per-respondent disposition frame in \code{consolidated} (one row
+per contacted phone, with 0/1 funnel flags \code{started}, \code{engaged},
+\code{opt_in}, \code{complete}, \code{web_complete}, \code{terminated} and the
+campaign's \code{mode}) plus source provenance in \code{meta}. Pure
 function, no I/O -- pair with \code{s160_gcs_pull_csv()} for the GCS source.
 Persisting the frame (any enrichment, provenance, and Parquet output) is
 handled by consumer projects.
@@ -63,6 +66,7 @@ data.
 \examples{
 \dontrun{
 data <- s160_gcs_pull_csv(1234)
-disp <- disposition_run(1234, data)
+res  <- disposition_run(1234, data)
+res$consolidated  # the disposition frame; res$meta carries source provenance
 }
 }

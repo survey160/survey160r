@@ -1,4 +1,4 @@
-# Pure campaign_report() function. Spec §2.2.
+# Pure latency_report() function. Spec §2.2.
 # Deterministic: same (data, config) produces identical output, including
 # config_hash. No I/O, no globals (spec invariant I8).
 #
@@ -22,14 +22,16 @@ UNIVERSAL_THRESHOLDS_MIN <- c(1L, 3L, 5L, 10L)
 
 #' Compute a latency report for one campaign
 #'
-#' Pure function: same \code{(data, config)} always yields identical output.
+#' Pure function of \code{(data, config, run_at)}: no I/O, no mutable globals.
+#' With a supplied \code{run_at} the output is fully deterministic; left
+#' \code{NULL} it stamps \code{run_at_utc} from \code{Sys.time()}.
 #' Implements the algorithm in \code{campaign_scripts.md} §2.
 #'
 #' @param data A data frame with one row per respondent and the per-question
 #'   timestamp columns named \code{id.<q>.scriptDate} / \code{id.<q>.batchDate}
 #'   for each question in \code{config$flow$questions}, plus the population
 #'   column \code{id.intro.finalText} and the campaign id column.
-#' @param config Config list from \code{campaign_build_config()} (or
+#' @param config Config list from \code{latency_build_config()} (or
 #'   a hand-built list with the same shape).
 #' @param run_at Optional \code{POSIXct} timestamp to stamp on every row's
 #'   \code{run_at_utc} column. \code{NULL} (default) uses \code{Sys.time()}.
@@ -42,10 +44,10 @@ UNIVERSAL_THRESHOLDS_MIN <- c(1L, 3L, 5L, 10L)
 #'   \code{diagnostics} (counts and breakdowns per spec §3.3), and
 #'   \code{meta} (algorithm_version, config_hash, run_at_utc).
 #' @export
-campaign_report <- function(data, config, run_at = NULL) {
-  campaign_validate_config(config, data)
+latency_report <- function(data, config, run_at = NULL) {
+  latency_validate_config(config, data)
 
-  cfg_hash <- campaign_config_hash(config)
+  cfg_hash <- latency_config_hash(config)
   if (is.null(run_at)) run_at <- Sys.time()
   attr(run_at, "tzone") <- "UTC"
 

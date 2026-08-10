@@ -106,7 +106,7 @@ status$size     # file size
 
 Compute a per-campaign recipient-latency report from a raw campaign CSV and return it as an in-memory R object. Replaces the per-wave inline scripts that the analytics team used to maintain by hand: one algorithm, one output schema, one config shape per campaign.
 
-This package is **algorithm-only and source-agnostic**. `campaign_report(data, config)` is the pure function -- deterministic, no I/O, no globals -- and is the recommended entry point for tests and ad-hoc analysis. `campaign_run(campaign_id, data, ...)` composes `campaign_build_config()` + `campaign_report()` over a caller-supplied data frame; pair it with `s160_gcs_pull_csv()` for the GCS source path, or read the CSV yourself for any other source. Persisting outputs as Parquet, walking the fleet, and scheduling all live in downstream consumer projects.
+This package is **algorithm-only and source-agnostic**. `latency_report(data, config)` is the pure function -- no I/O or mutable globals, and fully deterministic when passed a `run_at` (otherwise `run_at_utc` comes from `Sys.time()`) -- and is the recommended entry point for tests and ad-hoc analysis. `latency_run(campaign_id, data, ...)` composes `latency_build_config()` + `latency_report()` over a caller-supplied data frame; pair it with `s160_gcs_pull_csv()` for the GCS source path, or read the CSV yourself for any other source. Persisting outputs as Parquet, walking the fleet, and scheduling all live in downstream consumer projects.
 
 ### Happy path -- GCS source
 
@@ -115,7 +115,7 @@ library(survey160r)
 s160_gcs_init(bucket = "campaign_results")
 
 data   <- s160_gcs_pull_csv(1234)
-result <- campaign_run(1234, data, field_timezone = "America/New_York")
+result <- latency_run(1234, data, field_timezone = "America/New_York")
 head(result$consolidated)
 result$meta$source_csv_hash    # sha256 of the source CSV
 result$meta$source_csv_path    # canonical gs:// path
@@ -125,27 +125,27 @@ result$meta$source_csv_path    # canonical gs:// path
 
 ```r
 data   <- s160_read_csv("~/Dropbox/archive/campaign_500.csv")
-result <- campaign_run(500, data, field_timezone = "America/New_York")
+result <- latency_run(500, data, field_timezone = "America/New_York")
 result$meta$source_csv_hash    # sha256 of the local file
 result$meta$source_csv_path    # the path you passed
 ```
 
 `s160_read_csv()` is the local-source sibling of `s160_gcs_pull_csv()`
 -- both produce a data frame with `source_csv_hash` and
-`source_csv_path` attributes set, which `campaign_run()` then surfaces
+`source_csv_path` attributes set, which `latency_run()` then surfaces
 on `result$meta`. Pick the reader that matches where the CSV lives;
 the algorithm call is identical.
 
 For ad-hoc invocations with a hand-built data frame (synthetic /
-testing), pass `data` to `campaign_run()` directly -- `result$meta`
+testing), pass `data` to `latency_run()` directly -- `result$meta`
 provenance will be `NA`, which is correct for that case.
 
 ### Pure function
 
 ```r
 data <- s160_gcs_pull_csv(campaign_id = 1234)
-config <- campaign_build_config(1234, data)
-result <- campaign_report(data, config)
+config <- latency_build_config(1234, data)
+result <- latency_report(data, config)
 
 result$consolidated     # one row per (campaign_id, date, hour_local, segment, threshold_min)
 result$latency_frame    # one row per (respondent, segment) with na_reason classification
@@ -169,10 +169,10 @@ result$meta             # algorithm_version, schema_version, config_hash, run_at
 
 ### Config
 
-`campaign_build_config(campaign_id, data, ...)` assembles the config from the CSV header alone -- pure function, no I/O. Override defaults via named args:
+`latency_build_config(campaign_id, data, ...)` assembles the config from the CSV header alone -- pure function, no I/O. Override defaults via named args:
 
 ```r
-config <- campaign_build_config(
+config <- latency_build_config(
   campaign_id = 1234,
   data = s160_gcs_pull_csv(1234),
   field_timezone = "America/New_York",
@@ -182,7 +182,7 @@ config <- campaign_build_config(
 )
 ```
 
-`campaign_validate_config()` runs fail-fast checks: required columns present, flow order matches the data, no unknown keys, no terminal states (`refusal`, `ineligible`) in `flow.questions`.
+`latency_validate_config()` runs fail-fast checks: required columns present, flow order matches the data, no unknown keys, no terminal states (`refusal`, `ineligible`) in `flow.questions`.
 
 ## First-time setup
 

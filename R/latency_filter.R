@@ -1,4 +1,4 @@
-# Row-level filters applied by campaign_report() before frame construction.
+# Row-level filters applied by latency_report() before frame construction.
 # Each is a pure function: data in, data (or indices) out.
 
 # Evaluate a population-filter expression against the data. The expression is

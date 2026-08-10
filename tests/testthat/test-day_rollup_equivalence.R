@@ -1,4 +1,4 @@
-# Equivalence test: the day rollup rows that campaign_report emits alongside
+# Equivalence test: the day rollup rows that latency_report emits alongside
 # the hour rows match what a weighted-aggregation rollup of the hour rows
 # would produce, for `n` and `pct_le`. Day-grain cascade columns are NOT
 # reconstructible from the hour rows by simple aggregation -- the day rows
@@ -48,7 +48,7 @@
 test_that("the fixture actually crosses hour boundaries", {
   data <- load_synthetic_cross_hour()
   config <- .cross_hour_config()
-  result <- campaign_report(data, config)
+  result <- latency_report(data, config)
   # Two respondents (r3 and r4) have segments in two different hours.
   per_resp <- table(unique(result$latency_frame[,
     c("respondent_index", "hour_local")])$respondent_index)
@@ -59,7 +59,7 @@ test_that("the fixture actually crosses hour boundaries", {
 test_that("the day rollup rows match a weighted-mean rollup of the hour rows for n and pct_le", {
   data <- load_synthetic_cross_hour()
   config <- .cross_hour_config()
-  result <- campaign_report(data, config)
+  result <- latency_report(data, config)
   g <- .split_grains(result$consolidated)
 
   rolled <- dplyr::summarise(
@@ -85,7 +85,7 @@ test_that("the day rollup rows match a weighted-mean rollup of the hour rows for
 test_that("day rollup rows carry distinct-respondent cascade matching re-derivation from frame", {
   data <- load_synthetic_cross_hour()
   config <- .cross_hour_config()
-  result <- campaign_report(data, config)
+  result <- latency_report(data, config)
   day_grain <- .split_grains(result$consolidated)$day
 
   thresholds <- c(1L, 3L, 5L, 10L)
@@ -121,7 +121,7 @@ test_that("day rollup rows carry distinct-respondent cascade matching re-derivat
 test_that("naive SUM(n_respondents) over the hour rows over-counts cross-hour respondents", {
   data <- load_synthetic_cross_hour()
   config <- .cross_hour_config()
-  result <- campaign_report(data, config)
+  result <- latency_report(data, config)
   g <- .split_grains(result$consolidated)
 
   naive <- dplyr::summarise(

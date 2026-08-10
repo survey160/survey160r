@@ -119,6 +119,16 @@ empty_disposition_frame <- function() {
   )
 }
 
+# Source provenance carried on the disposition result's `meta`, mirroring what
+# latency_report() surfaces from the source data's attributes (set by
+# s160_gcs_pull_csv() / s160_read_csv()). NA when the data carries no attrs.
+.disposition_meta <- function(data) {
+  list(
+    source_csv_hash = attr(data, "source_csv_hash") %||% NA_character_,
+    source_csv_path = attr(data, "source_csv_path") %||% NA_character_
+  )
+}
+
 # CSV columns disposition_run() reads directly, regardless of population or mode.
 # KEEP IN SYNC with the column reads in the masks + disposition_run():
 #   phone                     -- row key + dedup guard (disposition_run)
@@ -147,7 +157,7 @@ empty_disposition_frame <- function() {
 #' Returns the (dot-form) column names \code{disposition_run()} touches, so a
 #' caller can project a wide export down to just those columns and get output
 #' identical to a full read. This is the disposition analogue of
-#' \code{required_csv_columns()} (latency), with two deliberate differences:
+#' \code{required_latency_columns()} (latency), with two deliberate differences:
 #' disposition is decoupled from the question flow (no \code{config} argument),
 #' it reads \code{phone} (the row key), and it does NOT read \code{campaignid}
 #' -- the \code{campaign_id} is stamped from the \code{disposition_run()}
@@ -174,13 +184,13 @@ empty_disposition_frame <- function() {
 #' \dontrun{
 #' header <- s160_csv_header(path)
 #' data   <- s160_read_csv(path, columns = required_disposition_columns(header))
-#' disp   <- disposition_run(1234, data)
+#' disp   <- disposition_run(1234, data)$consolidated
 #' }
 #' @export
 required_disposition_columns <- function(available = NULL, population = NULL) {
   population <- population %||% .default_population
   # `.report_support_patterns` is the close-message Text pattern shared with
-  # required_csv_columns(); detect_survey_mode() greps the same columns.
+  # required_latency_columns(); detect_survey_mode() greps the same columns.
   cols <- c(.disposition_input_columns, all.vars(parse(text = population)))
   if (!is.null(available)) {
     cols <- c(cols, grep(.report_support_patterns, available, value = TRUE))
@@ -190,10 +200,11 @@ required_disposition_columns <- function(available = NULL, population = NULL) {
 
 #' Build the per-respondent disposition frame for one campaign
 #'
-#' Turns an in-memory campaign results CSV (one row per respondent) into the
-#' per-respondent disposition frame: one row per contacted phone, with 0/1
-#' funnel flags (\code{started}, \code{engaged}, \code{opt_in}, \code{complete},
-#' \code{web_complete}, \code{terminated}) and the campaign's \code{mode}. Pure
+#' Turns an in-memory campaign results CSV (one row per respondent) into a list
+#' carrying the per-respondent disposition frame in \code{consolidated} (one row
+#' per contacted phone, with 0/1 funnel flags \code{started}, \code{engaged},
+#' \code{opt_in}, \code{complete}, \code{web_complete}, \code{terminated} and the
+#' campaign's \code{mode}) plus source provenance in \code{meta}. Pure
 #' function, no I/O -- pair with \code{s160_gcs_pull_csv()} for the GCS source.
 #' Persisting the frame (any enrichment, provenance, and Parquet output) is
 #' handled by consumer projects.
@@ -227,18 +238,21 @@ required_disposition_columns <- function(available = NULL, population = NULL) {
 #' @param contacted_only A single logical. When \code{TRUE} (default), return
 #'   only contacted records (rows where \code{started == 1}). When \code{FALSE},
 #'   return one row per input respondent.
-#' @return A data frame with one row per (contacted) respondent and columns
-#'   \code{phone} (character), \code{campaign_id} (integer), the 0/1 integer
-#'   flags \code{started}, \code{engaged}, \code{opt_in}, \code{complete},
-#'   \code{web_complete}, \code{terminated} (\code{complete} is \code{NA} under
-#'   \code{t2w_external}), and \code{mode} (character). Under the default,
-#'   \code{started} is \code{1} for every returned row. A zero-row input, or a
-#'   campaign where nobody was contacted, yields a zero-row frame with the same
-#'   columns.
+#' @return A list mirroring \code{latency_run()}'s shape: \code{consolidated} (a
+#'   data frame, one row per (contacted) respondent, with columns \code{phone}
+#'   (character), \code{campaign_id} (integer), the 0/1 integer flags
+#'   \code{started}, \code{engaged}, \code{opt_in}, \code{complete},
+#'   \code{web_complete}, \code{terminated} -- \code{complete} is \code{NA} under
+#'   \code{t2w_external} -- and \code{mode} (character); under the default
+#'   \code{started} is \code{1} for every row) and \code{meta} (the source
+#'   \code{source_csv_hash} / \code{source_csv_path}, or \code{NA}). A zero-row
+#'   input, or a campaign where nobody was contacted, yields a zero-row
+#'   \code{consolidated} frame.
 #' @examples
 #' \dontrun{
 #' data <- s160_gcs_pull_csv(1234)
-#' disp <- disposition_run(1234, data)
+#' res  <- disposition_run(1234, data)
+#' res$consolidated  # the disposition frame; res$meta carries source provenance
 #' }
 #' @export
 disposition_run <- function(campaign_id, data, population = NULL,
@@ -260,7 +274,8 @@ disposition_run <- function(campaign_id, data, population = NULL,
          call. = FALSE)
   }
   if (nrow(data) == 0L) {
-    return(empty_disposition_frame())
+    return(list(consolidated = empty_disposition_frame(),
+                meta = .disposition_meta(data)))
   }
 
   phone <- as.character(data[["phone"]])
@@ -300,5 +315,5 @@ disposition_run <- function(campaign_id, data, population = NULL,
     out <- out[started, , drop = FALSE]
     rownames(out) <- NULL
   }
-  out
+  list(consolidated = out, meta = .disposition_meta(data))
 }

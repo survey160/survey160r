@@ -1,12 +1,12 @@
 # Latency report configuration: defaults, validation, hash.
-# Configs are built programmatically via campaign_build_config() or as
+# Configs are built programmatically via latency_build_config() or as
 # hand-written lists with the same shape. The historical YAML schema and
 # the per-wave API metadata layer have both been retired; only the fields
-# campaign_report() actually consults are kept.
+# latency_report() actually consults are kept.
 
-# Allowed top-level config keys. campaign_validate_config() rejects anything
+# Allowed top-level config keys. latency_validate_config() rejects anything
 # else so typos in caller-supplied lists fail loud. The set matches exactly
-# what campaign_report() reads -- no provenance or YAML-only slots.
+# what latency_report() reads -- no provenance or YAML-only slots.
 .config_keys <- c(
   "project_id", "campaign_id", "field_timezone", "flow",
   "filters"
@@ -34,7 +34,7 @@
 #' @param data A data frame or character vector of column names.
 #' @return A character vector of question ids in flow order.
 #' @export
-campaign_discover_questions <- function(data) {
+latency_discover_questions <- function(data) {
   cols <- if (is.data.frame(data)) names(data) else as.character(data)
   # Match either bracket form (raw header) or dot form (post read.csv).
   m_dot <- regmatches(cols, regexec("^id\\.([A-Za-z0-9_]+)\\.scriptDate$", cols))
@@ -52,7 +52,7 @@ campaign_discover_questions <- function(data) {
 #' Build a latency config from a campaign id and its CSV
 #'
 #' Pure function. Derives \code{flow.questions} from the CSV column names
-#' via \code{campaign_discover_questions()} and assembles the rest of the
+#' via \code{latency_discover_questions()} and assembles the rest of the
 #' config from the named arguments. No I/O, no API call, no auth precondition.
 #'
 #' @param campaign_id Campaign id (numeric or character).
@@ -66,15 +66,15 @@ campaign_discover_questions <- function(data) {
 #'   survey dates are processed (interpreted in \code{field_timezone}).
 #' @param respondent_id_column Optional column name used to dedupe rows by
 #'   respondent. Default \code{NULL} (no dedupe).
-#' @return A config list ready to pass to \code{campaign_report()}, which
-#'   calls \code{campaign_validate_config()} before consuming it.
+#' @return A config list ready to pass to \code{latency_report()}, which
+#'   calls \code{latency_validate_config()} before consuming it.
 #' @export
-campaign_build_config <- function(campaign_id, data,
+latency_build_config <- function(campaign_id, data,
                          field_timezone = "UTC",
                          project_id = NULL,
                          date_filter = NULL,
                          respondent_id_column = NULL) {
-  questions <- campaign_discover_questions(data)
+  questions <- latency_discover_questions(data)
   if (length(questions) < 2L) {
     stop(paste(
       "Could not discover at least two questions from CSV columns;",
@@ -103,11 +103,11 @@ campaign_build_config <- function(campaign_id, data,
 #' on the first failing rule.
 #'
 #' @param config The config list (typically from
-#'   \code{campaign_build_config}).
+#'   \code{latency_build_config}).
 #' @param data The data frame the report will run against.
 #' @return Invisible \code{TRUE} on success; otherwise stops with an error.
 #' @export
-campaign_validate_config <- function(config, data) {
+latency_validate_config <- function(config, data) {
   unknown <- setdiff(names(config), .config_keys)
   if (length(unknown) > 0) {
     stop(sprintf("Unknown config keys: %s", paste(unknown, collapse = ", ")),
@@ -164,7 +164,7 @@ validate_columns_present <- function(config, data) {
   }
 }
 
-# Non-flow columns campaign_report() reads in addition to the per-question
+# Non-flow columns latency_report() reads in addition to the per-question
 # scriptDate/batchDate set. KEEP IN SYNC with the data[[...]] reads elsewhere:
 #   id.intro.finalText        -- default population filter + validate_columns_present
 #   web_complete              -- detect_survey_mode() + t2w completion (summary_aggregate.R)
@@ -172,8 +172,8 @@ validate_columns_present <- function(config, data) {
 #                                is NOT in config$flow$questions and would be missed
 #                                by required_timestamp_columns alone)
 # Dropping any of these silently changes output (e.g. a t2w campaign would
-# misclassify as "sms"), so they are always retained by required_csv_columns().
-# The projection parity test (test-required_csv_columns.R) guards against drift.
+# misclassify as "sms"), so they are always retained by required_latency_columns().
+# The projection parity test (test-required_latency_columns.R) guards against drift.
 .report_support_columns <- c(
   "id.intro.finalText",
   "web_complete",
@@ -183,14 +183,14 @@ validate_columns_present <- function(config, data) {
 # Non-flow columns whose names are NOT fixed -- detect_survey_mode()'s
 # has_personalized_close_link() greps the close-message Text columns
 # (id.close<...>.scriptText / .batchText) to classify t2w_external vs sms.
-# These can only be matched against the actual header, so required_csv_columns()
+# These can only be matched against the actual header, so required_latency_columns()
 # retains them when the caller passes `available`. KEEP IN SYNC with
 # has_personalized_close_link() in summary_aggregate.R.
 .report_support_patterns <- "^id\\.close[A-Za-z0-9_]*\\.(script|batch)Text$"
 
 #' CSV columns the latency report reads for a given config
 #'
-#' Returns the (dot-form) column names \code{campaign_report()} touches for a
+#' Returns the (dot-form) column names \code{latency_report()} touches for a
 #' given \code{config}: the per-question \code{scriptDate}/\code{batchDate}
 #' set, the population-filter columns (extracted from
 #' \code{config$filters$population}), the campaign-id and optional
@@ -210,7 +210,7 @@ validate_columns_present <- function(config, data) {
 #' \code{s160_gcs_pull_csv()} to parse only the columns the algorithm needs --
 #' the projection yields output identical to a full read.
 #'
-#' @param config A config list from \code{campaign_build_config()} (or one with
+#' @param config A config list from \code{latency_build_config()} (or one with
 #'   the same shape). Build it from a header-only peek
 #'   (\code{s160_csv_header()}) to avoid reading the file twice.
 #' @param available Optional character vector of the actual (dot-form) column
@@ -221,11 +221,11 @@ validate_columns_present <- function(config, data) {
 #' @examples
 #' \dontrun{
 #' header <- s160_csv_header(path)
-#' config <- campaign_build_config(1980, header, field_timezone = "America/New_York")
-#' data   <- s160_read_csv(path, columns = required_csv_columns(config, header))
+#' config <- latency_build_config(1980, header, field_timezone = "America/New_York")
+#' data   <- s160_read_csv(path, columns = required_latency_columns(config, header))
 #' }
 #' @export
-required_csv_columns <- function(config, available = NULL) {
+required_latency_columns <- function(config, available = NULL) {
   cols <- required_timestamp_columns(config$flow$questions)
   cols <- c(cols, .report_support_columns)
   pop <- config$filters$population
@@ -277,7 +277,7 @@ validate_flow_order <- function(config, data) {
 #' @param config The config list.
 #' @return A hex sha256 string.
 #' @export
-campaign_config_hash <- function(config) {
+latency_config_hash <- function(config) {
   canonical <- canonicalize_config(config)
   digest::digest(canonical, algo = "sha256", serialize = TRUE)
 }

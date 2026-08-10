@@ -28,7 +28,7 @@ When iterating on a single file, run interactively after `pkgload::load_all()`:
 
 ```r
 pkgload::load_all()
-testthat::test_file("tests/testthat/test-campaign_run.R")
+testthat::test_file("tests/testthat/test-latency_run.R")
 ```
 
 ## Mocking
@@ -88,7 +88,7 @@ The `mutate` hook is how you trigger negative paths (drop a column, perturb a va
 
 ## Conventions
 
-- **Latency runner tests**: `campaign_run()` is now source-agnostic -- it takes caller-supplied `data`. Tests pass a `load_synthetic_data()` frame directly; no I/O boundary to stub. Don't mock `campaign_report` unless you specifically need to capture the config it was called with (see `test-campaign_run.R`'s "forwards `...` overrides" case).
+- **Latency runner tests**: `latency_run()` is now source-agnostic -- it takes caller-supplied `data`. Tests pass a `load_synthetic_data()` frame directly; no I/O boundary to stub. Don't mock `latency_report` unless you specifically need to capture the config it was called with (see `test-latency_run.R`'s "forwards `...` overrides" case).
 - **Reader tests**: `s160_gcs_pull_csv` uses `stub_gcs_base()` + `stub_gcs_download_ok()`. `s160_read_csv` reads real files via `tempfile()`.
 - **Times are UTC**: tests pass POSIXct stamps with `tz = "UTC"` explicitly. `gcs_status()` parses character `updated` as UTC.
 - **Don't share fixture data across tests by file mutation**: each test loads its own copy via `load_synthetic_data()`. The fixture file is read-only.

@@ -19,14 +19,18 @@ Character vector of dot-form column names.
 \description{
 Peeks the first line of a CSV and returns its column names in the same
 \code{make.names()}-munged (dot-form) form the readers produce, without
-parsing the body. Pair with \code{campaign_build_config()} +
-\code{required_csv_columns()} to derive a column-projection set for a
+parsing the body. Pair with \code{latency_build_config()} +
+\code{required_latency_columns()} to derive a column-projection set for a
 large file before reading it:
 }
 \details{
 \preformatted{
+path <- "campaign_500.csv"
+campaign_id <- 500L
+field_timezone <- "America/New_York"
 header <- s160_csv_header(path)
-config <- campaign_build_config(id, header, field_timezone = tz)
-data   <- s160_read_csv(path, columns = required_csv_columns(config))
+config <- latency_build_config(campaign_id, header,
+                               field_timezone = field_timezone)
+data   <- s160_read_csv(path, columns = required_latency_columns(config))
 }
 }

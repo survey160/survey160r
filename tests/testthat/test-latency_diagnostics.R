@@ -29,8 +29,8 @@
 
 .diag_summary <- function(q1_minutes) {
   d <- .diag_data(q1_minutes)
-  cfg <- campaign_build_config(1, d, field_timezone = "UTC")
-  campaign_report(d, cfg)$diagnostics
+  cfg <- latency_build_config(1, d, field_timezone = "UTC")
+  latency_report(d, cfg)$diagnostics
 }
 
 test_that("respondent_summary percentages divide by measured respondents, not all observed", {

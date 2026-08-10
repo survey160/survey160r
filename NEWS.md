@@ -1,5 +1,22 @@
 # survey160r (development version)
 
+# survey160r 0.20.0
+
+## Breaking changes
+
+* **The latency API is renamed `campaign_*` to `latency_*`** so each function
+  name matches the view it computes (the campaign *entity* is still
+  `campaign_id`): `campaign_run` to `latency_run`, `campaign_report` to
+  `latency_report`, `campaign_build_config` to `latency_build_config`,
+  `campaign_validate_config` to `latency_validate_config`, `campaign_config_hash`
+  to `latency_config_hash`, `campaign_discover_questions` to
+  `latency_discover_questions`, and `required_csv_columns` to
+  `required_latency_columns`.
+* **`disposition_run()` now returns a list** (`consolidated` + `meta`), mirroring
+  `latency_run()`, instead of a bare data frame. Read the frame from
+  `result$consolidated`; `result$meta` carries the source `source_csv_hash` /
+  `source_csv_path`.
+
 # survey160r 0.19.0
 
 ## New features
