@@ -42,7 +42,7 @@ projecting them away and misclassifying a \code{t2w_external} campaign as
 \examples{
 \dontrun{
 header <- s160_csv_header(path)
-data   <- s160_read_csv(path, columns = disposition_input_columns(header))
-disp   <- disposition_run(1234, data)$consolidated
+data <- s160_read_csv(path, columns = disposition_input_columns(header))
+disposition <- disposition_run(1234, data)$consolidated
 }
 }

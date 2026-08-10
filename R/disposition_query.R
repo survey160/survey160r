@@ -92,7 +92,7 @@
 # the latest campaign (max date_closed_on, NA last; tie -> max campaign_id) is
 # first per phone, so latest_disposition is a plain first-of-group pick.
 .disposition_rollup <- function(d) {
-  d$.dispo <- .disposition_derive_category(d)
+  d$.category <- .disposition_derive_category(d)
   date_key <- as.numeric(d$date_closed_on)
   date_key[is.na(date_key)] <- -Inf
   d <- d[order(d$phone, -date_key, -as.numeric(d$campaign_id)), , drop = FALSE]
@@ -112,7 +112,7 @@
              na.rm = TRUE)[ph]),
     ever_terminated = as.logical(
       tapply(d$terminated == 1L, d$phone, any, na.rm = TRUE)[ph]),
-    latest_disposition = d$.dispo[first],
+    latest_disposition = d$.category[first],
     campaigns = as.character(
       tapply(d$campaign_id, d$phone,
              function(x) paste(sort(unique(x)), collapse = ","))[ph]),
@@ -282,8 +282,8 @@ s160_disposition_screen <- function(sample, dataset, phone_col = "phone",
     stop(sprintf("s160_disposition_screen: phone column %s not found in `sample`.",
                  deparse(phone_col)), call. = FALSE)
   }
-  dispo_cols <- setdiff(.DISPOSITION_SUMMARY_COLS, "phone")
-  clash <- intersect(dispo_cols, names(sample))
+  disposition_cols <- setdiff(.DISPOSITION_SUMMARY_COLS, "phone")
+  clash <- intersect(disposition_cols, names(sample))
   if (length(clash) > 0L) {
     stop(sprintf(paste0("s160_disposition_screen: `sample` already has ",
                         "disposition column(s) [%s]; rename them first."),
@@ -294,6 +294,6 @@ s160_disposition_screen <- function(sample, dataset, phone_col = "phone",
                               campaign_ids = campaign_ids,
                               date_from = date_from, date_to = date_to)
   idx <- match(.disposition_normalize_phone(sample[[phone_col]]), summ$phone)
-  for (col in dispo_cols) sample[[col]] <- summ[[col]][idx]
+  for (col in disposition_cols) sample[[col]] <- summ[[col]][idx]
   sample
 }

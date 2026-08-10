@@ -19,7 +19,7 @@
 # all-NA vector of length nrow(data)). Mirrors build_summary_frame()'s
 # null-safe reads so a minimal export missing an optional column yields a clean
 # 0/NA flag rather than an error.
-.disp_timestamp <- function(data, col) {
+.disposition_timestamp <- function(data, col) {
   if (col %in% names(data)) {
     parse_s160_timestamps_chr(data[[col]])
   } else {
@@ -30,7 +30,7 @@
 # started: the intro text was dispatched (id.intro.batchDate non-NA). Same
 # signal as build_summary_frame()'s `texted`.
 .mask_started <- function(data) {
-  !is.na(.disp_timestamp(data, "id.intro.batchDate"))
+  !is.na(.disposition_timestamp(data, "id.intro.batchDate"))
 }
 
 # engaged: the respondent replied at the intro at all (id.intro.finalValue
@@ -91,14 +91,14 @@
   if (identical(survey_mode, "t2w")) {
     return(.mask_web_complete(data) & started)
   }
-  !is.na(.disp_timestamp(data, "id.close.scriptDate")) & started
+  !is.na(.disposition_timestamp(data, "id.close.scriptDate")) & started
 }
 
 # terminated: any hard stop -- screened out (ineligible) or refused. Either
 # terminal-state scriptDate being non-NA marks the row terminated.
 .mask_terminated <- function(data) {
-  inelig <- !is.na(.disp_timestamp(data, "id.ineligible.scriptDate"))
-  refusal <- !is.na(.disp_timestamp(data, "id.refusal.scriptDate"))
+  inelig <- !is.na(.disposition_timestamp(data, "id.ineligible.scriptDate"))
+  refusal <- !is.na(.disposition_timestamp(data, "id.refusal.scriptDate"))
   inelig | refusal
 }
 
@@ -183,8 +183,8 @@ empty_disposition_frame <- function() {
 #' @examples
 #' \dontrun{
 #' header <- s160_csv_header(path)
-#' data   <- s160_read_csv(path, columns = disposition_input_columns(header))
-#' disp   <- disposition_run(1234, data)$consolidated
+#' data <- s160_read_csv(path, columns = disposition_input_columns(header))
+#' disposition <- disposition_run(1234, data)$consolidated
 #' }
 #' @export
 disposition_input_columns <- function(available = NULL, population = NULL) {
