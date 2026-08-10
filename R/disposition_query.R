@@ -72,8 +72,7 @@
   if (is.null(x)) return(NULL)
   d <- tryCatch(as.Date(x), error = function(e) NA)
   if (length(d) != 1L || is.na(d)) {
-    stop(sprintf("disposition_summary: `%s` must be a single valid date.", name),
-         call. = FALSE)
+    stop(sprintf("`%s` must be a single valid date.", name), call. = FALSE)
   }
   d
 }
@@ -150,6 +149,8 @@
 }
 
 # I/O: validate the path and read the projection, projected to the query columns.
+# (col_select is safe on the upstream arrow-written projection; a nanoparquet-
+# *written* multi-row file can crash on a subset read -- see the test-file note.)
 .disposition_read_parquet <- function(dataset) {
   if (!is.character(dataset) || length(dataset) != 1L || !nzchar(dataset)) {
     stop("dataset must be a single Parquet path.", call. = FALSE)
