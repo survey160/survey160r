@@ -19,7 +19,7 @@
 # all-NA vector of length nrow(data)). Mirrors build_summary_frame()'s
 # null-safe reads so a minimal export missing an optional column yields a clean
 # 0/NA flag rather than an error.
-.disp_timestamp <- function(data, col) {
+.disposition_timestamp <- function(data, col) {
   if (col %in% names(data)) {
     parse_s160_timestamps_chr(data[[col]])
   } else {
@@ -30,7 +30,7 @@
 # started: the intro text was dispatched (id.intro.batchDate non-NA). Same
 # signal as build_summary_frame()'s `texted`.
 .mask_started <- function(data) {
-  !is.na(.disp_timestamp(data, "id.intro.batchDate"))
+  !is.na(.disposition_timestamp(data, "id.intro.batchDate"))
 }
 
 # engaged: the respondent replied at the intro at all (id.intro.finalValue
@@ -51,7 +51,7 @@
 # column the (parseable) filter references is absent from the export, nobody
 # opted in (all FALSE) rather than erroring. A filter that will not parse falls
 # through to population_filter_mask(), which raises the "not valid R" error.
-.mask_optin <- function(data, population, started) {
+.mask_opt_in <- function(data, population, started) {
   vars <- tryCatch(all.vars(parse(text = population)), error = function(e) NULL)
   if (!is.null(vars)) {
     # A referenced symbol is a genuinely-absent data column only if it is
@@ -91,14 +91,14 @@
   if (identical(survey_mode, "t2w")) {
     return(.mask_web_complete(data) & started)
   }
-  !is.na(.disp_timestamp(data, "id.close.scriptDate")) & started
+  !is.na(.disposition_timestamp(data, "id.close.scriptDate")) & started
 }
 
 # terminated: any hard stop -- screened out (ineligible) or refused. Either
 # terminal-state scriptDate being non-NA marks the row terminated.
 .mask_terminated <- function(data) {
-  inelig <- !is.na(.disp_timestamp(data, "id.ineligible.scriptDate"))
-  refusal <- !is.na(.disp_timestamp(data, "id.refusal.scriptDate"))
+  inelig <- !is.na(.disposition_timestamp(data, "id.ineligible.scriptDate"))
+  refusal <- !is.na(.disposition_timestamp(data, "id.refusal.scriptDate"))
   inelig | refusal
 }
 
@@ -141,7 +141,7 @@ empty_disposition_frame <- function() {
 # Deliberately NOT `campaignid` (campaign_id is stamped from the argument) and
 # NOT a respondent-id column (disposition dedups by phone). The population
 # columns and the data-dependent close-message Text columns are added in
-# required_disposition_columns(). The projection-parity test guards drift.
+# disposition_input_columns(). The projection-parity test guards drift.
 .disposition_input_columns <- c(
   "phone",
   "id.intro.batchDate",
@@ -157,7 +157,7 @@ empty_disposition_frame <- function() {
 #' Returns the (dot-form) column names \code{disposition_run()} touches, so a
 #' caller can project a wide export down to just those columns and get output
 #' identical to a full read. This is the disposition analogue of
-#' \code{required_latency_columns()} (latency), with two deliberate differences:
+#' \code{latency_input_columns()} (latency), with two deliberate differences:
 #' disposition is decoupled from the question flow (no \code{config} argument),
 #' it reads \code{phone} (the row key), and it does NOT read \code{campaignid}
 #' -- the \code{campaign_id} is stamped from the \code{disposition_run()}
@@ -183,14 +183,14 @@ empty_disposition_frame <- function() {
 #' @examples
 #' \dontrun{
 #' header <- s160_csv_header(path)
-#' data   <- s160_read_csv(path, columns = required_disposition_columns(header))
-#' disp   <- disposition_run(1234, data)$consolidated
+#' data <- s160_read_csv(path, columns = disposition_input_columns(header))
+#' disposition <- disposition_run(1234, data)$consolidated
 #' }
 #' @export
-required_disposition_columns <- function(available = NULL, population = NULL) {
+disposition_input_columns <- function(available = NULL, population = NULL) {
   population <- population %||% .default_population
   # `.report_support_patterns` is the close-message Text pattern shared with
-  # required_latency_columns(); detect_survey_mode() greps the same columns.
+  # latency_input_columns(); detect_survey_mode() greps the same columns.
   cols <- c(.disposition_input_columns, all.vars(parse(text = population)))
   if (!is.null(available)) {
     cols <- c(cols, grep(.report_support_patterns, available, value = TRUE))
@@ -300,7 +300,7 @@ disposition_run <- function(campaign_id, data, population = NULL,
     campaign_id = rep(as.integer(as.character(campaign_id)), length(phone)),
     started = as.integer(started),
     engaged = as.integer(.mask_engaged(data)),
-    opt_in = as.integer(.mask_optin(data, population, started)),
+    opt_in = as.integer(.mask_opt_in(data, population, started)),
     complete = as.integer(.mask_complete(data, survey_mode, started)),
     web_complete = as.integer(.mask_web_complete(data)),
     terminated = as.integer(.mask_terminated(data)),

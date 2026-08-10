@@ -20,7 +20,7 @@ Character vector of dot-form column names.
 Peeks the first line of a CSV and returns its column names in the same
 \code{make.names()}-munged (dot-form) form the readers produce, without
 parsing the body. Pair with \code{latency_build_config()} +
-\code{required_latency_columns()} to derive a column-projection set for a
+\code{latency_input_columns()} to derive a column-projection set for a
 large file before reading it:
 }
 \details{
@@ -31,6 +31,6 @@ field_timezone <- "America/New_York"
 header <- s160_csv_header(path)
 config <- latency_build_config(campaign_id, header,
                                field_timezone = field_timezone)
-data   <- s160_read_csv(path, columns = required_latency_columns(config))
+data   <- s160_read_csv(path, columns = latency_input_columns(config, header))
 }
 }

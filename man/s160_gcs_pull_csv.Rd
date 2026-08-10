@@ -16,7 +16,7 @@ global bucket set by \code{s160_gcs_init()}; pass an explicit value to
 skip the global entirely.}
 
 \item{columns}{Optional character vector of (dot-form) column names to keep
-(e.g. from \code{required_latency_columns()}). Forwarded to
+(e.g. from \code{latency_input_columns()}). Forwarded to
 \code{s160_gcs_campaign_results_read()} to parse only those columns.}
 }
 \value{

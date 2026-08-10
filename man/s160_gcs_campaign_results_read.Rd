@@ -28,7 +28,7 @@ Must not contain path separators.}
 global bucket set by \code{s160_gcs_init()}.}
 
 \item{columns}{Optional character vector of (dot-form) column names to keep,
-e.g. from \code{required_latency_columns()}. When set, only those columns are
+e.g. from \code{latency_input_columns()}. When set, only those columns are
 parsed (via \code{data.table::fread}'s column projection), cutting read
 time and memory on wide exports. \code{NULL} (default) reads every column.}
 

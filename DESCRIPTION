@@ -1,6 +1,6 @@
 Package: survey160r
 Title: R Client for Survey160 Data
-Version: 0.20.0
+Version: 0.21.0
 Authors@R: c(
     person("Lennon", "Shimokawa", email = "lshimokawa@survey160.com", role = c("aut", "cre"))
     )
@@ -23,7 +23,8 @@ Imports:
     digest,
     dplyr,
     rlang,
-    data.table
+    data.table,
+    nanoparquet
 Suggests:
     askpass,
     testthat (>= 3.0.0),

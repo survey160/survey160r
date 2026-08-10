@@ -27,6 +27,24 @@ R client for Survey160 data. Reads campaign results from Google Cloud Storage, t
 - **NEWS.md** keeps a `# survey160r (development version)` header at the top between releases as the scratch area for incoming PRs.
 - **Always `pkgload::load_all()` before running tests** interactively.
 
+## Naming conventions
+
+The `s160_` prefix marks WHERE a function's data comes from, and it is exceptionless across the current surface.
+
+- **`s160_` = accesses a raw Survey160 data source.** Reaches Survey160's own campaign data: the REST API (`s160_api_*`), GCS (`s160_gcs_*`), or a raw campaign-export CSV (`s160_read_csv`, `s160_csv_header`). Non-deterministic, mocked in tests, fails on the environment (network, auth, missing file); the boundary where raw data (and, for the remote sources, credentials) enters the process. Building blocks for the pipeline and power users, not the analyst surface.
+- **Bare name = pure compute, or reads a survey160r-derived artifact.** Everything an analyst or Survey Manager calls: `latency_*` and `disposition_*`. Most are pure (`latency_run`, `disposition_run`, `disposition_summary`, `*_input_columns`); two read a file yet stay bare because it is a *derived* projection, not a raw source -- `disposition_query` and `disposition_screen` screen a sample against the disposition Parquet that survey160r itself produces.
+
+The line is raw-source vs derived, not network-vs-local and not does-I/O: `s160_read_csv` reads a raw campaign export (prefixed), `disposition_query` reads the derived disposition projection (bare). Grouping the disposition functions by domain also keeps the whole feature together in the manual and in autocomplete.
+
+`s160_read_csv` / `s160_csv_header` keep the prefix even though they read a local file: a bare `read_csv` would collide with `readr::read_csv`, and the prefix signals Survey160's opinionated reader (dot-form column munging, source-hash stamping, column projection).
+
+Secondary conventions:
+
+- **Domain-leads-name for families**, so parallel functions group: `latency_input_columns` / `disposition_input_columns`, `latency_run` / `disposition_run`.
+- **The token after `s160_`** names the salient concern -- the external system (`s160_gcs_*`) or the format/action (`s160_read_csv`, `s160_csv_header`).
+- **Spell names out**; avoid abbreviations (`disposition`, not `disp`/`dispo`; `.mask_opt_in` to match the `opt_in` column, not `.mask_optin`).
+- **`lintr::object_length_linter` caps names at 30 characters** -- keep helper names under it.
+
 ## Workflow
 
 - Releases are documented in `RELEASING.md`. Distribution is R-universe (auto-rebuild from `main`); tags are historical anchors only.
