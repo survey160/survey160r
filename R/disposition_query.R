@@ -7,10 +7,12 @@
 # query returns ONE ROW PER PHONE: the number's cross-campaign screening flags +
 # its latest disposition.
 #
-# Split, per the package's pure-core / IO-edge convention:
-#   disposition_summary(data, ...)          PURE   -- roll an in-memory frame up
-#   s160_disposition_query(dataset, ...)    I/O    -- read the Parquet, summarize
-#   s160_disposition_screen(sample, ...)    I/O    -- annotate a caller's sample
+# Split into a pure core plus two thin IO readers. The readers stay bare and in
+# the disposition family (not s160_-prefixed): their IO is confined to the
+# private .disposition_read_parquet, and grouping the feature beats tagging IO.
+#   disposition_summary(data, ...)      PURE  -- roll an in-memory frame up
+#   disposition_query(dataset, ...)     IO    -- read the Parquet, summarize
+#   disposition_screen(sample, ...)     IO    -- annotate a caller's sample
 # The Parquet read uses nanoparquet (tiny, zero-dependency); the projection is a
 # single consolidated file, so a full read + in-R filter is sub-second.
 
@@ -166,7 +168,7 @@
 #' The pure core of the disposition query: takes an in-memory disposition frame
 #' (one row per \code{(phone, campaign_id)}) and returns \strong{one row per
 #' phone} with its cross-campaign screening flags and latest disposition. No
-#' I/O -- \code{\link{s160_disposition_query}} reads a Parquet file and calls
+#' I/O -- \code{\link{disposition_query}} reads a Parquet file and calls
 #' this. Use it directly to read a projection once and screen several samples
 #' against the in-memory frame.
 #'
@@ -193,8 +195,8 @@
 #'   \code{n_campaigns}, \code{ever_engaged}, \code{ever_opted_in},
 #'   \code{ever_complete}, \code{ever_terminated}, \code{latest_disposition},
 #'   \code{campaigns} (comma-separated campaign ids).
-#' @seealso \code{\link{s160_disposition_query}},
-#'   \code{\link{s160_disposition_screen}}
+#' @seealso \code{\link{disposition_query}},
+#'   \code{\link{disposition_screen}}
 #' @export
 disposition_summary <- function(data, phones = NULL, campaign_ids = NULL,
                                 statuses = NULL, date_from = NULL,
@@ -245,15 +247,15 @@ disposition_summary <- function(data, phones = NULL, campaign_ids = NULL,
 #' Reads the disposition Parquet projection and returns \strong{one row per
 #' phone} (see \code{\link{disposition_summary}}) -- the analyst-facing engine
 #' for ad-hoc queries. For cleaning a Survey Manager's sample file in place, use
-#' \code{\link{s160_disposition_screen}}.
+#' \code{\link{disposition_screen}}.
 #'
 #' @param dataset Path to a disposition Parquet file (the phone-sorted read
 #'   projection). Read with \pkg{nanoparquet}, projected to the query columns.
 #' @inheritParams disposition_summary
 #' @return A per-phone summary data frame (see \code{\link{disposition_summary}}).
-#' @seealso \code{\link{disposition_summary}}, \code{\link{s160_disposition_screen}}
+#' @seealso \code{\link{disposition_summary}}, \code{\link{disposition_screen}}
 #' @export
-s160_disposition_query <- function(dataset, phones = NULL, campaign_ids = NULL,
+disposition_query <- function(dataset, phones = NULL, campaign_ids = NULL,
                                    statuses = NULL, date_from = NULL,
                                    date_to = NULL, page = NULL,
                                    page_size = NULL) {
@@ -284,24 +286,24 @@ s160_disposition_query <- function(dataset, phones = NULL, campaign_ids = NULL,
 #'   \code{ever_complete}, \code{ever_terminated}, \code{latest_disposition},
 #'   \code{campaigns} appended (a never-matched / unparseable phone gets an
 #'   all-\code{NA} block).
-#' @seealso \code{\link{s160_disposition_query}}, \code{\link{disposition_summary}}
+#' @seealso \code{\link{disposition_query}}, \code{\link{disposition_summary}}
 #' @export
-s160_disposition_screen <- function(sample, dataset, phone_col = "phone",
+disposition_screen <- function(sample, dataset, phone_col = "phone",
                                     campaign_ids = NULL, date_from = NULL,
                                     date_to = NULL) {
   if (!is.data.frame(sample)) {
-    stop("s160_disposition_screen: `sample` must be a data frame.",
+    stop("disposition_screen: `sample` must be a data frame.",
          call. = FALSE)
   }
   if (!is.character(phone_col) || length(phone_col) != 1L ||
         !phone_col %in% names(sample)) {
-    stop(sprintf("s160_disposition_screen: phone column %s not found in `sample`.",
+    stop(sprintf("disposition_screen: phone column %s not found in `sample`.",
                  deparse(phone_col)), call. = FALSE)
   }
   disposition_cols <- setdiff(.DISPOSITION_SUMMARY_COLS, "phone")
   clash <- intersect(disposition_cols, names(sample))
   if (length(clash) > 0L) {
-    stop(sprintf(paste0("s160_disposition_screen: `sample` already has ",
+    stop(sprintf(paste0("disposition_screen: `sample` already has ",
                         "disposition column(s) [%s]; rename them first."),
                  paste(clash, collapse = ", ")), call. = FALSE)
   }

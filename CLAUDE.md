@@ -29,17 +29,17 @@ R client for Survey160 data. Reads campaign results from Google Cloud Storage, t
 
 ## Naming conventions
 
-Exported names encode WHERE a function runs, not what it knows.
+Names split by LAYER, not by whether a function does I/O.
 
-- **`s160_` prefix = the I/O edge.** Prefix a function if and only if it touches external state (the REST API, GCS, the filesystem): `s160_api_*`, `s160_gcs_*`, `s160_read_csv`, `s160_disposition_query`. These are non-deterministic, are mocked in tests, fail on the environment (missing file, expired auth, network), and are the boundary where PII and credentials cross the process.
-- **No prefix = the pure core.** A transform over data already in memory is bare: `latency_run`, `latency_report`, `disposition_run`, `disposition_summary`, `latency_input_columns`. Referentially transparent; tested with plain in-memory fixtures. Domain-specificity does NOT earn a prefix -- these functions are as Survey160-specific as any, they just do no I/O.
+- **`s160_` prefix = the raw data-access layer.** Functions that reach Survey160's own systems and native export files: the REST API (`s160_api_*`), GCS (`s160_gcs_*`), and raw campaign-export CSVs (`s160_read_csv`, `s160_csv_header`). Non-deterministic plumbing, mocked in tests, fails on the environment (missing file, expired auth, network), and the boundary where PII and credentials cross the process. Mostly called by the pipeline and power users.
+- **Bare, domain-led names = the analytics surface.** What an analyst or Survey Manager calls to compute or screen: `latency_*` and `disposition_*`. Grouped by domain so a whole feature reads as one unit in the manual and in autocomplete: `disposition_run`, `disposition_summary`, `disposition_query`, `disposition_screen`.
 
-The rule is exceptionless across the current surface. When unsure, ask: does this line execute against something outside the R session? If yes, prefix it.
+Most analytics functions are pure, but two (`disposition_query`, `disposition_screen`) read a local Parquet projection. They stay bare and in the disposition family on purpose: for the user-facing surface, feature cohesion beats tagging the I/O, and their I/O is confined to one private helper (`.disposition_read_parquet`). So the split is by layer and audience, not strictly by side effects -- `s160_read_csv` is plumbing (read a raw export), `disposition_query` is the disposition feature (screen a sample against the derived projection).
 
 Secondary conventions:
 
 - **Domain-leads-name for families**, so parallel functions group together: `latency_input_columns` / `disposition_input_columns`, `latency_run` / `disposition_run`.
-- **The token after `s160_`** names the salient concern -- the external system (`s160_gcs_*`), the format or action (`s160_read_csv`, `s160_csv_header`), or the domain the I/O serves (`s160_disposition_query`) -- whichever the caller thinks in.
+- **The token after `s160_`** names the salient concern -- the external system (`s160_gcs_*`) or the format/action (`s160_read_csv`, `s160_csv_header`).
 - **Spell names out**; avoid abbreviations (`disposition`, not `disp`/`dispo`; `.mask_opt_in` to match the `opt_in` column, not `.mask_optin`).
 - **`lintr::object_length_linter` caps names at 30 characters** -- keep helper names under it.
 

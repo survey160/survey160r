@@ -51,11 +51,11 @@ A data frame, one row per phone: \code{phone}, \code{ever_contacted},
 The pure core of the disposition query: takes an in-memory disposition frame
 (one row per \code{(phone, campaign_id)}) and returns \strong{one row per
 phone} with its cross-campaign screening flags and latest disposition. No
-I/O -- \code{\link{s160_disposition_query}} reads a Parquet file and calls
+I/O -- \code{\link{disposition_query}} reads a Parquet file and calls
 this. Use it directly to read a projection once and screen several samples
 against the in-memory frame.
 }
 \seealso{
-\code{\link{s160_disposition_query}},
-  \code{\link{s160_disposition_screen}}
+\code{\link{disposition_query}},
+  \code{\link{disposition_screen}}
 }

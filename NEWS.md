@@ -15,9 +15,9 @@
     frame up to one row per phone (cross-campaign screening flags
     `ever_contacted` / `ever_complete` / `ever_terminated` / ... plus
     `latest_disposition`).
-  * `s160_disposition_query(dataset, ...)` -- reads the Parquet projection, then
+  * `disposition_query(dataset, ...)` -- reads the Parquet projection, then
     `disposition_summary()` (the analyst engine).
-  * `s160_disposition_screen(sample, dataset, ...)` -- annotates a caller's
+  * `disposition_screen(sample, dataset, ...)` -- annotates a caller's
     sample data frame in place with the disposition columns, preserving the
     original rows/columns/formatting (the Survey-Manager sample-cleaning
     surface).
