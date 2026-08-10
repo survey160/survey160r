@@ -89,7 +89,7 @@ parse_timestamps <- function(data, cols) {
 }
 
 # Row-subset a (data, parse_failed_mask) pair in lockstep. Used by
-# campaign_report() after dedupe and date_filter so the per-segment mask
+# latency_report() after dedupe and date_filter so the per-segment mask
 # stays aligned with `data` row-for-row. Pure: returns a new pair, does
 # not mutate.
 subset_parsed_input <- function(data, parse_failed_mask, keep_idx) {

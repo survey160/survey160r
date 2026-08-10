@@ -2,7 +2,7 @@
 # frame so the texted/consented/completed denominators reflect the full
 # campaign population, not just the funnel survivors.
 #
-# Orchestrator (called by campaign_report() before the population filter):
+# Orchestrator (called by latency_report() before the population filter):
 #   build_summary_frame(data, config)     -> per (campaign, date, hour) counts
 #   build_ineligible_frame(data, config)  -> per (campaign, date, hour, segment_index) counts
 #   collapse_summary_to_day(frame)        -> hourly -> day rollup (hour_local = NA)

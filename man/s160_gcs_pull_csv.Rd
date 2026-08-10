@@ -16,7 +16,7 @@ global bucket set by \code{s160_gcs_init()}; pass an explicit value to
 skip the global entirely.}
 
 \item{columns}{Optional character vector of (dot-form) column names to keep
-(e.g. from \code{required_csv_columns()}). Forwarded to
+(e.g. from \code{required_latency_columns()}). Forwarded to
 \code{s160_gcs_campaign_results_read()} to parse only those columns.}
 }
 \value{
@@ -28,7 +28,7 @@ Thin wrapper over \code{s160_gcs_campaign_results_read} that also
 computes a sha256 of the downloaded CSV bytes. The hash and the
 canonical \code{gs://} path travel back on the returned data frame
 as the \code{source_csv_hash} and \code{source_csv_path}
-attributes; \code{campaign_report()} reads them and copies them onto
+attributes; \code{latency_report()} reads them and copies them onto
 \code{result$meta} so downstream consumers (e.g. persistence layers)
 don't have to fish them off attributes.
 }

@@ -229,10 +229,10 @@ test_that("last_reached_question_index: missing columns skipped gracefully", {
   expect_equal(idx, 1L)
 })
 
-test_that("campaign_report integrates summary columns into consolidated", {
+test_that("latency_report integrates summary columns into consolidated", {
   d <- load_synthetic_data()
   cfg <- synthetic_config()
-  result <- campaign_report(d, cfg, run_at = as.POSIXct("2026-05-21", tz = "UTC"))
+  result <- latency_report(d, cfg, run_at = as.POSIXct("2026-05-21", tz = "UTC"))
   cons <- result$consolidated
 
   # Day rollup row: 3 texted = 3 consented = 3 completed (synthetic.csv).
@@ -373,12 +373,12 @@ test_that("build_summary_frame: t2w with no web_complete column -> 0 completed",
   expect_equal(day$n_texted, 3L)
 })
 
-test_that("campaign_report stamps survey_mode on every consolidated row", {
+test_that("latency_report stamps survey_mode on every consolidated row", {
   cfg <- synthetic_config()
   run_at <- as.POSIXct("2026-05-21", tz = "UTC")
 
   # sms (default): no web_complete column.
-  cons_sms <- campaign_report(load_synthetic_data(), cfg, run_at)$consolidated
+  cons_sms <- latency_report(load_synthetic_data(), cfg, run_at)$consolidated
   expect_true("survey_mode" %in% names(cons_sms))
   expect_equal(unique(cons_sms$survey_mode), "sms")
   expect_true(all(cons_sms[is.na(cons_sms$hour_local), ]$n_completed == 3L))
@@ -389,12 +389,12 @@ test_that("campaign_report stamps survey_mode on every consolidated row", {
     d$web_complete[1] <- "1"
     d
   })
-  cons_t2w <- campaign_report(d_t2w, cfg, run_at)$consolidated
+  cons_t2w <- latency_report(d_t2w, cfg, run_at)$consolidated
   expect_equal(unique(cons_t2w$survey_mode), "t2w")
   expect_true(all(cons_t2w[is.na(cons_t2w$hour_local), ]$n_completed == 1L))
 })
 
-test_that("campaign_report: t2w_external nulls n_completed to NA, keeps texted", {
+test_that("latency_report: t2w_external nulls n_completed to NA, keeps texted", {
   cfg <- synthetic_config()
   run_at <- as.POSIXct("2026-05-21", tz = "UTC")
   d <- load_synthetic_data(mutate = function(d) {
@@ -403,7 +403,7 @@ test_that("campaign_report: t2w_external nulls n_completed to NA, keeps texted",
       "Finish here https://survey.example.org/s?uid=%s", seq_len(nrow(d)))
     d
   })
-  cons <- campaign_report(d, cfg, run_at)$consolidated
+  cons <- latency_report(d, cfg, run_at)$consolidated
   expect_equal(unique(cons$survey_mode), "t2w_external")
   expect_true(all(is.na(cons$n_completed)))          # completion not computable
   day <- cons[is.na(cons$hour_local) & cons$threshold_min == 1L, ]

@@ -25,7 +25,7 @@ A character vector of unique dot-form column names, including
 Returns the (dot-form) column names \code{disposition_run()} touches, so a
 caller can project a wide export down to just those columns and get output
 identical to a full read. This is the disposition analogue of
-\code{required_csv_columns()} (latency), with two deliberate differences:
+\code{required_latency_columns()} (latency), with two deliberate differences:
 disposition is decoupled from the question flow (no \code{config} argument),
 it reads \code{phone} (the row key), and it does NOT read \code{campaignid}
 -- the \code{campaign_id} is stamped from the \code{disposition_run()}

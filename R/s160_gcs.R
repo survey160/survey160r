@@ -300,7 +300,7 @@ s160_gcs_init <- function(bucket) {
 #' @param bucket Source GCS bucket. \code{NULL} (default) falls back to the
 #'   global bucket set by \code{s160_gcs_init()}.
 #' @param columns Optional character vector of (dot-form) column names to keep,
-#'   e.g. from \code{required_csv_columns()}. When set, only those columns are
+#'   e.g. from \code{required_latency_columns()}. When set, only those columns are
 #'   parsed (via \code{data.table::fread}'s column projection), cutting read
 #'   time and memory on wide exports. \code{NULL} (default) reads every column.
 #' @param ... Additional arguments forwarded to the CSV reader
@@ -443,7 +443,7 @@ s160_gcs_campaign_results_list <- function(bucket = NULL) {
 #' computes a sha256 of the downloaded CSV bytes. The hash and the
 #' canonical \code{gs://} path travel back on the returned data frame
 #' as the \code{source_csv_hash} and \code{source_csv_path}
-#' attributes; \code{campaign_report()} reads them and copies them onto
+#' attributes; \code{latency_report()} reads them and copies them onto
 #' \code{result$meta} so downstream consumers (e.g. persistence layers)
 #' don't have to fish them off attributes.
 #'
@@ -453,7 +453,7 @@ s160_gcs_campaign_results_list <- function(bucket = NULL) {
 #'   global bucket set by \code{s160_gcs_init()}; pass an explicit value to
 #'   skip the global entirely.
 #' @param columns Optional character vector of (dot-form) column names to keep
-#'   (e.g. from \code{required_csv_columns()}). Forwarded to
+#'   (e.g. from \code{required_latency_columns()}). Forwarded to
 #'   \code{s160_gcs_campaign_results_read()} to parse only those columns.
 #' @return A data frame with attributes \code{source_csv_hash} and
 #'   \code{source_csv_path} set.
@@ -496,14 +496,14 @@ s160_gcs_pull_csv <- function(campaign_id, filename = NULL, bucket = NULL,
 #' via \code{data.table::fread} (falling back to \code{utils::read.csv})
 #' and stamps \code{source_csv_hash} and \code{source_csv_path}
 #' attributes on the returned data frame so downstream
-#' \code{campaign_report()} / \code{campaign_run()} surface them on
+#' \code{latency_report()} / \code{latency_run()} surface them on
 #' \code{result$meta}. Use for backfills (archived campaign CSVs stored
 #' on disk, Dropbox, S3 mounts, etc.).
 #'
 #' @param path Path to the CSV. Recorded verbatim on
 #'   \code{attr(., "source_csv_path")}.
 #' @param columns Optional character vector of (dot-form) column names to keep
-#'   (e.g. from \code{required_csv_columns()}). When set, only those columns
+#'   (e.g. from \code{required_latency_columns()}). When set, only those columns
 #'   are parsed, cutting read time and memory on wide exports. \code{NULL}
 #'   (default) reads every column.
 #' @param hash When \code{TRUE} (default), compute the sha256 of the file for
@@ -520,7 +520,7 @@ s160_gcs_pull_csv <- function(campaign_id, filename = NULL, bucket = NULL,
 #' \dontrun{
 #' data <- s160_read_csv("~/Dropbox/archive/campaign_500.csv")
 #' attr(data, "source_csv_hash")
-#' campaign_run(500, data, field_timezone = "America/New_York")
+#' latency_run(500, data, field_timezone = "America/New_York")
 #' }
 #' @export
 s160_read_csv <- function(path, columns = NULL, hash = TRUE, ...) {
@@ -545,14 +545,14 @@ s160_read_csv <- function(path, columns = NULL, hash = TRUE, ...) {
 #'
 #' Peeks the first line of a CSV and returns its column names in the same
 #' \code{make.names()}-munged (dot-form) form the readers produce, without
-#' parsing the body. Pair with \code{campaign_build_config()} +
-#' \code{required_csv_columns()} to derive a column-projection set for a
+#' parsing the body. Pair with \code{latency_build_config()} +
+#' \code{required_latency_columns()} to derive a column-projection set for a
 #' large file before reading it:
 #'
 #' \preformatted{
 #' header <- s160_csv_header(path)
-#' config <- campaign_build_config(id, header, field_timezone = tz)
-#' data   <- s160_read_csv(path, columns = required_csv_columns(config))
+#' config <- latency_build_config(id, header, field_timezone = tz)
+#' data   <- s160_read_csv(path, columns = required_latency_columns(config))
 #' }
 #'
 #' @param path Path to the CSV.

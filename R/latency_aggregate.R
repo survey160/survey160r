@@ -1,7 +1,7 @@
 # Aggregation of the per-respondent x per-segment frame to the consolidated
 # Parquet table. Cells are always at the hour grain:
 # (campaign_id, date, hour_local, segment, threshold_min). Downstream
-# consumers (and campaign_report()'s day-rollup pass) get day-grain rows by
+# consumers (and latency_report()'s day-rollup pass) get day-grain rows by
 # nulling hour_local on the input frame before calling.
 #
 # Orchestrator: aggregate_consolidated()
