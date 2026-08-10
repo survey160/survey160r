@@ -251,6 +251,10 @@ disposition_summary <- function(data, phones = NULL, campaign_ids = NULL,
 #'
 #' @param dataset Path to a disposition Parquet file (the phone-sorted read
 #'   projection). Read with \pkg{nanoparquet}, projected to the query columns.
+#' @param phones Optional character vector of phone numbers to screen; every
+#'   input number is returned (never-contacted ones flagged
+#'   \code{ever_contacted = FALSE}). \code{NULL} summarizes every phone in
+#'   \code{dataset}. See \code{\link{disposition_summary}} for details.
 #' @inheritParams disposition_summary
 #' @return A per-phone summary data frame (see \code{\link{disposition_summary}}).
 #' @seealso \code{\link{disposition_summary}}, \code{\link{disposition_screen}}

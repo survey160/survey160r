@@ -556,7 +556,7 @@ s160_read_csv <- function(path, columns = NULL, hash = TRUE, ...) {
 #' header <- s160_csv_header(path)
 #' config <- latency_build_config(campaign_id, header,
 #'                                field_timezone = field_timezone)
-#' data   <- s160_read_csv(path, columns = latency_input_columns(config))
+#' data   <- s160_read_csv(path, columns = latency_input_columns(config, header))
 #' }
 #'
 #' @param path Path to the CSV.

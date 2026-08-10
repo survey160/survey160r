@@ -19,12 +19,10 @@ disposition_query(
 \item{dataset}{Path to a disposition Parquet file (the phone-sorted read
 projection). Read with \pkg{nanoparquet}, projected to the query columns.}
 
-\item{phones}{Optional character vector of phone numbers to screen. When
-supplied, \strong{every} input number is returned -- never-contacted ones
-with \code{ever_contacted = FALSE} and
-\code{latest_disposition = "never_contacted"}. \code{NULL} summarizes every
-phone in \code{data}. Matched digit-normalized (a leading US \code{1} is
-dropped so 11-digit numbers match 10-digit ones).}
+\item{phones}{Optional character vector of phone numbers to screen; every
+input number is returned (never-contacted ones flagged
+\code{ever_contacted = FALSE}). \code{NULL} summarizes every phone in
+\code{dataset}. See \code{\link{disposition_summary}} for details.}
 
 \item{campaign_ids}{Optional vector; restrict the underlying rows to these
 campaigns before summarizing.}
