@@ -97,6 +97,13 @@ test_that("date bounds drop rows outside the range (incl. NA close dates)", {
   expect_equal(nrow(s160_disposition_query(p, date_from = "2020-01-01")), 0L)
 })
 
+test_that("each date bound must be a single valid date", {
+  d <- .disposition_row("2015550101", 2339, engaged = 1, date_closed_on = "2026-03-01")
+  expect_error(disposition_summary(d, date_from = c("2026-01-01", "2026-02-01")),
+               "single valid date")
+  expect_error(disposition_summary(d, date_to = "not-a-date"), "single valid date")
+})
+
 test_that("derived disposition follows funnel precedence", {
   res <- s160_disposition_query(.disposition_write(rbind(
     .disposition_row("1", 1, engaged = 1, opt_in = 1, complete = 1, web_complete = 1),
@@ -131,6 +138,7 @@ test_that("pagination slices the phone-ordered result", {
 test_that("empty dataset yields an empty result; screened phones come back never-contacted", {
   p0 <- .disposition_write(.disposition_row("x", 1)[0, , drop = FALSE])
   expect_equal(nrow(s160_disposition_query(p0)), 0L)
+  expect_equal(nrow(s160_disposition_query(p0, page = 1)), 0L)  # page on empty -> no error
   res <- s160_disposition_query(p0, phones = "2015550101")
   expect_equal(res$phone, "2015550101")
   expect_false(res$ever_contacted)

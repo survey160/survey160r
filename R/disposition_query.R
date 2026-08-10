@@ -65,6 +65,19 @@
   )
 }
 
+# Coerce one optional date bound to a single Date, rejecting a multi-value or
+# unparseable bound. A length > 1 bound would silently recycle in the >=/<=
+# comparison below and mis-select rows; NULL passes through untouched.
+.disposition_date_bound <- function(x, name) {
+  if (is.null(x)) return(NULL)
+  d <- tryCatch(as.Date(x), error = function(e) NA)
+  if (length(d) != 1L || is.na(d)) {
+    stop(sprintf("disposition_summary: `%s` must be a single valid date.", name),
+         call. = FALSE)
+  }
+  d
+}
+
 # Normalize phone and apply the row-scope filters (requested phones, campaigns,
 # date_closed_on range). Pure; `data` already has .DISPOSITION_READ_COLS.
 .disposition_filter <- function(data, keep_phones, campaign_ids, date_from, date_to) {
@@ -123,7 +136,7 @@
 # 1-based page slice over the (phone-ordered) result. NULL page/size -> no-op.
 .disposition_paginate <- function(summ, page, page_size) {
   if (is.null(page) && is.null(page_size)) return(summ)
-  ps <- if (is.null(page_size)) nrow(summ) else page_size
+  ps <- if (is.null(page_size)) max(1L, nrow(summ)) else page_size
   pg <- if (is.null(page)) 1L else page
   ok <- function(x) {
     is.numeric(x) && length(x) == 1L && !is.na(x) && x >= 1L && x %% 1 == 0
@@ -200,6 +213,8 @@ disposition_summary <- function(data, phones = NULL, campaign_ids = NULL,
                    paste(bad, collapse = ", ")), call. = FALSE)
     }
   }
+  date_from <- .disposition_date_bound(date_from, "date_from")
+  date_to <- .disposition_date_bound(date_to, "date_to")
   req <- NULL
   if (!is.null(phones)) {
     req <- unique(.disposition_normalize_phone(phones))

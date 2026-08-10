@@ -51,7 +51,7 @@
 # column the (parseable) filter references is absent from the export, nobody
 # opted in (all FALSE) rather than erroring. A filter that will not parse falls
 # through to population_filter_mask(), which raises the "not valid R" error.
-.mask_optin <- function(data, population, started) {
+.mask_opt_in <- function(data, population, started) {
   vars <- tryCatch(all.vars(parse(text = population)), error = function(e) NULL)
   if (!is.null(vars)) {
     # A referenced symbol is a genuinely-absent data column only if it is
@@ -300,7 +300,7 @@ disposition_run <- function(campaign_id, data, population = NULL,
     campaign_id = rep(as.integer(as.character(campaign_id)), length(phone)),
     started = as.integer(started),
     engaged = as.integer(.mask_engaged(data)),
-    opt_in = as.integer(.mask_optin(data, population, started)),
+    opt_in = as.integer(.mask_opt_in(data, population, started)),
     complete = as.integer(.mask_complete(data, survey_mode, started)),
     web_complete = as.integer(.mask_web_complete(data)),
     terminated = as.integer(.mask_terminated(data)),
