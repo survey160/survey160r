@@ -7,6 +7,17 @@
   the domain now leads the name (grouping with `latency_*` / `disposition_*`, and
   matching the internal `.disposition_input_columns` helper). Update call sites.
 
+* **`disposition_run()` corrected: `started` now means *contacted* (the intro
+  was sent, `id.intro.scriptDate`) and `engaged` now means *replied*
+  (`id.intro.batchDate`).** Both intro flags previously keyed on the wrong
+  column (`started` on the reply, `engaged` on the accepted answer) -- verified
+  against the v2 export code and production DB (`scriptDate` = `phonelist.firstsms`,
+  the outbound send; `batchDate` = `phonelist.engaged_at`, the inbound reply). A
+  contacted-only run now includes every contacted recipient, non-responders
+  included, so it returns far more rows (~20x on real campaigns); regenerate any
+  persisted disposition data. `disposition_input_columns()` now returns
+  `id.intro.scriptDate` in place of `id.intro.finalValue`.
+
 ## New features
 
 * **Disposition query surface** -- screen a phone sample against the disposition
