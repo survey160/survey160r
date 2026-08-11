@@ -3,13 +3,17 @@
 
 # A stand-in for download_with_verify(): records its args and writes a stub file
 # (or fails with `fail`, to exercise the error branches).
-mock_download <- function(capture = NULL, fail = NULL) {
+mock_download <- function(capture = NULL, fail = NULL, write_first = FALSE) {
   function(object_name, local_path, bucket) {
     if (!is.null(capture)) {
       capture$object_name <- object_name
       capture$bucket <- bucket
       capture$local_path <- local_path
     }
+    # write_first mimics download_with_verify() writing a partial file to the
+    # temp path before its size check fails, so disposition_pull()'s on.exit
+    # cleanup has a real partial to remove.
+    if (isTRUE(write_first)) writeLines("partial", local_path)
     if (!is.null(fail)) stop(fail)
     writeLines("x", local_path)
     invisible(local_path)
@@ -124,11 +128,11 @@ test_that("a failed download preserves the cache and leaves no partial file", {
   cached <- file.path(d, "s160_disposition_prod.parquet")
   writeLines("good", cached)
   mockery::stub(disposition_pull, "download_with_verify",
-                mock_download(fail = "connection reset"))
+                mock_download(fail = "connection reset", write_first = TRUE))
   expect_error(suppressMessages(disposition_pull(dest = d, refresh = TRUE)),
                "Failed to download")
   expect_equal(readLines(cached), "good")                  # existing cache untouched
-  expect_length(list.files(d, pattern = "\\.part$"), 0L)   # no partial left behind
+  expect_length(list.files(d, pattern = "\\.part$"), 0L)   # written partial cleaned up
 })
 
 test_that("rename fallback copies, and a total move failure errors", {
