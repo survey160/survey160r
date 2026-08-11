@@ -183,6 +183,10 @@ empty_disposition_frame <- function() {
 #' @return A character vector of unique dot-form column names, including
 #'   \code{phone}. Pass it as \code{columns =} to \code{s160_read_csv()} /
 #'   \code{s160_gcs_pull_csv()}.
+#' @seealso \code{\link{latency_input_columns}}, the latency analogue. It leads
+#'   with its \emph{required} \code{config}; here \code{available} leads because
+#'   it is the argument you almost always pass (see the example), and there is no
+#'   required argument -- a deliberate difference, not an inconsistency.
 #' @examples
 #' \dontrun{
 #' header <- s160_csv_header(path)

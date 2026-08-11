@@ -12,8 +12,11 @@ disposition_pull(
 )
 }
 \arguments{
-\item{env}{Environment: \code{"prod"} (default) or \code{"dev"} -- selects the
-\code{s160_disposition_<env>} bucket.}
+\item{env}{Environment for the disposition bucket: \code{"prod"} (default) or
+\code{"dev"} (the \code{s160_disposition_<env>} buckets). There is no staging
+disposition bucket, so the values differ from \code{\link{s160_api_auth}}'s
+\code{prod}/\code{staging} by design -- each names the environments its own
+subsystem actually has.}
 
 \item{dest}{Where to save. \code{NULL} (default) caches under
 \code{tools::R_user_dir("survey160r", "cache")}. A directory saves

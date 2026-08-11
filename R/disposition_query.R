@@ -331,8 +331,11 @@ disposition_screen <- function(sample, dataset, phone_col = "phone",
 #' reaches GCS: authenticate first with \code{\link{s160_gcs_init}} (any bucket)
 #' so the session's GCS credentials are set.
 #'
-#' @param env Environment: \code{"prod"} (default) or \code{"dev"} -- selects the
-#'   \code{s160_disposition_<env>} bucket.
+#' @param env Environment for the disposition bucket: \code{"prod"} (default) or
+#'   \code{"dev"} (the \code{s160_disposition_<env>} buckets). There is no staging
+#'   disposition bucket, so the values differ from \code{\link{s160_api_auth}}'s
+#'   \code{prod}/\code{staging} by design -- each names the environments its own
+#'   subsystem actually has.
 #' @param dest Where to save. \code{NULL} (default) caches under
 #'   \code{tools::R_user_dir("survey160r", "cache")}. A directory saves
 #'   \code{disposition_all_<env>.parquet} inside it; any other single string is
@@ -365,7 +368,8 @@ disposition_pull <- function(env = c("prod", "dev"), dest = NULL,
     dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
     local_path <- file.path(cache_dir, default_name)
   } else if (!is.character(dest) || length(dest) != 1L || !nzchar(trimws(dest))) {
-    stop("dest must be a single non-empty path or directory.", call. = FALSE)
+    stop("disposition_pull: `dest` must be a single non-empty path or directory.",
+         call. = FALSE)
   } else if (dir.exists(dest)) {
     local_path <- file.path(dest, default_name)
   } else {
