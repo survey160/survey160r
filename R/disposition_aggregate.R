@@ -13,9 +13,9 @@
 # The per-respondent masks below mirror the signals build_summary_frame()
 # (summary_aggregate.R) computes before aggregating to (date, hour). NOTE:
 # `started`/`engaged` here were corrected to key on id.intro.scriptDate (the
-# outbound send) and id.intro.batchDate (the inbound reply) after verifying the
-# v2 export code + prod DB; build_summary_frame() still uses the older
-# batchDate-based `texted`, so the two now differ until that view is reconciled.
+# outbound send) and id.intro.batchDate (the inbound reply); build_summary_frame()
+# still uses the older batchDate-based `texted`, so the two now differ until that
+# view is reconciled.
 
 # Parse a timestamp column to POSIXct, tolerating an absent column (returns an
 # all-NA vector of length nrow(data)). Mirrors build_summary_frame()'s
@@ -30,17 +30,16 @@
 }
 
 # started (contacted): the intro was SENT to the recipient -- keys on
-# id.intro.scriptDate, the outbound scripted send in the v2 conversation model
-# (aligns with phonelist.firstsms). NOT id.intro.batchDate: that is the
-# recipient's inbound REPLY (verified against the v2 export code + prod DB --
-# batchDate matches phonelist.engaged_at, scriptDate matches phonelist.firstsms).
+# id.intro.scriptDate, the outbound scripted send in the Survey160 v2 conversation
+# model. NOT id.intro.batchDate: that column is the recipient's inbound REPLY
+# (used by `engaged` below), a strictly smaller set.
 .mask_started <- function(data) {
   !is.na(.disposition_timestamp(data, "id.intro.scriptDate"))
 }
 
 # engaged: the recipient REPLIED to the intro at all -- keys on
-# id.intro.batchDate, the inbound reply in the v2 conversation model (aligns
-# with phonelist.engaged_at). Distinct from opt_in, which additionally requires
+# id.intro.batchDate, the inbound reply in the Survey160 v2 conversation model.
+# Distinct from opt_in, which additionally requires
 # an accepted "Yes" answer (id.intro.finalText): a recipient can reply (engaged)
 # without producing an accepted answer. Null-safe: an absent column -> all NA ->
 # nobody engaged.
