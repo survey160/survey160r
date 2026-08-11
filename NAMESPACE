@@ -2,6 +2,7 @@
 
 S3method(print,s160_api_conn)
 export(disposition_input_columns)
+export(disposition_pull)
 export(disposition_query)
 export(disposition_run)
 export(disposition_screen)

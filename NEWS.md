@@ -35,6 +35,13 @@
 
   Adds a lightweight `nanoparquet` dependency for the Parquet read.
 
+* **`disposition_pull()`** -- download the disposition Parquet projection from
+  the `s160_disposition_<env>` GCS bucket to a local (cached) path, ready to hand
+  straight to `disposition_query()` / `disposition_screen()`. Authenticate once
+  with `s160_gcs_init()`; pass `refresh = TRUE` for a fresh copy. Bare-named (it
+  fetches the survey160r-derived projection, not a raw source) so it groups with
+  the rest of the disposition family.
+
 # survey160r 0.20.0
 
 ## Breaking changes
