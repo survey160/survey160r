@@ -358,10 +358,16 @@ disposition_screen <- function(sample, dataset, phone_col = "phone",
 disposition_pull <- function(env = c("prod", "dev"), dest = NULL,
                              bucket = NULL, refresh = FALSE) {
   env <- match.arg(env)
+  if (!is.logical(refresh) || length(refresh) != 1L || is.na(refresh)) {
+    stop("disposition_pull: `refresh` must be a single TRUE or FALSE.",
+         call. = FALSE)
+  }
   if (is.null(bucket)) bucket <- sprintf("s160_disposition_%s", env)
   bucket <- resolve_bucket(bucket)
   object_name <- "disposition_by_phone/disposition_all.parquet"
-  default_name <- sprintf("disposition_all_%s.parquet", env)
+  # Key the default cache on the resolved bucket, not just env: two `bucket=`
+  # overrides with `dest = NULL` must not share (and silently reuse) one file.
+  default_name <- sprintf("%s.parquet", bucket)
 
   if (is.null(dest)) {
     cache_dir <- tools::R_user_dir("survey160r", "cache")
@@ -384,8 +390,13 @@ disposition_pull <- function(env = c("prod", "dev"), dest = NULL,
   }
 
   message(sprintf("Downloading %s", gcs_path))
+  # Download to a temp file in the destination dir, then atomically move it into
+  # place on success -- a failed or partial download never poisons the cache,
+  # and any existing good copy survives.
+  tmp <- tempfile(tmpdir = dirname(local_path), fileext = ".part")
+  on.exit(unlink(tmp), add = TRUE)
   tryCatch(
-    download_with_verify(object_name = object_name, local_path = local_path,
+    download_with_verify(object_name = object_name, local_path = tmp,
                          bucket = bucket),
     error = function(e) {
       msg <- conditionMessage(e)
@@ -396,5 +407,10 @@ disposition_pull <- function(env = c("prod", "dev"), dest = NULL,
       stop(sprintf("Failed to download %s: %s", gcs_path, msg), call. = FALSE)
     }
   )
+  if (!file.rename(tmp, local_path) &&
+        !file.copy(tmp, local_path, overwrite = TRUE)) {
+    stop(sprintf("Failed to move the downloaded file into place: %s", local_path),
+         call. = FALSE)
+  }
   local_path
 }

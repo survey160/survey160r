@@ -24,7 +24,7 @@ test_that("default pulls prod into the user cache and returns the path", {
 
   p <- suppressMessages(disposition_pull())
 
-  expect_equal(p, file.path(tmp, "disposition_all_prod.parquet"))
+  expect_equal(p, file.path(tmp, "s160_disposition_prod.parquet"))
   expect_equal(cap$object_name, "disposition_by_phone/disposition_all.parquet")
   expect_equal(cap$bucket, "s160_disposition_prod")
   expect_true(file.exists(p))
@@ -49,7 +49,7 @@ test_that("dest directory saves the env-named file inside it", {
   d <- withr::local_tempdir()
   mockery::stub(disposition_pull, "download_with_verify", mock_download())
   p <- suppressMessages(disposition_pull(dest = d))
-  expect_equal(p, file.path(d, "disposition_all_prod.parquet"))
+  expect_equal(p, file.path(d, "s160_disposition_prod.parquet"))
   expect_true(file.exists(p))
 })
 
@@ -69,7 +69,7 @@ test_that("invalid dest is rejected", {
 
 test_that("an existing local copy is reused without downloading", {
   d <- withr::local_tempdir()
-  cached <- file.path(d, "disposition_all_prod.parquet")
+  cached <- file.path(d, "s160_disposition_prod.parquet")
   writeLines("old", cached)
   mockery::stub(disposition_pull, "download_with_verify",
                 function(...) stop("should not download on a cache hit"))
@@ -79,7 +79,7 @@ test_that("an existing local copy is reused without downloading", {
 
 test_that("refresh = TRUE re-downloads over an existing file", {
   d <- withr::local_tempdir()
-  cached <- file.path(d, "disposition_all_prod.parquet")
+  cached <- file.path(d, "s160_disposition_prod.parquet")
   writeLines("old", cached)
   mockery::stub(disposition_pull, "download_with_verify", mock_download())
   suppressMessages(disposition_pull(dest = d, refresh = TRUE))
@@ -100,4 +100,44 @@ test_that("a non-404 error gives a download-failed error", {
   expect_error(
     suppressMessages(disposition_pull(dest = withr::local_tempdir())),
     "Failed to download.*connection reset")
+})
+
+test_that("invalid refresh is rejected", {
+  expect_error(disposition_pull(refresh = NULL), "single TRUE or FALSE")
+  expect_error(disposition_pull(refresh = NA), "single TRUE or FALSE")
+  expect_error(disposition_pull(refresh = c(TRUE, FALSE)), "single TRUE or FALSE")
+  expect_error(disposition_pull(refresh = 1), "single TRUE or FALSE")
+})
+
+test_that("different bucket overrides use separate default caches", {
+  tmp <- withr::local_tempdir()
+  mockery::stub(disposition_pull, "tools::R_user_dir", function(...) tmp)
+  mockery::stub(disposition_pull, "download_with_verify", mock_download())
+  p1 <- suppressMessages(disposition_pull(bucket = "bucket_a"))
+  p2 <- suppressMessages(disposition_pull(bucket = "bucket_b"))
+  expect_false(p1 == p2)                       # not one shared cache file
+  expect_true(file.exists(p1) && file.exists(p2))
+})
+
+test_that("a failed download preserves the cache and leaves no partial file", {
+  d <- withr::local_tempdir()
+  cached <- file.path(d, "s160_disposition_prod.parquet")
+  writeLines("good", cached)
+  mockery::stub(disposition_pull, "download_with_verify",
+                mock_download(fail = "connection reset"))
+  expect_error(suppressMessages(disposition_pull(dest = d, refresh = TRUE)),
+               "Failed to download")
+  expect_equal(readLines(cached), "good")                  # existing cache untouched
+  expect_length(list.files(d, pattern = "\\.part$"), 0L)   # no partial left behind
+})
+
+test_that("rename fallback copies, and a total move failure errors", {
+  d <- withr::local_tempdir()
+  mockery::stub(disposition_pull, "download_with_verify", mock_download())
+  mockery::stub(disposition_pull, "file.rename", function(...) FALSE)
+  p <- suppressMessages(disposition_pull(dest = d))         # rename fails -> copy
+  expect_true(file.exists(p))
+  mockery::stub(disposition_pull, "file.copy", function(...) FALSE)
+  expect_error(suppressMessages(disposition_pull(dest = d, refresh = TRUE)),
+               "move the downloaded file into place")       # both fail -> error
 })
