@@ -46,3 +46,9 @@ data <- s160_read_csv(path, columns = disposition_input_columns(header))
 disposition <- disposition_run(1234, data)$consolidated
 }
 }
+\seealso{
+\code{\link{latency_input_columns}}, the latency analogue. It leads
+  with its \emph{required} \code{config}; here \code{available} leads because
+  it is the argument you almost always pass (see the example), and there is no
+  required argument -- a deliberate difference, not an inconsistency.
+}

@@ -319,3 +319,98 @@ disposition_screen <- function(sample, dataset, phone_col = "phone",
   for (col in disposition_cols) sample[[col]] <- summ[[col]][idx]
   sample
 }
+
+#' Download the disposition projection from GCS
+#'
+#' Pulls the phone-sorted disposition projection
+#' (\code{disposition_by_phone/disposition_all.parquet}) from the environment's
+#' disposition bucket to a local file and returns the path -- ready to hand to
+#' \code{\link{disposition_query}} / \code{\link{disposition_screen}}. Downloaded
+#' once and reused from the local cache on later calls (pass \code{refresh = TRUE}
+#' to force a fresh download). This is the one \code{disposition_*} function that
+#' reaches GCS: authenticate first with \code{\link{s160_gcs_init}} (any bucket)
+#' so the session's GCS credentials are set.
+#'
+#' @param env Environment for the disposition bucket: \code{"prod"} (default) or
+#'   \code{"dev"} (the \code{s160_disposition_<env>} buckets). There is no staging
+#'   disposition bucket, so the values differ from \code{\link{s160_api_auth}}'s
+#'   \code{prod}/\code{staging} by design -- each names the environments its own
+#'   subsystem actually has.
+#' @param dest Where to save. \code{NULL} (default) caches under
+#'   \code{tools::R_user_dir("survey160r", "cache")}. A directory saves
+#'   \code{disposition_all_<env>.parquet} inside it; any other single string is
+#'   treated as the exact output path (its parent is created).
+#' @param bucket Source GCS bucket. \code{NULL} (default) derives it from
+#'   \code{env}; pass a bucket name to override.
+#' @param refresh When \code{FALSE} (default), reuse an existing local copy;
+#'   \code{TRUE} always re-downloads (the projection is rebuilt each pipeline
+#'   pass, so refresh to pick up a newer one).
+#' @return The local path to the downloaded Parquet (a single string).
+#' @seealso \code{\link{disposition_query}}, \code{\link{disposition_screen}},
+#'   \code{\link{s160_gcs_init}}
+#' @examples
+#' \dontrun{
+#' s160_gcs_init(bucket = "s160_disposition_prod")   # one-time browser OAuth
+#' dataset <- disposition_pull()                      # download (cached)
+#' disposition_screen(my_sample, dataset)
+#' }
+#' @export
+disposition_pull <- function(env = c("prod", "dev"), dest = NULL,
+                             bucket = NULL, refresh = FALSE) {
+  env <- match.arg(env)
+  if (!is.logical(refresh) || length(refresh) != 1L || is.na(refresh)) {
+    stop("disposition_pull: `refresh` must be a single TRUE or FALSE.",
+         call. = FALSE)
+  }
+  if (is.null(bucket)) bucket <- sprintf("s160_disposition_%s", env)
+  bucket <- resolve_bucket(bucket)
+  object_name <- "disposition_by_phone/disposition_all.parquet"
+  # Key the default cache on the resolved bucket, not just env: two `bucket=`
+  # overrides with `dest = NULL` must not share (and silently reuse) one file.
+  default_name <- sprintf("%s.parquet", bucket)
+
+  if (is.null(dest)) {
+    cache_dir <- tools::R_user_dir("survey160r", "cache")
+    dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
+    local_path <- file.path(cache_dir, default_name)
+  } else if (!is.character(dest) || length(dest) != 1L || !nzchar(trimws(dest))) {
+    stop("disposition_pull: `dest` must be a single non-empty path or directory.",
+         call. = FALSE)
+  } else if (dir.exists(dest)) {
+    local_path <- file.path(dest, default_name)
+  } else {
+    dir.create(dirname(dest), recursive = TRUE, showWarnings = FALSE)
+    local_path <- dest
+  }
+
+  gcs_path <- sprintf("gs://%s/%s", bucket, object_name)
+  if (!refresh && file.exists(local_path)) {
+    message(sprintf("Using cached disposition projection: %s", local_path))
+    return(local_path)
+  }
+
+  message(sprintf("Downloading %s", gcs_path))
+  # Download to a temp file in the destination dir, then atomically move it into
+  # place on success -- a failed or partial download never poisons the cache,
+  # and any existing good copy survives.
+  tmp <- tempfile(tmpdir = dirname(local_path), fileext = ".part")
+  on.exit(unlink(tmp), add = TRUE)
+  tryCatch(
+    download_with_verify(object_name = object_name, local_path = tmp,
+                         bucket = bucket),
+    error = function(e) {
+      msg <- conditionMessage(e)
+      if (grepl("404", msg, fixed = TRUE)) {
+        stop(sprintf("Disposition projection not found: %s", gcs_path),
+             call. = FALSE)
+      }
+      stop(sprintf("Failed to download %s: %s", gcs_path, msg), call. = FALSE)
+    }
+  )
+  if (!file.rename(tmp, local_path) &&
+        !file.copy(tmp, local_path, overwrite = TRUE)) {
+    stop(sprintf("Failed to move the downloaded file into place: %s", local_path),
+         call. = FALSE)
+  }
+  local_path
+}
