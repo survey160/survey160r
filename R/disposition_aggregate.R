@@ -30,15 +30,15 @@
 }
 
 # started (contacted): the intro was SENT to the recipient -- keys on
-# id.intro.scriptDate, the outbound scripted send in the Survey160 v2 conversation
-# model. NOT id.intro.batchDate: that column is the recipient's inbound REPLY
-# (used by `engaged` below), a strictly smaller set.
+# id.intro.scriptDate, the outbound scripted send. NOT id.intro.batchDate: that
+# column is the recipient's inbound REPLY (used by `engaged` below), a strictly
+# smaller set.
 .mask_started <- function(data) {
   !is.na(.disposition_timestamp(data, "id.intro.scriptDate"))
 }
 
 # engaged: the recipient REPLIED to the intro at all -- keys on
-# id.intro.batchDate, the inbound reply in the Survey160 v2 conversation model.
+# id.intro.batchDate, the recipient's inbound reply (not the send).
 # Distinct from opt_in, which additionally requires
 # an accepted "Yes" answer (id.intro.finalText): a recipient can reply (engaged)
 # without producing an accepted answer. Null-safe: an absent column -> all NA ->
