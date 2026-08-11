@@ -42,6 +42,23 @@
   fetches the survey160r-derived projection, not a raw source) so it groups with
   the rest of the disposition family.
 
+## Internal
+
+* **Standardized and consolidated error messages.** Every `stop()` in the
+  package now follows one documented convention (see `R/conditions.R`):
+  exported, user-facing functions prefix the message with `"<fn>: "` so a
+  `call. = FALSE` error still names the failing call; internal helpers stay
+  bare; argument and config-key names are `backtick`-quoted; value references
+  follow a colon. The recurring shapes -- not-initialized, non-empty-string,
+  not-found, failed-to, and data-frame checks -- are routed through shared
+  helpers (`stop_s160()`, `check_nonempty_string()`, `stop_not_initialized()`,
+  `stop_not_found()`, `stop_failed()`, `check_data_frame()`), removing the
+  duplicated raise-and-format logic (including three identical
+  `gcs_list_objects()` `tryCatch` blocks and two file-download error mappers).
+  Message wording is unchanged except where it made a concept consistent
+  (`File not found` -> `file not found`; dropped stray function-name prefixes
+  from internal helpers). No behavior change beyond the reworded text.
+
 # survey160r 0.20.0
 
 ## Breaking changes

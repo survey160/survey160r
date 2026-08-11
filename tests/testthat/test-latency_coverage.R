@@ -16,7 +16,7 @@ test_that("apply_population_filter errors when expression evaluation fails", {
   # `nope` is not a column on `d`; eval() raises an object-not-found error.
   expect_error(
     survey160r:::apply_population_filter(d, "nope > 0"),
-    "filters.population evaluation failed"
+    "`filters.population` evaluation failed"
   )
 })
 

@@ -264,9 +264,7 @@ disposition_input_columns <- function(available = NULL, population = NULL) {
 #' @export
 disposition_run <- function(campaign_id, data, population = NULL,
                             contacted_only = TRUE) {
-  if (!is.data.frame(data)) {
-    stop("disposition_run: `data` must be a data frame.", call. = FALSE)
-  }
+  check_data_frame(data, "data", fn = "disposition_run")
   if (!"phone" %in% names(data)) {
     stop("disposition_run: `data` must contain a `phone` column.", call. = FALSE)
   }

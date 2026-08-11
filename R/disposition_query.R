@@ -155,10 +155,10 @@
 # *written* multi-row file can crash on a subset read -- see the test-file note.)
 .disposition_read_parquet <- function(dataset) {
   if (!is.character(dataset) || length(dataset) != 1L || !nzchar(dataset)) {
-    stop("dataset must be a single Parquet path.", call. = FALSE)
+    stop("`dataset` must be a single Parquet path.", call. = FALSE)
   }
   if (!file.exists(dataset)) {
-    stop(sprintf("disposition dataset not found: %s", dataset), call. = FALSE)
+    stop_not_found("disposition dataset", dataset)
   }
   as.data.frame(nanoparquet::read_parquet(dataset, col_select = .DISPOSITION_READ_COLS))
 }
@@ -201,9 +201,7 @@
 disposition_summary <- function(data, phones = NULL, campaign_ids = NULL,
                                 statuses = NULL, date_from = NULL,
                                 date_to = NULL, page = NULL, page_size = NULL) {
-  if (!is.data.frame(data)) {
-    stop("disposition_summary: `data` must be a data frame.", call. = FALSE)
-  }
+  check_data_frame(data, "data", fn = "disposition_summary")
   missing_cols <- setdiff(.DISPOSITION_READ_COLS, names(data))
   if (length(missing_cols) > 0L) {
     stop(sprintf("disposition_summary: `data` is missing column(s): %s.",
@@ -295,10 +293,7 @@ disposition_query <- function(dataset, phones = NULL, campaign_ids = NULL,
 disposition_screen <- function(sample, dataset, phone_col = "phone",
                                     campaign_ids = NULL, date_from = NULL,
                                     date_to = NULL) {
-  if (!is.data.frame(sample)) {
-    stop("disposition_screen: `sample` must be a data frame.",
-         call. = FALSE)
-  }
+  check_data_frame(sample, "sample", fn = "disposition_screen")
   if (!is.character(phone_col) || length(phone_col) != 1L ||
         !phone_col %in% names(sample)) {
     stop(sprintf("disposition_screen: phone column %s not found in `sample`.",
@@ -401,16 +396,15 @@ disposition_pull <- function(env = c("prod", "dev"), dest = NULL,
     error = function(e) {
       msg <- conditionMessage(e)
       if (grepl("404", msg, fixed = TRUE)) {
-        stop(sprintf("Disposition projection not found: %s", gcs_path),
-             call. = FALSE)
+        stop_not_found("disposition projection", gcs_path, fn = "disposition_pull")
       }
-      stop(sprintf("Failed to download %s: %s", gcs_path, msg), call. = FALSE)
+      stop_failed(sprintf("download %s", gcs_path), msg, fn = "disposition_pull")
     }
   )
   if (!file.rename(tmp, local_path) &&
         !file.copy(tmp, local_path, overwrite = TRUE)) {
-    stop(sprintf("Failed to move the downloaded file into place: %s", local_path),
-         call. = FALSE)
+    stop_failed("move the downloaded file into place", local_path,
+                fn = "disposition_pull")
   }
   local_path
 }

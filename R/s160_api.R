@@ -28,7 +28,7 @@
 check_api_ready <- function(conn = NULL) {
   conn <- conn %||% .s160_api_env
   if (is.null(conn$jwt) || conn$jwt == "") {
-    stop("API not initialized. Run s160_api_auth() first.", call. = FALSE)
+    stop_not_initialized("API", "s160_api_auth")
   }
 }
 
@@ -43,9 +43,9 @@ api_do_auth <- function(conn, base_url, userid, api_key) {
   # Defensive: s160_api_auth resolves these before calling, but the refresh path
   # reuses whatever is stored on `conn`, so guard against a half-built
   # connection rather than POSTing "ApiKey " / userid = NULL / a relative URL.
-  validate_required_cred(userid, "userid")
-  validate_required_cred(api_key, "api_key")
-  validate_required_cred(base_url, "base_url")
+  check_nonempty_string(userid, "userid")
+  check_nonempty_string(api_key, "api_key")
+  check_nonempty_string(base_url, "base_url")
   base_url <- sub("/$", "", trimws(base_url))
 
   url <- paste0(base_url, "/auth/serviceAccount")
@@ -90,16 +90,6 @@ get_credential <- function(var_name, prompt_msg, secret = FALSE) {
   }
 
   prompt_and_save_renviron(var_name, prompt_msg, secret = secret) # nocov # nolint object_usage_linter.
-}
-
-# Validate a credential is a single non-empty string -- used at the point where
-# it is about to be sent (api_do_auth), guarding against a half-built
-# connection.
-validate_required_cred <- function(x, name) {
-  if (!is.character(x) || length(x) != 1L || !nzchar(trimws(x))) {
-    stop(sprintf("%s must be a non-empty string.", name), call. = FALSE)
-  }
-  x
 }
 
 # Extract a single human-readable error message from an httr error response.
@@ -324,11 +314,13 @@ s160_api_campaign_results <- function(campaign_id, filter_open = FALSE,
   campaign_id <- validate_campaign_id(campaign_id)
 
   if (!is.numeric(timeout) || length(timeout) != 1 || timeout <= 0) {
-    stop("timeout must be a positive number.", call. = FALSE)
+    stop_s160("`timeout` must be a positive number.",
+              fn = "s160_api_campaign_results")
   }
   if (!is.numeric(poll_interval) || length(poll_interval) != 1 ||
         poll_interval <= 0) {
-    stop("poll_interval must be a positive number.", call. = FALSE)
+    stop_s160("`poll_interval` must be a positive number.",
+              fn = "s160_api_campaign_results")
   }
 
   export_filename <- paste0(campaign_id, "_raw_data_download.csv")
@@ -377,7 +369,8 @@ s160_api_campaign_results <- function(campaign_id, filter_open = FALSE,
     message(sprintf("  Waiting... (%ds elapsed)", as.integer(elapsed)))
   }
 
-  stop(sprintf("Export timed out after %g seconds.", timeout), call. = FALSE)
+  stop_s160(sprintf("Export timed out after %g seconds.", timeout),
+            fn = "s160_api_campaign_results")
 }
 
 #' Read a single campaign's attributes
@@ -429,7 +422,8 @@ s160_api_campaign_get <- function(campaign_id, conn = NULL) {
       # found, which surfaces as "Bad Request" through s160_api_request. Map
       # that (and a real 404, defensively) to a clear not-found error.
       if (grepl("Bad Request|Not Found", msg, ignore.case = TRUE)) {
-        stop(sprintf("Campaign %s not found.", campaign_id), call. = FALSE)
+        stop_s160(sprintf("Campaign %s not found.", campaign_id),
+                  fn = "s160_api_campaign_get")
       }
       stop(e)
     }
@@ -439,7 +433,8 @@ s160_api_campaign_get <- function(campaign_id, conn = NULL) {
   # The real not-found path is the HTTP 400 handled by the tryCatch above; this
   # guard would only fire if the server changed shape.
   if (!isTRUE(resp$success) || is.null(resp$data)) {
-    stop(sprintf("Campaign %s not found.", campaign_id), call. = FALSE)
+    stop_s160(sprintf("Campaign %s not found.", campaign_id),
+              fn = "s160_api_campaign_get")
   }
 
   enriched_fields <- c(

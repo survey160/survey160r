@@ -18,7 +18,7 @@
 check_gcs_ready <- function() {
   bucket <- tryCatch(gcs_get_global_bucket(), error = function(e) NULL)
   if (is.null(bucket) || bucket == "") {
-    stop("GCS not initialized. Run s160_gcs_init() first.", call. = FALSE)
+    stop_not_initialized("GCS", "s160_gcs_init")
   }
 }
 
@@ -29,10 +29,7 @@ check_gcs_ready <- function() {
 # explicit `bucket =` and skip the global state entirely.
 resolve_bucket <- function(bucket = NULL) {
   if (!is.null(bucket)) {
-    if (!is.character(bucket) || length(bucket) != 1L ||
-          !nzchar(trimws(bucket))) {
-      stop("bucket must be a non-empty string.", call. = FALSE)
-    }
+    check_nonempty_string(bucket, "bucket")
     return(bucket)
   }
   resolved <- tryCatch(gcs_get_global_bucket(), error = function(e) NULL)
@@ -43,6 +40,15 @@ resolve_bucket <- function(bucket = NULL) {
     ), call. = FALSE)
   }
   resolved
+}
+
+# Run a gcs_list_objects() call, converting any failure into a uniform
+# "<fn>: Failed to <action>: <cause>" error. Returns the listing data frame.
+gcs_list_or_stop <- function(action, fn, ...) {
+  tryCatch(
+    gcs_list_objects(...),
+    error = function(e) stop_failed(action, conditionMessage(e), fn = fn)
+  )
 }
 
 # Prompt for the client secret and persist it to ~/.Renviron
@@ -57,11 +63,11 @@ prompt_and_save_secret <- function() { # nocov start
 # Validate campaign_id is a non-empty scalar
 validate_campaign_id <- function(campaign_id) {
   if (length(campaign_id) != 1) {
-    stop("campaign_id must be a single value, not a vector.", call. = FALSE)
+    stop("`campaign_id` must be a single value, not a vector.", call. = FALSE)
   }
   campaign_id <- as.character(campaign_id)
   if (is.na(campaign_id) || !nzchar(trimws(campaign_id))) {
-    stop("campaign_id must be a non-empty scalar value.", call. = FALSE)
+    stop("`campaign_id` must be a non-empty scalar value.", call. = FALSE)
   }
   campaign_id
 }
@@ -186,7 +192,7 @@ fast_read_csv <- function(path, columns = NULL, encoding = "UTF-8", ...) {
     munged_keep <- munged[keep]   # read.csv fallback subsets by munged name
     if (length(select_raw) == 0L) {
       warning(sprintf(paste0(
-        "fast_read_csv: none of the %d requested column(s) matched the header ",
+        "None of the %d requested column(s) matched the header ",
         "of '%s'; reading all columns."), length(columns), path), call. = FALSE)
       select_raw <- NULL
     }
@@ -239,16 +245,20 @@ fast_read_csv <- function(path, columns = NULL, encoding = "UTF-8", ...) {
 s160_gcs_init <- function(bucket) {
   # Validate bucket
   if (missing(bucket)) {
-    stop("'bucket' is required. Example: s160_gcs_init(bucket = \"campaign_results\")", call. = FALSE)
+    stop_s160(
+      "`bucket` is required. Example: s160_gcs_init(bucket = \"campaign_results\")",
+      fn = "s160_gcs_init"
+    )
   }
-  if (!is.character(bucket) || length(bucket) != 1 || !nzchar(trimws(bucket))) {
-    stop("'bucket' must be a non-empty string.", call. = FALSE)
-  }
+  check_nonempty_string(bucket, "bucket", fn = "s160_gcs_init")
 
   # Client ID from bundled JSON (public, not a secret)
   client_json <- system.file("oauth-client.json", package = "survey160r")
   if (client_json == "") {
-    stop("oauth-client.json not found. Is the survey160r package installed correctly?", call. = FALSE)
+    stop_s160(
+      "oauth-client.json not found. Is the survey160r package installed correctly?",
+      fn = "s160_gcs_init"
+    )
   }
   client_info <- jsonlite::fromJSON(client_json)
   client_id <- client_info$installed$client_id
@@ -257,11 +267,13 @@ s160_gcs_init <- function(bucket) {
   client_secret <- Sys.getenv("S160_GCS_CLIENT_SECRET")
   if (client_secret == "") {
     if (!interactive()) {
-      stop(
-        "S160_GCS_CLIENT_SECRET not found in .Renviron.\n",
-        "Run s160_gcs_init(bucket = \"campaign_results\") interactively to set it up, ",
-        "or add S160_GCS_CLIENT_SECRET manually to ~/.Renviron.",
-        call. = FALSE
+      stop_s160(
+        paste0(
+          "S160_GCS_CLIENT_SECRET not found in .Renviron.\n",
+          "Run s160_gcs_init(bucket = \"campaign_results\") interactively to set it up, ",
+          "or add S160_GCS_CLIENT_SECRET manually to ~/.Renviron."
+        ),
+        fn = "s160_gcs_init"
       )
     }
     client_secret <- prompt_and_save_secret()
@@ -326,7 +338,8 @@ s160_gcs_campaign_results_read <- function(campaign_id, filename = NULL,
     filename <- paste0(campaign_id, "_raw_data_download.csv")
   }
   if (filename != basename(filename)) {
-    stop("filename must not contain path separators.", call. = FALSE)
+    stop_s160("`filename` must not contain path separators.",
+              fn = "s160_gcs_campaign_results_read")
   }
   object_name <- paste0(campaign_id, "/", filename)
 
@@ -337,11 +350,13 @@ s160_gcs_campaign_results_read <- function(campaign_id, filename = NULL,
     local_path <- tempfile(pattern = paste0("s160_", campaign_id, "_"), fileext = ".csv")
     on.exit(unlink(local_path), add = TRUE)
   } else if (!is.character(destdir) || length(destdir) != 1) {
-    stop("destdir must be a single character string.", call. = FALSE)
+    stop_s160("`destdir` must be a single character string.",
+              fn = "s160_gcs_campaign_results_read")
   } else {
     destdir <- normalizePath(destdir, mustWork = FALSE)
     if (!dir.exists(destdir)) {
-      stop(sprintf("destdir does not exist or is not a directory: %s", destdir), call. = FALSE)
+      stop_s160(sprintf("`destdir` does not exist or is not a directory: %s", destdir),
+                fn = "s160_gcs_campaign_results_read")
     }
     local_path <- file.path(destdir, filename)
   }
@@ -351,10 +366,11 @@ s160_gcs_campaign_results_read <- function(campaign_id, filename = NULL,
                          bucket = bucket),
     error = function(e) {
       msg <- conditionMessage(e)
+      fn <- "s160_gcs_campaign_results_read"
       if (grepl("404", msg, fixed = TRUE)) {
-        stop(sprintf("File not found: %s", gcs_path), call. = FALSE)
+        stop_not_found("file", gcs_path, fn = fn)
       }
-      stop(sprintf("Failed to download %s: %s", gcs_path, msg), call. = FALSE)
+      stop_failed(sprintf("download %s", gcs_path), msg, fn = fn)
     }
   )
 
@@ -386,11 +402,10 @@ s160_gcs_campaign_results_files <- function(campaign_id, bucket = NULL) {
   bucket <- resolve_bucket(bucket)
 
   prefix <- paste0(campaign_id, "/")
-  objects <- tryCatch(
-    gcs_list_objects(prefix = prefix, bucket = bucket),
-    error = function(e) {
-      stop(sprintf("Failed to list files for campaign %s: %s", campaign_id, conditionMessage(e)), call. = FALSE)
-    }
+  objects <- gcs_list_or_stop(
+    sprintf("list files for campaign %s", campaign_id),
+    fn = "s160_gcs_campaign_results_files",
+    prefix = prefix, bucket = bucket
   )
 
   if (nrow(objects) == 0) {
@@ -419,11 +434,10 @@ s160_gcs_campaign_results_files <- function(campaign_id, bucket = NULL) {
 #' @export
 s160_gcs_campaign_results_list <- function(bucket = NULL) {
   bucket <- resolve_bucket(bucket)
-  objects <- tryCatch(
-    gcs_list_objects(bucket = bucket),
-    error = function(e) {
-      stop(sprintf("Failed to list campaigns: %s", conditionMessage(e)), call. = FALSE)
-    }
+  objects <- gcs_list_or_stop(
+    "list campaigns",
+    fn = "s160_gcs_campaign_results_list",
+    bucket = bucket
   )
 
   if (nrow(objects) == 0) {
@@ -525,11 +539,10 @@ s160_gcs_pull_csv <- function(campaign_id, filename = NULL, bucket = NULL,
 #' @export
 s160_read_csv <- function(path, columns = NULL, hash = TRUE, ...) {
   if (!file.exists(path)) {
-    stop(sprintf("s160_read_csv: file not found: %s", path),
-         call. = FALSE)
+    stop_not_found("file", path, fn = "s160_read_csv")
   }
   if (!is.logical(hash) || length(hash) != 1L || is.na(hash)) {
-    stop("hash must be a single TRUE or FALSE.", call. = FALSE)
+    stop_s160("`hash` must be a single TRUE or FALSE.", fn = "s160_read_csv")
   }
   data <- fast_read_csv(path, columns = columns, ...)
   attr(data, "source_csv_hash") <- if (hash) {
@@ -567,7 +580,7 @@ s160_read_csv <- function(path, columns = NULL, hash = TRUE, ...) {
 #' @export
 s160_csv_header <- function(path, encoding = "UTF-8") {
   if (!file.exists(path)) {
-    stop(sprintf("s160_csv_header: file not found: %s", path), call. = FALSE)
+    stop_not_found("file", path, fn = "s160_csv_header")
   }
   make.names(read_header_raw(path, encoding = encoding), unique = TRUE)
 }
@@ -596,12 +609,10 @@ s160_gcs_campaign_results_status <- function(campaign_id, bucket = NULL) {
   export_filename <- paste0(campaign_id, "_raw_data_download.csv")
   prefix <- paste0(campaign_id, "/")
 
-  objects <- tryCatch(
-    gcs_list_objects(prefix = prefix, bucket = bucket),
-    error = function(e) {
-      stop(sprintf("Failed to list files for campaign %s: %s",
-                   campaign_id, conditionMessage(e)), call. = FALSE)
-    }
+  objects <- gcs_list_or_stop(
+    sprintf("list files for campaign %s", campaign_id),
+    fn = "s160_gcs_campaign_results_status",
+    prefix = prefix, bucket = bucket
   )
 
   if (nrow(objects) == 0) return(NULL)

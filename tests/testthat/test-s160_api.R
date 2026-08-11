@@ -194,11 +194,11 @@ test_that("a connection prints as an opaque handle, masking the key", {
 test_that("api_do_auth rejects missing credentials before POSTing", {
   conn <- new.env(parent = emptyenv())
   expect_error(survey160r:::api_do_auth(conn, "https://x", NULL, "k"),
-               "userid must be a non-empty string")
+               "`userid` must be a non-empty string")
   expect_error(survey160r:::api_do_auth(conn, "https://x", "u", NULL),
-               "api_key must be a non-empty string")
+               "`api_key` must be a non-empty string")
   expect_error(survey160r:::api_do_auth(conn, "  ", "u", "k"),
-               "base_url must be a non-empty string")
+               "`base_url` must be a non-empty string")
 })
 
 test_that("api_do_auth strips a trailing slash from base_url", {
