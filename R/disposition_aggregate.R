@@ -10,10 +10,12 @@
 # export (verified across production campaigns), so disposition_run() enforces
 # it with a hard guard rather than silently collapsing rows.
 #
-# The per-respondent masks below are the same signals build_summary_frame()
-# (summary_aggregate.R) computes before aggregating to (date, hour); they are
-# factored here as standalone helpers so a later refactor can share one
-# definition between the two views.
+# The per-respondent masks below mirror the signals build_summary_frame()
+# (summary_aggregate.R) computes before aggregating to (date, hour). NOTE:
+# `started`/`engaged` here were corrected to key on id.intro.scriptDate (the
+# outbound send) and id.intro.batchDate (the inbound reply); build_summary_frame()
+# still uses the older batchDate-based `texted`, so the two now differ until that
+# view is reconciled.
 
 # Parse a timestamp column to POSIXct, tolerating an absent column (returns an
 # all-NA vector of length nrow(data)). Mirrors build_summary_frame()'s
@@ -27,22 +29,22 @@
   }
 }
 
-# started: the intro text was dispatched (id.intro.batchDate non-NA). Same
-# signal as build_summary_frame()'s `texted`.
+# started (contacted): the intro was SENT to the recipient -- keys on
+# id.intro.scriptDate, the outbound scripted send. NOT id.intro.batchDate: that
+# column is the recipient's inbound REPLY (used by `engaged` below), a strictly
+# smaller set.
 .mask_started <- function(data) {
-  !is.na(.disposition_timestamp(data, "id.intro.batchDate"))
+  !is.na(.disposition_timestamp(data, "id.intro.scriptDate"))
 }
 
-# engaged: the respondent replied at the intro at all (id.intro.finalValue
-# present and non-empty). An absent column means the signal is not in the
-# export -> nobody engaged (all FALSE), matching the null-safe convention for
-# optional signal columns.
+# engaged: the recipient REPLIED to the intro at all -- keys on
+# id.intro.batchDate, the recipient's inbound reply (not the send).
+# Distinct from opt_in, which additionally requires
+# an accepted "Yes" answer (id.intro.finalText): a recipient can reply (engaged)
+# without producing an accepted answer. Null-safe: an absent column -> all NA ->
+# nobody engaged.
 .mask_engaged <- function(data) {
-  fv <- data[["id.intro.finalValue"]]
-  if (is.null(fv)) {
-    return(rep(FALSE, nrow(data)))
-  }
-  !is.na(fv) & nzchar(trimws(as.character(fv)))
+  !is.na(.disposition_timestamp(data, "id.intro.batchDate"))
 }
 
 # opt_in: passed the population filter (default id.intro.finalText == "Yes")
@@ -132,20 +134,21 @@ empty_disposition_frame <- function() {
 # CSV columns disposition_run() reads directly, regardless of population or mode.
 # KEEP IN SYNC with the column reads in the masks + disposition_run():
 #   phone                     -- row key + dedup guard (disposition_run)
-#   id.intro.batchDate        -- .mask_started
-#   id.intro.finalValue       -- .mask_engaged
+#   id.intro.scriptDate       -- .mask_started (the outbound send)
+#   id.intro.batchDate        -- .mask_engaged (the inbound reply)
 #   web_complete              -- .mask_web_complete + detect_survey_mode
 #   id.close.scriptDate       -- .mask_complete (sms branch)
 #   id.ineligible.scriptDate  -- .mask_terminated
 #   id.refusal.scriptDate     -- .mask_terminated
 # Deliberately NOT `campaignid` (campaign_id is stamped from the argument) and
 # NOT a respondent-id column (disposition dedups by phone). The population
-# columns and the data-dependent close-message Text columns are added in
-# disposition_input_columns(). The projection-parity test guards drift.
+# columns (opt_in, default id.intro.finalText) and the data-dependent
+# close-message Text columns are added in disposition_input_columns(). The
+# projection-parity test guards drift.
 .disposition_input_columns <- c(
   "phone",
+  "id.intro.scriptDate",
   "id.intro.batchDate",
-  "id.intro.finalValue",
   "web_complete",
   "id.close.scriptDate",
   "id.ineligible.scriptDate",

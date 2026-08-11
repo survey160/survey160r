@@ -1,6 +1,6 @@
 # Coverage for R/disposition_aggregate.R.
 # Disposition frames are constructed inline -- the shared fixtures
-# (synthetic.csv) predate the disposition columns (phone, finalValue,
+# (synthetic.csv) predate the disposition columns (phone, intro script/batch dates,
 # web_complete, ineligible/refusal), so they cannot exercise these masks.
 
 # Survey160 v2 timestamp literal; "" stands in for an absent event.
@@ -20,9 +20,9 @@ disp_frame <- function(phone, ...) {
 test_that("sms campaign: per-respondent flags and mode", {
   d <- disp_frame(
     phone = c("+15550101", "+15550102", "+15550103"),
-    id.intro.batchDate  = c(TS, TS, ""),          # r3 never texted
+    id.intro.scriptDate  = c(TS, TS, ""),          # r3 never texted
     id.intro.finalText  = c("Yes", "No", "Yes"),  # r2 did not consent
-    id.intro.finalValue = c("1", "2", ""),        # r3 never replied
+    id.intro.batchDate  = c(TS, TS, ""),          # r3 never replied
     id.close.scriptDate = c(TS, "", TS)           # r1 reached close
   )
   res <- disposition_run(1234, d, contacted_only = FALSE)$consolidated
@@ -43,7 +43,7 @@ test_that("sms campaign: per-respondent flags and mode", {
 test_that("t2w campaign: complete comes from the web_complete callback", {
   d <- disp_frame(
     phone = c("+15550201", "+15550202", "+15550203"),
-    id.intro.batchDate  = c(TS, TS, ""),      # r3 never texted
+    id.intro.scriptDate  = c(TS, TS, ""),      # r3 never texted
     id.intro.finalText  = c("Yes", "Yes", "Yes"),
     id.close.scriptDate = c(TS, TS, TS),      # ignored under t2w
     web_complete        = c("1", "0", "1")    # a 1 present -> mode t2w
@@ -59,7 +59,7 @@ test_that("t2w campaign: complete comes from the web_complete callback", {
 test_that("t2w_external campaign: complete is NA for every row", {
   d <- disp_frame(
     phone = c("+15550301", "+15550302"),
-    id.intro.batchDate = c(TS, TS),
+    id.intro.scriptDate = c(TS, TS),
     id.intro.finalText = c("Yes", "Yes"),
     # Two distinct personalized close URLs, no web_complete -> t2w_external.
     id.close.scriptText = c("go https://s.example/a", "go https://s.example/b")
@@ -75,7 +75,7 @@ test_that("t2w_external campaign: complete is NA for every row", {
 test_that("terminated flags ineligible OR refusal", {
   d <- disp_frame(
     phone = c("+15550401", "+15550402", "+15550403", "+15550404"),
-    id.intro.batchDate       = rep(TS, 4),
+    id.intro.scriptDate       = rep(TS, 4),
     id.intro.finalText       = rep("Yes", 4),
     id.ineligible.scriptDate = c(TS, "",  TS, ""),
     id.refusal.scriptDate    = c("",  TS, TS, "")
@@ -87,7 +87,7 @@ test_that("terminated flags ineligible OR refusal", {
 test_that("custom population expression drives opt_in", {
   d <- disp_frame(
     phone = c("+15550501", "+15550502"),
-    id.intro.batchDate = c(TS, TS),
+    id.intro.scriptDate = c(TS, TS),
     id.intro.finalText = c("Maybe", "Yes")
   )
   res <- disposition_run(1234, d, population = "id.intro.finalText == \"Maybe\"")$consolidated
@@ -95,17 +95,17 @@ test_that("custom population expression drives opt_in", {
 })
 
 test_that("optional columns absent: masks are null-safe (no error)", {
-  # Only the minimum: phone + campaignid + intro batch/text. No finalValue,
+  # Only the minimum: phone + campaignid + intro script/text. No batchDate (reply),
   # web_complete, close, ineligible, or refusal columns at all.
   d <- disp_frame(
     phone = c("+15550601", "+15550602"),
-    id.intro.batchDate = c(TS, ""),
+    id.intro.scriptDate = c(TS, ""),
     id.intro.finalText = c("Yes", "Yes")
   )
   res <- disposition_run(1234, d, contacted_only = FALSE)$consolidated
   expect_true(all(res$mode == "sms"))
   expect_equal(res$started,      c(1L, 0L))
-  expect_equal(res$engaged,      c(0L, 0L))  # no finalValue column
+  expect_equal(res$engaged,      c(0L, 0L))  # no batchDate (reply) column
   expect_equal(res$opt_in,       c(1L, 0L))
   expect_equal(res$complete,     c(0L, 0L))  # no close column
   expect_equal(res$web_complete, c(0L, 0L))
@@ -115,7 +115,7 @@ test_that("optional columns absent: masks are null-safe (no error)", {
 test_that("web_complete non-1 / non-numeric values do not count", {
   d <- disp_frame(
     phone = c("+15550701", "+15550702", "+15550703"),
-    id.intro.batchDate = rep(TS, 3),
+    id.intro.scriptDate = rep(TS, 3),
     id.intro.finalText = rep("Yes", 3),
     web_complete = c("1", "", "x")   # only the first is a real callback
   )
@@ -127,7 +127,7 @@ test_that("web_complete non-1 / non-numeric values do not count", {
 test_that("duplicate phone is rejected (grain guard)", {
   d <- disp_frame(
     phone = c("+15550801", "+15550801"),
-    id.intro.batchDate = c(TS, TS),
+    id.intro.scriptDate = c(TS, TS),
     id.intro.finalText = c("Yes", "Yes")
   )
   expect_error(disposition_run(1234, d), "duplicate phone")
@@ -147,7 +147,7 @@ test_that("non-data-frame input is rejected", {
 test_that("zero-row input returns the empty disposition frame", {
   d <- disp_frame(
     phone = character(0),
-    id.intro.batchDate = character(0),
+    id.intro.scriptDate = character(0),
     id.intro.finalText = character(0)
   )
   res <- disposition_run(1234, d)$consolidated
@@ -163,7 +163,7 @@ test_that("opt_in is null-safe when the population column is absent", {
   # opt_in degrades to 0 like the other masks rather than erroring.
   d <- disp_frame(
     phone = c("+15551001", "+15551002"),
-    id.intro.batchDate = c(TS, TS)
+    id.intro.scriptDate = c(TS, TS)
   )
   res <- disposition_run(1234, d)$consolidated
   expect_equal(res$opt_in, c(0L, 0L))
@@ -175,7 +175,7 @@ test_that("opt_in handles a base symbol in the population expression", {
   # absent column (which would wrongly zero opt_in for every row).
   d <- disp_frame(
     phone = c("+15551501", "+15551502"),
-    id.intro.batchDate = c(TS, TS),
+    id.intro.scriptDate = c(TS, TS),
     id.intro.finalText = c("Yes", "No")
   )
   res <- disposition_run(1234, d, population = 'id.intro.finalText == "Yes" & T')$consolidated
@@ -185,28 +185,29 @@ test_that("opt_in handles a base symbol in the population expression", {
 test_that("an unparseable population expression still errors", {
   d <- disp_frame(
     phone = "+15551101",
-    id.intro.batchDate = TS,
+    id.intro.scriptDate = TS,
     id.intro.finalText = "Yes"
   )
   expect_error(disposition_run(1234, d, population = "finalText =="),
                "not valid R")
 })
 
-test_that("engaged ignores a whitespace-only finalValue", {
+test_that("engaged is null-safe when the batchDate (reply) column is absent", {
+  # engaged now keys on id.intro.batchDate (the inbound reply); with no batchDate
+  # column at all, .disposition_timestamp returns all-NA -> nobody engaged.
   d <- disp_frame(
     phone = c("+15551201", "+15551202"),
-    id.intro.batchDate = c(TS, TS),
-    id.intro.finalText = c("Yes", "Yes"),
-    id.intro.finalValue = c("1", "   ")   # r2 replied only whitespace
+    id.intro.scriptDate = c(TS, TS),
+    id.intro.finalText = c("Yes", "Yes")
   )
   res <- disposition_run(1234, d)$consolidated
-  expect_equal(res$engaged, c(1L, 0L))
+  expect_equal(res$engaged, c(0L, 0L))
 })
 
 test_that("duplicate-phone error message does not leak the phone value (PII)", {
   d <- disp_frame(
     phone = c("+15551301", "+15551301"),
-    id.intro.batchDate = c(TS, TS),
+    id.intro.scriptDate = c(TS, TS),
     id.intro.finalText = c("Yes", "Yes")
   )
   err <- tryCatch(disposition_run(1234, d), error = function(e) conditionMessage(e))
@@ -219,7 +220,7 @@ test_that("campaign_id is stamped from the argument, not a column", {
   d <- disp_frame(
     phone = c("+15551401", "+15551402"),
     campaignid = c(1234L, 1234L),
-    id.intro.batchDate = c(TS, TS),
+    id.intro.scriptDate = c(TS, TS),
     id.intro.finalText = c("Yes", "Yes")
   )
   res <- disposition_run(999, d)$consolidated
@@ -231,7 +232,7 @@ test_that("campaign_id must be a single value", {
   # guard, silently breaking the (phone, campaign_id) grain -- reject it.
   d <- disp_frame(
     phone = c("+15553001", "+15553002"),
-    id.intro.batchDate = c(TS, TS),
+    id.intro.scriptDate = c(TS, TS),
     id.intro.finalText = c("Yes", "Yes")
   )
   expect_error(disposition_run(c(1234, 5678), d), "must be a single value")
@@ -240,7 +241,7 @@ test_that("campaign_id must be a single value", {
 test_that("a factor campaign_id stamps its label, not its level code", {
   d <- disp_frame(
     phone = c("+15553101", "+15553102"),
-    id.intro.batchDate = c(TS, TS),
+    id.intro.scriptDate = c(TS, TS),
     id.intro.finalText = c("Yes", "Yes")
   )
   res <- disposition_run(factor("1234"), d)$consolidated
@@ -250,7 +251,7 @@ test_that("a factor campaign_id stamps its label, not its level code", {
 test_that("contacted_only must be a single non-NA logical", {
   d <- disp_frame(
     phone = c("+15553201", "+15553202"),
-    id.intro.batchDate = c(TS, TS),
+    id.intro.scriptDate = c(TS, TS),
     id.intro.finalText = c("Yes", "Yes")
   )
   expect_error(disposition_run(1234, d, contacted_only = NA), "single TRUE or FALSE")
@@ -264,7 +265,7 @@ test_that("contacted_only must be a single non-NA logical", {
 test_that("contacted_only default drops never-attempted rows", {
   d <- disp_frame(
     phone = c("+15552001", "+15552002", "+15552003"),
-    id.intro.batchDate = c(TS, "", TS),          # r2 never texted
+    id.intro.scriptDate = c(TS, "", TS),          # r2 never texted
     id.intro.finalText = c("Yes", "Yes", "Yes")
   )
   res <- disposition_run(1234, d)$consolidated                 # default contacted_only = TRUE
@@ -277,7 +278,7 @@ test_that("contacted_only default drops never-attempted rows", {
 test_that("contacted_only = FALSE emits one row per input respondent", {
   d <- disp_frame(
     phone = c("+15552101", "+15552102", "+15552103"),
-    id.intro.batchDate = c(TS, "", TS),
+    id.intro.scriptDate = c(TS, "", TS),
     id.intro.finalText = c("Yes", "Yes", "Yes")
   )
   res <- disposition_run(1234, d, contacted_only = FALSE)$consolidated
@@ -288,7 +289,7 @@ test_that("contacted_only = FALSE emits one row per input respondent", {
 test_that("contacted_only defaults to TRUE", {
   d <- disp_frame(
     phone = c("+15552201", "+15552202"),
-    id.intro.batchDate = c(TS, ""),
+    id.intro.scriptDate = c(TS, ""),
     id.intro.finalText = c("Yes", "Yes")
   )
   expect_equal(disposition_run(1234, d),
@@ -298,8 +299,8 @@ test_that("contacted_only defaults to TRUE", {
 test_that("contacted_only keeps non-responses (contacted but no reply)", {
   d <- disp_frame(
     phone = c("+15552301", "+15552302"),
-    id.intro.batchDate = c(TS, TS),              # both texted
-    id.intro.finalValue = c("1", ""),            # r2 never replied -> non-response
+    id.intro.scriptDate = c(TS, TS),              # both texted
+    id.intro.batchDate = c(TS, ""),              # r2 never replied -> non-response
     id.intro.finalText = c("Yes", "Yes")
   )
   res <- disposition_run(1234, d)$consolidated
@@ -310,7 +311,7 @@ test_that("contacted_only keeps non-responses (contacted but no reply)", {
 test_that("contacted_only with no contacted rows yields a typed zero-row frame", {
   d <- disp_frame(
     phone = c("+15552401", "+15552402"),
-    id.intro.batchDate = c("", ""),              # nobody texted
+    id.intro.scriptDate = c("", ""),              # nobody texted
     id.intro.finalText = c("Yes", "Yes")
   )
   res <- disposition_run(1234, d)$consolidated
@@ -324,7 +325,7 @@ test_that("contacted_only with no contacted rows yields a typed zero-row frame",
 test_that("contacted_only keeps t2w_external contacted rows (complete = NA)", {
   d <- disp_frame(
     phone = c("+15552501", "+15552502"),
-    id.intro.batchDate = c(TS, TS),
+    id.intro.scriptDate = c(TS, TS),
     id.intro.finalText = c("Yes", "Yes"),
     id.close.scriptText = c("go https://s.example/a", "go https://s.example/b")
   )
@@ -340,7 +341,7 @@ test_that("contacted_only does not change mode (mode is computed on full data)",
   # not the filtered output. Would read "sms" if the filter ran before detection.
   d <- disp_frame(
     phone = c("+15552601", "+15552602"),
-    id.intro.batchDate = c(TS, ""),              # r2 never texted
+    id.intro.scriptDate = c(TS, ""),              # r2 never texted
     id.intro.finalText = c("Yes", "Yes"),
     web_complete = c("0", "1")                   # the sole web_complete==1 is r2
   )
@@ -352,7 +353,7 @@ test_that("contacted_only does not change mode (mode is computed on full data)",
 test_that("duplicate phone is rejected even when a duplicate is never-attempted", {
   d <- disp_frame(
     phone = c("+15552701", "+15552701"),         # duplicate
-    id.intro.batchDate = c(TS, ""),              # one contacted, one not
+    id.intro.scriptDate = c(TS, ""),              # one contacted, one not
     id.intro.finalText = c("Yes", "Yes")
   )
   expect_error(disposition_run(1234, d), "duplicate phone")   # default TRUE
@@ -362,7 +363,7 @@ test_that("duplicate phone is rejected even when a duplicate is never-attempted"
 
 test_that("disposition_input_columns: default set is exactly the read columns", {
   cols <- disposition_input_columns()
-  expect_setequal(cols, c("phone", "id.intro.batchDate", "id.intro.finalValue",
+  expect_setequal(cols, c("phone", "id.intro.scriptDate", "id.intro.batchDate",
                           "web_complete", "id.close.scriptDate",
                           "id.ineligible.scriptDate", "id.refusal.scriptDate",
                           "id.intro.finalText"))
@@ -389,8 +390,8 @@ test_that("disposition_input_columns: projected read matches a full read", {
   # close URLs) + columns disposition_run ignores (campaignid, userid, status).
   full <- disp_frame(
     phone = c("+15552801", "+15552802"),
+    id.intro.scriptDate = c(TS, TS),
     id.intro.batchDate = c(TS, TS),
-    id.intro.finalValue = c("1", "2"),
     id.intro.finalText = c("Yes", "No"),
     id.close.scriptText = c("go https://a", "go https://b"),  # -> t2w_external
     id.ineligible.scriptDate = c("", TS),
@@ -409,7 +410,7 @@ test_that("disposition_input_columns: projected read matches a full read", {
 test_that("disposition_run returns a list of consolidated + meta", {
   d <- disp_frame(
     phone = c("+15554001", "+15554002"),
-    id.intro.batchDate = c(TS, TS),
+    id.intro.scriptDate = c(TS, TS),
     id.intro.finalText = c("Yes", "Yes")
   )
   res <- disposition_run(1234, d)
@@ -421,7 +422,7 @@ test_that("disposition_run returns a list of consolidated + meta", {
 test_that("disposition_run meta carries source provenance from data attrs", {
   d <- disp_frame(
     phone = c("+15554101", "+15554102"),
-    id.intro.batchDate = c(TS, TS),
+    id.intro.scriptDate = c(TS, TS),
     id.intro.finalText = c("Yes", "Yes")
   )
   attr(d, "source_csv_hash") <- "sha256:abc"
@@ -434,7 +435,7 @@ test_that("disposition_run meta carries source provenance from data attrs", {
 test_that("disposition_run meta is NA when data carries no provenance", {
   d <- disp_frame(
     phone = "+15554201",
-    id.intro.batchDate = TS,
+    id.intro.scriptDate = TS,
     id.intro.finalText = "Yes"
   )
   res <- disposition_run(1234, d)
