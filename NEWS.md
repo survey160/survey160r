@@ -18,6 +18,21 @@
   persisted disposition data. `disposition_input_columns()` now returns
   `id.intro.scriptDate` in place of `id.intro.finalValue`.
 
+* **Latency summary `n_texted` corrected, and a new `n_engaged` count added.**
+  The per-`(campaign, date, hour_local)` summary metrics on the
+  `latency_report()` / `latency_run()` consolidated output previously keyed
+  `n_texted` on the recipient's reply (`id.intro.batchDate`), so it counted
+  repliers, not sends -- understating campaign volume ~10-15x. It now keys on
+  the outbound send (`id.intro.scriptDate`), the same reply-vs-send correction
+  already applied to `disposition_run()`, and the send hour now anchors the
+  date/hour bucket (the only timestamp a texted-but-never-replied recipient
+  has). A new `n_engaged` column carries the reply count (the old `n_texted`
+  value). `n_consented` / `n_completed` counts are unchanged, but every rate
+  built on `n_texted` (opt-in %, completion %) becomes a true of-sent rate.
+  Bumps `algorithm_version` to `2.2.0` and the consolidated `schema_version` to
+  `5`; regenerate the campaign Parquet fleet and update consumers that read the
+  summary columns.
+
 * **Disposition readers renamed for grain clarity.** The per-phone file reader
   `disposition_query()` is now `disposition_summary()`, and the pure per-phone
   rollup `disposition_summary()` is now `disposition_rollup()`. The two file
