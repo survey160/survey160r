@@ -62,6 +62,21 @@
   canonical columns present, so it also works on an un-enriched projection
   straight from `disposition_run()`.
 
+## Bug fixes
+
+* **`download_with_verify()` now actually verifies download size** (affects
+  `s160_gcs_campaign_results_read()`, `s160_gcs_pull_csv()`, and
+  `disposition_pull()`). The expected size was read from `gcs_list_objects()`,
+  whose `size` is a human-readable string (`"483.3 Kb"`) at every `detail`
+  level, so `as.numeric()` produced `NA` and the size check plus its retry loop
+  never ran against real GCS -- a truncated-but-`HTTP 200` download was accepted
+  silently and fed to the reports. The expected size now comes from
+  `gcs_get_object(meta = TRUE)`, whose `size` is the exact byte count; a
+  mismatch retries with backoff and then errors. When object metadata is
+  unavailable (permissions / transient error) verification is skipped *with a
+  message* rather than silently. Also removes the redundant per-download
+  `gcs_list_objects()` round-trip.
+
 ## Documentation
 
 * **Corrected and expanded documentation (no code behavior change).** The

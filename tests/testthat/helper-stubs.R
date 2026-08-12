@@ -42,26 +42,28 @@ stub_gcs_base <- function(env = parent.frame()) {
 }
 
 # Stub a GCS download for tests of download_with_verify() and its callers.
-# Default behavior: gcs_get_object writes `content` to the target path;
-# gcs_list_objects returns a single-row data frame whose `size` matches the
-# bytes written, so verification passes.
+# download_with_verify() reads the authoritative object size from
+# gcs_get_object(meta = TRUE); this stub answers both that metadata call and
+# the actual download through a single gcs_get_object mock. Default behavior:
+# the download writes `content` to the target path and the metadata reports a
+# matching byte count, so verification passes.
 #
 # Hooks:
-#   capture_env   -- if set, gcs_get_object records its call args.
-#   content       -- character vector written by gcs_get_object (default "a,b","1,2").
-#   name_override -- listing filename. NULL (default) uses the campaign-id-
-#                    derived `<id>_raw_data_download.csv` pattern.
-#   size_override -- listing `size` value. NULL (default) uses the real byte
-#                    count. Pass a wrong number or a string like "483.3 Kb"
-#                    to exercise the verification mismatch / unknown-size paths.
-#   fail_list     -- character. If set, gcs_list_objects stops with this msg.
-#   skip_write    -- if TRUE, gcs_get_object returns without writing -- for
-#                    the "Download produced no file" path.
+#   capture_env   -- if set, gcs_get_object records the DOWNLOAD call's args
+#                    (not the metadata call).
+#   content       -- character vector written by the download (default "a,b","1,2").
+#   size_override -- metadata `size`. NULL (default) uses the real byte count of
+#                    `content`. Pass a wrong number to force a mismatch, or a
+#                    non-numeric string like "483.3 Kb" to exercise the
+#                    unknown-size skip path.
+#   fail_meta     -- character. If set, the metadata call (meta = TRUE) stops
+#                    with this msg, exercising the metadata-unavailable skip.
+#   skip_write    -- if TRUE, the download returns without writing -- for the
+#                    "Download produced no file" path.
 stub_gcs_download_ok <- function(capture_env = NULL,
                                  content = c("a,b", "1,2"),
-                                 name_override = NULL,
                                  size_override = NULL,
-                                 fail_list = NULL,
+                                 fail_meta = NULL,
                                  skip_write = FALSE,
                                  env = parent.frame()) {
   size_probe <- tempfile()
@@ -70,24 +72,15 @@ stub_gcs_download_ok <- function(capture_env = NULL,
   unlink(size_probe)
   reported_size <- if (is.null(size_override)) real_size else size_override
   testthat::local_mocked_bindings(
-    gcs_get_object = function(object_name, saveToDisk, ...) { # nolint object_name_linter
+    gcs_get_object = function(object_name, saveToDisk = NULL, meta = FALSE, ...) { # nolint object_name_linter
+      if (isTRUE(meta)) {
+        if (!is.null(fail_meta)) stop(fail_meta)
+        return(structure(list(name = object_name, size = reported_size),
+                         class = "gcs_objectmeta"))
+      }
       if (!skip_write) writeLines(content, saveToDisk)
       if (!is.null(capture_env)) capture_env$args <- as.list(environment())
       TRUE
-    },
-    gcs_list_objects = function(prefix = NULL, ...) {
-      if (!is.null(fail_list)) stop(fail_list)
-      name <- if (!is.null(name_override)) {
-        name_override
-      } else if (!is.null(prefix)) {
-        # Match the export convention so verification is exercised.
-        campaign_id <- sub("/$", "", prefix)
-        paste0(prefix, campaign_id, "_raw_data_download.csv")
-      } else {
-        "data.csv"
-      }
-      data.frame(name = name, size = reported_size,
-                 stringsAsFactors = FALSE)
     },
     .env = env
   )

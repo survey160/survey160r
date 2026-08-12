@@ -65,7 +65,7 @@ Prefer a capture env over `<<-` to a free variable — it survives `local_mocked
 | Helper | Purpose |
 |---|---|
 | `stub_gcs_base()` | `check_gcs_ready` + `validate_campaign_id` + `gcs_get_global_bucket` no-ops |
-| `stub_gcs_download_ok(capture)` | `gcs_get_object` writes a minimal CSV; `gcs_list_objects` returns matching size |
+| `stub_gcs_download_ok(capture)` | `gcs_get_object` answers the `meta = TRUE` size probe and writes a minimal CSV |
 | `stub_pull_csv(data, capture)` | mocks `s160_gcs_pull_csv`; records `pull_id`/`pull_bucket` |
 | `stub_campaign_list(ids)` | mocks `s160_gcs_campaign_results_list` |
 | `gcs_status(name, updated, size)` | builds the list returned by `s160_gcs_*_status` (`updated` accepts an ISO string or POSIXct) |
