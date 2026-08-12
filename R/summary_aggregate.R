@@ -56,9 +56,18 @@ has_personalized_close_link <- function(data) {
 
 # Build the per-(campaign_id, date, hour_local) summary frame at hourly
 # grain. Output columns: campaign_id, date (Date), hour_local (int 0..23),
-# n_texted, n_consented, n_completed (all int32-safe). Returns a zero-row
-# frame with the correct schema if `data` has no respondents -- callers
-# rbind multiple of these for day rollups without special-casing empties.
+# n_texted, n_engaged, n_consented, n_completed (all int32-safe). Returns a
+# zero-row frame with the correct schema if `data` has no respondents --
+# callers rbind multiple of these for day rollups without special-casing
+# empties.
+#
+# The funnel is send-anchored: `n_texted` counts recipients the platform
+# SENT the intro to (id.intro.scriptDate, the outbound scripted send);
+# `n_engaged` is the subset that REPLIED (id.intro.batchDate, the inbound
+# reply). Keying n_texted on scriptDate matches disposition_run()'s
+# `started`/`engaged` split (disposition_aggregate.R) and the "texted"
+# name -- an earlier version keyed it on batchDate, which counted repliers,
+# not sends. n_consented and n_completed are subsets of the sent cohort.
 #
 # `survey_mode` selects the completion signal (SUR-1368): "sms" (default)
 # completes on id.close.scriptDate; "t2w" on the web_complete callback;
@@ -71,6 +80,7 @@ build_summary_frame <- function(data, config, survey_mode = "sms") {
 
   # Parse the timestamps summary needs. Idempotent on POSIXct (the main
   # orchestrator may parse them again later); cheap on raw character.
+  intro_script <- parse_s160_timestamps_chr(data[["id.intro.scriptDate"]])
   intro_batch <- parse_s160_timestamps_chr(data[["id.intro.batchDate"]])
   close_script_col <- "id.close.scriptDate"
   close_script <- if (close_script_col %in% names(data)) {
@@ -79,7 +89,11 @@ build_summary_frame <- function(data, config, survey_mode = "sms") {
     rep(as.POSIXct(NA), nrow(data))
   }
 
-  texted <- !is.na(intro_batch)
+  # texted = the intro was SENT (id.intro.scriptDate). engaged = the recipient
+  # REPLIED (id.intro.batchDate), a strictly smaller set, reported among the
+  # texted so every counted row has a send timestamp to bucket on.
+  texted <- !is.na(intro_script)
+  engaged <- !is.na(intro_batch) & texted
   # n_consented uses the configured population filter, not a hardcoded
   # finalValue == 1 check. Different platform variants emit consent in
   # different fields ("Yes"/"No" labels vs integer codes); the filter is
@@ -110,18 +124,22 @@ build_summary_frame <- function(data, config, survey_mode = "sms") {
   }
 
   campaign_id <- as.integer(data[[campaign_col]])
-  # Bucket by intro.batchDate in field timezone. Rows with no batchDate
-  # contribute to none of the three counts (handled by the masks above)
-  # but still need a non-NA bucket key to keep group_by stable -- assign
-  # them date=NA / hour=NA, then drop the all-FALSE rows after summing.
-  seg_date <- as.Date(format(intro_batch, tz = field_tz))
-  hour_local <- as.integer(format(intro_batch, format = "%H", tz = field_tz))
+  # Bucket by intro.scriptDate (the send) in field timezone -- the
+  # send-time cohort ("of recipients we texted at hour H, how many replied /
+  # consented / completed?"). A recipient with no scriptDate was never sent
+  # to: texted is FALSE and every mask is gated on texted, so the row is
+  # all-zero and dropped below; the NA bucket key it gets never survives the
+  # keep filter. (This is why the funnel must bucket on the send, not the
+  # reply: a texted-but-never-replied recipient has no batchDate to bucket on.)
+  seg_date <- as.Date(format(intro_script, tz = field_tz))
+  hour_local <- as.integer(format(intro_script, format = "%H", tz = field_tz))
 
   long <- data.frame(
     campaign_id = campaign_id,
     date = seg_date,
     hour_local = hour_local,
     texted = as.integer(texted),
+    engaged = as.integer(engaged),
     consented = as.integer(consented),
     completed = as.integer(completed),
     stringsAsFactors = FALSE
@@ -129,13 +147,15 @@ build_summary_frame <- function(data, config, survey_mode = "sms") {
   # Drop rows where every flag is zero -- they only happened to share a
   # row with the data but contribute nothing. Avoids carrying NA-keyed
   # zero rows through group_by.
-  keep <- long$texted > 0L | long$consented > 0L | long$completed > 0L
+  keep <- long$texted > 0L | long$engaged > 0L |
+    long$consented > 0L | long$completed > 0L
   long <- long[keep, , drop = FALSE]
   if (nrow(long) == 0L) return(empty_summary_frame())
 
   agg <- dplyr::summarise(
     dplyr::group_by(long, .data$campaign_id, .data$date, .data$hour_local),
     n_texted = sum(.data$texted),
+    n_engaged = sum(.data$engaged),
     n_consented = sum(.data$consented),
     n_completed = sum(.data$completed),
     .groups = "drop"
@@ -145,6 +165,7 @@ build_summary_frame <- function(data, config, survey_mode = "sms") {
     date = agg$date,
     hour_local = as.integer(agg$hour_local),
     n_texted = as.integer(agg$n_texted),
+    n_engaged = as.integer(agg$n_engaged),
     n_consented = as.integer(agg$n_consented),
     n_completed = as.integer(agg$n_completed),
     stringsAsFactors = FALSE
@@ -227,6 +248,7 @@ collapse_summary_to_day <- function(summary_frame) {
   agg <- dplyr::summarise(
     dplyr::group_by(summary_frame, .data$campaign_id, .data$date),
     n_texted = sum(.data$n_texted),
+    n_engaged = sum(.data$n_engaged),
     n_consented = sum(.data$n_consented),
     n_completed = sum(.data$n_completed),
     .groups = "drop"
@@ -236,6 +258,7 @@ collapse_summary_to_day <- function(summary_frame) {
     date = agg$date,
     hour_local = NA_integer_,
     n_texted = as.integer(agg$n_texted),
+    n_engaged = as.integer(agg$n_engaged),
     n_consented = as.integer(agg$n_consented),
     n_completed = as.integer(agg$n_completed),
     stringsAsFactors = FALSE
@@ -266,6 +289,7 @@ empty_summary_frame <- function() {
     date = as.Date(character(0)),
     hour_local = integer(0),
     n_texted = integer(0),
+    n_engaged = integer(0),
     n_consented = integer(0),
     n_completed = integer(0),
     stringsAsFactors = FALSE

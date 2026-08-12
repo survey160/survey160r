@@ -2,33 +2,41 @@
 # Hand-computed counts against the synthetic fixtures + ineligible
 # scenarios constructed inline.
 
-test_that("build_summary_frame: counts on the synthetic fixture", {
+test_that("build_summary_frame: send-anchored counts on the synthetic fixture", {
   d <- load_synthetic_data()
-  cfg <- synthetic_config()
-  frame <- build_summary_frame(d, cfg)
-
-  # Synthetic: r1@h16, r2@h17, r3@h15 all have intro.batchDate AND say "Yes"
-  # AND reach close. r4 has no intro.batchDate (so it counts for nothing).
-  expect_setequal(frame$hour_local, c(15L, 16L, 17L))
-  expect_equal(unique(frame$campaign_id), 1L)
-  expect_equal(unique(as.character(frame$date)), "2026-01-26")
-  expect_true(all(frame$n_texted == 1L))
-  expect_true(all(frame$n_consented == 1L))
-  expect_true(all(frame$n_completed == 1L))
-})
-
-test_that("build_summary_frame: n_consented diverges from n_texted on 'No'", {
-  d <- load_synthetic_data(mutate = function(d) {
-    # Give r4 a batchDate so it counts as texted, but finalText stays "No"
-    # so the population filter rejects it.
-    d$id.intro.batchDate[4] <- "2026-01-26 22:30:00.000000Z"
-    d
-  })
   cfg <- synthetic_config()
   frame <- build_summary_frame(d, cfg)
   day <- collapse_summary_to_day(frame)
 
-  expect_equal(day$n_texted, 4L)        # all 4 rows now have batchDate
+  # All 4 rows were SENT the intro (id.intro.scriptDate) -> texted = 4:
+  # r3 sent @h15, r1 @h16, r2 @h17, r4 @h17. r1/r2/r3 replied (batchDate),
+  # said "Yes", and reached close. r4 was texted but never replied and said
+  # "No" -- the texted-but-no-reply recipient the old batchDate key dropped.
+  expect_setequal(frame$hour_local, c(15L, 16L, 17L))
+  expect_equal(unique(frame$campaign_id), 1L)
+  expect_equal(unique(as.character(frame$date)), "2026-01-26")
+  expect_equal(day$n_texted, 4L)
+  expect_equal(day$n_engaged, 3L)
+  expect_equal(day$n_consented, 3L)
+  expect_equal(day$n_completed, 3L)
+  # Hour 17 holds two sends (r2 @22:00Z, r4 @22:30Z) but only r2 replied.
+  h17 <- frame[frame$hour_local == 17L, ]
+  expect_equal(h17$n_texted, 2L)
+  expect_equal(h17$n_engaged, 1L)
+})
+
+test_that("build_summary_frame: a replying 'No' respondent is engaged but not consented", {
+  d <- load_synthetic_data(mutate = function(d) {
+    # r4 now replies (gets a batchDate) but its finalText stays "No", so the
+    # population filter rejects it: engaged but not consented.
+    d$id.intro.batchDate[4] <- "2026-01-26 22:30:30.000000Z"
+    d
+  })
+  cfg <- synthetic_config()
+  day <- collapse_summary_to_day(build_summary_frame(d, cfg))
+
+  expect_equal(day$n_texted, 4L)        # all 4 were sent the intro
+  expect_equal(day$n_engaged, 4L)       # all 4 now replied
   expect_equal(day$n_consented, 3L)     # 3 said "Yes", 1 said "No"
   expect_equal(day$n_completed, 3L)     # 3 reached close (No-respondent didn't)
 })
@@ -39,7 +47,7 @@ test_that("build_summary_frame: zero rows returns empty schema", {
   frame <- build_summary_frame(d, cfg)
   expect_equal(nrow(frame), 0L)
   expect_named(frame, c("campaign_id", "date", "hour_local",
-                        "n_texted", "n_consented", "n_completed"))
+                        "n_texted", "n_engaged", "n_consented", "n_completed"))
 })
 
 test_that("build_summary_frame: data without close.scriptDate column treats n_completed as zero", {
@@ -50,14 +58,16 @@ test_that("build_summary_frame: data without close.scriptDate column treats n_co
   })
   day <- collapse_summary_to_day(build_summary_frame(d, cfg))
   expect_equal(day$n_completed, 0L)
-  expect_equal(day$n_texted, 3L)
+  expect_equal(day$n_texted, 4L)        # all 4 sent
+  expect_equal(day$n_engaged, 3L)       # r1/r2/r3 replied
 })
 
 test_that("build_summary_frame: all-zero rows yield empty frame", {
   cfg <- synthetic_config()
   d <- load_synthetic_data(mutate = function(d) {
-    # Strip every column the summary keys off -- no row contributes.
-    d$id.intro.batchDate <- ""
+    # Strip the send timestamp the funnel keys off -- no row was texted, so
+    # nothing contributes (every mask is gated on texted).
+    d$id.intro.scriptDate <- ""
     d
   })
   frame <- build_summary_frame(d, cfg)
@@ -70,6 +80,7 @@ test_that("collapse_summary_to_day: sums hourly counts per (campaign, date)", {
     date = as.Date(c("2026-01-26", "2026-01-26", "2026-01-26")),
     hour_local = c(15L, 16L, 17L),
     n_texted = c(2L, 3L, 5L),
+    n_engaged = c(2L, 2L, 4L),
     n_consented = c(1L, 2L, 4L),
     n_completed = c(1L, 1L, 3L),
     stringsAsFactors = FALSE
@@ -78,6 +89,7 @@ test_that("collapse_summary_to_day: sums hourly counts per (campaign, date)", {
   expect_equal(nrow(day), 1L)
   expect_true(is.na(day$hour_local))
   expect_equal(day$n_texted, 10L)
+  expect_equal(day$n_engaged, 8L)
   expect_equal(day$n_consented, 7L)
   expect_equal(day$n_completed, 5L)
 })
@@ -235,21 +247,29 @@ test_that("latency_report integrates summary columns into consolidated", {
   result <- latency_report(d, cfg, run_at = as.POSIXct("2026-05-21", tz = "UTC"))
   cons <- result$consolidated
 
-  # Day rollup row: 3 texted = 3 consented = 3 completed (synthetic.csv).
+  # Day rollup row: 4 texted (all sent); 3 engaged/consented/completed.
   day <- cons[is.na(cons$hour_local), ]
-  expect_true(all(day$n_texted == 3L))
+  expect_true(all(day$n_texted == 4L))
+  expect_true(all(day$n_engaged == 3L))
   expect_true(all(day$n_consented == 3L))
   expect_true(all(day$n_completed == 3L))
   expect_true(all(day$n_ineligible == 0L))
 
-  # Hour rows: each of h15/h16/h17 has 1 texted/consented/completed.
+  # Hour rows: h15/h16 each have 1 texted; h17 has 2 sends (r2 + the
+  # texted-but-no-reply r4) with 1 engaged/consented/completed.
   hr <- cons[!is.na(cons$hour_local), ]
-  for (h in c(15L, 16L, 17L)) {
+  for (h in c(15L, 16L)) {
     cell <- hr[hr$hour_local == h, ]
     expect_true(all(cell$n_texted == 1L))
+    expect_true(all(cell$n_engaged == 1L))
     expect_true(all(cell$n_consented == 1L))
     expect_true(all(cell$n_completed == 1L))
   }
+  h17 <- hr[hr$hour_local == 17L, ]
+  expect_true(all(h17$n_texted == 2L))
+  expect_true(all(h17$n_engaged == 1L))
+  expect_true(all(h17$n_consented == 1L))
+  expect_true(all(h17$n_completed == 1L))
 })
 
 test_that("build_consolidated_scaffold: latency-only buckets produce full grid", {
@@ -358,7 +378,7 @@ test_that("build_summary_frame: t2w completion counts web_complete, not close", 
 
   expect_equal(day_sms$n_completed, 3L)   # reached close
   expect_equal(day_t2w$n_completed, 1L)   # only r1 web_complete==1
-  expect_equal(day_t2w$n_texted, 3L)      # texted/consented unaffected by mode
+  expect_equal(day_t2w$n_texted, 4L)      # texted/consented unaffected by mode
   expect_equal(day_t2w$n_consented, 3L)
 })
 
@@ -370,7 +390,7 @@ test_that("build_summary_frame: t2w with no web_complete column -> 0 completed",
   cfg <- synthetic_config()
   day <- collapse_summary_to_day(build_summary_frame(d, cfg, "t2w"))
   expect_equal(day$n_completed, 0L)
-  expect_equal(day$n_texted, 3L)
+  expect_equal(day$n_texted, 4L)
 })
 
 test_that("latency_report stamps survey_mode on every consolidated row", {
@@ -407,7 +427,7 @@ test_that("latency_report: t2w_external nulls n_completed to NA, keeps texted", 
   expect_equal(unique(cons$survey_mode), "t2w_external")
   expect_true(all(is.na(cons$n_completed)))          # completion not computable
   day <- cons[is.na(cons$hour_local) & cons$threshold_min == 1L, ]
-  expect_true(all(day$n_texted == 3L))               # texted/consented still valid
+  expect_true(all(day$n_texted == 4L))               # texted/consented still valid
   expect_true(all(day$n_consented == 3L))
 })
 
@@ -453,6 +473,7 @@ test_that("aggregate_consolidated tolerates NULL summary/ineligible (defensive d
   # "No summary row for this bucket" semantically means "no respondents
   # in this bucket" -> 0, not "unknown".
   expect_true(all(cons$n_texted == 0L))
+  expect_true(all(cons$n_engaged == 0L))
   expect_true(all(cons$n_consented == 0L))
   expect_true(all(cons$n_completed == 0L))
   expect_true(all(cons$n_ineligible == 0L))

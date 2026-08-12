@@ -8,12 +8,14 @@
 #   latency_aggregate.R    -- consolidated table (Parquet payload)
 #   latency_diagnostics.R  -- diagnostics list per spec §3.3
 #   summary_primitives.R   -- pre-filter mask + last-reached helpers
-#   summary_aggregate.R    -- per-bucket texted/consented/completed/ineligible
+#   summary_aggregate.R    -- per-bucket texted/engaged/consented/completed/inelig
 
 # Algorithm + schema versions stamped onto every result. Used by
 # latency_aggregate.R and latency_diagnostics.R; package-namespace visible.
-.algorithm_version <- "2.1.0"
-.schema_version <- "4"
+# 2.2.0: summary n_texted corrected to key on the send (id.intro.scriptDate)
+# instead of the reply, and a new n_engaged (reply) count added -- schema 5.
+.algorithm_version <- "2.2.0"
+.schema_version <- "5"
 
 # Fleet-locked thresholds (minutes). Per spec §8.1 O2, every campaign uses the
 # same set so cross-campaign analytics is uniform and the respondent-cascade

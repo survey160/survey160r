@@ -1,16 +1,22 @@
 # Pure helpers for the summary metrics view (spec §4.1).
 # Counts per (campaign_id, date, hour_local) of:
-#   - n_texted     -- intro dispatched (id.intro.batchDate non-NA)
+#   - n_texted     -- intro dispatched (id.intro.scriptDate non-NA, the send)
+#   - n_engaged    -- subset that replied to the intro (id.intro.batchDate)
 #   - n_consented  -- subset that passes config$filters$population
-#   - n_completed  -- subset that has id.close.scriptDate non-NA
+#   - n_completed  -- subset that has id.close.scriptDate non-NA (sms) /
+#                     web_complete callback (t2w)
 # plus per (campaign_id, date, hour_local, segment_index):
 #   - n_ineligible -- screened out at q_k, anchored by intro.batchDate
 #
-# All counts are cohort-by-send-time: respondents are bucketed by the hour
-# the platform dispatched the intro to them, not by when the downstream
-# event occurred. This matches the latency view's batchDate-anchored hour
-# bucketing and gives a one-line cohort definition operators can reason
-# about ("of recipients we texted at hour H, how many later did X?").
+# The funnel counts (texted/engaged/consented/completed) are cohort-by-send-
+# time: respondents are bucketed by the hour the platform dispatched the intro
+# to them (id.intro.scriptDate), not by when the downstream event occurred.
+# That is the only anchor available to every counted recipient -- a
+# texted-but-never-replied recipient has no batchDate -- and it gives a
+# one-line cohort definition operators can reason about ("of recipients we
+# texted at hour H, how many later did X?"). n_ineligible stays anchored on
+# intro.batchDate: it is a segment-level screen-out count that joins onto the
+# reply-anchored latency cells, so it keeps the latency view's anchor.
 #
 # Pure functions, no I/O. Input is the raw, pre-filter data frame.
 

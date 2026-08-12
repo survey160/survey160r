@@ -252,9 +252,9 @@ assemble_consolidated <- function(scaffold, cells, totals, cascade,
   joined <- dplyr::left_join(joined, cascade,
                              by = c(.bucket_keys, "threshold_min"))
 
-  # Summary metrics join. n_texted/n_consented/n_completed denormalise
-  # across every (segment, threshold) row sharing the bucket key (one
-  # value per bucket repeats across N-1 segments × 4 thresholds).
+  # Summary metrics join. n_texted/n_engaged/n_consented/n_completed
+  # denormalise across every (segment, threshold) row sharing the bucket key
+  # (one value per bucket repeats across N-1 segments × 4 thresholds).
   joined <- dplyr::left_join(joined, summary_frame, by = .bucket_keys)
   # Ineligible join is per (bucket, segment_index). n_ineligible
   # denormalises across the 4 threshold rows of the same
@@ -278,7 +278,7 @@ assemble_consolidated <- function(scaffold, cells, totals, cascade,
   # row means "no respondents in this bucket" -> 0, not "unknown".
   count_cols <- c("n", "n_le", "n_resp_over",
                   "n_na_parse", "n_na_missing", "n_na_chain",
-                  "n_texted", "n_consented", "n_completed",
+                  "n_texted", "n_engaged", "n_consented", "n_completed",
                   "n_ineligible")
   for (col in count_cols) {
     if (col %in% names(joined)) {
@@ -308,6 +308,7 @@ assemble_consolidated <- function(scaffold, cells, totals, cascade,
     n_na_missing = as.integer(joined$n_na_missing),
     n_na_chain = as.integer(joined$n_na_chain),
     n_texted = as.integer(joined$n_texted),
+    n_engaged = as.integer(joined$n_engaged),
     n_consented = as.integer(joined$n_consented),
     n_completed = as.integer(joined$n_completed),
     n_ineligible = as.integer(joined$n_ineligible),
@@ -353,6 +354,7 @@ empty_consolidated <- function(project_id, cfg_hash, run_at) {
     n_na_missing = integer(0),
     n_na_chain = integer(0),
     n_texted = integer(0),
+    n_engaged = integer(0),
     n_consented = integer(0),
     n_completed = integer(0),
     n_ineligible = integer(0),
