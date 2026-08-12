@@ -155,6 +155,14 @@ latency_report <- function(data, config, run_at = NULL) {
                                        summary_frame = summary_hour,
                                        ineligible_frame = ineligible_hour,
                                        survey_mode = survey_mode)
+  # A segment whose prior-question timestamp is blank/unparseable has an NA
+  # segment_date_local, and hour_local (derived from the same batch_prior) is
+  # NA too -- so it already lands at (date=NA, hour_local=NA) in the hour pass.
+  # The day pass re-emits that exact key (it forces hour_local=NA over the same
+  # frame and the day-collapsed summary keeps NA-date groups), so keeping the
+  # hour-pass NA-hour rows would duplicate the unknown-time bucket after rbind.
+  # The (hour=NULL) unknown bucket belongs to the day partition only.
+  hour_grain <- hour_grain[!is.na(hour_grain$hour_local), , drop = FALSE]
   day_frame <- frame
   if (nrow(day_frame) > 0L) day_frame$hour_local <- NA_integer_
   day_grain <- aggregate_consolidated(day_frame, config, cfg_hash, run_at,

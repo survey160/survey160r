@@ -369,9 +369,9 @@ test_that("n_na_parse counts parse failures in the matching cell only", {
   # batch_prior endpoint for the q1->q2 segment, so that segment's
   # hour_local becomes NA (the hour is derived from batch_prior, which is
   # unparseable). The parse_failure row therefore lands in the
-  # hour_local IS NA partition of q1->q2 -- both the hour-grain NA cell
-  # (a side effect of NA being a distinct dplyr group) and the day-rollup
-  # row pick it up.
+  # hour_local IS NA partition of q1->q2 -- the day-rollup row (the hour
+  # pass drops its own NA-hour rows so the unknown-time bucket is not
+  # double-counted; see the grain-uniqueness test below).
   fx <- .load_synthetic()
   data <- fx$data
   data$id.q1.batchDate[data$userid == "r1"] <- "not-a-date"
@@ -428,6 +428,34 @@ test_that("n_na_chain counts chain-break NAs on segments after an NA prior batch
   expect_equal(nrow(cell), 1L)
   expect_gte(cell$n_na_chain, 1L)
   expect_equal(cell$n_na_parse, 0L)
+})
+
+test_that("consolidated grain is unique when a segment drops off mid-flow", {
+  # Regression for the duplicated day-rollup grain (C2). A blank/unparseable
+  # mid-flow batchDate makes a segment's segment_date_local -- and hence its
+  # hour_local, derived from the same batch_prior -- NA. Both the hour pass
+  # and the day pass then emit the identical
+  # (campaign, date=NA, hour_local=NA, segment, threshold) key, so a naive
+  # rbind double-counts it. The (hour=NULL) unknown-time bucket belongs to the
+  # day partition only; the consolidated grain must stay unique.
+  fx <- .load_synthetic()
+  data <- fx$data
+  data$id.q1.batchDate[data$userid == "r2"] <- ""  # r2 drops off before q1
+  cons <- latency_report(data, fx$config)$consolidated
+
+  key <- cons[, c("campaign_id", "project_id", "date", "hour_local",
+                  "segment", "threshold_min")]
+  expect_identical(anyDuplicated(key), 0L)
+
+  # The affected q1->q2 segment's unknown-time drop-off still lands in the
+  # day-rollup (hour NA) partition exactly once per threshold -- neither
+  # dropped by the NA-hour filter nor duplicated across the two passes.
+  day_rows <- cons[is.na(cons$hour_local), ]
+  expect_gt(nrow(day_rows), 0L)
+  unknown_q1q2 <- day_rows[is.na(day_rows$date) &
+                             day_rows$segment == "q1→q2", , drop = FALSE]
+  expect_equal(nrow(unknown_q1q2), 4L)
+  expect_setequal(unknown_q1q2$threshold_min, c(1L, 3L, 5L, 10L))
 })
 
 test_that("consolidated declares the new columns with the right types when latency is empty", {

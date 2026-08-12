@@ -79,6 +79,18 @@
 
 ## Bug fixes
 
+* **`latency_report()` no longer duplicates the day-rollup grain when a segment
+  drops off mid-flow.** A blank or unparseable prior-question timestamp gives a
+  segment an `NA` `segment_date_local` (and therefore `NA` `hour_local`), so it
+  already landed at the `(date=NA, hour_local=NA)` unknown-time bucket in the
+  hour pass -- which the day pass then re-emitted with the identical key, and the
+  `rbind` double-counted it (one drop-off row produced ~12 duplicate grain keys
+  and inflated the `hour_local IS NULL` day partition). The hour pass now drops
+  its own `NA`-hour rows before stacking, so the `(hour=NULL)` unknown bucket
+  lives in the day partition only and the consolidated grain
+  `(campaign_id, date, hour_local, segment, threshold_min)` is unique. The
+  happy path (no drop-offs) is unchanged.
+
 * **`download_with_verify()` now actually verifies download size** (affects
   `s160_gcs_campaign_results_read()`, `s160_gcs_pull_csv()`, and
   `disposition_pull()`). The expected size was read from `gcs_list_objects()`,
