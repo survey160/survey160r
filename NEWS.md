@@ -83,11 +83,13 @@
   Every call in `s160_api_*` (authentication, the export trigger, campaign reads)
   previously had no `httr::timeout()`, so a hung server could block the R session
   or wedge the scheduled producer indefinitely with no error; and a single
-  transient failure -- a network/curl error or an HTTP 429/5xx -- aborted the run.
-  Requests are now bounded to a per-request timeout (`.http_timeout_seconds`,
-  60s) and retried with exponential backoff (up to `.http_max_retries`, 3, on
-  429/500/502/503/504 and network errors). 4xx client errors stay terminal and
-  fail fast, so a not-found (`s160_api_campaign_get`) still errors immediately.
+  transient failure -- a network/curl error or a retryable HTTP status -- aborted
+  the run. Requests are now bounded to a per-request timeout
+  (`.http_timeout_seconds`, 60s) and retried with exponential backoff (up to
+  `.http_max_retries`, 3, on network errors and HTTP 429/500/502/503/504). Every
+  other status is terminal and fails fast -- 4xx client errors and non-transient
+  5xx (e.g. 501/505) -- so a not-found (`s160_api_campaign_get`) still errors
+  immediately.
   Retrying the export-trigger `POST` is safe -- the server just regenerates the
   results CSV.
 

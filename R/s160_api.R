@@ -36,10 +36,11 @@ check_api_ready <- function(conn = NULL) {
 
 # Every network call is bounded by a per-request timeout so a hung server can't
 # wedge the R session or the scheduled producer (the requests were previously
-# unbounded). Transient failures -- a curl/network error, or an HTTP 429/5xx --
-# are retried with exponential backoff; 4xx client errors are terminal and
-# returned immediately so a 400/404 fails fast (e.g. the not-found path in
-# s160_api_campaign_get, which must not incur retry pauses).
+# unbounded). Transient failures -- a curl/network error, or one of the HTTP
+# statuses in `.http_retry_status` (429, 500, 502, 503, 504) -- are retried with
+# exponential backoff. Every other status is terminal and returned immediately,
+# so a 400/404 (and a non-transient 5xx such as 501/505) fails fast -- e.g. the
+# not-found path in s160_api_campaign_get, which must not incur retry pauses.
 .http_timeout_seconds <- 60
 .http_max_retries <- 3L
 .http_retry_status <- c(429L, 500L, 502L, 503L, 504L)

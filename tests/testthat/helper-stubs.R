@@ -241,7 +241,7 @@ stub_httr_response <- function(status = 200L,
 # `capture$calls` counts how many requests were issued.
 stub_httr_seq <- function(steps, body = list(success = TRUE, data = "ok"),
                           capture = NULL, env = parent.frame()) {
-  state <- new.env(parent = emptyenv())
+  state <- new_capture()
   state$i <- 0L
   responder <- function(url, ...) {
     state$i <- state$i + 1L
