@@ -286,3 +286,15 @@ stub_gcs_list <- function(rows, env = parent.frame()) {
     .env = env
   )
 }
+
+# --- disposition fixtures -------------------------------------------------
+
+# Write disposition rows to a temp Parquet via nanoparquet and return the path.
+# Shared by the disposition reader tests (disposition_summary/records/screen),
+# which build small per-(phone, campaign) frames and read them back through the
+# real nanoparquet path -- no arrow, no network.
+write_disposition_parquet <- function(rows) {
+  p <- tempfile(fileext = ".parquet")
+  nanoparquet::write_parquet(rows, p)
+  p
+}

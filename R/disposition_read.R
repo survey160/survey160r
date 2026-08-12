@@ -89,27 +89,38 @@
   d
 }
 
+# Normalize a requested phone vector to the deduped, non-NA digit set used to
+# scope a read: NULL passes through as "no phone filter"; an all-blank/unparseable
+# request collapses to character(0) (matches nothing). Shared by the readers.
+.disposition_request_phones <- function(phones) {
+  if (is.null(phones)) {
+    return(NULL)
+  }
+  req <- unique(.disposition_normalize_phone(phones))
+  req[!is.na(req)]
+}
+
 # Normalize phone and apply the row-scope filters (requested phones, campaigns,
-# date_closed_on range). Pure; `data` already has .DISPOSITION_READ_COLS.
+# date_closed_on range). Pure; `data` already has .DISPOSITION_READ_COLS, and
+# `date_from`/`date_to` are already coerced to Date (or NULL) by the caller.
+# One combined keep-mask, subset once -- avoids the intermediate frame copies a
+# filter-per-predicate chain allocates.
 .disposition_filter <- function(data, keep_phones, campaign_ids, date_from, date_to) {
   data$phone <- .disposition_normalize_phone(data$phone)
-  data <- data[!is.na(data$phone), , drop = FALSE]
+  keep <- !is.na(data$phone)
   if (!is.null(keep_phones)) {
-    data <- data[data$phone %in% keep_phones, , drop = FALSE]
+    keep <- keep & data$phone %in% keep_phones
   }
   if (!is.null(campaign_ids)) {
-    data <- data[as.character(data$campaign_id) %in%
-                   as.character(campaign_ids), , drop = FALSE]
+    keep <- keep & as.character(data$campaign_id) %in% as.character(campaign_ids)
   }
   if (!is.null(date_from)) {
-    data <- data[!is.na(data$date_closed_on) &
-                   data$date_closed_on >= as.Date(date_from), , drop = FALSE]
+    keep <- keep & !is.na(data$date_closed_on) & data$date_closed_on >= date_from
   }
   if (!is.null(date_to)) {
-    data <- data[!is.na(data$date_closed_on) &
-                   data$date_closed_on <= as.Date(date_to), , drop = FALSE]
+    keep <- keep & !is.na(data$date_closed_on) & data$date_closed_on <= date_to
   }
-  data
+  data[keep, , drop = FALSE]
 }
 
 # Collapse the (phone, campaign) rows to one row per phone. Rows are ordered so
@@ -122,24 +133,22 @@
   d <- d[order(d$phone, -date_key, -as.numeric(d$campaign_id)), , drop = FALSE]
   first <- !duplicated(d$phone)
   ph <- d$phone[first]
+  # Group a per-row vector by phone, apply `f`, and index the result back to the
+  # first-of-group phone order (`ph`) so every column lines up row-for-row.
+  by_phone <- function(x, f) tapply(x, d$phone, f)[ph]
+  any_true <- function(x) any(x, na.rm = TRUE)
   data.frame(
     phone = ph,
     ever_contacted = TRUE,
-    n_campaigns = as.integer(
-      tapply(d$campaign_id, d$phone, function(x) length(unique(x)))[ph]),
-    ever_engaged = as.logical(
-      tapply(d$engaged == 1L, d$phone, any, na.rm = TRUE)[ph]),
-    ever_opted_in = as.logical(
-      tapply(d$opt_in == 1L, d$phone, any, na.rm = TRUE)[ph]),
+    n_campaigns = as.integer(by_phone(d$campaign_id, function(x) length(unique(x)))),
+    ever_engaged = as.logical(by_phone(d$engaged == 1L, any_true)),
+    ever_opted_in = as.logical(by_phone(d$opt_in == 1L, any_true)),
     ever_complete = as.logical(
-      tapply((d$complete == 1L) | (d$web_complete == 1L), d$phone, any,
-             na.rm = TRUE)[ph]),
-    ever_terminated = as.logical(
-      tapply(d$terminated == 1L, d$phone, any, na.rm = TRUE)[ph]),
+      by_phone((d$complete == 1L) | (d$web_complete == 1L), any_true)),
+    ever_terminated = as.logical(by_phone(d$terminated == 1L, any_true)),
     latest_disposition = d$.category[first],
     campaigns = as.character(
-      tapply(d$campaign_id, d$phone,
-             function(x) paste(sort(unique(x)), collapse = ","))[ph]),
+      by_phone(d$campaign_id, function(x) paste(sort(unique(x)), collapse = ","))),
     stringsAsFactors = FALSE
   )
 }
@@ -245,11 +254,7 @@ disposition_rollup <- function(data, phones = NULL, campaign_ids = NULL,
   }
   date_from <- .disposition_date_bound(date_from, "date_from")
   date_to <- .disposition_date_bound(date_to, "date_to")
-  req <- NULL
-  if (!is.null(phones)) {
-    req <- unique(.disposition_normalize_phone(phones))
-    req <- req[!is.na(req)]
-  }
+  req <- .disposition_request_phones(phones)
 
   d <- .disposition_filter(data, req, campaign_ids, date_from, date_to)
   summ <- if (nrow(d) == 0L) .disposition_never_contacted(character(0)) else .disposition_collapse(d)
@@ -363,11 +368,7 @@ disposition_records <- function(dataset, phones = NULL, campaign_ids = NULL,
                                 page = NULL, page_size = NULL) {
   date_from <- .disposition_date_bound(date_from, "date_from")
   date_to <- .disposition_date_bound(date_to, "date_to")
-  req <- NULL
-  if (!is.null(phones)) {
-    req <- unique(.disposition_normalize_phone(phones))
-    req <- req[!is.na(req)]
-  }
+  req <- .disposition_request_phones(phones)
 
   raw <- .disposition_read_parquet(dataset, columns = NULL)
   missing_cols <- setdiff(c("phone", "campaign_id"), names(raw))

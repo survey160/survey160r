@@ -1,11 +1,12 @@
 # Coverage for disposition_summary() + its helpers. Synthetic disposition
 # Parquet fixtures are written with nanoparquet (no arrow, no network).
 
-# One (phone, campaign) row with exactly the columns the query reads (`.DISPOSITION_READ_
-# COLS`) and sensible funnel defaults; override via args. Writing exactly the read
-# set means nanoparquet does a full read, not a `col_select` subset -- which
-# segfaults on multi-row nanoparquet-written files (a nanoparquet quirk; the real
-# reader subsets *arrow*-written files, validated separately on 2.2M rows).
+# One (phone, campaign) row with exactly the columns disposition_summary() reads
+# (`.DISPOSITION_READ_COLS`) and sensible funnel defaults; override via args.
+# Writing exactly the read set means nanoparquet does a full read, not a
+# `col_select` subset -- which segfaults on multi-row nanoparquet-written files (a
+# nanoparquet quirk; the real reader subsets *arrow*-written files, validated
+# separately on 2.2M rows).
 .disposition_row <- function(phone, campaign_id, engaged = 0L, opt_in = 0L,
                     complete = 0L, web_complete = 0L, terminated = 0L,
                     date_closed_on = as.Date(NA)) {
@@ -17,16 +18,10 @@
              date_closed_on = as.Date(date_closed_on), stringsAsFactors = FALSE)
 }
 
-# Write per-(phone, campaign) rows to a temp disposition Parquet; return path.
-.disposition_write <- function(rows) {
-  p <- tempfile(fileext = ".parquet")
-  nanoparquet::write_parquet(rows, p)
-  p
-}
-
-# A two-phone fixture reused across tests.
+# A two-phone fixture reused across tests. write_disposition_parquet() (a shared
+# helper in helper-stubs.R) writes the rows to a temp Parquet and returns the path.
 .disposition_base <- function() {
-  .disposition_write(rbind(
+  write_disposition_parquet(rbind(
     .disposition_row("2015550101", 2339, engaged = 1, opt_in = 1, complete = 1,
             date_closed_on = "2026-03-01"),
     .disposition_row("2015550101", 2354, engaged = 1, date_closed_on = "2026-04-01"),
@@ -93,7 +88,7 @@ test_that("date bounds drop rows outside the range (incl. NA close dates)", {
   res2 <- disposition_summary(.disposition_base(), date_to = "2026-03-31")
   expect_setequal(res2$campaigns, c("2339", "2339"))
   # a row with an NA close date is dropped by any date bound.
-  p <- .disposition_write(.disposition_row("2015550103", 2400, engaged = 1))  # NA date
+  p <- write_disposition_parquet(.disposition_row("2015550103", 2400, engaged = 1))  # NA date
   expect_equal(nrow(disposition_summary(p, date_from = "2020-01-01")), 0L)
 })
 
@@ -105,7 +100,7 @@ test_that("each date bound must be a single valid date", {
 })
 
 test_that("derived disposition follows funnel precedence", {
-  res <- disposition_summary(.disposition_write(rbind(
+  res <- disposition_summary(write_disposition_parquet(rbind(
     .disposition_row("1", 1, engaged = 1, opt_in = 1, complete = 1, web_complete = 1),
     .disposition_row("2", 1, engaged = 1, opt_in = 1, complete = 1),
     .disposition_row("3", 1, engaged = 1, opt_in = 1, terminated = 1),
@@ -120,14 +115,14 @@ test_that("derived disposition follows funnel precedence", {
 
 test_that("t2w_external complete = NA does not become a false complete", {
   res <- disposition_summary(
-    .disposition_write(.disposition_row("2015550101", 1, engaged = 1, opt_in = 1,
+    write_disposition_parquet(.disposition_row("2015550101", 1, engaged = 1, opt_in = 1,
                       complete = NA_integer_)))
   expect_equal(res$latest_disposition, "opt_in")
   expect_false(res$ever_complete)
 })
 
 test_that("pagination slices the phone-ordered result", {
-  p <- .disposition_write(rbind(.disposition_row("1", 1), .disposition_row("2", 1), .disposition_row("3", 1)))
+  p <- write_disposition_parquet(rbind(.disposition_row("1", 1), .disposition_row("2", 1), .disposition_row("3", 1)))
   expect_equal(nrow(disposition_summary(p, page = 1, page_size = 2)), 2L)
   expect_equal(disposition_summary(p, page = 2, page_size = 2)$phone, "3")
   expect_equal(nrow(disposition_summary(p, page = 5, page_size = 2)), 0L)
@@ -136,7 +131,7 @@ test_that("pagination slices the phone-ordered result", {
 })
 
 test_that("empty dataset yields an empty result; screened phones come back never-contacted", {
-  p0 <- .disposition_write(.disposition_row("x", 1)[0, , drop = FALSE])
+  p0 <- write_disposition_parquet(.disposition_row("x", 1)[0, , drop = FALSE])
   expect_equal(nrow(disposition_summary(p0)), 0L)
   expect_equal(nrow(disposition_summary(p0, page = 1)), 0L)  # page on empty -> no error
   res <- disposition_summary(p0, phones = "2015550101")
@@ -145,7 +140,7 @@ test_that("empty dataset yields an empty result; screened phones come back never
 })
 
 test_that("a blank stored phone is dropped, and all-invalid input yields no rows", {
-  p <- .disposition_write(rbind(.disposition_row("2015550101", 1, complete = 1),
+  p <- write_disposition_parquet(rbind(.disposition_row("2015550101", 1, complete = 1),
                        .disposition_row("", 2)))            # blank phone -> dropped on read
   expect_equal(disposition_summary(p)$phone, "2015550101")
   expect_equal(nrow(disposition_summary(p, phones = "abc")), 0L)
@@ -200,4 +195,22 @@ test_that("disposition_screen validates sample, phone_col, and column clashes", 
   clash <- data.frame(phone = "2015550101", ever_complete = TRUE,
                       stringsAsFactors = FALSE)
   expect_error(disposition_screen(clash, p), "already has")
+})
+
+test_that("disposition_screen appends exactly what disposition_summary computes", {
+  # screen is a faithful in-place annotate of the rollup engine: each sample
+  # row's appended columns must equal disposition_summary()'s row for that
+  # (normalized) phone. Guards the two surfaces against silently diverging.
+  p <- .disposition_base()
+  sample <- data.frame(
+    phone = c("+1 (201) 555-0101", "2015550102", "2015559999"),  # fmt, present, absent
+    extra = 1:3, stringsAsFactors = FALSE)
+  out <- disposition_screen(sample, p)
+  summ <- disposition_summary(p, phones = sample$phone)
+
+  # summ is one row per unique normalized phone; align it to the sample order.
+  idx <- match(c("2015550101", "2015550102", "2015559999"), summ$phone)
+  for (col in setdiff(names(summ), "phone")) {
+    expect_equal(out[[col]], summ[[col]][idx], info = col)
+  }
 })
