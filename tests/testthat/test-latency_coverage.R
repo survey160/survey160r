@@ -117,20 +117,7 @@ test_that("s160_gcs_pull_csv derives the default filename from campaign_id", {
   # Without an explicit filename, the helper falls back to
   # `<campaign_id>_raw_data_download.csv` for both the hash lookup and the
   # canonical source_csv_path attribute.
-  local_mocked_bindings(
-    gcs_get_object = function(object_name, saveToDisk = NULL, meta = FALSE, ...) { # nolint
-      if (isTRUE(meta)) {
-        tmp <- tempfile()
-        writeLines(c("a,b", "1,2"), tmp)
-        sz <- file.info(tmp)$size
-        unlink(tmp)
-        return(structure(list(name = object_name, size = sz),
-                         class = "gcs_objectmeta"))
-      }
-      writeLines(c("a,b", "1,2"), saveToDisk)
-      TRUE
-    }
-  )
+  stub_gcs_download_ok()
   data <- suppressMessages(s160_gcs_pull_csv(1980))
   expect_true(grepl("^sha256:", attr(data, "source_csv_hash")))
   expect_equal(

@@ -71,12 +71,13 @@ meta_or_download <- function(expected_size, on_download) {
 test_that("download with max_retries = 0 fails on the first mismatch without retrying", {
   tmp <- tempfile(fileext = ".csv")
   on.exit(unlink(tmp), add = TRUE)
-  attempts <- 0L
+  captured <- new_capture()
+  captured$attempts <- 0L
 
   local_mocked_bindings(Sys.sleep = function(...) NULL, .package = "base")
   local_mocked_bindings(
     gcs_get_object = meta_or_download(999999L, function(saveToDisk) {
-      attempts <<- attempts + 1L
+      captured$attempts <- captured$attempts + 1L
       writeLines("x", saveToDisk)  # truncated
     })
   )
@@ -86,18 +87,19 @@ test_that("download with max_retries = 0 fails on the first mismatch without ret
                                           max_retries = 0L)),
     "Download incomplete after 1 attempts"
   )
-  expect_equal(attempts, 1L)
+  expect_equal(captured$attempts, 1L)
 })
 
 test_that("download retries on size mismatch then fails", {
   tmp <- tempfile(fileext = ".csv")
   on.exit(unlink(tmp), add = TRUE)
-  attempts <- 0L
+  captured <- new_capture()
+  captured$attempts <- 0L
 
   local_mocked_bindings(Sys.sleep = function(...) NULL, .package = "base")
   local_mocked_bindings(
     gcs_get_object = meta_or_download(999999L, function(saveToDisk) {
-      attempts <<- attempts + 1L
+      captured$attempts <- captured$attempts + 1L
       writeLines("a,b", saveToDisk)  # always short of expected
     })
   )
@@ -107,7 +109,7 @@ test_that("download retries on size mismatch then fails", {
                                           max_retries = 1L)),
     "Download incomplete"
   )
-  expect_equal(attempts, 2L)  # initial + 1 retry
+  expect_equal(captured$attempts, 2L)  # initial + 1 retry
 })
 
 test_that("download retries then succeeds on second attempt", {
@@ -118,13 +120,14 @@ test_that("download retries then succeeds on second attempt", {
   writeLines(csv_content, size_probe)
   expected_size <- file.info(size_probe)$size
   unlink(size_probe)
-  attempts <- 0L
+  captured <- new_capture()
+  captured$attempts <- 0L
 
   local_mocked_bindings(Sys.sleep = function(...) NULL, .package = "base")
   local_mocked_bindings(
     gcs_get_object = meta_or_download(expected_size, function(saveToDisk) {
-      attempts <<- attempts + 1L
-      if (attempts == 1L) {
+      captured$attempts <- captured$attempts + 1L
+      if (captured$attempts == 1L) {
         writeLines("x", saveToDisk)  # truncated
       } else {
         writeLines(csv_content, saveToDisk)
@@ -136,6 +139,6 @@ test_that("download retries then succeeds on second attempt", {
     download_with_verify("100/data.csv", tmp, max_retries = 2L),
     "size mismatch"
   )
-  expect_equal(attempts, 2L)
+  expect_equal(captured$attempts, 2L)
   expect_true(file.exists(tmp))
 })
