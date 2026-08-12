@@ -121,8 +121,8 @@ test_that("a download without an initialized GCS session errors clearly", {
   # reporting an empty global bucket, and prove the readiness error fires
   # before any download is attempted.
   testthat::local_mocked_bindings(gcs_get_global_bucket = function() "")
-  mockery::stub(disposition_pull, "download_with_verify",
-                function(...) stop("readiness check should have stopped us"))
+  testthat::local_mocked_bindings(
+    download_with_verify = function(...) stop("readiness check should have stopped us"))
   expect_error(
     suppressMessages(disposition_pull(dest = withr::local_tempdir())),
     "GCS not initialized")
