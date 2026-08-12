@@ -410,11 +410,12 @@ disposition_records <- function(dataset, phones = NULL, campaign_ids = NULL,
 #' @return \code{sample} with the columns \code{ever_contacted},
 #'   \code{n_campaigns}, \code{ever_engaged}, \code{ever_opted_in},
 #'   \code{ever_complete}, \code{ever_terminated}, \code{latest_disposition},
-#'   \code{campaigns} appended. A valid phone that is absent from the dataset
-#'   gets a \code{never_contacted} row (\code{ever_contacted = FALSE},
-#'   \code{latest_disposition = "never_contacted"}, the rest \code{FALSE}/\code{NA});
-#'   only a phone that digit-normalizes to nothing (blank/unparseable) gets an
-#'   all-\code{NA} block.
+#'   \code{campaigns} appended. A valid phone that is absent from the rows
+#'   selected by \code{campaign_ids}, \code{date_from}, and \code{date_to} (the
+#'   whole dataset when those are unset) gets a \code{never_contacted} row
+#'   (\code{ever_contacted = FALSE}, \code{latest_disposition = "never_contacted"},
+#'   the rest \code{FALSE}/\code{NA}); only a phone that digit-normalizes to
+#'   nothing (blank/unparseable) gets an all-\code{NA} block.
 #' @seealso \code{\link{disposition_summary}}, \code{\link{disposition_rollup}}
 #' @examples
 #' \dontrun{
