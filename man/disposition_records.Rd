@@ -26,8 +26,9 @@ digit-normalized (a leading US \code{1} is dropped so 11-digit numbers match
 
 \item{date_from, date_to}{Optional \code{Date}/date-string bounds on
 \code{date_closed_on}. A row with an \code{NA} close date is dropped by any
-bound; supplying a bound when the projection has no \code{date_closed_on}
-column is an error.}
+bound -- and in the current beta \code{date_closed_on} is \code{NA} for every
+row, so any bound returns no rows. Supplying a bound when the projection has
+no \code{date_closed_on} column at all is an error.}
 
 \item{page, page_size}{Optional 1-based pagination over the
 \code{(phone, campaign_id)}-ordered rows.}
@@ -54,7 +55,10 @@ order above. A projection written straight from \code{\link{disposition_run}}
 carries just the nine computed columns (no \code{error} / \code{loi} /
 \code{topic} / \code{date_closed_on}); the enriched projection carries all
 thirteen. In the current beta \code{error} and \code{date_closed_on} are
-\code{NA} for every row.
+\code{NA} for every row. The whole projection is read into memory and filtered
+in R (nanoparquet has no predicate pushdown, like \code{\link{disposition_query}});
+\code{phone} is digit-normalized for matching, and a stored row whose phone is
+blank or unparseable is dropped.
 
 Two differences from \code{\link{disposition_summary}} follow from the raw
 grain: a screened phone that was never contacted has \strong{no} row here

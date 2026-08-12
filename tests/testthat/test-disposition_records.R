@@ -142,3 +142,18 @@ test_that("empty projection and no-match yield zero rows; blank phone dropped", 
   p <- .record_write(rbind(.record_row("2015550101", 1), .record_row("", 2)))
   expect_equal(disposition_records(p)$phone, "2015550101")
 })
+
+test_that("phones and campaign_ids filters combine (AND)", {
+  res <- disposition_records(.record_base(), phones = "2015550101",
+                             campaign_ids = 2339)
+  expect_equal(nrow(res), 1L)          # 0101 is in 2339 and 2354; keep only 2339
+  expect_equal(res$campaign_id, 2339L)
+})
+
+test_that("a projection missing phone or campaign_id errors clearly", {
+  full <- .record_row("2015550101", 2339, engaged = 1)
+  no_phone <- .record_write(full[, setdiff(names(full), "phone")])
+  no_campaign <- .record_write(full[, setdiff(names(full), "campaign_id")])
+  expect_error(disposition_records(no_phone), "missing required column")
+  expect_error(disposition_records(no_campaign), "missing required column")
+})

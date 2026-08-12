@@ -301,7 +301,10 @@ disposition_query <- function(dataset, phones = NULL, campaign_ids = NULL,
 #' carries just the nine computed columns (no \code{error} / \code{loi} /
 #' \code{topic} / \code{date_closed_on}); the enriched projection carries all
 #' thirteen. In the current beta \code{error} and \code{date_closed_on} are
-#' \code{NA} for every row.
+#' \code{NA} for every row. The whole projection is read into memory and filtered
+#' in R (nanoparquet has no predicate pushdown, like \code{\link{disposition_query}});
+#' \code{phone} is digit-normalized for matching, and a stored row whose phone is
+#' blank or unparseable is dropped.
 #'
 #' Two differences from \code{\link{disposition_summary}} follow from the raw
 #' grain: a screened phone that was never contacted has \strong{no} row here
@@ -318,8 +321,9 @@ disposition_query <- function(dataset, phones = NULL, campaign_ids = NULL,
 #' @param campaign_ids Optional vector; keep only rows for these campaigns.
 #' @param date_from,date_to Optional \code{Date}/date-string bounds on
 #'   \code{date_closed_on}. A row with an \code{NA} close date is dropped by any
-#'   bound; supplying a bound when the projection has no \code{date_closed_on}
-#'   column is an error.
+#'   bound -- and in the current beta \code{date_closed_on} is \code{NA} for every
+#'   row, so any bound returns no rows. Supplying a bound when the projection has
+#'   no \code{date_closed_on} column at all is an error.
 #' @param page,page_size Optional 1-based pagination over the
 #'   \code{(phone, campaign_id)}-ordered rows.
 #' @return A data frame, one row per \code{(phone, campaign_id)}, with the
@@ -346,6 +350,11 @@ disposition_records <- function(dataset, phones = NULL, campaign_ids = NULL,
   }
 
   raw <- .disposition_read_parquet(dataset, columns = NULL)
+  missing_cols <- setdiff(c("phone", "campaign_id"), names(raw))
+  if (length(missing_cols) > 0L) {
+    stop(sprintf("disposition_records: dataset is missing required column(s): %s.",
+                 paste(missing_cols, collapse = ", ")), call. = FALSE)
+  }
   if ((!is.null(date_from) || !is.null(date_to)) &&
         !"date_closed_on" %in% names(raw)) {
     stop("disposition_records: dataset has no `date_closed_on` column to filter on.",
@@ -354,7 +363,8 @@ disposition_records <- function(dataset, phones = NULL, campaign_ids = NULL,
 
   d <- .disposition_filter(raw, req, campaign_ids, date_from, date_to)
   cols <- intersect(.DISPOSITION_RECORD_COLS, names(d))
-  d <- d[order(d$phone, as.numeric(d$campaign_id)), cols, drop = FALSE]
+  # radix keeps the order locale-independent (byte order on the digit strings).
+  d <- d[order(d$phone, as.numeric(d$campaign_id), method = "radix"), cols, drop = FALSE]
   d <- .disposition_paginate(d, page, page_size)
   rownames(d) <- NULL
   d
