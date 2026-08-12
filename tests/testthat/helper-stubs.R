@@ -232,6 +232,51 @@ stub_httr_response <- function(status = 200L,
   do.call(testthat::local_mocked_bindings, bindings)
 }
 
+# Stub the httr verbs to return a *sequence* of responses across successive
+# calls, for retry tests. `steps` is a list; each element is either an integer
+# HTTP status code or the string "error" (raise a curl/network failure). The
+# last step repeats once the list is exhausted (so a single "error"/5xx models a
+# persistent failure). `http_error` is derived from the status (>= 400) so it
+# always matches the sequence; `content` returns `body` (used on a 2xx step).
+# `capture$calls` counts how many requests were issued.
+stub_httr_seq <- function(steps, body = list(success = TRUE, data = "ok"),
+                          capture = NULL, env = parent.frame()) {
+  state <- new_capture()
+  state$i <- 0L
+  responder <- function(url, ...) {
+    state$i <- state$i + 1L
+    step <- steps[[min(state$i, length(steps))]]
+    if (!is.null(capture)) capture$calls <- c(capture$calls, TRUE)
+    if (identical(step, "error")) {
+      stop("Could not resolve host: api.survey160.com", call. = FALSE)
+    }
+    structure(list(status_code = as.integer(step), url = url), class = "response")
+  }
+  testthat::local_mocked_bindings(
+    POST = responder,
+    GET = responder,
+    http_error = function(resp) httr::status_code(resp) >= 400,
+    content = function(resp, ...) body,
+    http_status = function(resp) list(message = "Server Error"),
+    .package = "httr",
+    .env = env
+  )
+}
+
+# Neutralize the retry backoff's Sys.sleep so transient-failure tests don't
+# actually wait. When `capture` is supplied, each requested wait (seconds) is
+# recorded to capture$waits so a test can assert the exponential schedule.
+stub_no_sleep <- function(capture = NULL, env = parent.frame()) {
+  testthat::local_mocked_bindings(
+    Sys.sleep = function(time) {
+      if (!is.null(capture)) capture$waits <- c(capture$waits, time)
+      invisible(NULL)
+    },
+    .package = "base",
+    .env = env
+  )
+}
+
 # Stub gcs_list_objects to return `rows` (a data frame). Use when a test
 # only needs to control the listing payload. Pass a zero-row data frame to
 # exercise the "no files found" branch.
