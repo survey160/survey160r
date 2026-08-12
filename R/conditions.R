@@ -40,8 +40,18 @@ stop_s160 <- function(msg, fn = NULL) {
 # Validate `x` is a single, non-empty (non-whitespace) string. `name` is the
 # argument's name, rendered in backticks. Returns `x` invisibly on success.
 check_nonempty_string <- function(x, name, fn = NULL) {
-  if (!is.character(x) || length(x) != 1L || !nzchar(trimws(x))) {
+  # nzchar(NA_character_) is TRUE by default, so guard NA explicitly.
+  if (!is.character(x) || length(x) != 1L || is.na(x) || !nzchar(trimws(x))) {
     stop_s160(sprintf("`%s` must be a non-empty string.", name), fn = fn)
+  }
+  invisible(x)
+}
+
+# Validate `x` is a single, positive, finite number (rejecting NA/NaN/Inf --
+# an Inf timeout, for one, would turn a bounded poll into an unbounded loop).
+check_positive_number <- function(x, name, fn = NULL) {
+  if (!is.numeric(x) || length(x) != 1L || !is.finite(x) || x <= 0) {
+    stop_s160(sprintf("`%s` must be a positive number.", name), fn = fn)
   }
   invisible(x)
 }

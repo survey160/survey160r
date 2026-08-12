@@ -313,15 +313,9 @@ s160_api_campaign_results <- function(campaign_id, filter_open = FALSE,
   check_gcs_ready()
   campaign_id <- validate_campaign_id(campaign_id)
 
-  if (!is.numeric(timeout) || length(timeout) != 1 || timeout <= 0) {
-    stop_s160("`timeout` must be a positive number.",
-              fn = "s160_api_campaign_results")
-  }
-  if (!is.numeric(poll_interval) || length(poll_interval) != 1 ||
-        poll_interval <= 0) {
-    stop_s160("`poll_interval` must be a positive number.",
-              fn = "s160_api_campaign_results")
-  }
+  check_positive_number(timeout, "timeout", fn = "s160_api_campaign_results")
+  check_positive_number(poll_interval, "poll_interval",
+                        fn = "s160_api_campaign_results")
 
   export_filename <- paste0(campaign_id, "_raw_data_download.csv")
 
@@ -422,8 +416,7 @@ s160_api_campaign_get <- function(campaign_id, conn = NULL) {
       # found, which surfaces as "Bad Request" through s160_api_request. Map
       # that (and a real 404, defensively) to a clear not-found error.
       if (grepl("Bad Request|Not Found", msg, ignore.case = TRUE)) {
-        stop_s160(sprintf("Campaign %s not found.", campaign_id),
-                  fn = "s160_api_campaign_get")
+        stop_not_found("campaign", campaign_id, fn = "s160_api_campaign_get")
       }
       stop(e)
     }
@@ -431,10 +424,11 @@ s160_api_campaign_get <- function(campaign_id, conn = NULL) {
 
   # Backstop for an unexpected 200 with `success != TRUE` or no data payload.
   # The real not-found path is the HTTP 400 handled by the tryCatch above; this
-  # guard would only fire if the server changed shape.
+  # guard would only fire if the server changed shape -- a malformed read, not a
+  # missing campaign, so it reports a failed read rather than "not found".
   if (!isTRUE(resp$success) || is.null(resp$data)) {
-    stop_s160(sprintf("Campaign %s not found.", campaign_id),
-              fn = "s160_api_campaign_get")
+    stop_failed("read campaign", "unexpected response format",
+                fn = "s160_api_campaign_get")
   }
 
   enriched_fields <- c(

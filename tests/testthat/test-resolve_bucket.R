@@ -18,6 +18,11 @@ test_that("rejects a non-character or vector explicit bucket", {
                "`bucket` must be a non-empty string")
 })
 
+test_that("rejects NA_character_ (nzchar(NA) is TRUE by default)", {
+  expect_error(survey160r:::resolve_bucket(NA_character_),
+               "`bucket` must be a non-empty string")
+})
+
 test_that("falls back to the global bucket when arg is NULL", {
   local_mocked_bindings(gcs_get_global_bucket = function() "global_bucket")
   expect_equal(survey160r:::resolve_bucket(NULL), "global_bucket")
