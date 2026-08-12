@@ -42,6 +42,18 @@
   fetches the survey160r-derived projection, not a raw source) so it groups with
   the rest of the disposition family.
 
+* **`disposition_records()`** -- read the disposition projection's rows as
+  stored: one row per `(phone, campaign_id)` with the full disposition schema
+  (`started`, `engaged`, `opt_in`, `complete`, `web_complete`, `terminated`,
+  `error`, `loi`, `topic`, `mode`, `date_closed_on`). The raw level beneath
+  `disposition_query()` (which rolls each phone up to one screening row) -- use
+  it to inspect, export, or build a custom rollup. Takes the same `phones` /
+  `campaign_ids` / `date_from` / `date_to` / `page` scoping as
+  `disposition_query()`, minus `statuses` (that selects a per-phone
+  `latest_disposition`, which exists only after the rollup). Returns only the
+  canonical columns present, so it also works on an un-enriched projection
+  straight from `disposition_run()`.
+
 # survey160r 0.20.0
 
 ## Breaking changes

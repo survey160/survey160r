@@ -2,7 +2,7 @@
 % Please edit documentation in R/disposition_query.R
 \name{disposition_query}
 \alias{disposition_query}
-\title{Query the disposition dataset for a phone list (sample screening)}
+\title{Query the disposition dataset for a phone list (one row per phone)}
 \usage{
 disposition_query(
   dataset,
@@ -45,8 +45,11 @@ A per-phone summary data frame (see \code{\link{disposition_summary}}).
 Reads the disposition Parquet projection and returns \strong{one row per
 phone} (see \code{\link{disposition_summary}}) -- the analyst-facing engine
 for ad-hoc queries. For cleaning a Survey Manager's sample file in place, use
-\code{\link{disposition_screen}}.
+\code{\link{disposition_screen}}; for the underlying rows \emph{before} the
+per-phone rollup (one per \code{(phone, campaign_id)}), use
+\code{\link{disposition_records}}.
 }
 \seealso{
-\code{\link{disposition_summary}}, \code{\link{disposition_screen}}
+\code{\link{disposition_summary}}, \code{\link{disposition_screen}},
+  \code{\link{disposition_records}}
 }
