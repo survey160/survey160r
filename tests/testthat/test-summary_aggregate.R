@@ -186,9 +186,9 @@ test_that("population_filter_mask: NULL / empty expr returns all-TRUE", {
 test_that("population_filter_mask: invalid expression aborts", {
   d <- load_synthetic_data()
   expect_error(population_filter_mask(d, "this is not R"),
-               "filters.population is not valid R")
+               "`filters.population` is not valid R")
   expect_error(population_filter_mask(d, "no_such_column == 1"),
-               "filters.population evaluation failed")
+               "`filters.population` evaluation failed")
   # Expression that returns a non-logical / wrong length
   expect_error(population_filter_mask(d, "42"),
                "must evaluate to a logical vector matching nrow")

@@ -194,11 +194,11 @@ test_that("a connection prints as an opaque handle, masking the key", {
 test_that("api_do_auth rejects missing credentials before POSTing", {
   conn <- new.env(parent = emptyenv())
   expect_error(survey160r:::api_do_auth(conn, "https://x", NULL, "k"),
-               "userid must be a non-empty string")
+               "`userid` must be a non-empty string")
   expect_error(survey160r:::api_do_auth(conn, "https://x", "u", NULL),
-               "api_key must be a non-empty string")
+               "`api_key` must be a non-empty string")
   expect_error(survey160r:::api_do_auth(conn, "  ", "u", "k"),
-               "base_url must be a non-empty string")
+               "`base_url` must be a non-empty string")
 })
 
 test_that("api_do_auth strips a trailing slash from base_url", {
@@ -492,6 +492,10 @@ test_that("results errors on invalid timeout", {
   expect_error(s160_api_campaign_results(1980, timeout = 0), "positive number")
   expect_error(s160_api_campaign_results(1980, timeout = -1), "positive number")
   expect_error(s160_api_campaign_results(1980, timeout = "abc"), "positive number")
+  # Non-finite values must not slip past into an unbounded poll loop.
+  expect_error(s160_api_campaign_results(1980, timeout = Inf), "positive number")
+  expect_error(s160_api_campaign_results(1980, timeout = NA_real_), "positive number")
+  expect_error(s160_api_campaign_results(1980, timeout = NaN), "positive number")
 })
 
 test_that("results errors on invalid poll_interval", {
@@ -499,6 +503,9 @@ test_that("results errors on invalid poll_interval", {
   stub_gcs_base()
   expect_error(s160_api_campaign_results(1980, poll_interval = 0), "positive number")
   expect_error(s160_api_campaign_results(1980, poll_interval = -5), "positive number")
+  expect_error(s160_api_campaign_results(1980, poll_interval = Inf), "positive number")
+  expect_error(s160_api_campaign_results(1980, poll_interval = NA_real_), "positive number")
+  expect_error(s160_api_campaign_results(1980, poll_interval = NaN), "positive number")
 })
 
 # --- s160_api_campaign_results: per-connection bucket -------------------------
@@ -676,7 +683,7 @@ test_that("campaign_get maps 400 not-found to clear error", {
     }
   )
 
-  expect_error(s160_api_campaign_get(9999), "Campaign 9999 not found")
+  expect_error(s160_api_campaign_get(9999), "campaign not found: 9999")
 })
 
 test_that("campaign_get maps 404 to clear error", {
@@ -687,7 +694,7 @@ test_that("campaign_get maps 404 to clear error", {
     }
   )
 
-  expect_error(s160_api_campaign_get(9999), "Campaign 9999 not found")
+  expect_error(s160_api_campaign_get(9999), "campaign not found: 9999")
 })
 
 test_that("campaign_get propagates non-not-found errors unchanged", {
@@ -709,7 +716,8 @@ test_that("campaign_get errors on success=false response", {
     }
   )
 
-  expect_error(s160_api_campaign_get(42), "Campaign 42 not found")
+  expect_error(s160_api_campaign_get(42),
+               "Failed to read campaign: unexpected response format")
 })
 
 test_that("campaign_get errors when API not authenticated", {

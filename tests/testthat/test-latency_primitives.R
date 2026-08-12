@@ -31,7 +31,7 @@ test_that("parse_timestamps parses microsecond Z-suffixed UTC and counts failure
 test_that("parse_timestamps errors when column missing", {
   df <- data.frame(a = "x", stringsAsFactors = FALSE)
   expect_error(survey160r:::parse_timestamps(df, "missing"),
-               "Timestamp column not found")
+               "timestamp column not found")
 })
 
 test_that("parse_timestamps preserves already-POSIXct columns and normalizes tz", {

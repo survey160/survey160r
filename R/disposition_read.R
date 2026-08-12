@@ -167,10 +167,10 @@
 # projection (see the test-file note).
 .disposition_read_parquet <- function(dataset, columns = .DISPOSITION_READ_COLS) {
   if (!is.character(dataset) || length(dataset) != 1L || !nzchar(dataset)) {
-    stop("dataset must be a single Parquet path.", call. = FALSE)
+    stop("`dataset` must be a single Parquet path.", call. = FALSE)
   }
   if (!file.exists(dataset)) {
-    stop(sprintf("disposition dataset not found: %s", dataset), call. = FALSE)
+    stop_not_found("disposition dataset", dataset)
   }
   as.data.frame(nanoparquet::read_parquet(dataset, col_select = columns))
 }
@@ -213,19 +213,19 @@
 disposition_rollup <- function(data, phones = NULL, campaign_ids = NULL,
                                 statuses = NULL, date_from = NULL,
                                 date_to = NULL, page = NULL, page_size = NULL) {
-  if (!is.data.frame(data)) {
-    stop("disposition_rollup: `data` must be a data frame.", call. = FALSE)
-  }
+  check_data_frame(data, "data", fn = "disposition_rollup")
   missing_cols <- setdiff(.DISPOSITION_READ_COLS, names(data))
   if (length(missing_cols) > 0L) {
-    stop(sprintf("disposition_rollup: `data` is missing column(s): %s.",
-                 paste(missing_cols, collapse = ", ")), call. = FALSE)
+    stop_s160(sprintf("`data` is missing column(s): %s",
+                      paste(missing_cols, collapse = ", ")),
+              fn = "disposition_rollup")
   }
   if (!is.null(statuses)) {
     bad <- setdiff(as.character(statuses), .DISPOSITION_CATEGORIES)
     if (length(bad) > 0L) {
-      stop(sprintf("disposition_rollup: unknown status(es): %s.",
-                   paste(bad, collapse = ", ")), call. = FALSE)
+      stop_s160(sprintf("unknown status(es): %s",
+                        paste(bad, collapse = ", ")),
+                fn = "disposition_rollup")
     }
   }
   date_from <- .disposition_date_bound(date_from, "date_from")
@@ -352,13 +352,14 @@ disposition_records <- function(dataset, phones = NULL, campaign_ids = NULL,
   raw <- .disposition_read_parquet(dataset, columns = NULL)
   missing_cols <- setdiff(c("phone", "campaign_id"), names(raw))
   if (length(missing_cols) > 0L) {
-    stop(sprintf("disposition_records: dataset is missing required column(s): %s.",
-                 paste(missing_cols, collapse = ", ")), call. = FALSE)
+    stop_s160(sprintf("`dataset` is missing required column(s): %s",
+                      paste(missing_cols, collapse = ", ")),
+              fn = "disposition_records")
   }
   if ((!is.null(date_from) || !is.null(date_to)) &&
         !"date_closed_on" %in% names(raw)) {
-    stop("disposition_records: dataset has no `date_closed_on` column to filter on.",
-         call. = FALSE)
+    stop_s160("`dataset` has no `date_closed_on` column to filter on.",
+              fn = "disposition_records")
   }
 
   d <- .disposition_filter(raw, req, campaign_ids, date_from, date_to)
@@ -396,21 +397,19 @@ disposition_records <- function(dataset, phones = NULL, campaign_ids = NULL,
 disposition_screen <- function(sample, dataset, phone_col = "phone",
                                     campaign_ids = NULL, date_from = NULL,
                                     date_to = NULL) {
-  if (!is.data.frame(sample)) {
-    stop("disposition_screen: `sample` must be a data frame.",
-         call. = FALSE)
-  }
+  check_data_frame(sample, "sample", fn = "disposition_screen")
   if (!is.character(phone_col) || length(phone_col) != 1L ||
         !phone_col %in% names(sample)) {
-    stop(sprintf("disposition_screen: phone column %s not found in `sample`.",
-                 deparse(phone_col)), call. = FALSE)
+    stop_s160(sprintf("phone column %s not found in `sample`.",
+                      deparse(phone_col)), fn = "disposition_screen")
   }
   disposition_cols <- setdiff(.DISPOSITION_SUMMARY_COLS, "phone")
   clash <- intersect(disposition_cols, names(sample))
   if (length(clash) > 0L) {
-    stop(sprintf(paste0("disposition_screen: `sample` already has ",
-                        "disposition column(s) [%s]; rename them first."),
-                 paste(clash, collapse = ", ")), call. = FALSE)
+    stop_s160(sprintf(paste0("`sample` already has ",
+                             "disposition column(s) [%s]; rename them first."),
+                      paste(clash, collapse = ", ")),
+              fn = "disposition_screen")
   }
   summ <- disposition_rollup(.disposition_read_parquet(dataset),
                               phones = sample[[phone_col]],
@@ -460,8 +459,8 @@ disposition_pull <- function(env = c("prod", "dev"), dest = NULL,
                              bucket = NULL, refresh = FALSE) {
   env <- match.arg(env)
   if (!is.logical(refresh) || length(refresh) != 1L || is.na(refresh)) {
-    stop("disposition_pull: `refresh` must be a single TRUE or FALSE.",
-         call. = FALSE)
+    stop_s160("`refresh` must be a single TRUE or FALSE.",
+              fn = "disposition_pull")
   }
   if (is.null(bucket)) bucket <- sprintf("s160_disposition_%s", env)
   bucket <- resolve_bucket(bucket)
@@ -475,8 +474,8 @@ disposition_pull <- function(env = c("prod", "dev"), dest = NULL,
     dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
     local_path <- file.path(cache_dir, default_name)
   } else if (!is.character(dest) || length(dest) != 1L || !nzchar(trimws(dest))) {
-    stop("disposition_pull: `dest` must be a single non-empty path or directory.",
-         call. = FALSE)
+    stop_s160("`dest` must be a single non-empty path or directory.",
+              fn = "disposition_pull")
   } else if (dir.exists(dest)) {
     local_path <- file.path(dest, default_name)
   } else {
@@ -502,16 +501,15 @@ disposition_pull <- function(env = c("prod", "dev"), dest = NULL,
     error = function(e) {
       msg <- conditionMessage(e)
       if (grepl("404", msg, fixed = TRUE)) {
-        stop(sprintf("Disposition projection not found: %s", gcs_path),
-             call. = FALSE)
+        stop_not_found("disposition projection", gcs_path, fn = "disposition_pull")
       }
-      stop(sprintf("Failed to download %s: %s", gcs_path, msg), call. = FALSE)
+      stop_failed(sprintf("download %s", gcs_path), msg, fn = "disposition_pull")
     }
   )
   if (!file.rename(tmp, local_path) &&
         !file.copy(tmp, local_path, overwrite = TRUE)) {
-    stop(sprintf("Failed to move the downloaded file into place: %s", local_path),
-         call. = FALSE)
+    stop_failed("move the downloaded file into place", local_path,
+                fn = "disposition_pull")
   }
   local_path
 }

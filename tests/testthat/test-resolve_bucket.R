@@ -6,16 +6,21 @@ test_that("explicit bucket arg returns the bucket as-is", {
 
 test_that("rejects an empty or whitespace-only explicit bucket", {
   expect_error(survey160r:::resolve_bucket(""),
-               "bucket must be a non-empty string")
+               "`bucket` must be a non-empty string")
   expect_error(survey160r:::resolve_bucket("   "),
-               "bucket must be a non-empty string")
+               "`bucket` must be a non-empty string")
 })
 
 test_that("rejects a non-character or vector explicit bucket", {
   expect_error(survey160r:::resolve_bucket(123L),
-               "bucket must be a non-empty string")
+               "`bucket` must be a non-empty string")
   expect_error(survey160r:::resolve_bucket(c("a", "b")),
-               "bucket must be a non-empty string")
+               "`bucket` must be a non-empty string")
+})
+
+test_that("rejects NA_character_ (nzchar(NA) is TRUE by default)", {
+  expect_error(survey160r:::resolve_bucket(NA_character_),
+               "`bucket` must be a non-empty string")
 })
 
 test_that("falls back to the global bucket when arg is NULL", {

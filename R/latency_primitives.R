@@ -64,7 +64,7 @@ parse_timestamps <- function(data, cols) {
   n <- nrow(data)
   for (col in cols) {
     if (!col %in% names(data)) {
-      stop(sprintf("Timestamp column not found: %s", col), call. = FALSE)
+      stop_not_found("timestamp column", col)
     }
     raw <- data[[col]]
     if (inherits(raw, "POSIXct")) {
@@ -104,7 +104,7 @@ subset_parsed_input <- function(data, parse_failed_mask, keep_idx) {
 # negatives so the caller can roll up diagnostics.
 compute_segment_delta <- function(batch_prior, script_next) {
   if (length(batch_prior) != length(script_next)) {
-    stop("batch_prior and script_next must have the same length.", call. = FALSE)
+    stop("`batch_prior` and `script_next` must have the same length.", call. = FALSE)
   }
   raw <- as.numeric(difftime(script_next, batch_prior, units = "mins"))
   clamped <- !is.na(raw) & raw < 0

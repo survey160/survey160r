@@ -30,7 +30,7 @@ test_that("404 error gives clear file not found message", {
 
   expect_error(
     suppressMessages(s160_gcs_campaign_results_read(9999)),
-    "File not found.*test_bucket"
+    "file not found.*test_bucket"
   )
 })
 
