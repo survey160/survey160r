@@ -200,7 +200,9 @@ dataset <- disposition_pull()                       # env = "prod" (default) or 
 # Annotate a sample data frame in place -- original rows/columns preserved,
 # disposition screening columns appended 1:1
 cleaned <- disposition_screen(my_sample, dataset, phone_col = "phone")
-subset(cleaned, !ever_complete & !ever_terminated)  # drop already-finished numbers
+# drop already-finished numbers; blank/unparseable phones come back all-NA and
+# are kept (so they surface for correction rather than vanishing)
+subset(cleaned, !(ever_complete %in% TRUE | ever_terminated %in% TRUE))
 ```
 
 Ad-hoc query surface over the same projection:

@@ -32,9 +32,10 @@ or pagination here -- every sample row is returned.}
   \code{campaigns} appended. A valid phone that is absent from the rows
   selected by \code{campaign_ids}, \code{date_from}, and \code{date_to} (the
   whole dataset when those are unset) gets a \code{never_contacted} row
-  (\code{ever_contacted = FALSE}, \code{latest_disposition = "never_contacted"},
-  the rest \code{FALSE}/\code{NA}); only a phone that digit-normalizes to
-  nothing (blank/unparseable) gets an all-\code{NA} block.
+  (\code{ever_contacted = FALSE}, \code{n_campaigns = 0}, the other
+  \code{ever_*} flags \code{FALSE}, \code{latest_disposition =
+  "never_contacted"}, \code{campaigns = NA}); only a phone that
+  digit-normalizes to nothing (blank/unparseable) gets an all-\code{NA} block.
 }
 \description{
 The Survey Manager surface: takes a sample data frame (a phone column plus
@@ -48,7 +49,8 @@ it (e.g. \code{subset(out, !ever_complete & !ever_terminated)}). Mirrors the
 \dontrun{
 dataset <- disposition_pull()
 cleaned <- disposition_screen(my_sample, dataset, phone_col = "phone")
-subset(cleaned, !ever_complete & !ever_terminated)
+# drop finished/terminated; blank-phone rows come back all-NA and are kept
+subset(cleaned, !(ever_complete \%in\% TRUE | ever_terminated \%in\% TRUE))
 }
 }
 \seealso{
