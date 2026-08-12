@@ -79,7 +79,7 @@ test_that("latency_report consolidated has hour and day rollup rows", {
   expect_equal(unique(as.character(cons$date)), "2026-01-26")
   expect_equal(unique(cons$campaign_id), 1L)
   expect_equal(unique(cons$project_id), 1L)
-  expect_equal(unique(cons$algorithm_version), "2.1.0")
+  expect_equal(unique(cons$algorithm_version), "2.2.0")
 
   # n per hour cell is 1 (the single respondent in that hour). All three
   # respondents now count -- there's no texting-window exclusion.
@@ -441,9 +441,10 @@ test_that("consolidated declares the new columns with the right types when laten
   expect_gt(nrow(cons), 0L)
   expect_true(all(c("mean_delta_min", "p50_delta_min", "p90_delta_min",
                     "p95_delta_min", "n_na_parse", "n_na_missing",
-                    "n_na_chain", "n_texted", "n_consented", "n_completed",
-                    "n_ineligible") %in% names(cons)))
+                    "n_na_chain", "n_texted", "n_engaged", "n_consented",
+                    "n_completed", "n_ineligible") %in% names(cons)))
   expect_type(cons$p95_delta_min, "double")
   expect_type(cons$n_na_chain, "integer")
   expect_type(cons$n_texted, "integer")
+  expect_type(cons$n_engaged, "integer")
 })
