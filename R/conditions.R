@@ -15,6 +15,15 @@
 #     (paths, ids, column lists) follow a colon with no trailing period;
 #     complete sentences end with a period.
 #
+# Where the prefix lives: a check written directly in an exported function's
+# body carries that function's `fn`. A REUSED validator called by several
+# exported functions -- validate_campaign_id(), resolve_bucket(),
+# check_gcs_ready()/check_api_ready(), api_do_auth(), get_credential(), and the
+# private .disposition_* input validators -- raises BARE: its message states a
+# self-describing invariant (e.g. "`campaign_id` must be a single value") and a
+# single caller's name would be arbitrary (which of the callers?) rather than
+# informative. This mirrors stop_not_initialized() below.
+#
 # The helpers below centralize the recurring shapes so that grammar stays
 # uniform and the duplicated raise-and-format logic lives in one place.
 

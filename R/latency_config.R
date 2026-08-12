@@ -110,8 +110,8 @@ latency_build_config <- function(campaign_id, data,
 latency_validate_config <- function(config, data) {
   unknown <- setdiff(names(config), .config_keys)
   if (length(unknown) > 0) {
-    stop_s160(sprintf("Unknown config keys: %s", paste(unknown, collapse = ", ")),
-              fn = "latency_validate_config")
+    stop(sprintf("config: unknown keys: %s", paste(unknown, collapse = ", ")),
+         call. = FALSE)
   }
   if (is.null(config$project_id)) stop("config: `project_id` is required.", call. = FALSE)
   if (is.null(config$campaign_id)) stop("config: `campaign_id` is required.", call. = FALSE)

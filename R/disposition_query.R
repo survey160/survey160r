@@ -204,14 +204,16 @@ disposition_summary <- function(data, phones = NULL, campaign_ids = NULL,
   check_data_frame(data, "data", fn = "disposition_summary")
   missing_cols <- setdiff(.DISPOSITION_READ_COLS, names(data))
   if (length(missing_cols) > 0L) {
-    stop(sprintf("disposition_summary: `data` is missing column(s): %s.",
-                 paste(missing_cols, collapse = ", ")), call. = FALSE)
+    stop_s160(sprintf("`data` is missing column(s): %s",
+                      paste(missing_cols, collapse = ", ")),
+              fn = "disposition_summary")
   }
   if (!is.null(statuses)) {
     bad <- setdiff(as.character(statuses), .DISPOSITION_CATEGORIES)
     if (length(bad) > 0L) {
-      stop(sprintf("disposition_summary: unknown status(es): %s.",
-                   paste(bad, collapse = ", ")), call. = FALSE)
+      stop_s160(sprintf("unknown status(es): %s",
+                        paste(bad, collapse = ", ")),
+                fn = "disposition_summary")
     }
   }
   date_from <- .disposition_date_bound(date_from, "date_from")
@@ -296,15 +298,16 @@ disposition_screen <- function(sample, dataset, phone_col = "phone",
   check_data_frame(sample, "sample", fn = "disposition_screen")
   if (!is.character(phone_col) || length(phone_col) != 1L ||
         !phone_col %in% names(sample)) {
-    stop(sprintf("disposition_screen: phone column %s not found in `sample`.",
-                 deparse(phone_col)), call. = FALSE)
+    stop_s160(sprintf("phone column %s not found in `sample`.",
+                      deparse(phone_col)), fn = "disposition_screen")
   }
   disposition_cols <- setdiff(.DISPOSITION_SUMMARY_COLS, "phone")
   clash <- intersect(disposition_cols, names(sample))
   if (length(clash) > 0L) {
-    stop(sprintf(paste0("disposition_screen: `sample` already has ",
-                        "disposition column(s) [%s]; rename them first."),
-                 paste(clash, collapse = ", ")), call. = FALSE)
+    stop_s160(sprintf(paste0("`sample` already has ",
+                             "disposition column(s) [%s]; rename them first."),
+                      paste(clash, collapse = ", ")),
+              fn = "disposition_screen")
   }
   summ <- disposition_summary(.disposition_read_parquet(dataset),
                               phones = sample[[phone_col]],
@@ -354,8 +357,8 @@ disposition_pull <- function(env = c("prod", "dev"), dest = NULL,
                              bucket = NULL, refresh = FALSE) {
   env <- match.arg(env)
   if (!is.logical(refresh) || length(refresh) != 1L || is.na(refresh)) {
-    stop("disposition_pull: `refresh` must be a single TRUE or FALSE.",
-         call. = FALSE)
+    stop_s160("`refresh` must be a single TRUE or FALSE.",
+              fn = "disposition_pull")
   }
   if (is.null(bucket)) bucket <- sprintf("s160_disposition_%s", env)
   bucket <- resolve_bucket(bucket)
@@ -369,8 +372,8 @@ disposition_pull <- function(env = c("prod", "dev"), dest = NULL,
     dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
     local_path <- file.path(cache_dir, default_name)
   } else if (!is.character(dest) || length(dest) != 1L || !nzchar(trimws(dest))) {
-    stop("disposition_pull: `dest` must be a single non-empty path or directory.",
-         call. = FALSE)
+    stop_s160("`dest` must be a single non-empty path or directory.",
+              fn = "disposition_pull")
   } else if (dir.exists(dest)) {
     local_path <- file.path(dest, default_name)
   } else {

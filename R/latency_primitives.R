@@ -64,7 +64,7 @@ parse_timestamps <- function(data, cols) {
   n <- nrow(data)
   for (col in cols) {
     if (!col %in% names(data)) {
-      stop_not_found("Timestamp column", col)
+      stop_not_found("timestamp column", col)
     }
     raw <- data[[col]]
     if (inherits(raw, "POSIXct")) {
