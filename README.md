@@ -184,6 +184,42 @@ config <- latency_build_config(
 
 `latency_validate_config()` runs fail-fast checks: required columns present, flow order matches the data, no unknown keys, no terminal states (`refusal`, `ineligible`) in `flow.questions`.
 
+## Disposition screening
+
+Screen a phone sample against the **disposition dataset** -- one row per `(phone, campaign_id)`, contacted-only, produced upstream by the pipeline -- to answer "which of these numbers have we contacted / completed / refused before?" and clean a sample list. The readers stay in the `disposition_*` family (bare-named) because they read a survey160r-*derived* projection, not a raw source.
+
+The Survey-Manager path is pull once, then screen a sample in place:
+
+```r
+library(survey160r)
+s160_gcs_init(bucket = "s160_disposition_prod")   # one-time browser OAuth
+
+# Download the projection to a local (cached) path; refresh = TRUE forces a fresh copy
+dataset <- disposition_pull()                       # env = "prod" (default) or "dev"
+
+# Annotate a sample data frame in place -- original rows/columns preserved,
+# disposition screening columns appended 1:1
+cleaned <- disposition_screen(my_sample, dataset, phone_col = "phone")
+subset(cleaned, !ever_complete & !ever_terminated)  # drop already-finished numbers
+```
+
+Ad-hoc query surface over the same projection:
+
+```r
+# One row per phone: cross-campaign screening flags + latest_disposition
+disposition_summary(dataset, phones = c("5551234567", "5559876543"))
+
+# The raw rows beneath the per-phone rollup: one per (phone, campaign_id)
+disposition_records(dataset, campaign_ids = 1234)
+
+# Roll an in-memory disposition frame up to one row per phone (pure, no I/O) --
+# read a projection once and screen several samples against the in-memory frame
+records <- disposition_records(dataset)
+disposition_rollup(records, phones = my_sample$phone)
+```
+
+Building the per-respondent disposition frame from a raw campaign CSV (the producer side, pure and source-agnostic like `latency_run()`) is `disposition_run(campaign_id, data)`; `disposition_input_columns()` gives the column-projection set, mirroring `latency_input_columns()`.
+
 ## First-time setup
 
 ### GCS (`s160_gcs_init`)

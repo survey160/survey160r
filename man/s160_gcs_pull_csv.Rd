@@ -32,3 +32,10 @@ attributes; \code{latency_report()} reads them and copies them onto
 \code{result$meta} so downstream consumers (e.g. persistence layers)
 don't have to fish them off attributes.
 }
+\examples{
+\dontrun{
+s160_gcs_init(bucket = "campaign_results")
+data <- s160_gcs_pull_csv(1234)
+attr(data, "source_csv_hash")
+}
+}

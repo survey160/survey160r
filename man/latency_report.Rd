@@ -34,3 +34,18 @@ With a supplied \code{run_at} the output is fully deterministic; left
 \code{NULL} it stamps \code{run_at_utc} from \code{Sys.time()}.
 Implements the algorithm in \code{campaign_scripts.md} §2.
 }
+\examples{
+data <- data.frame(
+  campaignid = c(1L, 1L),
+  id.intro.finalText = c("Yes", "Yes"),
+  id.intro.scriptDate = c("2026-01-26 21:00:00Z", "2026-01-26 21:05:00Z"),
+  id.intro.batchDate  = c("2026-01-26 21:00:30Z", "2026-01-26 21:05:20Z"),
+  id.q1.scriptDate    = c("2026-01-26 21:01:00Z", "2026-01-26 21:06:00Z"),
+  id.q1.batchDate     = c("2026-01-26 21:01:20Z", "2026-01-26 21:06:15Z"),
+  id.close.scriptDate = c("2026-01-26 21:02:00Z", "2026-01-26 21:07:00Z"),
+  check.names = FALSE, stringsAsFactors = FALSE
+)
+config <- latency_build_config(1L, data, field_timezone = "America/New_York")
+result <- latency_report(data, config, run_at = as.POSIXct("2026-01-01", tz = "UTC"))
+head(result$consolidated)
+}

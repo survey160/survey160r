@@ -62,6 +62,24 @@
   canonical columns present, so it also works on an un-enriched projection
   straight from `disposition_run()`.
 
+## Documentation
+
+* **Corrected and expanded documentation (no code behavior change).** The
+  `CLAUDE.md` naming-conventions section now matches the current disposition
+  surface -- `disposition_query` was renamed to `disposition_summary`; the
+  disposition readers are documented as bare-but-derived and `disposition_pull`
+  as the one bare function that reaches GCS -- and its Imports list adds
+  `data.table` and `nanoparquet`. The README gains a "Disposition screening"
+  section (`disposition_pull()` / `disposition_summary()` /
+  `disposition_screen()` / `disposition_records()` / `disposition_rollup()`).
+  Runnable `@examples` were added to the pure functions (`latency_report()`,
+  `latency_build_config()`, `latency_validate_config()`, `latency_config_hash()`,
+  `latency_discover_questions()`, `disposition_rollup()`) and usage examples to
+  the reader functions; `s160_csv_header()`'s example moved out of the
+  description into a runnable `@examples`. Fixed `disposition_screen()`'s
+  `@return` to distinguish an absent-but-valid phone (a `never_contacted` row)
+  from an unparseable one (an all-`NA` block).
+
 ## Internal
 
 * **Standardized and consolidated error messages.** Every `stop()` in the

@@ -55,6 +55,21 @@ I/O -- \code{\link{disposition_summary}} reads a Parquet file and calls
 this. Use it directly to read a projection once and screen several samples
 against the in-memory frame.
 }
+\examples{
+records <- data.frame(
+  phone = c("5551234567", "5551234567", "5559876543"),
+  campaign_id = c(101L, 102L, 101L),
+  engaged = c(1L, 1L, 0L),
+  opt_in = c(1L, 0L, 0L),
+  complete = c(1L, 0L, 0L),
+  web_complete = c(0L, 0L, 0L),
+  terminated = c(0L, 1L, 0L),
+  date_closed_on = as.Date(c("2026-01-10", "2026-01-20", "2026-01-15")),
+  stringsAsFactors = FALSE
+)
+disposition_rollup(records)
+disposition_rollup(records, phones = c("5551234567", "5550000000"))
+}
 \seealso{
 \code{\link{disposition_summary}},
   \code{\link{disposition_screen}}

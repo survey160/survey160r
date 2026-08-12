@@ -40,3 +40,12 @@ Pure function. Derives \code{flow.questions} from the CSV column names
 via \code{latency_discover_questions()} and assembles the rest of the
 config from the named arguments. No I/O, no API call, no auth precondition.
 }
+\examples{
+config <- latency_build_config(
+  campaign_id = 1234,
+  data = c("id.intro.scriptDate", "id.intro.batchDate",
+           "id.q1.scriptDate", "id.q1.batchDate", "id.close.scriptDate"),
+  field_timezone = "America/New_York"
+)
+config$flow$questions
+}

@@ -14,6 +14,7 @@
 #   disposition_summary(dataset, ...)     IO    -- read the Parquet, summarize (per phone)
 #   disposition_records(dataset, ...)   IO    -- read the Parquet, raw per-(phone, campaign) rows
 #   disposition_screen(sample, ...)     IO    -- annotate a caller's sample
+#   disposition_pull(env, ...)          IO    -- fetch the projection Parquet from GCS
 # The Parquet read uses nanoparquet (tiny, zero-dependency); the projection is a
 # single consolidated file, so a full read + in-R filter is sub-second.
 
@@ -209,6 +210,20 @@
 #'   \code{campaigns} (comma-separated campaign ids).
 #' @seealso \code{\link{disposition_summary}},
 #'   \code{\link{disposition_screen}}
+#' @examples
+#' records <- data.frame(
+#'   phone = c("5551234567", "5551234567", "5559876543"),
+#'   campaign_id = c(101L, 102L, 101L),
+#'   engaged = c(1L, 1L, 0L),
+#'   opt_in = c(1L, 0L, 0L),
+#'   complete = c(1L, 0L, 0L),
+#'   web_complete = c(0L, 0L, 0L),
+#'   terminated = c(0L, 1L, 0L),
+#'   date_closed_on = as.Date(c("2026-01-10", "2026-01-20", "2026-01-15")),
+#'   stringsAsFactors = FALSE
+#' )
+#' disposition_rollup(records)
+#' disposition_rollup(records, phones = c("5551234567", "5550000000"))
 #' @export
 disposition_rollup <- function(data, phones = NULL, campaign_ids = NULL,
                                 statuses = NULL, date_from = NULL,
@@ -273,6 +288,11 @@ disposition_rollup <- function(data, phones = NULL, campaign_ids = NULL,
 #' @return A per-phone summary data frame (see \code{\link{disposition_rollup}}).
 #' @seealso \code{\link{disposition_rollup}}, \code{\link{disposition_screen}},
 #'   \code{\link{disposition_records}}
+#' @examples
+#' \dontrun{
+#' dataset <- disposition_pull()
+#' disposition_summary(dataset, phones = my_sample$phone)
+#' }
 #' @export
 disposition_summary <- function(dataset, phones = NULL, campaign_ids = NULL,
                                    statuses = NULL, date_from = NULL,
@@ -390,9 +410,18 @@ disposition_records <- function(dataset, phones = NULL, campaign_ids = NULL,
 #' @return \code{sample} with the columns \code{ever_contacted},
 #'   \code{n_campaigns}, \code{ever_engaged}, \code{ever_opted_in},
 #'   \code{ever_complete}, \code{ever_terminated}, \code{latest_disposition},
-#'   \code{campaigns} appended (a never-matched / unparseable phone gets an
-#'   all-\code{NA} block).
+#'   \code{campaigns} appended. A valid phone that is absent from the dataset
+#'   gets a \code{never_contacted} row (\code{ever_contacted = FALSE},
+#'   \code{latest_disposition = "never_contacted"}, the rest \code{FALSE}/\code{NA});
+#'   only a phone that digit-normalizes to nothing (blank/unparseable) gets an
+#'   all-\code{NA} block.
 #' @seealso \code{\link{disposition_summary}}, \code{\link{disposition_rollup}}
+#' @examples
+#' \dontrun{
+#' dataset <- disposition_pull()
+#' cleaned <- disposition_screen(my_sample, dataset, phone_col = "phone")
+#' subset(cleaned, !ever_complete & !ever_terminated)
+#' }
 #' @export
 disposition_screen <- function(sample, dataset, phone_col = "phone",
                                     campaign_ids = NULL, date_from = NULL,

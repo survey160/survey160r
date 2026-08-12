@@ -16,3 +16,10 @@ A hex sha256 string.
 Hashes a canonical form of the config so the same logical config always
 produces the same hash even across different YAML serializations.
 }
+\examples{
+config <- latency_build_config(
+  1234,
+  c("id.intro.scriptDate", "id.intro.batchDate", "id.q1.scriptDate")
+)
+latency_config_hash(config)
+}

@@ -33,6 +33,11 @@
 #'
 #' @param data A data frame or character vector of column names.
 #' @return A character vector of question ids in flow order.
+#' @examples
+#' latency_discover_questions(
+#'   c("campaignid", "id.intro.scriptDate", "id.intro.batchDate",
+#'     "id.q1.scriptDate", "id.q1.batchDate", "id.close.scriptDate")
+#' )
 #' @export
 latency_discover_questions <- function(data) {
   cols <- if (is.data.frame(data)) names(data) else as.character(data)
@@ -68,6 +73,14 @@ latency_discover_questions <- function(data) {
 #'   respondent. Default \code{NULL} (no dedupe).
 #' @return A config list ready to pass to \code{latency_report()}, which
 #'   calls \code{latency_validate_config()} before consuming it.
+#' @examples
+#' config <- latency_build_config(
+#'   campaign_id = 1234,
+#'   data = c("id.intro.scriptDate", "id.intro.batchDate",
+#'            "id.q1.scriptDate", "id.q1.batchDate", "id.close.scriptDate"),
+#'   field_timezone = "America/New_York"
+#' )
+#' config$flow$questions
 #' @export
 latency_build_config <- function(campaign_id, data,
                          field_timezone = "UTC",
@@ -106,6 +119,19 @@ latency_build_config <- function(campaign_id, data,
 #'   \code{latency_build_config}).
 #' @param data The data frame the report will run against.
 #' @return Invisible \code{TRUE} on success; otherwise stops with an error.
+#' @examples
+#' data <- data.frame(
+#'   campaignid = 1L,
+#'   id.intro.finalText = "Yes",
+#'   id.intro.scriptDate = "2026-01-26 21:00:00Z",
+#'   id.intro.batchDate  = "2026-01-26 21:00:30Z",
+#'   id.q1.scriptDate    = "2026-01-26 21:01:00Z",
+#'   id.q1.batchDate     = "2026-01-26 21:01:20Z",
+#'   id.close.scriptDate = "2026-01-26 21:02:00Z",
+#'   check.names = FALSE, stringsAsFactors = FALSE
+#' )
+#' config <- latency_build_config(1L, data, field_timezone = "America/New_York")
+#' latency_validate_config(config, data)
 #' @export
 latency_validate_config <- function(config, data) {
   unknown <- setdiff(names(config), .config_keys)
@@ -276,6 +302,12 @@ validate_flow_order <- function(config, data) {
 #'
 #' @param config The config list.
 #' @return A hex sha256 string.
+#' @examples
+#' config <- latency_build_config(
+#'   1234,
+#'   c("id.intro.scriptDate", "id.intro.batchDate", "id.q1.scriptDate")
+#' )
+#' latency_config_hash(config)
 #' @export
 latency_config_hash <- function(config) {
   canonical <- canonicalize_config(config)

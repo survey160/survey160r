@@ -49,6 +49,12 @@ for ad-hoc queries. For cleaning a Survey Manager's sample file in place, use
 per-phone rollup (one per \code{(phone, campaign_id)}), use
 \code{\link{disposition_records}}.
 }
+\examples{
+\dontrun{
+dataset <- disposition_pull()
+disposition_summary(dataset, phones = my_sample$phone)
+}
+}
 \seealso{
 \code{\link{disposition_rollup}}, \code{\link{disposition_screen}},
   \code{\link{disposition_records}}
