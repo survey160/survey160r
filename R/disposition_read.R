@@ -540,12 +540,12 @@ disposition_pull <- function(env = c("prod", "dev"), dest = NULL,
   tryCatch(
     download_with_verify(object_name = object_name, local_path = tmp,
                          bucket = bucket),
+    s160_not_found = function(e) {
+      stop_not_found("disposition projection", gcs_path, fn = "disposition_pull")
+    },
     error = function(e) {
-      msg <- conditionMessage(e)
-      if (grepl("404", msg, fixed = TRUE)) {
-        stop_not_found("disposition projection", gcs_path, fn = "disposition_pull")
-      }
-      stop_failed(sprintf("download %s", gcs_path), msg, fn = "disposition_pull")
+      stop_failed(sprintf("download %s", gcs_path), conditionMessage(e),
+                  fn = "disposition_pull")
     }
   )
   if (!file.rename(tmp, local_path) &&

@@ -219,8 +219,10 @@ s160_api_request <- function(method, path, body = NULL, conn = NULL) {
   }
 
   if (httr::http_error(resp)) {
-    stop(sprintf("API error (%s %s): %s", method, path,
-                 http_error_message(resp)), call. = FALSE)
+    stop_http_error(
+      httr::status_code(resp),
+      sprintf("API error (%s %s): %s", method, path, http_error_message(resp))
+    )
   }
 
   httr::content(resp, as = "parsed")
@@ -467,12 +469,11 @@ s160_api_campaign_get <- function(campaign_id, conn = NULL) {
   path <- paste0("/campaigns/", campaign_id)
   resp <- tryCatch(
     s160_api_request("GET", path, conn = conn),
-    error = function(e) {
-      msg <- conditionMessage(e)
+    s160_http_error = function(e) {
       # The endpoint returns HTTP 400 with {"success":"false"} when no row is
-      # found, which surfaces as "Bad Request" through s160_api_request. Map
-      # that (and a real 404, defensively) to a clear not-found error.
-      if (grepl("Bad Request|Not Found", msg, ignore.case = TRUE)) {
+      # found; a real 404 is mapped defensively too. Dispatch on the status the
+      # condition carries, not the (rewordable) message text.
+      if (e$status %in% c(400L, 404L)) {
         stop_not_found("campaign", campaign_id, fn = "s160_api_campaign_get")
       }
       stop(e)
@@ -538,14 +539,19 @@ s160_api_campaign_get <- function(campaign_id, conn = NULL) {
 # as the export it triggered.
 get_gcs_file_updated <- function(campaign_id, filename, bucket = NULL) {
   prefix <- paste0(campaign_id, "/")
-  objects <- tryCatch(
-    if (is.null(bucket)) {
-      gcs_list_objects(prefix = prefix)
-    } else {
-      gcs_list_objects(prefix = prefix, bucket = bucket)
-    },
-    error = function(e) NULL
-  )
+  # A genuinely-absent file yields an EMPTY listing (a valid 200), handled by the
+  # nrow/match checks below -- so we do NOT swallow errors to NULL here. A real
+  # failure (auth/permission/bucket, e.g. a forgotten s160_gcs_init()) is
+  # persistent; masking it as "file not there yet" made the export poll spin
+  # until a misleading timeout. Surface it via gcs_list_or_stop instead.
+  objects <- if (is.null(bucket)) {
+    gcs_list_or_stop("list campaign export files",
+                     fn = "s160_api_campaign_results", prefix = prefix)
+  } else {
+    gcs_list_or_stop("list campaign export files",
+                     fn = "s160_api_campaign_results", prefix = prefix,
+                     bucket = bucket)
+  }
 
   if (is.null(objects) || nrow(objects) == 0) return(NULL)
 
