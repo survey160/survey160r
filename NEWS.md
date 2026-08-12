@@ -18,16 +18,24 @@
   persisted disposition data. `disposition_input_columns()` now returns
   `id.intro.scriptDate` in place of `id.intro.finalValue`.
 
+* **Disposition readers renamed for grain clarity.** The per-phone file reader
+  `disposition_query()` is now `disposition_summary()`, and the pure per-phone
+  rollup `disposition_summary()` is now `disposition_rollup()`. The two file
+  readers now read their grain from the name -- `disposition_summary()` (one row
+  per phone) beside `disposition_records()` (one row per `(phone, campaign_id)`)
+  -- with `disposition_rollup()` the pure core they share. Beta surface, no
+  deprecation shims.
+
 ## New features
 
-* **Disposition query surface** -- screen a phone sample against the disposition
+* **Disposition reader surface** -- screen a phone sample against the disposition
   dataset (one row per `(phone, campaign_id)`, contacted-only):
-  * `disposition_summary(data, ...)` -- pure core: roll an in-memory disposition
+  * `disposition_rollup(data, ...)` -- pure core: roll an in-memory disposition
     frame up to one row per phone (cross-campaign screening flags
     `ever_contacted` / `ever_complete` / `ever_terminated` / ... plus
     `latest_disposition`).
-  * `disposition_query(dataset, ...)` -- reads the Parquet projection, then
-    `disposition_summary()` (the analyst engine).
+  * `disposition_summary(dataset, ...)` -- reads the Parquet projection, then
+    `disposition_rollup()` (the analyst engine, one row per phone).
   * `disposition_screen(sample, dataset, ...)` -- annotates a caller's
     sample data frame in place with the disposition columns, preserving the
     original rows/columns/formatting (the Survey-Manager sample-cleaning
@@ -37,7 +45,7 @@
 
 * **`disposition_pull()`** -- download the disposition Parquet projection from
   the `s160_disposition_<env>` GCS bucket to a local (cached) path, ready to hand
-  straight to `disposition_query()` / `disposition_screen()`. Authenticate once
+  straight to `disposition_summary()` / `disposition_screen()`. Authenticate once
   with `s160_gcs_init()`; pass `refresh = TRUE` for a fresh copy. Bare-named (it
   fetches the survey160r-derived projection, not a raw source) so it groups with
   the rest of the disposition family.
@@ -46,10 +54,10 @@
   stored: one row per `(phone, campaign_id)` with the full disposition schema
   (`started`, `engaged`, `opt_in`, `complete`, `web_complete`, `terminated`,
   `error`, `loi`, `topic`, `mode`, `date_closed_on`). The raw level beneath
-  `disposition_query()` (which rolls each phone up to one screening row) -- use
+  `disposition_summary()` (which rolls each phone up to one screening row) -- use
   it to inspect, export, or build a custom rollup. Takes the same `phones` /
   `campaign_ids` / `date_from` / `date_to` / `page` scoping as
-  `disposition_query()`, minus `statuses` (that selects a per-phone
+  `disposition_summary()`, minus `statuses` (that selects a per-phone
   `latest_disposition`, which exists only after the rollup). Returns only the
   canonical columns present, so it also works on an un-enriched projection
   straight from `disposition_run()`.

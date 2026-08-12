@@ -1,17 +1,17 @@
-# Disposition query -- the R-only consumer of the disposition dataset.
+# Disposition readers -- the R-only consumers of the disposition dataset.
 #
 # The disposition dataset is one row per (phone, campaign_id), contacted-only,
 # produced upstream (per-campaign Parquet + a phone-sorted read projection). A
 # Survey Manager screens a fresh sample against it -- "which of these numbers
 # have been contacted / completed / refused before?" -- to clean the list. So a
-# query returns ONE ROW PER PHONE: the number's cross-campaign screening flags +
+# summary returns ONE ROW PER PHONE: the number's cross-campaign screening flags +
 # its latest disposition.
 #
 # Split into a pure core plus thin IO readers. The readers stay bare and in
 # the disposition family (not s160_-prefixed): their IO is confined to the
 # private .disposition_read_parquet, and grouping the feature beats tagging IO.
-#   disposition_summary(data, ...)      PURE  -- roll an in-memory frame up
-#   disposition_query(dataset, ...)     IO    -- read the Parquet, summarize (per phone)
+#   disposition_rollup(data, ...)      PURE  -- roll an in-memory frame up
+#   disposition_summary(dataset, ...)     IO    -- read the Parquet, summarize (per phone)
 #   disposition_records(dataset, ...)   IO    -- read the Parquet, raw per-(phone, campaign) rows
 #   disposition_screen(sample, ...)     IO    -- annotate a caller's sample
 # The Parquet read uses nanoparquet (tiny, zero-dependency); the projection is a
@@ -111,10 +111,10 @@
   data
 }
 
-# Roll the (phone, campaign) rows up to one row per phone. Rows are ordered so
+# Collapse the (phone, campaign) rows to one row per phone. Rows are ordered so
 # the latest campaign (max date_closed_on, NA last; tie -> max campaign_id) is
 # first per phone, so latest_disposition is a plain first-of-group pick.
-.disposition_rollup <- function(d) {
+.disposition_collapse <- function(d) {
   d$.category <- .disposition_derive_category(d)
   date_key <- as.numeric(d$date_closed_on)
   date_key[is.na(date_key)] <- -Inf
@@ -175,12 +175,12 @@
   as.data.frame(nanoparquet::read_parquet(dataset, col_select = columns))
 }
 
-#' Summarize disposition rows to one row per phone
+#' Roll disposition rows up to one row per phone
 #'
-#' The pure core of the disposition query: takes an in-memory disposition frame
+#' The pure rollup core: takes an in-memory disposition frame
 #' (one row per \code{(phone, campaign_id)}) and returns \strong{one row per
 #' phone} with its cross-campaign screening flags and latest disposition. No
-#' I/O -- \code{\link{disposition_query}} reads a Parquet file and calls
+#' I/O -- \code{\link{disposition_summary}} reads a Parquet file and calls
 #' this. Use it directly to read a projection once and screen several samples
 #' against the in-memory frame.
 #'
@@ -207,24 +207,24 @@
 #'   \code{n_campaigns}, \code{ever_engaged}, \code{ever_opted_in},
 #'   \code{ever_complete}, \code{ever_terminated}, \code{latest_disposition},
 #'   \code{campaigns} (comma-separated campaign ids).
-#' @seealso \code{\link{disposition_query}},
+#' @seealso \code{\link{disposition_summary}},
 #'   \code{\link{disposition_screen}}
 #' @export
-disposition_summary <- function(data, phones = NULL, campaign_ids = NULL,
+disposition_rollup <- function(data, phones = NULL, campaign_ids = NULL,
                                 statuses = NULL, date_from = NULL,
                                 date_to = NULL, page = NULL, page_size = NULL) {
   if (!is.data.frame(data)) {
-    stop("disposition_summary: `data` must be a data frame.", call. = FALSE)
+    stop("disposition_rollup: `data` must be a data frame.", call. = FALSE)
   }
   missing_cols <- setdiff(.DISPOSITION_READ_COLS, names(data))
   if (length(missing_cols) > 0L) {
-    stop(sprintf("disposition_summary: `data` is missing column(s): %s.",
+    stop(sprintf("disposition_rollup: `data` is missing column(s): %s.",
                  paste(missing_cols, collapse = ", ")), call. = FALSE)
   }
   if (!is.null(statuses)) {
     bad <- setdiff(as.character(statuses), .DISPOSITION_CATEGORIES)
     if (length(bad) > 0L) {
-      stop(sprintf("disposition_summary: unknown status(es): %s.",
+      stop(sprintf("disposition_rollup: unknown status(es): %s.",
                    paste(bad, collapse = ", ")), call. = FALSE)
     }
   }
@@ -237,7 +237,7 @@ disposition_summary <- function(data, phones = NULL, campaign_ids = NULL,
   }
 
   d <- .disposition_filter(data, req, campaign_ids, date_from, date_to)
-  summ <- if (nrow(d) == 0L) .disposition_never_contacted(character(0)) else .disposition_rollup(d)
+  summ <- if (nrow(d) == 0L) .disposition_never_contacted(character(0)) else .disposition_collapse(d)
 
   # Screened phones absent from the (filtered) data come back as never-contacted.
   if (!is.null(req)) {
@@ -254,31 +254,31 @@ disposition_summary <- function(data, phones = NULL, campaign_ids = NULL,
   summ
 }
 
-#' Query the disposition dataset for a phone list (one row per phone)
+#' Summarize the disposition dataset for a phone list (one row per phone)
 #'
 #' Reads the disposition Parquet projection and returns \strong{one row per
-#' phone} (see \code{\link{disposition_summary}}) -- the analyst-facing engine
+#' phone} (see \code{\link{disposition_rollup}}) -- the analyst-facing engine
 #' for ad-hoc queries. For cleaning a Survey Manager's sample file in place, use
 #' \code{\link{disposition_screen}}; for the underlying rows \emph{before} the
 #' per-phone rollup (one per \code{(phone, campaign_id)}), use
 #' \code{\link{disposition_records}}.
 #'
 #' @param dataset Path to a disposition Parquet file (the phone-sorted read
-#'   projection). Read with \pkg{nanoparquet}, projected to the query columns.
+#'   projection). Read with \pkg{nanoparquet}, projected to the summary columns.
 #' @param phones Optional character vector of phone numbers to screen; every
 #'   input number is returned (never-contacted ones flagged
 #'   \code{ever_contacted = FALSE}). \code{NULL} summarizes every phone in
-#'   \code{dataset}. See \code{\link{disposition_summary}} for details.
-#' @inheritParams disposition_summary
-#' @return A per-phone summary data frame (see \code{\link{disposition_summary}}).
-#' @seealso \code{\link{disposition_summary}}, \code{\link{disposition_screen}},
+#'   \code{dataset}. See \code{\link{disposition_rollup}} for details.
+#' @inheritParams disposition_rollup
+#' @return A per-phone summary data frame (see \code{\link{disposition_rollup}}).
+#' @seealso \code{\link{disposition_rollup}}, \code{\link{disposition_screen}},
 #'   \code{\link{disposition_records}}
 #' @export
-disposition_query <- function(dataset, phones = NULL, campaign_ids = NULL,
+disposition_summary <- function(dataset, phones = NULL, campaign_ids = NULL,
                                    statuses = NULL, date_from = NULL,
                                    date_to = NULL, page = NULL,
                                    page_size = NULL) {
-  disposition_summary(.disposition_read_parquet(dataset), phones = phones,
+  disposition_rollup(.disposition_read_parquet(dataset), phones = phones,
                       campaign_ids = campaign_ids, statuses = statuses,
                       date_from = date_from, date_to = date_to,
                       page = page, page_size = page_size)
@@ -292,7 +292,7 @@ disposition_query <- function(dataset, phones = NULL, campaign_ids = NULL,
 #' \code{engaged}, \code{opt_in}, \code{complete}, \code{web_complete},
 #' \code{terminated}, \code{error}, \code{loi}, \code{topic}, \code{mode},
 #' \code{date_closed_on}. This is the level directly beneath
-#' \code{\link{disposition_query}}: where \code{query} rolls every phone up to a
+#' \code{\link{disposition_summary}}: where \code{summary} rolls every phone up to a
 #' single screening row, \code{records} hands back the raw per-campaign rows --
 #' for inspection, export, or a custom rollup.
 #'
@@ -302,11 +302,11 @@ disposition_query <- function(dataset, phones = NULL, campaign_ids = NULL,
 #' \code{topic} / \code{date_closed_on}); the enriched projection carries all
 #' thirteen. In the current beta \code{error} and \code{date_closed_on} are
 #' \code{NA} for every row. The whole projection is read into memory and filtered
-#' in R (nanoparquet has no predicate pushdown, like \code{\link{disposition_query}});
+#' in R (nanoparquet has no predicate pushdown, like \code{\link{disposition_summary}});
 #' \code{phone} is digit-normalized for matching, and a stored row whose phone is
 #' blank or unparseable is dropped.
 #'
-#' Two differences from \code{\link{disposition_summary}} follow from the raw
+#' Two differences from \code{\link{disposition_rollup}} follow from the raw
 #' grain: a screened phone that was never contacted has \strong{no} row here
 #' (there is no stored record to return, unlike the \code{never_contacted} row
 #' \code{summary} synthesises), and there is no \code{statuses} argument -- that
@@ -329,7 +329,7 @@ disposition_query <- function(dataset, phones = NULL, campaign_ids = NULL,
 #' @return A data frame, one row per \code{(phone, campaign_id)}, with the
 #'   canonical disposition columns present in the file (see Details), ordered by
 #'   \code{phone} then \code{campaign_id}.
-#' @seealso \code{\link{disposition_query}} / \code{\link{disposition_summary}}
+#' @seealso \code{\link{disposition_summary}} / \code{\link{disposition_rollup}}
 #'   (the per-phone rollup), \code{\link{disposition_screen}},
 #'   \code{\link{disposition_pull}}
 #' @examples
@@ -384,14 +384,14 @@ disposition_records <- function(dataset, phones = NULL, campaign_ids = NULL,
 #' @param phone_col Name of the phone column in \code{sample}
 #'   (default \code{"phone"}).
 #' @param campaign_ids,date_from,date_to Optional scoping of the disposition
-#'   rows considered (see \code{\link{disposition_summary}}). No \code{statuses}
+#'   rows considered (see \code{\link{disposition_rollup}}). No \code{statuses}
 #'   or pagination here -- every sample row is returned.
 #' @return \code{sample} with the columns \code{ever_contacted},
 #'   \code{n_campaigns}, \code{ever_engaged}, \code{ever_opted_in},
 #'   \code{ever_complete}, \code{ever_terminated}, \code{latest_disposition},
 #'   \code{campaigns} appended (a never-matched / unparseable phone gets an
 #'   all-\code{NA} block).
-#' @seealso \code{\link{disposition_query}}, \code{\link{disposition_summary}}
+#' @seealso \code{\link{disposition_summary}}, \code{\link{disposition_rollup}}
 #' @export
 disposition_screen <- function(sample, dataset, phone_col = "phone",
                                     campaign_ids = NULL, date_from = NULL,
@@ -412,7 +412,7 @@ disposition_screen <- function(sample, dataset, phone_col = "phone",
                         "disposition column(s) [%s]; rename them first."),
                  paste(clash, collapse = ", ")), call. = FALSE)
   }
-  summ <- disposition_summary(.disposition_read_parquet(dataset),
+  summ <- disposition_rollup(.disposition_read_parquet(dataset),
                               phones = sample[[phone_col]],
                               campaign_ids = campaign_ids,
                               date_from = date_from, date_to = date_to)
@@ -426,7 +426,7 @@ disposition_screen <- function(sample, dataset, phone_col = "phone",
 #' Pulls the phone-sorted disposition projection
 #' (\code{disposition_by_phone/disposition_all.parquet}) from the environment's
 #' disposition bucket to a local file and returns the path -- ready to hand to
-#' \code{\link{disposition_query}} / \code{\link{disposition_screen}}. Downloaded
+#' \code{\link{disposition_summary}} / \code{\link{disposition_screen}}. Downloaded
 #' once and reused from the local cache on later calls (pass \code{refresh = TRUE}
 #' to force a fresh download). This is the one \code{disposition_*} function that
 #' reaches GCS: authenticate first with \code{\link{s160_gcs_init}} (any bucket)
@@ -447,7 +447,7 @@ disposition_screen <- function(sample, dataset, phone_col = "phone",
 #'   \code{TRUE} always re-downloads (the projection is rebuilt each pipeline
 #'   pass, so refresh to pick up a newer one).
 #' @return The local path to the downloaded Parquet (a single string).
-#' @seealso \code{\link{disposition_query}}, \code{\link{disposition_screen}},
+#' @seealso \code{\link{disposition_summary}}, \code{\link{disposition_screen}},
 #'   \code{\link{s160_gcs_init}}
 #' @examples
 #' \dontrun{

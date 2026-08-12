@@ -2,7 +2,7 @@
 # Full-schema (SUR-1518) disposition Parquet fixtures, written with nanoparquet.
 # records() reads the whole file (col_select = NULL), so a full read -- never a
 # `col_select` subset -- runs on these nanoparquet-written fixtures (the subset
-# path segfaults on multi-row nanoparquet files; see test-disposition_query.R).
+# path segfaults on multi-row nanoparquet files; see test-disposition_read.R).
 
 # One full-schema (phone, campaign) row; override any column. Defaults model a
 # contacted-but-no-reply t2w record.
@@ -65,7 +65,7 @@ test_that("phones filter normalizes and returns only stored rows (no never-conta
     phones = c("+1 (201) 555-0101", "2015559999", "()"))  # 11-digit, absent, junk
   expect_equal(unique(res$phone), "2015550101")   # matched; absent/junk -> nothing
   expect_equal(nrow(res), 2L)                      # 0101 is in two campaigns
-  expect_false("2015559999" %in% res$phone)        # never-contacted absent, unlike summary()
+  expect_false("2015559999" %in% res$phone)        # never-contacted absent, unlike disposition_summary()
 })
 
 test_that("campaign_ids filter scopes the rows", {

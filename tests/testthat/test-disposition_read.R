@@ -1,4 +1,4 @@
-# Coverage for disposition_query() + its helpers. Synthetic disposition
+# Coverage for disposition_summary() + its helpers. Synthetic disposition
 # Parquet fixtures are written with nanoparquet (no arrow, no network).
 
 # One (phone, campaign) row with exactly the columns the query reads (`.DISPOSITION_READ_
@@ -35,7 +35,7 @@
 }
 
 test_that("summarizes one row per phone with cross-campaign flags", {
-  res <- disposition_query(.disposition_base())
+  res <- disposition_summary(.disposition_base())
   expect_equal(nrow(res), 2L)
   expect_named(res, c("phone", "ever_contacted", "n_campaigns", "ever_engaged",
                       "ever_opted_in", "ever_complete", "ever_terminated",
@@ -55,7 +55,7 @@ test_that("summarizes one row per phone with cross-campaign flags", {
 })
 
 test_that("screens a phone list, normalizing formats and flagging never-contacted", {
-  res <- disposition_query(
+  res <- disposition_summary(
     .disposition_base(),
     phones = c("+1 (201) 555-0101", "2015559999", "()"))  # 11-digit, absent, junk
   expect_setequal(res$phone, c("2015550101", "2015559999"))  # junk -> dropped
@@ -69,7 +69,7 @@ test_that("screens a phone list, normalizing formats and flagging never-contacte
 })
 
 test_that("campaign_ids filter scopes the underlying rows before rollup", {
-  res <- disposition_query(.disposition_base(), campaign_ids = 2339)
+  res <- disposition_summary(.disposition_base(), campaign_ids = 2339)
   r1 <- res[res$phone == "2015550101", ]
   expect_equal(r1$campaigns, "2339")
   expect_equal(r1$n_campaigns, 1L)
@@ -77,35 +77,35 @@ test_that("campaign_ids filter scopes the underlying rows before rollup", {
 })
 
 test_that("statuses filter keeps matching latest_disposition; unknown status errors", {
-  res <- disposition_query(.disposition_base(), statuses = "terminated")
+  res <- disposition_summary(.disposition_base(), statuses = "terminated")
   expect_equal(res$phone, "2015550102")
-  expect_error(disposition_query(.disposition_base(), statuses = "bogus"),
+  expect_error(disposition_summary(.disposition_base(), statuses = "bogus"),
                "unknown status")
 })
 
 test_that("date bounds drop rows outside the range (incl. NA close dates)", {
   # date_from keeps only the 2026-04 row (phone 0101 @ 2354).
-  res <- disposition_query(.disposition_base(), date_from = "2026-04-01")
+  res <- disposition_summary(.disposition_base(), date_from = "2026-04-01")
   expect_equal(res$phone, "2015550101")
   expect_equal(res$campaigns, "2354")
   expect_equal(res$latest_disposition, "engaged")
   # date_to keeps only the 2026-03 rows.
-  res2 <- disposition_query(.disposition_base(), date_to = "2026-03-31")
+  res2 <- disposition_summary(.disposition_base(), date_to = "2026-03-31")
   expect_setequal(res2$campaigns, c("2339", "2339"))
   # a row with an NA close date is dropped by any date bound.
   p <- .disposition_write(.disposition_row("2015550103", 2400, engaged = 1))  # NA date
-  expect_equal(nrow(disposition_query(p, date_from = "2020-01-01")), 0L)
+  expect_equal(nrow(disposition_summary(p, date_from = "2020-01-01")), 0L)
 })
 
 test_that("each date bound must be a single valid date", {
   d <- .disposition_row("2015550101", 2339, engaged = 1, date_closed_on = "2026-03-01")
-  expect_error(disposition_summary(d, date_from = c("2026-01-01", "2026-02-01")),
+  expect_error(disposition_rollup(d, date_from = c("2026-01-01", "2026-02-01")),
                "single valid date")
-  expect_error(disposition_summary(d, date_to = "not-a-date"), "single valid date")
+  expect_error(disposition_rollup(d, date_to = "not-a-date"), "single valid date")
 })
 
 test_that("derived disposition follows funnel precedence", {
-  res <- disposition_query(.disposition_write(rbind(
+  res <- disposition_summary(.disposition_write(rbind(
     .disposition_row("1", 1, engaged = 1, opt_in = 1, complete = 1, web_complete = 1),
     .disposition_row("2", 1, engaged = 1, opt_in = 1, complete = 1),
     .disposition_row("3", 1, engaged = 1, opt_in = 1, terminated = 1),
@@ -119,7 +119,7 @@ test_that("derived disposition follows funnel precedence", {
 })
 
 test_that("t2w_external complete = NA does not become a false complete", {
-  res <- disposition_query(
+  res <- disposition_summary(
     .disposition_write(.disposition_row("2015550101", 1, engaged = 1, opt_in = 1,
                       complete = NA_integer_)))
   expect_equal(res$latest_disposition, "opt_in")
@@ -128,18 +128,18 @@ test_that("t2w_external complete = NA does not become a false complete", {
 
 test_that("pagination slices the phone-ordered result", {
   p <- .disposition_write(rbind(.disposition_row("1", 1), .disposition_row("2", 1), .disposition_row("3", 1)))
-  expect_equal(nrow(disposition_query(p, page = 1, page_size = 2)), 2L)
-  expect_equal(disposition_query(p, page = 2, page_size = 2)$phone, "3")
-  expect_equal(nrow(disposition_query(p, page = 5, page_size = 2)), 0L)
-  expect_error(disposition_query(p, page = 0), "positive integers")
-  expect_error(disposition_query(p, page_size = 1.5), "positive integers")
+  expect_equal(nrow(disposition_summary(p, page = 1, page_size = 2)), 2L)
+  expect_equal(disposition_summary(p, page = 2, page_size = 2)$phone, "3")
+  expect_equal(nrow(disposition_summary(p, page = 5, page_size = 2)), 0L)
+  expect_error(disposition_summary(p, page = 0), "positive integers")
+  expect_error(disposition_summary(p, page_size = 1.5), "positive integers")
 })
 
 test_that("empty dataset yields an empty result; screened phones come back never-contacted", {
   p0 <- .disposition_write(.disposition_row("x", 1)[0, , drop = FALSE])
-  expect_equal(nrow(disposition_query(p0)), 0L)
-  expect_equal(nrow(disposition_query(p0, page = 1)), 0L)  # page on empty -> no error
-  res <- disposition_query(p0, phones = "2015550101")
+  expect_equal(nrow(disposition_summary(p0)), 0L)
+  expect_equal(nrow(disposition_summary(p0, page = 1)), 0L)  # page on empty -> no error
+  res <- disposition_summary(p0, phones = "2015550101")
   expect_equal(res$phone, "2015550101")
   expect_false(res$ever_contacted)
 })
@@ -147,29 +147,29 @@ test_that("empty dataset yields an empty result; screened phones come back never
 test_that("a blank stored phone is dropped, and all-invalid input yields no rows", {
   p <- .disposition_write(rbind(.disposition_row("2015550101", 1, complete = 1),
                        .disposition_row("", 2)))            # blank phone -> dropped on read
-  expect_equal(disposition_query(p)$phone, "2015550101")
-  expect_equal(nrow(disposition_query(p, phones = "abc")), 0L)
+  expect_equal(disposition_summary(p)$phone, "2015550101")
+  expect_equal(nrow(disposition_summary(p, phones = "abc")), 0L)
 })
 
 test_that("input validation on the dataset path", {
-  expect_error(disposition_query(character(0)), "single Parquet path")
-  expect_error(disposition_query("/no/such/file.parquet"), "not found")
+  expect_error(disposition_summary(character(0)), "single Parquet path")
+  expect_error(disposition_summary("/no/such/file.parquet"), "not found")
 })
 
-# --- disposition_summary (pure core) ------------------------------------------
+# --- disposition_rollup (pure core) ------------------------------------------
 
-test_that("disposition_summary works on an in-memory frame and validates input", {
+test_that("disposition_rollup works on an in-memory frame and validates input", {
   d <- rbind(
     .disposition_row("2015550101", 2339, engaged = 1, opt_in = 1, complete = 1,
             date_closed_on = "2026-03-01"),
     .disposition_row("2015550101", 2354, engaged = 1, date_closed_on = "2026-04-01"))
-  res <- disposition_summary(d, phones = c("2015550101", "2015559999"))
+  res <- disposition_rollup(d, phones = c("2015550101", "2015559999"))
   expect_setequal(res$phone, c("2015550101", "2015559999"))
   expect_true(res[res$phone == "2015550101", "ever_complete"])
   expect_false(res[res$phone == "2015559999", "ever_contacted"])
   # validation branches (unreachable via the file reader, which always has cols)
-  expect_error(disposition_summary(list()), "must be a data frame")
-  expect_error(disposition_summary(d[, c("phone", "campaign_id")]),
+  expect_error(disposition_rollup(list()), "must be a data frame")
+  expect_error(disposition_rollup(d[, c("phone", "campaign_id")]),
                "missing column")
 })
 
