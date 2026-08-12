@@ -116,10 +116,16 @@ download_with_verify <- function(object_name, local_path, max_retries = 2L,
       NULL
     }, error = function(e) e)
     if (!is.null(download_err)) {
-      # Boundary translation of the googleCloudStorageR error: a 404 means the
-      # object is absent. Raise a classed s160_not_found so the callers dispatch
-      # on the class rather than each re-grepping "404"; anything else propagates.
-      if (grepl("404", conditionMessage(download_err), fixed = TRUE)) {
+      # Boundary translation of the googleCloudStorageR error into a classed
+      # s160_not_found so callers dispatch on the class, not the message.
+      # gcs_get_object()'s own 404 branch raises "File not found. Check
+      # object_name..." with NO "404" in the text (googleCloudStorageR 0.7.0);
+      # an httr/googleAuthR-level failure instead surfaces as "http_404 ...".
+      # Match both real forms -- deliberately NOT a bare "404" substring, which
+      # could appear in an unrelated message. Anything else propagates.
+      emsg <- conditionMessage(download_err)
+      if (grepl("File not found", emsg, fixed = TRUE) ||
+            grepl("http_404", emsg, fixed = TRUE)) {
         stop_not_found("object", object_name)
       }
       stop(download_err)

@@ -95,8 +95,12 @@
   condition class: HTTP failures carry an `s160_http_error` class with the
   numeric `status`, and a GCS 404 is translated once at the
   `download_with_verify()` boundary into an `s160_not_found` condition the
-  callers catch by class. User-facing messages are unchanged; the code is just
-  no longer brittle to an upstream reword or localization.
+  callers catch by class. The boundary now matches `googleCloudStorageR`'s
+  actual missing-object message (`"File not found..."`, which carries no
+  `"404"`) as well as the `http_404` form -- the previous bare `"404"` string
+  check silently missed a real missing object, surfacing it as a generic
+  "Failed to download" instead of a clear not-found. Otherwise messages are
+  unchanged; control flow is just no longer brittle to an upstream reword.
 
 * **`disposition_pull()` now checks GCS readiness before downloading.** Because
   it always resolves a concrete `s160_disposition_<env>` bucket, the shared
