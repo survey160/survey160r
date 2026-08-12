@@ -28,7 +28,7 @@ test_that("validate_config accepts a minimal valid config", {
 test_that("validate_config rejects unknown top-level keys", {
   cfg <- .minimal_config(list(weird_key = 1))
   expect_error(latency_validate_config(cfg, .minimal_data()),
-               "Unknown config keys")
+               "unknown keys")
 })
 
 test_that("validate_config requires project_id, campaign_id, field_timezone", {

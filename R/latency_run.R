@@ -88,8 +88,9 @@ latency_run <- function(campaign_id, data,
   if (is.null(config)) {
     config <- latency_build_config(campaign_id, data, ...)
   } else if (...length() > 0L) {
-    stop("latency_run: pass either `config` or `latency_build_config()` ",
-         "overrides via `...`, not both.", call. = FALSE)
+    stop_s160(paste0("pass either `config` or `latency_build_config()` ",
+                     "overrides via `...`, not both."),
+              fn = "latency_run")
   }
   result <- latency_report(data, config, run_at = run_at)
   if (!is.null(run_by) && !is.null(result$consolidated) &&

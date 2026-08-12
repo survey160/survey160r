@@ -264,21 +264,19 @@ disposition_input_columns <- function(available = NULL, population = NULL) {
 #' @export
 disposition_run <- function(campaign_id, data, population = NULL,
                             contacted_only = TRUE) {
-  if (!is.data.frame(data)) {
-    stop("disposition_run: `data` must be a data frame.", call. = FALSE)
-  }
+  check_data_frame(data, "data", fn = "disposition_run")
   if (!"phone" %in% names(data)) {
-    stop("disposition_run: `data` must contain a `phone` column.", call. = FALSE)
+    stop_s160("`data` must contain a `phone` column.", fn = "disposition_run")
   }
   if (length(campaign_id) != 1L) {
     # A vector id would recycle into the frame and multiply rows past the
     # dedup guard (which runs on the input phone), silently breaking the grain.
-    stop("disposition_run: `campaign_id` must be a single value.", call. = FALSE)
+    stop_s160("`campaign_id` must be a single value.", fn = "disposition_run")
   }
   if (!is.logical(contacted_only) || length(contacted_only) != 1L ||
         is.na(contacted_only)) {
-    stop("disposition_run: `contacted_only` must be a single TRUE or FALSE.",
-         call. = FALSE)
+    stop_s160("`contacted_only` must be a single TRUE or FALSE.",
+              fn = "disposition_run")
   }
   if (nrow(data) == 0L) {
     return(list(consolidated = empty_disposition_frame(),
@@ -289,12 +287,12 @@ disposition_run <- function(campaign_id, data, population = NULL,
   dup_idx <- anyDuplicated(phone)
   if (dup_idx > 0L) {
     n_dup <- sum(duplicated(phone))
-    stop(sprintf(paste0(
-      "disposition_run: campaign %s has %d duplicate phone value(s) (first ",
+    stop_s160(sprintf(paste0(
+      "campaign %s has %d duplicate phone value(s) (first ",
       "duplicate at row %d). The disposition grain is one row per (phone, ",
       "campaign_id); a duplicate means the export or an upstream merge ",
       "violated it."),
-      as.character(campaign_id), n_dup, dup_idx), call. = FALSE)
+      as.character(campaign_id), n_dup, dup_idx), fn = "disposition_run")
   }
 
   population <- population %||% .default_population

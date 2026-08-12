@@ -22,7 +22,7 @@ apply_population_filter <- function(data, expr) {
 # in original row order so callers can apply them to parallel per-row masks.
 dedupe_keep_rows <- function(data, resp_id_col) {
   if (!resp_id_col %in% names(data)) {
-    stop(sprintf("respondent_id_column not found: %s", resp_id_col), call. = FALSE)
+    stop_not_found("respondent-id column", resp_id_col)
   }
   n <- nrow(data)
   intro <- data[["id.intro.scriptDate"]]

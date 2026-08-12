@@ -76,11 +76,11 @@ latency_build_config <- function(campaign_id, data,
                          respondent_id_column = NULL) {
   questions <- latency_discover_questions(data)
   if (length(questions) < 2L) {
-    stop(paste(
+    stop_s160(paste(
       "Could not discover at least two questions from CSV columns;",
       "expected id.<q>.scriptDate columns. Found:",
       paste(head(questions, 5L), collapse = ", ")
-    ), call. = FALSE)
+    ), fn = "latency_build_config")
   }
 
   list(
@@ -110,12 +110,12 @@ latency_build_config <- function(campaign_id, data,
 latency_validate_config <- function(config, data) {
   unknown <- setdiff(names(config), .config_keys)
   if (length(unknown) > 0) {
-    stop(sprintf("Unknown config keys: %s", paste(unknown, collapse = ", ")),
+    stop(sprintf("config: unknown keys: %s", paste(unknown, collapse = ", ")),
          call. = FALSE)
   }
-  if (is.null(config$project_id)) stop("config: 'project_id' is required.", call. = FALSE)
-  if (is.null(config$campaign_id)) stop("config: 'campaign_id' is required.", call. = FALSE)
-  if (is.null(config$field_timezone)) stop("config: 'field_timezone' is required.", call. = FALSE)
+  if (is.null(config$project_id)) stop("config: `project_id` is required.", call. = FALSE)
+  if (is.null(config$campaign_id)) stop("config: `campaign_id` is required.", call. = FALSE)
+  if (is.null(config$field_timezone)) stop("config: `field_timezone` is required.", call. = FALSE)
   validate_questions(config$flow$questions)
   validate_columns_present(config, data)
   validate_flow_order(config, data)
@@ -124,17 +124,17 @@ latency_validate_config <- function(config, data) {
 
 validate_questions <- function(questions) {
   if (is.null(questions) || length(questions) == 0) {
-    stop("config: 'flow.questions' is required and must be non-empty.", call. = FALSE)
+    stop("config: `flow.questions` is required and must be non-empty.", call. = FALSE)
   }
   if (length(questions) < 2) {
-    stop("config: 'flow.questions' must contain at least two questions.", call. = FALSE)
+    stop("config: `flow.questions` must contain at least two questions.", call. = FALSE)
   }
   if (anyDuplicated(questions)) {
-    stop("config: 'flow.questions' contains duplicates.", call. = FALSE)
+    stop("config: `flow.questions` contains duplicates.", call. = FALSE)
   }
   bad <- intersect(questions, .terminal_states)
   if (length(bad) > 0) {
-    stop(sprintf("config: 'flow.questions' must not include terminal states: %s",
+    stop(sprintf("config: `flow.questions` must not include terminal states: %s",
                  paste(bad, collapse = ", ")), call. = FALSE)
   }
 }
@@ -263,7 +263,7 @@ validate_flow_order <- function(config, data) {
   if (cmp_total == 0) return(invisible(TRUE))
   ratio <- ok_total / cmp_total
   if (ratio < 0.9) {
-    stop(sprintf("Flow order check failed: only %.1f%% of rows have scriptDate(next) >= batchDate(prior). Likely mis-ordered 'flow.questions'.", # nolint
+    stop(sprintf("Flow order check failed: only %.1f%% of rows have scriptDate(next) >= batchDate(prior). Likely mis-ordered `flow.questions`.", # nolint
                  100 * ratio), call. = FALSE)
   }
   invisible(TRUE)

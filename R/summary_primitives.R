@@ -32,18 +32,18 @@ population_filter_mask <- function(data, expr) {
   if (is.null(expr) || !nzchar(expr)) return(rep(TRUE, nrow(data)))
   parsed <- tryCatch(parse(text = expr),
                      error = function(e) {
-                       stop(sprintf("filters.population is not valid R: %s", expr),
+                       stop(sprintf("`filters.population` is not valid R: %s", expr),
                             call. = FALSE)
                      })
   env <- list2env(as.list(data), parent = baseenv())
   keep <- tryCatch(eval(parsed, envir = env),
                    error = function(e) {
-                     stop(sprintf("filters.population evaluation failed: %s",
+                     stop(sprintf("`filters.population` evaluation failed: %s",
                                   conditionMessage(e)),
                           call. = FALSE)
                    })
   if (!is.logical(keep) || length(keep) != nrow(data)) {
-    stop("filters.population must evaluate to a logical vector matching nrow(data).",
+    stop("`filters.population` must evaluate to a logical vector matching nrow(data).",
          call. = FALSE)
   }
   keep[is.na(keep)] <- FALSE
