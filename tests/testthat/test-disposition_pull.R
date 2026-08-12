@@ -1,5 +1,7 @@
 # disposition_pull(): GCS fetch of the derived projection. download_with_verify
-# is mocked so no real GCS/network is touched.
+# is mocked so no real GCS/network is touched. The download path also checks
+# GCS readiness, so download-path tests call stub_gcs_base() (which no-ops
+# check_gcs_ready); the dedicated readiness test below leaves it real.
 
 # A stand-in for download_with_verify(): records its args and writes a stub file
 # (or fails with `fail`, to exercise the error branches).
@@ -21,6 +23,7 @@ mock_download <- function(capture = NULL, fail = NULL, write_first = FALSE) {
 }
 
 test_that("default pulls prod into the user cache and returns the path", {
+  stub_gcs_base()
   tmp <- withr::local_tempdir()
   cap <- new.env(parent = emptyenv())
   mockery::stub(disposition_pull, "tools::R_user_dir", function(...) tmp)
@@ -35,6 +38,7 @@ test_that("default pulls prod into the user cache and returns the path", {
 })
 
 test_that("env = 'dev' selects the dev bucket", {
+  stub_gcs_base()
   cap <- new.env(parent = emptyenv())
   mockery::stub(disposition_pull, "download_with_verify", mock_download(cap))
   suppressMessages(disposition_pull(env = "dev", dest = withr::local_tempdir()))
@@ -42,6 +46,7 @@ test_that("env = 'dev' selects the dev bucket", {
 })
 
 test_that("explicit bucket overrides the env default", {
+  stub_gcs_base()
   cap <- new.env(parent = emptyenv())
   mockery::stub(disposition_pull, "download_with_verify", mock_download(cap))
   suppressMessages(disposition_pull(bucket = "custom_bucket",
@@ -50,6 +55,7 @@ test_that("explicit bucket overrides the env default", {
 })
 
 test_that("dest directory saves the env-named file inside it", {
+  stub_gcs_base()
   d <- withr::local_tempdir()
   mockery::stub(disposition_pull, "download_with_verify", mock_download())
   p <- suppressMessages(disposition_pull(dest = d))
@@ -58,6 +64,7 @@ test_that("dest directory saves the env-named file inside it", {
 })
 
 test_that("dest file path is used verbatim and its parent is created", {
+  stub_gcs_base()
   target <- file.path(withr::local_tempdir(), "sub", "my.parquet")
   mockery::stub(disposition_pull, "download_with_verify", mock_download())
   p <- suppressMessages(disposition_pull(dest = target))
@@ -82,6 +89,7 @@ test_that("an existing local copy is reused without downloading", {
 })
 
 test_that("refresh = TRUE re-downloads over an existing file", {
+  stub_gcs_base()
   d <- withr::local_tempdir()
   cached <- file.path(d, "s160_disposition_prod.parquet")
   writeLines("old", cached)
@@ -91,6 +99,7 @@ test_that("refresh = TRUE re-downloads over an existing file", {
 })
 
 test_that("a 404 gives a clear not-found error", {
+  stub_gcs_base()
   mockery::stub(disposition_pull, "download_with_verify",
                 mock_download(fail = "http_404 not found"))
   expect_error(
@@ -99,11 +108,24 @@ test_that("a 404 gives a clear not-found error", {
 })
 
 test_that("a non-404 error gives a download-failed error", {
+  stub_gcs_base()
   mockery::stub(disposition_pull, "download_with_verify",
                 mock_download(fail = "connection reset"))
   expect_error(
     suppressMessages(disposition_pull(dest = withr::local_tempdir())),
     "Failed to download.*connection reset")
+})
+
+test_that("a download without an initialized GCS session errors clearly", {
+  # No stub_gcs_base(): the real check_gcs_ready() runs. Force "not ready" by
+  # reporting an empty global bucket, and prove the readiness error fires
+  # before any download is attempted.
+  testthat::local_mocked_bindings(gcs_get_global_bucket = function() "")
+  mockery::stub(disposition_pull, "download_with_verify",
+                function(...) stop("readiness check should have stopped us"))
+  expect_error(
+    suppressMessages(disposition_pull(dest = withr::local_tempdir())),
+    "GCS not initialized")
 })
 
 test_that("invalid refresh is rejected", {
@@ -114,6 +136,7 @@ test_that("invalid refresh is rejected", {
 })
 
 test_that("different bucket overrides use separate default caches", {
+  stub_gcs_base()
   tmp <- withr::local_tempdir()
   mockery::stub(disposition_pull, "tools::R_user_dir", function(...) tmp)
   mockery::stub(disposition_pull, "download_with_verify", mock_download())
@@ -124,6 +147,7 @@ test_that("different bucket overrides use separate default caches", {
 })
 
 test_that("a failed download preserves the cache and leaves no partial file", {
+  stub_gcs_base()
   d <- withr::local_tempdir()
   cached <- file.path(d, "s160_disposition_prod.parquet")
   writeLines("good", cached)
@@ -136,6 +160,7 @@ test_that("a failed download preserves the cache and leaves no partial file", {
 })
 
 test_that("rename fallback copies, and a total move failure errors", {
+  stub_gcs_base()
   d <- withr::local_tempdir()
   mockery::stub(disposition_pull, "download_with_verify", mock_download())
   mockery::stub(disposition_pull, "file.rename", function(...) FALSE)
