@@ -79,6 +79,29 @@
 
 ## Bug fixes
 
+* **The export poll no longer masks a GCS listing failure as "still running".**
+  `s160_api_campaign_results()` polls GCS for the export to appear; the poll
+  helper previously swallowed *every* `gcs_list_objects()` error to `NULL`,
+  which a persistent failure (auth/permission/bucket -- e.g. a forgotten
+  `s160_gcs_init()`) turned into a spin until a misleading "Export timed out"
+  error. A genuinely-absent file yields an empty listing (not an error), so such
+  failures now surface immediately with a clear `Failed to list campaign export
+  files: <cause>` message.
+
+* **Not-found errors are raised as classed conditions instead of matched by
+  message text.** Control flow that previously grepped error strings
+  (`"Bad Request"`/`"Not Found"` in `s160_api_campaign_get()`, `"404"` in
+  `s160_gcs_campaign_results_read()` and `disposition_pull()`) now dispatches on
+  condition class: HTTP failures carry an `s160_http_error` class with the
+  numeric `status`, and a GCS 404 is translated once at the
+  `download_with_verify()` boundary into an `s160_not_found` condition the
+  callers catch by class. The boundary now matches `googleCloudStorageR`'s
+  actual missing-object message (`"File not found..."`, which carries no
+  `"404"`) as well as the `http_404` form -- the previous bare `"404"` string
+  check silently missed a real missing object, surfacing it as a generic
+  "Failed to download" instead of a clear not-found. Otherwise messages are
+  unchanged; control flow is just no longer brittle to an upstream reword.
+
 * **`disposition_pull()` now checks GCS readiness before downloading.** Because
   it always resolves a concrete `s160_disposition_<env>` bucket, the shared
   `resolve_bucket()` readiness check never fired, so calling it before

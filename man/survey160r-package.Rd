@@ -8,9 +8,12 @@
 \description{
 Access Survey160 campaign data from R. The package has three layers: a raw
 data-access layer that reaches Survey160's own systems (the \code{s160_*}
-functions), and two analyst surfaces built on top of it -- \strong{latency}
-analysis and \strong{disposition} screening -- that take an in-memory data
-frame and return one, with no I/O or hidden state.
+functions), and two analyst surfaces built on top of it. \strong{Latency}
+analysis is pure (in-memory data frame in, data frame out, no I/O).
+\strong{Disposition} screening has a pure rollup core
+(\code{\link{disposition_rollup}}), plus readers that access the Parquet
+projection (\code{\link{disposition_summary}}, \code{\link{disposition_screen}},
+\code{\link{disposition_records}}) or fetch it from GCS (\code{\link{disposition_pull}}).
 }
 \section{First-time setup}{
 
@@ -19,7 +22,7 @@ Most functions that touch Survey160 data need a one-time sign-in:
   \item \code{\link{s160_gcs_init}} -- authenticate to Google Cloud Storage
     (a browser sign-in on first run; the token is cached). Needed to read
     campaign exports and to \code{\link{disposition_pull}} the disposition
-    projection.
+    projection (when it must download; a cache hit needs no auth).
   \item \code{\link{s160_api_auth}} -- authenticate to the Survey160 REST API,
     only needed to trigger a \emph{fresh} export via
     \code{\link{s160_api_campaign_results}}.

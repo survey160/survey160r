@@ -5,7 +5,8 @@
 
 # A stand-in for download_with_verify(): records its args and writes a stub file
 # (or fails with `fail`, to exercise the error branches).
-mock_download <- function(capture = NULL, fail = NULL, write_first = FALSE) {
+mock_download <- function(capture = NULL, fail = NULL, not_found = FALSE,
+                          write_first = FALSE) {
   function(object_name, local_path, bucket) {
     if (!is.null(capture)) {
       capture$object_name <- object_name
@@ -16,6 +17,13 @@ mock_download <- function(capture = NULL, fail = NULL, write_first = FALSE) {
     # temp path before its size check fails, so disposition_pull()'s on.exit
     # cleanup has a real partial to remove.
     if (isTRUE(write_first)) writeLines("partial", local_path)
+    # not_found mirrors the real download_with_verify(): a GCS 404 surfaces as a
+    # classed s160_not_found so disposition_pull dispatches on the class.
+    if (isTRUE(not_found)) {
+      stop(survey160r:::s160_condition(
+        sprintf("object not found: %s", object_name), "s160_not_found"
+      ))
+    }
     if (!is.null(fail)) stop(fail)
     writeLines("x", local_path)
     invisible(local_path)
@@ -101,7 +109,7 @@ test_that("refresh = TRUE re-downloads over an existing file", {
 test_that("a 404 gives a clear not-found error", {
   stub_gcs_base()
   mockery::stub(disposition_pull, "download_with_verify",
-                mock_download(fail = "http_404 not found"))
+                mock_download(not_found = TRUE))
   expect_error(
     suppressMessages(disposition_pull(dest = withr::local_tempdir())),
     "not found.*s160_disposition_prod")

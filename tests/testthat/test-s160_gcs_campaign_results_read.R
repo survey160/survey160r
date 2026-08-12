@@ -21,7 +21,26 @@ test_that("custom filename overrides default", {
   expect_equal(captured$args$object_name, "1980/custom.csv")
 })
 
-test_that("404 error gives clear file not found message", {
+test_that("a missing object (gcs 'File not found') gives a clear not-found message", {
+  # googleCloudStorageR 0.7.0's gcs_get_object() raises exactly this on a 404 --
+  # note it carries NO "404" in the text, so the boundary must match the message.
+  stub_gcs_base()
+  local_mocked_bindings(
+    gcs_list_objects = function(...) data.frame(name = character(0), size = numeric(0), stringsAsFactors = FALSE),
+    gcs_get_object = function(...) {
+      stop("File not found. Check object_name and read permissions. Looked for 9999/x.csv")
+    }
+  )
+
+  expect_error(
+    suppressMessages(s160_gcs_campaign_results_read(9999)),
+    "file not found.*test_bucket"
+  )
+})
+
+test_that("an http_404 error also maps to a clear not-found message", {
+  # The httr/googleAuthR-level form of a 404 (distinct from gcs_get_object's own
+  # "File not found" branch) must be recognised too.
   stub_gcs_base()
   local_mocked_bindings(
     gcs_list_objects = function(...) data.frame(name = character(0), size = numeric(0), stringsAsFactors = FALSE),
