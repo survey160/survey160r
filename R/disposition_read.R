@@ -461,7 +461,9 @@ disposition_screen <- function(sample, dataset, phone_col = "phone",
 #' once and reused from the local cache on later calls (pass \code{refresh = TRUE}
 #' to force a fresh download). This is the one \code{disposition_*} function that
 #' reaches GCS: authenticate first with \code{\link{s160_gcs_init}} (any bucket)
-#' so the session's GCS credentials are set.
+#' so the session's GCS credentials are set. A download without an initialized
+#' session errors with \dQuote{GCS not initialized. Run s160_gcs_init() first.}
+#' (a cache hit is served without needing auth).
 #'
 #' @param env Environment for the disposition bucket: \code{"prod"} (default) or
 #'   \code{"dev"} (the \code{s160_disposition_<env>} buckets). There is no staging
@@ -520,6 +522,14 @@ disposition_pull <- function(env = c("prod", "dev"), dest = NULL,
     message(sprintf("Using cached disposition projection: %s", local_path))
     return(local_path)
   }
+
+  # A download needs an authenticated GCS session. `disposition_pull()` always
+  # resolves a concrete bucket (so resolve_bucket() never reaches this check),
+  # yet the download still fails without s160_gcs_init(); check explicitly here
+  # so an un-initialized session gets the standard clear message rather than a
+  # raw googleCloudStorageR error wrapped as "Failed to download". Placed after
+  # the cache-hit return: reusing a local copy needs no auth.
+  check_gcs_ready()
 
   message(sprintf("Downloading %s", gcs_path))
   # Download to a temp file in the destination dir, then atomically move it into

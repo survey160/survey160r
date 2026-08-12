@@ -3,7 +3,13 @@
 [![R-CMD-check](https://github.com/survey160/survey160r/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/survey160/survey160r/actions/workflows/R-CMD-check.yaml)
 [![R-universe](https://survey160.r-universe.dev/badges/survey160r)](https://survey160.r-universe.dev/survey160r)
 
-R package for accessing Survey160 campaign data -- read results from Google Cloud Storage, trigger fresh exports via the API, and compute per-campaign recipient-latency reports as in-memory R objects. Fleet orchestration and Parquet persistence live in downstream consumer projects.
+R package for accessing Survey160 campaign data. Three things:
+
+- **[Disposition screening](#disposition-screening)** -- screen a phone sample against every recipient Survey160 has ever contacted ("which of these numbers have we contacted / completed / refused before?") to clean a sample list. The Survey-Manager surface.
+- **[Latency analysis](#latency-analysis)** -- compute a per-campaign recipient-latency report from a raw campaign CSV, as an in-memory R object.
+- **Raw data access** -- read campaign results from Google Cloud Storage (`s160_gcs_*`) and trigger fresh exports via the API (`s160_api_*`).
+
+Fleet orchestration and Parquet persistence live in downstream consumer projects. See `?survey160r` for an overview from the R console.
 
 ## Installation
 
@@ -186,41 +192,79 @@ config <- latency_build_config(
 
 ## Disposition screening
 
-Screen a phone sample against the **disposition dataset** -- one row per `(phone, campaign_id)`, contacted-only, produced upstream by the pipeline -- to answer "which of these numbers have we contacted / completed / refused before?" and clean a sample list. The readers stay in the `disposition_*` family (bare-named) because they read a survey160r-*derived* projection, not a raw source.
+**The Survey-Manager surface.** Screen a phone sample against the **disposition dataset** -- a shared, phone-indexed record of every recipient Survey160 has contacted across closed campaigns (one row per `(phone, campaign_id)`, contacted-only) -- to answer "which of these numbers have we contacted / completed / refused before?" and clean a sample list before you field it.
 
-The Survey-Manager path is pull once, then screen a sample in place:
+> Disposition screening needs a recent survey160r (these functions arrived in 0.24.0). R-universe rebuilds from `main` and can lag a release by up to ~30 minutes; if `disposition_pull()` isn't found after installing, get the latest straight from GitHub with `pak::pkg_install("survey160/survey160r")`.
+
+### Pull once, screen a sample in place
 
 ```r
 library(survey160r)
-s160_gcs_init(bucket = "s160_disposition_prod")   # one-time browser OAuth
 
-# Download the projection to a local (cached) path; refresh = TRUE forces a fresh copy
-dataset <- disposition_pull()                       # env = "prod" (default) or "dev"
+# 1. Authenticate to GCS once (browser sign-in on first run; token cached)
+s160_gcs_init(bucket = "s160_disposition_prod")
 
-# Annotate a sample data frame in place -- original rows/columns preserved,
-# disposition screening columns appended 1:1
+# 2. Download the shared dataset to a local, cached path
+dataset <- disposition_pull()          # env = "prod" (default) or "dev"
+
+# 3. Annotate your sample in place -- your original rows and columns are kept,
+#    the screening columns are appended 1:1
 cleaned <- disposition_screen(my_sample, dataset, phone_col = "phone")
-# drop already-finished numbers; blank/unparseable phones come back all-NA and
-# are kept (so they surface for correction rather than vanishing)
-subset(cleaned, !(ever_complete %in% TRUE | ever_terminated %in% TRUE))
+
+# 4. Drop the numbers you've already finished with, then write the list out.
+#    Blank/unparseable phones come back all-NA and are KEPT (so they surface
+#    for correction rather than silently vanishing).
+kept <- subset(cleaned, !(ever_complete %in% TRUE | ever_terminated %in% TRUE))
+write.csv(kept, "sample_screened.csv", row.names = FALSE)
 ```
 
-Ad-hoc query surface over the same projection:
+### Columns `disposition_screen()` appends
+
+Each is computed across every campaign that contacted the number:
+
+| Column | Meaning |
+|---|---|
+| `ever_contacted` | `TRUE` if the number was ever sent an intro (i.e. present in the dataset). |
+| `n_campaigns` | How many distinct campaigns contacted it. |
+| `ever_engaged` | Ever replied to an intro. |
+| `ever_opted_in` | Ever gave consent (accepted the opt-in question). |
+| `ever_complete` | Ever completed a survey (reached the SMS close, or a web completion). |
+| `ever_terminated` | Ever screened out (ineligible) or refused. |
+| `latest_disposition` | The outcome of the number's most recent campaign (see below). |
+| `campaigns` | Comma-separated campaign ids that contacted the number. |
+
+`latest_disposition` is one value, in funnel order:
+`never_contacted` (not in the dataset) -> `non_response` (contacted, no reply) -> `engaged` (replied) -> `opt_in` (consented) -> `terminated` (screened out / refused) -> `complete` -> `web_complete`.
+
+### Ad-hoc queries over the same dataset
 
 ```r
-# One row per phone: cross-campaign screening flags + latest_disposition
+# One row per phone: the cross-campaign screening flags + latest_disposition
 disposition_summary(dataset, phones = c("5551234567", "5559876543"))
 
-# The raw rows beneath the per-phone rollup: one per (phone, campaign_id)
+# The raw rows beneath that rollup: one per (phone, campaign_id)
 disposition_records(dataset, campaign_ids = 1234)
-
-# Roll an in-memory disposition frame up to one row per phone (pure, no I/O) --
-# read a projection once and screen several samples against the in-memory frame
-records <- disposition_records(dataset)
-disposition_rollup(records, phones = my_sample$phone)
 ```
 
-Building the per-respondent disposition frame from a raw campaign CSV (the producer side, pure and source-agnostic like `latency_run()`) is `disposition_run(campaign_id, data)`; `disposition_input_columns()` gives the column-projection set, mirroring `latency_input_columns()`.
+**Screening several samples? Read once.** Every reader call above loads the whole dataset into memory (there is no server-side filtering), so re-reading it is the main cost. Read the records once, then roll up in memory per sample -- no further I/O:
+
+```r
+records <- disposition_records(dataset)                 # read the file once
+disposition_rollup(records, phones = sample_a$phone)    # pure, in-memory
+disposition_rollup(records, phones = sample_b$phone)
+```
+
+Phone numbers are matched digit-normalized (a leading US `1` is dropped, so an 11-digit number matches a stored 10-digit one), and the original formatting in your sample is preserved.
+
+### Beta caveats
+
+- **Contacted-only.** A loaded number that was never texted is not in the dataset; screening returns it as `never_contacted`.
+- **Text-to-web (external) campaigns.** Completion happens on an external platform with no callback, so `complete` is unknowable and left `NA`; such a row falls back to its last known in-channel step and is never reported as a false `complete`.
+- **`date_closed_on` and `error` are `NA` in the beta**, so the `date_from` / `date_to` filters return no rows for now.
+
+### Producer side
+
+Building the per-respondent disposition frame from a raw campaign CSV is `disposition_run(campaign_id, data)` -- pure and source-agnostic, like `latency_run()`. `disposition_input_columns()` gives the column-projection set (mirroring `latency_input_columns()`). Persisting the frame as Parquet, walking the fleet, and publishing the shared dataset live in the downstream consumer project.
 
 ## First-time setup
 

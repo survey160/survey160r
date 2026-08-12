@@ -79,6 +79,15 @@
 
 ## Bug fixes
 
+* **`disposition_pull()` now checks GCS readiness before downloading.** Because
+  it always resolves a concrete `s160_disposition_<env>` bucket, the shared
+  `resolve_bucket()` readiness check never fired, so calling it before
+  `s160_gcs_init()` failed with a raw `googleCloudStorageR` error wrapped as
+  "Failed to download" rather than the standard `GCS not initialized. Run
+  s160_gcs_init() first.` It now calls `check_gcs_ready()` on the download path
+  (a cache hit is still served without auth), matching every other GCS entry
+  point.
+
 * **API requests now have a bounded timeout and retry transient failures.**
   Every call in `s160_api_*` (authentication, the export trigger, campaign reads)
   previously had no `httr::timeout()`, so a hung server could block the R session
@@ -119,6 +128,15 @@
   `gcs_list_objects()` round-trip.
 
 ## Documentation
+
+* **Package-level help (`?survey160r`).** A new overview page orients a reader to
+  the three layers -- disposition screening (the Survey-Manager surface), latency
+  analysis, and the raw `s160_*` data-access functions -- with pointers to the
+  entry point for each. The README intro now names all three surfaces and links
+  to them, and the "Disposition screening" section is expanded with the
+  end-to-end Survey-Manager workflow, a table of the columns
+  `disposition_screen()` appends, the `latest_disposition` funnel categories, a
+  read-once performance note for screening several samples, and the beta caveats.
 
 * **Corrected and expanded documentation (no code behavior change).** The
   `CLAUDE.md` naming-conventions section now matches the current disposition
