@@ -447,11 +447,15 @@ test_that("consolidated grain is unique when a segment drops off mid-flow", {
                   "segment", "threshold_min")]
   expect_identical(anyDuplicated(key), 0L)
 
-  # The unknown-time drop-off still lands in the day-rollup (hour NA)
-  # partition exactly once -- neither dropped nor duplicated.
+  # The affected q1->q2 segment's unknown-time drop-off still lands in the
+  # day-rollup (hour NA) partition exactly once per threshold -- neither
+  # dropped by the NA-hour filter nor duplicated across the two passes.
   day_rows <- cons[is.na(cons$hour_local), ]
   expect_gt(nrow(day_rows), 0L)
-  expect_gt(nrow(day_rows[is.na(day_rows$date), ]), 0L)
+  unknown_q1q2 <- day_rows[is.na(day_rows$date) &
+                             day_rows$segment == "q1→q2", , drop = FALSE]
+  expect_equal(nrow(unknown_q1q2), 4L)
+  expect_setequal(unknown_q1q2$threshold_min, c(1L, 3L, 5L, 10L))
 })
 
 test_that("consolidated declares the new columns with the right types when latency is empty", {
