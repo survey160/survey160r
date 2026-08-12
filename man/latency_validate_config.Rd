@@ -19,3 +19,17 @@ Invisible \code{TRUE} on success; otherwise stops with an error.
 Implements the fail-fast checks from spec §2.4. Aborts with a named error
 on the first failing rule.
 }
+\examples{
+data <- data.frame(
+  campaignid = 1L,
+  id.intro.finalText = "Yes",
+  id.intro.scriptDate = "2026-01-26 21:00:00Z",
+  id.intro.batchDate  = "2026-01-26 21:00:30Z",
+  id.q1.scriptDate    = "2026-01-26 21:01:00Z",
+  id.q1.batchDate     = "2026-01-26 21:01:20Z",
+  id.close.scriptDate = "2026-01-26 21:02:00Z",
+  check.names = FALSE, stringsAsFactors = FALSE
+)
+config <- latency_build_config(1L, data, field_timezone = "America/New_York")
+latency_validate_config(config, data)
+}

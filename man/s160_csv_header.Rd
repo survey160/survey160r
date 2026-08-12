@@ -21,16 +21,12 @@ Peeks the first line of a CSV and returns its column names in the same
 \code{make.names()}-munged (dot-form) form the readers produce, without
 parsing the body. Pair with \code{latency_build_config()} +
 \code{latency_input_columns()} to derive a column-projection set for a
-large file before reading it:
+large file before reading it (see the projection example under
+\code{\link{latency_input_columns}}).
 }
-\details{
-\preformatted{
-path <- "campaign_500.csv"
-campaign_id <- 500L
-field_timezone <- "America/New_York"
-header <- s160_csv_header(path)
-config <- latency_build_config(campaign_id, header,
-                               field_timezone = field_timezone)
-data   <- s160_read_csv(path, columns = latency_input_columns(config, header))
-}
+\examples{
+path <- tempfile(fileext = ".csv")
+writeLines(c("campaignid,id.intro.scriptDate", "1,2026-01-26 21:00:00Z"), path)
+s160_csv_header(path)
+unlink(path)
 }

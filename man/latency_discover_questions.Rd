@@ -25,3 +25,9 @@ Survey160 v2 CSV headers are emitted as \code{id[<q>]scriptDate} on disk;
 callers can pass either a data frame or a character vector of raw header
 tokens.
 }
+\examples{
+latency_discover_questions(
+  c("campaignid", "id.intro.scriptDate", "id.intro.batchDate",
+    "id.q1.scriptDate", "id.q1.batchDate", "id.close.scriptDate")
+)
+}
