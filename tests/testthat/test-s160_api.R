@@ -648,13 +648,21 @@ test_that("get_gcs_file_updated returns NULL when target file not in list", {
   expect_null(survey160r:::get_gcs_file_updated("1980", "1980_raw_data_download.csv"))
 })
 
-test_that("get_gcs_file_updated returns NULL on GCS error", {
+test_that("get_gcs_file_updated surfaces a persistent GCS listing failure (R5)", {
+  # A real failure (auth/permission/bucket, e.g. a forgotten s160_gcs_init())
+  # must NOT be swallowed to NULL -- that masked it as "file not there yet" and
+  # made the export poll spin until a misleading timeout. A genuinely-absent file
+  # yields an EMPTY listing (covered above), not an error, so surfacing here only
+  # affects real failures.
   stub_gcs_base()
   local_mocked_bindings(
     gcs_list_objects = function(prefix, ...) stop("connection failed")
   )
 
-  expect_null(survey160r:::get_gcs_file_updated("1980", "1980_raw_data_download.csv"))
+  expect_error(
+    survey160r:::get_gcs_file_updated("1980", "1980_raw_data_download.csv"),
+    "Failed to list campaign export files.*connection failed"
+  )
 })
 
 test_that("get_gcs_file_updated lists the given bucket when provided", {
@@ -743,7 +751,9 @@ test_that("campaign_get maps 400 not-found to clear error", {
   stub_api_base()
   local_mocked_bindings(
     s160_api_request = function(method, path, body = NULL, ...) {
-      stop("API error (GET /campaigns/9999): Bad Request", call. = FALSE)
+      survey160r:::stop_http_error(
+        400L, "API error (GET /campaigns/9999): Bad Request"
+      )
     }
   )
 
@@ -754,7 +764,9 @@ test_that("campaign_get maps 404 to clear error", {
   stub_api_base()
   local_mocked_bindings(
     s160_api_request = function(method, path, body = NULL, ...) {
-      stop("API error (GET /campaigns/9999): Not Found", call. = FALSE)
+      survey160r:::stop_http_error(
+        404L, "API error (GET /campaigns/9999): Not Found"
+      )
     }
   )
 
@@ -765,7 +777,9 @@ test_that("campaign_get propagates non-not-found errors unchanged", {
   stub_api_base()
   local_mocked_bindings(
     s160_api_request = function(method, path, body = NULL, ...) {
-      stop("API error (GET /campaigns/1): Internal Server Error", call. = FALSE)
+      survey160r:::stop_http_error(
+        500L, "API error (GET /campaigns/1): Internal Server Error"
+      )
     }
   )
 

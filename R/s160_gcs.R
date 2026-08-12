@@ -106,11 +106,23 @@ download_with_verify <- function(object_name, local_path, max_retries = 2L,
   attempt <- 0L
   repeat {
     attempt <- attempt + 1L
-    if (is.null(bucket)) {
-      gcs_get_object(object_name = object_name, saveToDisk = local_path, overwrite = TRUE)
-    } else {
-      gcs_get_object(object_name = object_name, saveToDisk = local_path,
-                     overwrite = TRUE, bucket = bucket)
+    download_err <- tryCatch({
+      if (is.null(bucket)) {
+        gcs_get_object(object_name = object_name, saveToDisk = local_path, overwrite = TRUE)
+      } else {
+        gcs_get_object(object_name = object_name, saveToDisk = local_path,
+                       overwrite = TRUE, bucket = bucket)
+      }
+      NULL
+    }, error = function(e) e)
+    if (!is.null(download_err)) {
+      # Boundary translation of the googleCloudStorageR error: a 404 means the
+      # object is absent. Raise a classed s160_not_found so the callers dispatch
+      # on the class rather than each re-grepping "404"; anything else propagates.
+      if (grepl("404", conditionMessage(download_err), fixed = TRUE)) {
+        stop_not_found("object", object_name)
+      }
+      stop(download_err)
     }
 
     actual_size <- file.info(local_path)$size
@@ -367,16 +379,13 @@ s160_gcs_campaign_results_read <- function(campaign_id, filename = NULL,
     local_path <- file.path(destdir, filename)
   }
 
+  fn <- "s160_gcs_campaign_results_read"
   tryCatch(
     download_with_verify(object_name = object_name, local_path = local_path,
                          bucket = bucket),
+    s160_not_found = function(e) stop_not_found("file", gcs_path, fn = fn),
     error = function(e) {
-      msg <- conditionMessage(e)
-      fn <- "s160_gcs_campaign_results_read"
-      if (grepl("404", msg, fixed = TRUE)) {
-        stop_not_found("file", gcs_path, fn = fn)
-      }
-      stop_failed(sprintf("download %s", gcs_path), msg, fn = fn)
+      stop_failed(sprintf("download %s", gcs_path), conditionMessage(e), fn = fn)
     }
   )
 

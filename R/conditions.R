@@ -32,9 +32,32 @@
   if (is.null(fn)) msg else paste0(fn, ": ", msg)
 }
 
+# Build (do not raise) a classed survey160r condition. `subclass` is the specific
+# class a caller dispatches on (e.g. "s160_not_found", "s160_http_error"); every
+# survey160r error also carries "s160_error" so a caller can catch the whole
+# family, then "error"/"condition" so base handlers still see an error. `...`
+# becomes readable condition fields (e.g. status = for an HTTP error). Raise it
+# with stop(). The message still flows through .error_prefix, so the "<fn>: "
+# convention and the exact wording are unchanged -- only the *class* is new,
+# which lets control flow dispatch on the class instead of grepping the message.
+s160_condition <- function(msg, subclass, fn = NULL, ...) {
+  structure(
+    list(message = .error_prefix(msg, fn), call = NULL, ...),
+    class = c(subclass, "s160_error", "error", "condition")
+  )
+}
+
 # Raise a standardized survey160r error (see convention above).
 stop_s160 <- function(msg, fn = NULL) {
   stop(.error_prefix(msg, fn), call. = FALSE)
+}
+
+# Raise a classed HTTP error carrying the numeric `status`, so a caller can
+# dispatch on the code (s160_api_campaign_get maps 400/404 to not-found) rather
+# than grepping the status text. Internal (bare), matching s160_api_request's
+# raise site.
+stop_http_error <- function(status, msg, fn = NULL) {
+  stop(s160_condition(msg, "s160_http_error", fn = fn, status = as.integer(status)))
 }
 
 # Validate `x` is a single, non-empty (non-whitespace) string. `name` is the
@@ -71,9 +94,12 @@ stop_not_initialized <- function(service, init_fn) {
   stop_s160(sprintf("%s not initialized. Run %s() first.", service, init_fn))
 }
 
-# "<subject> not found: <value>" -- value-bearing, no trailing period.
+# "<subject> not found: <value>" -- value-bearing, no trailing period. Classed
+# `s160_not_found` so a boundary raise (e.g. download_with_verify translating a
+# GCS 404) can be caught by class at the callers rather than re-grepping "404".
 stop_not_found <- function(subject, value, fn = NULL) {
-  stop_s160(sprintf("%s not found: %s", subject, value), fn = fn)
+  stop(s160_condition(sprintf("%s not found: %s", subject, value),
+                      "s160_not_found", fn = fn))
 }
 
 # "Failed to <action>: <cause>" -- value-bearing, no trailing period.
