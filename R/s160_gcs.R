@@ -77,25 +77,31 @@ validate_campaign_id <- function(campaign_id) {
 # Retries up to max_retries times on size mismatch with exponential backoff.
 download_with_verify <- function(object_name, local_path, max_retries = 2L,
                                  bucket = NULL) {
-  # Get expected size from GCS metadata. If listing fails (permissions or
-  # transient error), fall back to downloading without verification.
-  # googleCloudStorageR's gcs_list_objects() returns `size` as a formatted
-  # string ("483.3 Kb"), so as.numeric() yields NA -- treat that as
-  # "unknown size" and skip verification rather than crashing the compare.
+  # Authoritative byte size from the object's GCS metadata. gcs_list_objects()
+  # formats `size` as a human-readable string ("483.3 Kb") at every `detail`
+  # level (parse_lo() runs format_object_size() unconditionally), so it can
+  # never be compared to a byte count -- the old listing-based check was inert
+  # and accepted truncated-but-HTTP-200 downloads silently. gcs_get_object(meta
+  # = TRUE) returns the raw object metadata, whose `size` is the exact byte
+  # count. If metadata can't be fetched (permissions / transient error / object
+  # absent) we skip verification rather than fail an otherwise-good download --
+  # but with a message, so the skip is never silent.
   expected_size <- tryCatch({
-    prefix <- sub("/[^/]+$", "/", object_name)
-    objects <- if (is.null(bucket)) gcs_list_objects(prefix = prefix)
-               else gcs_list_objects(prefix = prefix, bucket = bucket)
-    size <- NULL
-    if (nrow(objects) > 0) {
-      match_idx <- which(objects$name == object_name)
-      if (length(match_idx) > 0) {
-        coerced <- suppressWarnings(as.numeric(objects$size[match_idx[1]]))
-        if (!is.na(coerced)) size <- coerced
-      }
+    meta <- if (is.null(bucket)) {
+      gcs_get_object(object_name, meta = TRUE)
+    } else {
+      gcs_get_object(object_name, bucket = bucket, meta = TRUE)
     }
-    size
+    coerced <- suppressWarnings(as.numeric(meta$size))
+    if (length(coerced) == 1L && !is.na(coerced)) coerced else NULL
   }, error = function(e) NULL)
+
+  if (is.null(expected_size)) {
+    message(sprintf(
+      "Skipping size verification for '%s' (object size unavailable).",
+      object_name
+    ))
+  }
 
   attempt <- 0L
   repeat {
@@ -107,12 +113,12 @@ download_with_verify <- function(object_name, local_path, max_retries = 2L,
                      overwrite = TRUE, bucket = bucket)
     }
 
-    if (is.null(expected_size)) break  # can't verify, trust the download
-
     actual_size <- file.info(local_path)$size
     if (!file.exists(local_path) || is.na(actual_size)) {
       stop(sprintf("Download produced no file for '%s'.", object_name), call. = FALSE)
     }
+
+    if (is.null(expected_size)) break  # metadata unavailable; trust the download
     if (actual_size == expected_size) break
 
     if (attempt > max_retries) {
