@@ -69,6 +69,7 @@ test_that("auth falls back to http_status when error field is NULL", {
     http_error = TRUE,
     status_msg = "Service Unavailable"
   )
+  stub_no_sleep()  # 503 is transient: retried then surfaced, don't really wait
   expect_error(s160_api_auth(), "Authentication failed.*Service Unavailable")
 })
 
@@ -90,6 +91,7 @@ test_that("auth tolerates a multi-element error field, falling back to status", 
     http_error = TRUE,
     status_msg = "Server Error"
   )
+  stub_no_sleep()  # 500 is transient: retried then surfaced, don't really wait
   expect_error(s160_api_auth(), "Authentication failed.*Server Error")
 })
 
@@ -368,6 +370,7 @@ test_that("request raises error on HTTP failure", {
     http_error = TRUE,
     status_msg = "Server Error"
   )
+  stub_no_sleep()  # 500 is transient: retried then surfaced, don't really wait
   expect_error(
     survey160r:::s160_api_request("POST", "/fail", body = list(x = 1)),
     "API error.*Internal server error"
@@ -382,10 +385,71 @@ test_that("request falls back to http_status when error field is NULL", {
     http_error = TRUE,
     status_msg = "Bad Gateway"
   )
+  stub_no_sleep()  # 502 is transient: retried then surfaced, don't really wait
   expect_error(
     survey160r:::s160_api_request("POST", "/fail", body = list(x = 1)),
     "API error.*Bad Gateway"
   )
+})
+
+# --- s160_api_request: bounded timeout + transient retry (R2/R3) --------------
+
+test_that("request retries a transient 5xx and then succeeds", {
+  stub_api_base()
+  waits <- new_capture()
+  calls <- new_capture()
+  stub_httr_seq(list(503L, 200L), capture = calls)
+  stub_no_sleep(capture = waits)
+  out <- survey160r:::s160_api_request("GET", "/ok")
+  expect_equal(out, list(success = TRUE, data = "ok"))
+  expect_length(calls$calls, 2L)   # one transient failure + one success
+  expect_equal(waits$waits, 1)     # a single 1s backoff before the retry
+})
+
+test_that("request retries a persistent 5xx with exponential backoff, then fails", {
+  stub_api_base()
+  waits <- new_capture()
+  calls <- new_capture()
+  stub_httr_seq(list(503L), capture = calls)   # 503 on every attempt
+  stub_no_sleep(capture = waits)
+  expect_error(survey160r:::s160_api_request("GET", "/down"), "API error")
+  expect_length(calls$calls, 4L)               # 1 initial + .http_max_retries (3)
+  expect_equal(waits$waits, c(1, 2, 4))        # exponential (cap not reached)
+})
+
+test_that("request does not retry a 4xx client error (fails fast, no backoff)", {
+  stub_api_base()
+  waits <- new_capture()
+  calls <- new_capture()
+  stub_httr_seq(list(400L), capture = calls)
+  stub_no_sleep(capture = waits)
+  expect_error(survey160r:::s160_api_request("GET", "/missing"), "API error")
+  expect_length(calls$calls, 1L)   # terminal on the first response
+  expect_null(waits$waits)         # never slept
+})
+
+test_that("request retries a persistent network error and then re-raises it", {
+  stub_api_base()
+  waits <- new_capture()
+  calls <- new_capture()
+  stub_httr_seq(list("error"), capture = calls)
+  stub_no_sleep(capture = waits)
+  expect_error(
+    survey160r:::s160_api_request("POST", "/x", body = list(a = 1)),
+    "Could not resolve host"
+  )
+  expect_length(calls$calls, 4L)
+  expect_equal(waits$waits, c(1, 2, 4))
+})
+
+test_that("request recovers when a network error is followed by success", {
+  stub_api_base()
+  waits <- new_capture()
+  stub_httr_seq(list("error", 200L))
+  stub_no_sleep(capture = waits)
+  out <- survey160r:::s160_api_request("GET", "/ok")
+  expect_equal(out$data, "ok")
+  expect_equal(waits$waits, 1)
 })
 
 # --- s160_api_campaign_results ---------------------------------------------------------

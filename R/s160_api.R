@@ -32,6 +32,46 @@ check_api_ready <- function(conn = NULL) {
   }
 }
 
+# --- HTTP transport (bounded timeout + transient retry) -----------------------
+
+# Every network call is bounded by a per-request timeout so a hung server can't
+# wedge the R session or the scheduled producer (the requests were previously
+# unbounded). Transient failures -- a curl/network error, or an HTTP 429/5xx --
+# are retried with exponential backoff; 4xx client errors are terminal and
+# returned immediately so a 400/404 fails fast (e.g. the not-found path in
+# s160_api_campaign_get, which must not incur retry pauses).
+.http_timeout_seconds <- 60
+.http_max_retries <- 3L
+.http_retry_status <- c(429L, 500L, 502L, 503L, 504L)
+
+# Perform one HTTP request via `do_request` (a thunk that calls a single httr
+# GET/POST with httr::timeout() already attached) and retry transient failures.
+# Returns the httr response for the caller's own http_error()/content()
+# handling; re-raises a persistent network error once retries are exhausted.
+# Retrying the export-trigger POST is safe: the server just regenerates the
+# results CSV, so a duplicate trigger is wasteful but not harmful. Passing the
+# request as a thunk keeps the mocked httr verbs as the retry seam in tests.
+http_send <- function(do_request, describe, max_retries = .http_max_retries) {
+  attempt <- 0L
+  repeat {
+    attempt <- attempt + 1L
+    resp <- tryCatch(do_request(), error = function(e) e)
+    is_err <- inherits(resp, "error")
+    transient <- is_err || (httr::status_code(resp) %in% .http_retry_status)
+    if (!transient || attempt > max_retries) {
+      if (is_err) stop(resp)
+      return(resp)
+    }
+    detail <- if (is_err) conditionMessage(resp) else paste("HTTP", httr::status_code(resp))
+    wait <- min(2^(attempt - 1L), 30)
+    message(sprintf(
+      "Request failed (%s: %s); retrying in %ds (attempt %d/%d)...",
+      describe, detail, wait, attempt + 1L, max_retries + 1L
+    ))
+    Sys.sleep(wait)
+  }
+}
+
 # POST service-account credentials and store the resulting JWT (and its
 # provenance) into `conn`. Shared by s160_api_auth() (which builds the fresh
 # connection) and the in-session refresh in s160_api_request() (re-auth into
@@ -49,12 +89,18 @@ api_do_auth <- function(conn, base_url, userid, api_key) {
   base_url <- sub("/$", "", trimws(base_url))
 
   url <- paste0(base_url, "/auth/serviceAccount")
-  resp <- httr::POST(
-    url,
-    httr::add_headers(Authorization = paste("ApiKey", api_key)),
-    httr::content_type_json(),
-    body = list(userid = userid),
-    encode = "json"
+  resp <- http_send(
+    function() {
+      httr::POST(
+        url,
+        httr::add_headers(Authorization = paste("ApiKey", api_key)),
+        httr::content_type_json(),
+        body = list(userid = userid),
+        encode = "json",
+        httr::timeout(.http_timeout_seconds)
+      )
+    },
+    describe = "authenticate"
   )
 
   if (httr::http_error(resp)) {
@@ -150,14 +196,24 @@ s160_api_request <- function(method, path, body = NULL, conn = NULL) {
 
   url <- paste0(conn$base_url, path)
   auth_header <- httr::add_headers(Authorization = conn$jwt)
+  describe <- sprintf("%s %s", method, path)
 
   if (method == "GET") {
-    resp <- httr::GET(url, auth_header)
+    resp <- http_send(
+      function() httr::GET(url, auth_header, httr::timeout(.http_timeout_seconds)),
+      describe = describe
+    )
   } else {
-    resp <- httr::POST(
-      url, auth_header,
-      httr::content_type_json(),
-      body = body, encode = "json"
+    resp <- http_send(
+      function() {
+        httr::POST(
+          url, auth_header,
+          httr::content_type_json(),
+          body = body, encode = "json",
+          httr::timeout(.http_timeout_seconds)
+        )
+      },
+      describe = describe
     )
   }
 

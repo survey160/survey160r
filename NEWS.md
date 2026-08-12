@@ -79,6 +79,18 @@
 
 ## Bug fixes
 
+* **API requests now have a bounded timeout and retry transient failures.**
+  Every call in `s160_api_*` (authentication, the export trigger, campaign reads)
+  previously had no `httr::timeout()`, so a hung server could block the R session
+  or wedge the scheduled producer indefinitely with no error; and a single
+  transient failure -- a network/curl error or an HTTP 429/5xx -- aborted the run.
+  Requests are now bounded to a per-request timeout (`.http_timeout_seconds`,
+  60s) and retried with exponential backoff (up to `.http_max_retries`, 3, on
+  429/500/502/503/504 and network errors). 4xx client errors stay terminal and
+  fail fast, so a not-found (`s160_api_campaign_get`) still errors immediately.
+  Retrying the export-trigger `POST` is safe -- the server just regenerates the
+  results CSV.
+
 * **`latency_report()` no longer duplicates the day-rollup grain when a segment
   drops off mid-flow.** A blank or unparseable prior-question timestamp gives a
   segment an `NA` `segment_date_local` (and therefore `NA` `hour_local`), so it
