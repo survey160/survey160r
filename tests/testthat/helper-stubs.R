@@ -241,10 +241,11 @@ stub_httr_response <- function(status = 200L,
 # `capture$calls` counts how many requests were issued.
 stub_httr_seq <- function(steps, body = list(success = TRUE, data = "ok"),
                           capture = NULL, env = parent.frame()) {
-  i <- 0L
+  state <- new.env(parent = emptyenv())
+  state$i <- 0L
   responder <- function(url, ...) {
-    i <<- i + 1L
-    step <- steps[[min(i, length(steps))]]
+    state$i <- state$i + 1L
+    step <- steps[[min(state$i, length(steps))]]
     if (!is.null(capture)) capture$calls <- c(capture$calls, TRUE)
     if (identical(step, "error")) {
       stop("Could not resolve host: api.survey160.com", call. = FALSE)
