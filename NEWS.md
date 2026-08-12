@@ -179,6 +179,17 @@
 
 ## Internal
 
+* **Refactored the disposition readers (no behavior change).**
+  `.disposition_filter()` now builds one combined keep-mask and subsets the frame
+  once instead of allocating an intermediate copy per predicate;
+  `.disposition_collapse()` groups by phone through a single `by_phone()` helper
+  in place of six near-identical `tapply()` calls; and the duplicated
+  phone-request normalization in `disposition_rollup()` / `disposition_records()`
+  moved into a shared `.disposition_request_phones()`. On the test side, the two
+  byte-identical disposition-Parquet fixture writers collapsed into one shared
+  `write_disposition_parquet()` helper, and a new test pins that
+  `disposition_screen()` appends exactly what `disposition_summary()` computes.
+
 * **Standardized and consolidated error messages.** Every `stop()` in the
   package now follows one documented convention (see `R/conditions.R`):
   exported, user-facing functions prefix the message with `"<fn>: "` so a

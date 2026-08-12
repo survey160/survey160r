@@ -30,7 +30,8 @@ test_that("sms campaign: per-respondent flags and mode", {
   expect_named(res, c("phone", "campaign_id", "started", "engaged", "opt_in",
                       "complete", "web_complete", "terminated", "mode"))
   expect_equal(res$phone, c("+15550101", "+15550102", "+15550103"))
-  expect_true(is.integer(res$campaign_id) && all(res$campaign_id == 1234L))
+  expect_true(is.integer(res$campaign_id))
+  expect_equal(res$campaign_id, rep(1234L, 3L))
   expect_equal(res$started,      c(1L, 1L, 0L))
   expect_equal(res$engaged,      c(1L, 1L, 0L))
   expect_equal(res$opt_in,       c(1L, 0L, 0L))  # r3 said Yes but never texted
