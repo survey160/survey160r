@@ -34,8 +34,8 @@ campaign in a pass shares the same \code{run_at_utc}.}
 
 \item{run_by}{Optional string stamped on every row's \code{run_by}
 provenance column. \code{NULL} (default) leaves the column as
-\code{NA_character_}; callers persisting the result typically
-fill it at write time.}
+\code{NA_character_}; typically filled at write time by the step
+that persists the result.}
 
 \item{...}{Forwarded to \code{latency_build_config()} when
 \code{config} is \code{NULL}. Must be empty when \code{config} is

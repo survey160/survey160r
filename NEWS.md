@@ -170,7 +170,8 @@
   parenthetical). The README also reorders the three surfaces to raw data access
   -> latency -> disposition and links the two guides as clickable relative paths
   so they render on GitHub. Credential prompts now say "your team lead" instead
-  of "your survey manager."
+  of "your survey manager." Reference docs (`@param` / `@return`) describe the
+  argument or value rather than naming a person, per the R convention.
 
 * **Docs restructure: vignettes + a slimmer README.** The latency and
   disposition walkthroughs moved out of the README into full-length articles --
