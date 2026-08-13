@@ -9,7 +9,7 @@ R package for accessing Survey160 campaign data, in three layers:
 - **[Latency analysis](vignettes/latency.Rmd)** -- compute a per-campaign recipient-latency report from a raw campaign CSV, as an in-memory R object.
 - **[Disposition screening](vignettes/disposition.Rmd)** -- screen a phone sample against every recipient Survey160 has contacted, dropping numbers already completed or refused before you field.
 
-Both analyst surfaces are pure and return their results in memory: `latency_run()` and `disposition_run()` give a list with a `consolidated` data frame plus provenance `meta`, while the disposition readers (`disposition_summary()` / `disposition_records()` / `disposition_screen()`) return a data frame. Fleet orchestration and Parquet persistence live in downstream consumer projects. See `?survey160r` for an overview from the R console.
+Both higher-level surfaces are pure and return their results in memory: `latency_run()` and `disposition_run()` give a list with a `consolidated` data frame plus provenance `meta`, while the disposition readers (`disposition_summary()` / `disposition_records()` / `disposition_screen()`) return a data frame. Fleet orchestration and Parquet persistence live in downstream consumer projects. See `?survey160r` for an overview from the R console.
 
 ## Installation
 
@@ -122,7 +122,7 @@ Credentials live in `~/.Renviron` and are read per environment:
 
 Any missing value is prompted on the first `s160_api_auth(env)` call for
 that environment and saved to `~/.Renviron`, so you won't be asked
-again. Get these from your survey manager.
+again. Get these from your team lead.
 
 ## Documentation
 

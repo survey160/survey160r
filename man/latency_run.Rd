@@ -49,7 +49,7 @@ The list returned by \code{latency_report()}:
   when absent).
 }
 \description{
-Analyst-facing one-campaign runner. Given an in-memory campaign CSV
+User-facing one-campaign runner. Given an in-memory campaign CSV
 (already read by the caller), (optionally) builds the report config
 from the CSV header and runs the latency algorithm. No I/O; pair
 with \code{s160_gcs_pull_csv()} for the GCS source path or
@@ -72,7 +72,7 @@ Two call shapes:
 Provenance: if \code{data} carries \code{source_csv_hash} or
 \code{source_csv_path} attributes (set by \code{s160_gcs_pull_csv}
 for GCS reads), \code{latency_report()} surfaces them on
-\code{result$meta}. Analysts pulling CSVs from other sources can
+\code{result$meta}. Callers pulling CSVs from other sources can
 attach the attributes themselves before calling, e.g.
 \preformatted{
 attr(df, "source_csv_path") <- "dropbox:campaign_1234.csv"

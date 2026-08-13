@@ -50,10 +50,10 @@
     `ever_contacted` / `ever_complete` / `ever_terminated` / ... plus
     `latest_disposition`).
   * `disposition_summary(dataset, ...)` -- reads the Parquet projection, then
-    `disposition_rollup()` (the analyst engine, one row per phone).
+    `disposition_rollup()` (the engine, one row per phone).
   * `disposition_screen(sample, dataset, ...)` -- annotates a caller's
     sample data frame in place with the disposition columns, preserving the
-    original rows/columns/formatting (the Survey-Manager sample-cleaning
+    original rows/columns/formatting (the sample-cleaning
     surface).
 
   Adds a lightweight `nanoparquet` dependency for the Parquet read.
@@ -162,6 +162,16 @@
 
 ## Documentation
 
+* **Dropped the "Survey Manager" audience framing.** The whole package is for
+  Survey Managers, so singling out one surface as *the* Survey-Manager surface
+  was redundant -- the label is removed from the README, both vignettes, the
+  package help, and code comments, and the per-section audience tags in
+  `?survey160r` are dropped (`Disposition screening` / `Latency analysis`, no
+  parenthetical). The README also reorders the three surfaces to raw data access
+  -> latency -> disposition and links the two guides as clickable relative paths
+  so they render on GitHub. Credential prompts now say "your team lead" instead
+  of "your survey manager."
+
 * **Docs restructure: vignettes + a slimmer README.** The latency and
   disposition walkthroughs moved out of the README into full-length articles --
   `vignette("latency")` and `vignette("disposition")`, rendered as Articles on
@@ -177,11 +187,11 @@
   vignette's pure-core example (`disposition_rollup()`) executes at build time.
 
 * **Package-level help (`?survey160r`).** A new overview page orients a reader to
-  the three layers -- disposition screening (the Survey-Manager surface), latency
+  the three layers -- disposition screening, latency
   analysis, and the raw `s160_*` data-access functions -- with pointers to the
   entry point for each. The README intro now names all three surfaces and links
   to them, and the "Disposition screening" section is expanded with the
-  end-to-end Survey-Manager workflow, a table of the columns
+  end-to-end screening workflow, a table of the columns
   `disposition_screen()` appends, the `latest_disposition` funnel categories, a
   read-once performance note for screening several samples, and the beta caveats.
 

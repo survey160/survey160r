@@ -3,7 +3,7 @@
 #' @description
 #' Access Survey160 campaign data from R. The package has three layers: a raw
 #' data-access layer that reaches Survey160's own systems (the \code{s160_*}
-#' functions), and two analyst surfaces built on top of it. \strong{Latency}
+#' functions), and two higher-level surfaces built on top of it. \strong{Latency}
 #' analysis is pure (in-memory data frame in, data frame out, no I/O).
 #' \strong{Disposition} screening has a pure rollup core
 #' (\code{\link{disposition_rollup}}), plus readers that access the Parquet
@@ -22,7 +22,7 @@
 #'     \code{\link{s160_api_campaign_results}}.
 #' }
 #'
-#' @section Disposition screening (Survey Managers):
+#' @section Disposition screening:
 #' Answer "which of these phone numbers have we contacted / completed / refused
 #' before?" and clean a sample list. Pull the shared disposition dataset once,
 #' then screen a sample data frame in place:
@@ -37,7 +37,7 @@
 #'     rolls an already-read frame up in memory.
 #' }
 #'
-#' @section Latency analysis (analysts):
+#' @section Latency analysis:
 #' Compute a per-campaign recipient-latency report from a raw campaign CSV:
 #' \itemize{
 #'   \item \code{\link{latency_run}} -- the one-campaign runner (builds the

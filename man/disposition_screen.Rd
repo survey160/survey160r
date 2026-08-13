@@ -38,11 +38,11 @@ or pagination here -- every sample row is returned.}
   digit-normalizes to nothing (blank/unparseable) gets an all-\code{NA} block.
 }
 \description{
-The Survey Manager surface: takes a sample data frame (a phone column plus
+Takes a sample data frame (a phone column plus
 whatever else -- strata, quota cells, ...) and returns it \strong{unchanged
 with the disposition summary columns appended}, 1:1 with the input rows and
-preserving the original phone formatting. The Manager then filters and writes
-it (e.g. \code{subset(out, !ever_complete & !ever_terminated)}). Mirrors the
+preserving the original phone formatting. The caller then filters and writes
+it (dropping the numbers already completed or refused). Mirrors the
 "append columns to my uploaded list" screening workflow.
 }
 \examples{

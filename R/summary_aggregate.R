@@ -12,8 +12,8 @@
 # Shiny consumer on one read; the doc decided in favour of that over a
 # sidecar parquet (campaign_scripts.md §4.3, decision: one parquet).
 
-# Classify a campaign's survey mode from the source data (SUR-1368), per the
-# Survey Manager's rule:
+# Classify a campaign's survey mode from the source data (SUR-1368), per this
+# rule:
 #   * web completes present                  -> "t2w"           (web survey,
 #                                               completion = web_complete)
 #   * a personalized survey link but no web   -> "t2w_external"  (web survey on

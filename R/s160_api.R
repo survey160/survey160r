@@ -297,7 +297,7 @@ s160_api_auth <- function(env = c("prod", "staging")) {
 
   userid <- get_credential(
     "S160_API_USERID",
-    "Enter your Survey160 API user ID (ask your survey manager)."
+    "Enter your Survey160 API user ID (ask your team lead)."
   )
   api_key <- resolve_env_api_key(cfg$key_candidates, cfg$key_prompt)
 

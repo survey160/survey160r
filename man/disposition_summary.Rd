@@ -43,8 +43,8 @@ A per-phone summary data frame (see \code{\link{disposition_rollup}}).
 }
 \description{
 Reads the disposition Parquet projection and returns \strong{one row per
-phone} (see \code{\link{disposition_rollup}}) -- the analyst-facing engine
-for ad-hoc queries. For cleaning a Survey Manager's sample file in place, use
+phone} (see \code{\link{disposition_rollup}}) -- the engine
+for ad-hoc queries. For cleaning a sample file in place, use
 \code{\link{disposition_screen}}; for the underlying rows \emph{before} the
 per-phone rollup (one per \code{(phone, campaign_id)}), use
 \code{\link{disposition_records}}.
