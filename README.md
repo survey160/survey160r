@@ -5,9 +5,9 @@
 
 R package for accessing Survey160 campaign data, in three layers:
 
-- **Disposition screening** -- screen a phone sample against every recipient Survey160 has ever contacted, to answer "which of these numbers have we contacted / completed / refused before?" and clean a sample list before you field it. The Survey-Manager surface. Guide: `vignette("disposition")`.
-- **Latency analysis** -- compute a per-campaign recipient-latency report from a raw campaign CSV, as an in-memory R object. Guide: `vignette("latency")`.
-- **Raw data access** -- read campaign results from Google Cloud Storage (`s160_gcs_*`) and trigger fresh exports via the API (`s160_api_*`). Documented [below](#raw-data-access).
+- **[Raw data access](#raw-data-access)** -- read campaign results from Google Cloud Storage (`s160_gcs_*`) and trigger fresh exports via the API (`s160_api_*`).
+- **[Latency analysis](vignettes/latency.Rmd)** -- compute a per-campaign recipient-latency report from a raw campaign CSV, as an in-memory R object.
+- **[Disposition screening](vignettes/disposition.Rmd)** -- screen a phone sample against every recipient Survey160 has ever contacted ("which of these numbers have we contacted / completed / refused before?") to clean a sample list before you field it. The Survey-Manager surface.
 
 Both analyst surfaces are pure and return their results in memory: `latency_run()` and `disposition_run()` give a list with a `consolidated` data frame plus provenance `meta`, while the disposition readers (`disposition_summary()` / `disposition_records()` / `disposition_screen()`) return a data frame. Fleet orchestration and Parquet persistence live in downstream consumer projects. See `?survey160r` for an overview from the R console.
 
@@ -20,20 +20,6 @@ install.packages("survey160r", repos = "https://survey160.r-universe.dev")
 # From GitHub
 install.packages("pak")  # if not already installed
 pak::pkg_install("survey160/survey160r")
-```
-
-## Quick start -- disposition screening
-
-The most common task: pull the shared disposition dataset once, then screen a sample in place. Full walkthrough -- columns, ad-hoc queries, caveats -- in `vignette("disposition")`.
-
-```r
-library(survey160r)
-s160_gcs_init(bucket = "s160_disposition_prod")   # one-time browser sign-in (cached)
-
-dataset <- disposition_pull()                       # download the projection (cached)
-cleaned <- disposition_screen(my_sample, dataset)   # screening columns appended 1:1
-# drop already-completed / refused; blank-phone rows come back all-NA and are kept
-subset(cleaned, !(ever_complete %in% TRUE | ever_terminated %in% TRUE))
 ```
 
 ## Raw data access
@@ -81,6 +67,26 @@ df_stg  <- s160_api_campaign_results(campaign_id, conn = stg)
 
 A conn-less call uses the most recent `s160_api_auth()`.
 
+## Latency analysis
+
+Compute a per-campaign recipient-latency report from a raw campaign CSV, returned as an in-memory R object -- `latency_run()` (the one-campaign runner) or the pure `latency_report()`. Full walkthrough -- inputs, result schema, config, and validation -- in the **[latency guide](vignettes/latency.Rmd)** (`vignette("latency")` once installed).
+
+## Disposition screening
+
+The Survey-Manager surface: screen a phone sample against every recipient Survey160 has ever contacted, to clean a sample list before you field. Pull the shared dataset once, then screen a sample in place:
+
+```r
+library(survey160r)
+s160_gcs_init(bucket = "s160_disposition_prod")   # one-time browser sign-in (cached)
+
+dataset <- disposition_pull()                       # download the projection (cached)
+cleaned <- disposition_screen(my_sample, dataset)   # screening columns appended 1:1
+# drop already-completed / refused; blank-phone rows come back all-NA and are kept
+subset(cleaned, !(ever_complete %in% TRUE | ever_terminated %in% TRUE))
+```
+
+Full walkthrough -- the appended columns, ad-hoc queries, the read-once tip, and beta caveats -- in the **[disposition guide](vignettes/disposition.Rmd)** (`vignette("disposition")` once installed).
+
 ## First-time setup
 
 ### GCS (`s160_gcs_init`)
@@ -120,7 +126,7 @@ again. Get these from your survey manager.
 
 ## Documentation
 
-- **Guides (articles):** `vignette("disposition")` and `vignette("latency")` -- also rendered as Articles on the [package site](https://survey160.r-universe.dev/survey160r).
+- **Guides (articles):** [Latency analysis](vignettes/latency.Rmd) and [Disposition screening](vignettes/disposition.Rmd) -- also rendered as Articles on the [package site](https://survey160.r-universe.dev/survey160r). In R: `vignette("latency")` / `vignette("disposition")`.
 - **Function reference:** `?survey160r`, or `help(package = "survey160r")`.
 - **Changelog:** `NEWS.md` (or `news(package = "survey160r")` after install). Cutting a release: [`RELEASING.md`](RELEASING.md). Project conventions and agent context: `CLAUDE.md`.
 
