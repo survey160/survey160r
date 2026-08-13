@@ -60,7 +60,7 @@ which returns your sample with the eight screening columns appended (output illu
 3 9999999999     SW     B          FALSE           0        FALSE         FALSE         FALSE           FALSE    never_contacted      <NA>
 ```
 
-Your `region` / `quota` columns come back untouched and the screening columns are appended 1:1, so the same `!ever_complete & !ever_terminated` filter keeps only the never-contacted number here -- the already-completed and refused rows drop out before you field.
+Your `region` / `quota` columns come back untouched and the screening columns are appended 1:1, so the same `!(ever_complete %in% TRUE | ever_terminated %in% TRUE)` filter keeps only the never-contacted number here -- the already-completed and refused rows drop out before you field (and an all-`NA` blank-phone row would stay, for correction).
 
 ## Columns `disposition_screen()` appends
 

@@ -9,7 +9,7 @@ R package for accessing Survey160 campaign data, in three layers:
 - **Latency analysis** -- compute a per-campaign recipient-latency report from a raw campaign CSV, as an in-memory R object. Guide: `vignette("latency")`.
 - **Raw data access** -- read campaign results from Google Cloud Storage (`s160_gcs_*`) and trigger fresh exports via the API (`s160_api_*`). Documented [below](#raw-data-access).
 
-Both analyst surfaces return plain in-memory data frames; fleet orchestration and Parquet persistence live in downstream consumer projects. See `?survey160r` for an overview from the R console.
+Both analyst surfaces are pure and return their results in memory: `latency_run()` and `disposition_run()` give a list with a `consolidated` data frame plus provenance `meta`, while the disposition readers (`disposition_summary()` / `disposition_records()` / `disposition_screen()`) return a data frame. Fleet orchestration and Parquet persistence live in downstream consumer projects. See `?survey160r` for an overview from the R console.
 
 ## Installation
 
@@ -32,7 +32,8 @@ s160_gcs_init(bucket = "s160_disposition_prod")   # one-time browser sign-in (ca
 
 dataset <- disposition_pull()                       # download the projection (cached)
 cleaned <- disposition_screen(my_sample, dataset)   # screening columns appended 1:1
-subset(cleaned, !ever_complete & !ever_terminated)  # drop already-completed / refused
+# drop already-completed / refused; blank-phone rows come back all-NA and are kept
+subset(cleaned, !(ever_complete %in% TRUE | ever_terminated %in% TRUE))
 ```
 
 ## Raw data access
