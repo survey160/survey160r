@@ -9,7 +9,7 @@ R package for accessing Survey160 campaign data, in three layers:
 - **[Latency analysis](vignettes/latency.Rmd)** -- compute a per-campaign recipient-latency report from a raw campaign CSV, as an in-memory R object.
 - **[Disposition screening](vignettes/disposition.Rmd)** -- screen a phone sample against every recipient Survey160 has contacted, dropping numbers already completed or refused before you field.
 
-Both higher-level surfaces are pure and return their results in memory: `latency_run()` and `disposition_run()` give a list with a `consolidated` data frame plus provenance `meta`, while the disposition readers (`disposition_summary()` / `disposition_records()` / `disposition_screen()`) return a data frame. Fleet orchestration and Parquet persistence live in downstream consumer projects. See `?survey160r` for an overview from the R console.
+The pure entry points `latency_run()` and `disposition_run()` take an in-memory data frame and return a list with a `consolidated` data frame plus provenance `meta`. The disposition readers (`disposition_summary()` / `disposition_records()` / `disposition_screen()`) read the Parquet projection and return a data frame, and `disposition_pull()` downloads that projection from GCS and returns a local path. Fleet orchestration and Parquet persistence live in downstream consumer projects. See `?survey160r` for an overview from the R console.
 
 ## Installation
 
