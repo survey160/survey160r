@@ -7,7 +7,7 @@ R package for accessing Survey160 campaign data, in three layers:
 
 - **[Raw data access](#raw-data-access)** -- read campaign results from Google Cloud Storage (`s160_gcs_*`) and trigger fresh exports via the API (`s160_api_*`).
 - **[Latency analysis](vignettes/latency.Rmd)** -- compute a per-campaign recipient-latency report from a raw campaign CSV, as an in-memory R object.
-- **[Disposition screening](vignettes/disposition.Rmd)** -- screen a phone sample against every recipient Survey160 has ever contacted ("which of these numbers have we contacted / completed / refused before?") to clean a sample list before you field it. The Survey-Manager surface.
+- **[Disposition screening](vignettes/disposition.Rmd)** -- screen a phone sample against every recipient Survey160 has contacted, dropping numbers already completed or refused before you field.
 
 Both analyst surfaces are pure and return their results in memory: `latency_run()` and `disposition_run()` give a list with a `consolidated` data frame plus provenance `meta`, while the disposition readers (`disposition_summary()` / `disposition_records()` / `disposition_screen()`) return a data frame. Fleet orchestration and Parquet persistence live in downstream consumer projects. See `?survey160r` for an overview from the R console.
 
@@ -73,7 +73,7 @@ Compute a per-campaign recipient-latency report from a raw campaign CSV, returne
 
 ## Disposition screening
 
-The Survey-Manager surface: screen a phone sample against every recipient Survey160 has ever contacted, to clean a sample list before you field. Pull the shared dataset once, then screen a sample in place:
+Screen a phone sample against every recipient Survey160 has contacted, dropping numbers already completed or refused before you field. Pull the shared dataset once, then screen in place:
 
 ```r
 library(survey160r)

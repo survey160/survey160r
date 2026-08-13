@@ -14,7 +14,7 @@ vignette: >
 knitr::opts_chunk$set(collapse = TRUE, comment = "#>", eval = FALSE)
 ```
 
-**The Survey-Manager surface.** Screen a phone sample against the **disposition dataset** -- a shared, phone-indexed record of every recipient Survey160 has contacted across closed campaigns (one row per `(phone, campaign_id)`, contacted-only) -- to answer "which of these numbers have we contacted / completed / refused before?" and clean a sample list before you field it.
+Screen a phone sample against the **disposition dataset** -- a shared, phone-indexed record of every recipient Survey160 has contacted across closed campaigns (one row per `(phone, campaign_id)`, contacted-only) -- to answer "which of these numbers have we contacted / completed / refused before?" and clean a sample list before you field it.
 
 > Disposition screening needs a recent survey160r (these functions arrived in 0.24.0). R-universe rebuilds from `main` and can lag a release by up to ~30 minutes; if `disposition_pull()` isn't found after installing, get the latest straight from GitHub with `pak::pkg_install("survey160/survey160r")`.
 
