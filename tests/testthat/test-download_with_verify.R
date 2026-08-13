@@ -42,6 +42,34 @@ test_that("download skips verification when metadata size is non-numeric", {
   expect_true(file.exists(tmp))
 })
 
+test_that("download skips size verification for a Content-Encoded (gzip) object", {
+  # campaign_results CSVs are stored Content-Encoding: gzip. GCS decompresses on
+  # download, so the saved file (decompressed) is larger than meta$size (the
+  # compressed byte count). A byte-for-byte check would then always fail --
+  # encoded objects must skip it and trust the (HTTP-verified) download.
+  tmp <- tempfile(fileext = ".csv")
+  on.exit(unlink(tmp), add = TRUE)
+  local_mocked_bindings(
+    gcs_get_object = function(object_name, saveToDisk = NULL, meta = FALSE, ...) { # nolint object_name_linter
+      if (isTRUE(meta)) {
+        return(structure(
+          list(name = object_name, size = 12L, contentEncoding = "gzip"),
+          class = "gcs_objectmeta"))
+      }
+      # Decompressed payload is far larger than the compressed meta size (12).
+      writeLines(c("a,b,c", "1,2,3", "4,5,6"), saveToDisk)
+      TRUE
+    }
+  )
+
+  expect_message(
+    download_with_verify("100/data.csv", tmp),
+    "Content-Encoding"
+  )
+  expect_true(file.exists(tmp))
+  expect_gt(file.info(tmp)$size, 12L)   # decompressed size exceeds compressed meta
+})
+
 test_that("download errors when file not written to disk", {
   tmp <- tempfile(fileext = ".csv")
   stub_gcs_download_ok(skip_write = TRUE)
