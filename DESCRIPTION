@@ -1,6 +1,6 @@
 Package: survey160r
 Title: R Client for Survey160 Data
-Version: 0.27.3
+Version: 0.28.0
 Authors@R: c(
     person("Lennon", "Shimokawa", email = "lshimokawa@survey160.com", role = c("aut", "cre"))
     )
@@ -31,6 +31,9 @@ Suggests:
     mockery,
     withr,
     lintr,
-    covr
+    covr,
+    knitr,
+    rmarkdown
+VignetteBuilder: knitr
 Config/testthat/edition: 3
 RoxygenNote: 7.3.3

@@ -3,13 +3,13 @@
 [![R-CMD-check](https://github.com/survey160/survey160r/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/survey160/survey160r/actions/workflows/R-CMD-check.yaml)
 [![R-universe](https://survey160.r-universe.dev/badges/survey160r)](https://survey160.r-universe.dev/survey160r)
 
-R package for accessing Survey160 campaign data. Three things:
+R package for accessing Survey160 campaign data, in three layers:
 
-- **[Disposition screening](#disposition-screening)** -- screen a phone sample against every recipient Survey160 has ever contacted ("which of these numbers have we contacted / completed / refused before?") to clean a sample list. The Survey-Manager surface.
-- **[Latency analysis](#latency-analysis)** -- compute a per-campaign recipient-latency report from a raw campaign CSV, as an in-memory R object.
-- **Raw data access** -- read campaign results from Google Cloud Storage (`s160_gcs_*`) and trigger fresh exports via the API (`s160_api_*`).
+- **Disposition screening** -- screen a phone sample against every recipient Survey160 has ever contacted, to answer "which of these numbers have we contacted / completed / refused before?" and clean a sample list before you field it. The Survey-Manager surface. Guide: `vignette("disposition")`.
+- **Latency analysis** -- compute a per-campaign recipient-latency report from a raw campaign CSV, as an in-memory R object. Guide: `vignette("latency")`.
+- **Raw data access** -- read campaign results from Google Cloud Storage (`s160_gcs_*`) and trigger fresh exports via the API (`s160_api_*`). Documented [below](#raw-data-access).
 
-Fleet orchestration and Parquet persistence live in downstream consumer projects. See `?survey160r` for an overview from the R console.
+Both analyst surfaces return plain in-memory data frames; fleet orchestration and Parquet persistence live in downstream consumer projects. See `?survey160r` for an overview from the R console.
 
 ## Installation
 
@@ -20,6 +20,19 @@ install.packages("survey160r", repos = "https://survey160.r-universe.dev")
 # From GitHub
 install.packages("pak")  # if not already installed
 pak::pkg_install("survey160/survey160r")
+```
+
+## Quick start -- disposition screening
+
+The most common task: pull the shared disposition dataset once, then screen a sample in place. Full walkthrough -- columns, ad-hoc queries, caveats -- in `vignette("disposition")`.
+
+```r
+library(survey160r)
+s160_gcs_init(bucket = "s160_disposition_prod")   # one-time browser sign-in (cached)
+
+dataset <- disposition_pull()                       # download the projection (cached)
+cleaned <- disposition_screen(my_sample, dataset)   # screening columns appended 1:1
+subset(cleaned, !ever_complete & !ever_terminated)  # drop already-completed / refused
 ```
 
 ## Raw data access
@@ -67,187 +80,6 @@ df_stg  <- s160_api_campaign_results(campaign_id, conn = stg)
 
 A conn-less call uses the most recent `s160_api_auth()`.
 
-## Latency analysis
-
-Compute a per-campaign recipient-latency report from a raw campaign CSV and return it as an in-memory R object. Replaces the per-wave inline scripts that the analytics team used to maintain by hand: one algorithm, one output schema, one config shape per campaign.
-
-This package is **algorithm-only and source-agnostic**. `latency_report(data, config)` is the pure function -- no I/O or mutable globals, and fully deterministic when passed a `run_at` (otherwise `run_at_utc` comes from `Sys.time()`) -- and is the recommended entry point for tests and ad-hoc analysis. `latency_run(campaign_id, data, ...)` composes `latency_build_config()` + `latency_report()` over a caller-supplied data frame; pair it with `s160_gcs_pull_csv()` for the GCS source path, or read the CSV yourself for any other source. Persisting outputs as Parquet, walking the fleet, and scheduling all live in downstream consumer projects.
-
-### Happy path -- GCS source
-
-```r
-library(survey160r)
-s160_gcs_init(bucket = "campaign_results")
-
-data   <- s160_gcs_pull_csv(1234)
-result <- latency_run(1234, data, field_timezone = "America/New_York")
-head(result$consolidated)
-result$meta$source_csv_hash    # sha256 of the source CSV
-result$meta$source_csv_path    # canonical gs:// path
-```
-
-### Backfill -- archived CSV on disk / Dropbox
-
-```r
-data   <- s160_read_csv("~/Dropbox/archive/campaign_500.csv")
-result <- latency_run(500, data, field_timezone = "America/New_York")
-result$meta$source_csv_hash    # sha256 of the local file
-result$meta$source_csv_path    # the path you passed
-```
-
-`s160_read_csv()` is the local-source sibling of `s160_gcs_pull_csv()`
--- both produce a data frame with `source_csv_hash` and
-`source_csv_path` attributes set, which `latency_run()` then surfaces
-on `result$meta`. Pick the reader that matches where the CSV lives;
-the algorithm call is identical.
-
-For ad-hoc invocations with a hand-built data frame (synthetic /
-testing), pass `data` to `latency_run()` directly -- `result$meta`
-provenance will be `NA`, which is correct for that case.
-
-### Pure function
-
-```r
-data <- s160_gcs_pull_csv(campaign_id = 1234)
-config <- latency_build_config(1234, data)
-result <- latency_report(data, config)
-
-result$consolidated     # one row per (campaign_id, date, hour_local, segment, threshold_min)
-result$latency_frame    # one row per (respondent, segment) with na_reason classification
-result$diagnostics      # parse failures, NA-by-reason counts, clamped negatives, respondent summary
-result$meta             # algorithm_version, schema_version, config_hash, run_at_utc, source_csv_hash, source_csv_path
-```
-
-### Result shape
-
-`result$consolidated` (the data frame this package returns) is also the column shape of the Parquet a consumer project writes -- one row per `(campaign_id, date, hour_local, segment, threshold_min)`, each standing on its own without sidecar manifests:
-
-| Column(s) | Purpose |
-|---|---|
-| `campaign_id`, `project_id` | Wave identity |
-| `survey_mode` | `sms` / `t2w` / `t2w_external` |
-| `date`, `hour_local` | Bucket grain (`hour_local` is `NA` for the day rollup) |
-| `segment`, `segment_index` | Pair of consecutive flow questions, e.g. `intro->q1` |
-| `threshold_min` | Universal fleet threshold (1, 3, 5, or 10 min) |
-| `n`, `pct_le` | Per-segment in-window dispatch metrics |
-| `n_respondents`, `pct_resp_hit_gt`, `pct_resp_worst_gt` | Respondent-cascade metrics |
-| `mean_delta_min`, `p50_delta_min`, `p90_delta_min`, `p95_delta_min` | Per-segment latency distribution (minutes) |
-| `n_na_parse`, `n_na_missing`, `n_na_chain` | Segments with no computable latency, by reason |
-| `n_texted`, `n_engaged`, `n_consented`, `n_completed`, `n_ineligible` | Campaign volume for the `(campaign, date, hour)` bucket -- texted (sent to), engaged (replied), consented, completed, screened out -- repeated across that bucket's segment/threshold rows |
-| `algorithm_version`, `config_hash`, `source_csv_hash`, `run_at_utc`, `run_by` | Provenance |
-
-`result$meta` carries the run-level `algorithm_version`, `schema_version`, `config_hash`, `run_at_utc`, `source_csv_hash`, and `source_csv_path`.
-
-### Config
-
-`latency_build_config(campaign_id, data, ...)` assembles the config from the CSV header alone -- pure function, no I/O. Override defaults via named args:
-
-```r
-config <- latency_build_config(
-  campaign_id = 1234,
-  data = s160_gcs_pull_csv(1234),
-  field_timezone = "America/New_York",
-  project_id = 9999,
-  date_filter = "2026-01-26",
-  respondent_id_column = NULL    # `userid` is agent login, not per-respondent
-)
-```
-
-`latency_validate_config()` runs fail-fast checks: required columns present, flow order matches the data, no unknown keys, no terminal states (`refusal`, `ineligible`) in `flow.questions`.
-
-## Disposition screening
-
-**The Survey-Manager surface.** Screen a phone sample against the **disposition dataset** -- a shared, phone-indexed record of every recipient Survey160 has contacted across closed campaigns (one row per `(phone, campaign_id)`, contacted-only) -- to answer "which of these numbers have we contacted / completed / refused before?" and clean a sample list before you field it.
-
-> Disposition screening needs a recent survey160r (these functions arrived in 0.24.0). R-universe rebuilds from `main` and can lag a release by up to ~30 minutes; if `disposition_pull()` isn't found after installing, get the latest straight from GitHub with `pak::pkg_install("survey160/survey160r")`.
-
-### Pull once, screen a sample in place
-
-```r
-library(survey160r)
-
-# 1. Authenticate to GCS once (browser sign-in on first run; token cached)
-s160_gcs_init(bucket = "s160_disposition_prod")
-
-# 2. Download the shared dataset to a local, cached path
-dataset <- disposition_pull()          # env = "prod" (default) or "dev"
-
-# 3. Annotate your sample in place -- your original rows and columns are kept,
-#    the screening columns are appended 1:1
-cleaned <- disposition_screen(my_sample, dataset, phone_col = "phone")
-
-# 4. Drop the numbers you've already finished with, then write the list out.
-#    Blank/unparseable phones come back all-NA and are KEPT (so they surface
-#    for correction rather than silently vanishing).
-kept <- subset(cleaned, !(ever_complete %in% TRUE | ever_terminated %in% TRUE))
-write.csv(kept, "sample_screened.csv", row.names = FALSE)
-```
-
-For example, screening a small list that carries its own strata columns (output illustrative):
-
-```r
-my_sample <- data.frame(
-  phone  = c("2015550101", "2015550102", "9999999999"),
-  region = c("NE", "NE", "SW"),
-  quota  = c("A", "A", "B")
-)
-disposition_screen(my_sample, dataset)
-#>        phone region quota ever_contacted n_campaigns ever_engaged ever_opted_in ever_complete ever_terminated latest_disposition campaigns
-#> 1 2015550101     NE     A           TRUE           2         TRUE          TRUE          TRUE           FALSE           complete 2339,2354
-#> 2 2015550102     NE     A           TRUE           1         TRUE         FALSE         FALSE            TRUE         terminated      2339
-#> 3 9999999999     SW     B          FALSE           0        FALSE         FALSE         FALSE           FALSE    never_contacted      <NA>
-```
-
-Your `region` / `quota` columns come back untouched and the screening columns are appended 1:1, so the same `!ever_complete & !ever_terminated` filter keeps only the never-contacted number here -- the already-completed and refused rows drop out before you field.
-
-### Columns `disposition_screen()` appends
-
-Each is computed across every campaign that contacted the number:
-
-| Column | Meaning |
-|---|---|
-| `ever_contacted` | `TRUE` if the number was ever sent an intro (i.e. present in the dataset). |
-| `n_campaigns` | How many distinct campaigns contacted it. |
-| `ever_engaged` | Ever replied to an intro. |
-| `ever_opted_in` | Ever gave consent (accepted the opt-in question). |
-| `ever_complete` | Ever completed a survey (reached the SMS close, or a web completion). |
-| `ever_terminated` | Ever screened out (ineligible) or refused. |
-| `latest_disposition` | The outcome of the number's most recent campaign (see below). |
-| `campaigns` | Comma-separated campaign ids that contacted the number. |
-
-`latest_disposition` is one value, in funnel order:
-`never_contacted` (not in the dataset) -> `non_response` (contacted, no reply) -> `engaged` (replied) -> `opt_in` (consented) -> `terminated` (screened out / refused) -> `complete` -> `web_complete`.
-
-### Ad-hoc queries over the same dataset
-
-```r
-# One row per phone: the cross-campaign screening flags + latest_disposition
-disposition_summary(dataset, phones = c("5551234567", "5559876543"))
-
-# The raw rows beneath that rollup: one per (phone, campaign_id)
-disposition_records(dataset, campaign_ids = 1234)
-```
-
-**Screening several samples? Read once.** Every reader call above loads the whole dataset into memory (there is no server-side filtering), so re-reading it is the main cost. Read the records once, then roll up in memory per sample -- no further I/O:
-
-```r
-records <- disposition_records(dataset)                 # read the file once
-disposition_rollup(records, phones = sample_a$phone)    # pure, in-memory
-disposition_rollup(records, phones = sample_b$phone)
-```
-
-Phone numbers are matched digit-normalized (a leading US `1` is dropped, so an 11-digit number matches a stored 10-digit one), and the original formatting in your sample is preserved.
-
-### Beta caveats
-
-- **Contacted-only.** A loaded number that was never texted is not in the dataset; screening returns it as `never_contacted`.
-- **Text-to-web (external) campaigns.** Completion happens on an external platform with no callback, so `complete` is unknowable and left `NA`; such a row falls back to its last known in-channel step and is never reported as a false `complete`.
-- **`date_closed_on` and `error` are `NA` in the beta**, so the `date_from` / `date_to` filters return no rows for now.
-
-### Producer side
-
-Building the per-respondent disposition frame from a raw campaign CSV is `disposition_run(campaign_id, data)` -- pure and source-agnostic, like `latency_run()`. `disposition_input_columns()` gives the column-projection set (mirroring `latency_input_columns()`). Persisting the frame as Parquet, walking the fleet, and publishing the shared dataset live in the downstream consumer project.
-
 ## First-time setup
 
 ### GCS (`s160_gcs_init`)
@@ -266,10 +98,11 @@ You may also be asked to allow OAuth token caching (say yes) and to
 install the `httpuv` package for a smoother auth experience (say yes).
 
 Your Google account needs **Storage Object Viewer** permission on the
-campaign-results source bucket. Persisting latency outputs (via the
-consumer project's fleet runner) additionally needs **Storage Object
-Creator** on the destination analytics bucket. Contact a sysadmin if
-you get 403 errors after authenticating.
+source bucket (the campaign-results bucket, or `s160_disposition_prod`
+for disposition screening). Persisting latency outputs (via the consumer
+project's fleet runner) additionally needs **Storage Object Creator** on
+the destination analytics bucket. Contact a sysadmin if you get 403
+errors after authenticating.
 
 ### API (`s160_api_auth`)
 
@@ -283,6 +116,12 @@ Credentials live in `~/.Renviron` and are read per environment:
 Any missing value is prompted on the first `s160_api_auth(env)` call for
 that environment and saved to `~/.Renviron`, so you won't be asked
 again. Get these from your survey manager.
+
+## Documentation
+
+- **Guides (articles):** `vignette("disposition")` and `vignette("latency")` -- also rendered as Articles on the [package site](https://survey160.r-universe.dev/survey160r).
+- **Function reference:** `?survey160r`, or `help(package = "survey160r")`.
+- **Changelog:** `NEWS.md` (or `news(package = "survey160r")` after install). Cutting a release: [`RELEASING.md`](RELEASING.md). Project conventions and agent context: `CLAUDE.md`.
 
 ## End-to-end testing
 
@@ -312,12 +151,6 @@ Clear cached OAuth tokens:
 gargle::gargle_oauth_sitrep()  # list cached tokens and their location
 # delete the cache directory shown above, then restart R
 ```
-
-## Development
-
-- Changelog: `NEWS.md` (or `news(package = "survey160r")` after install).
-- Cutting a release: see [`RELEASING.md`](RELEASING.md).
-- Project conventions and agent context: see `CLAUDE.md`.
 
 ## License
 

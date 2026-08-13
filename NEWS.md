@@ -162,6 +162,20 @@
 
 ## Documentation
 
+* **Docs restructure: vignettes + a slimmer README.** The latency and
+  disposition walkthroughs moved out of the README into full-length articles --
+  `vignette("latency")` and `vignette("disposition")`, rendered as Articles on
+  the R-universe package site -- and the README is now an overview + install +
+  disposition quick start + raw-data-access + setup, pointing at the guides.
+  Adds `knitr` / `rmarkdown` (Suggests) and `VignetteBuilder: knitr`, plus a
+  `_pkgdown.yml` grouping the function reference by family (disposition /
+  latency / raw access). Along the way the latency "Result shape" table was
+  corrected -- it had drifted to ~14 of the 30 consolidated columns, omitting
+  `survey_mode`, the delta distribution, the NA diagnostics, and the `n_texted`
+  / `n_engaged` / `n_consented` / `n_completed` / `n_ineligible` summary block --
+  and the two raw-data-access sections were consolidated. The disposition
+  vignette's pure-core example (`disposition_rollup()`) executes at build time.
+
 * **Package-level help (`?survey160r`).** A new overview page orients a reader to
   the three layers -- disposition screening (the Survey-Manager surface), latency
   analysis, and the raw `s160_*` data-access functions -- with pointers to the

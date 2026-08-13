@@ -1,0 +1,94 @@
+---
+title: "Latency analysis"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Latency analysis}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+# Examples require GCS auth / a real campaign CSV, so they are shown but not
+# executed at build time (like the package's `\dontrun` help examples).
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>", eval = FALSE)
+```
+
+Compute a per-campaign recipient-latency report from a raw campaign CSV and return it as an in-memory R object. This replaces the per-wave inline scripts the analytics team used to maintain by hand: one algorithm, one output schema, one config shape per campaign.
+
+The package is **algorithm-only and source-agnostic**. `latency_report(data, config)` is the pure function -- no I/O or mutable globals, and fully deterministic when passed a `run_at` (otherwise `run_at_utc` comes from `Sys.time()`) -- and is the recommended entry point for tests and ad-hoc analysis. `latency_run(campaign_id, data, ...)` composes `latency_build_config()` + `latency_report()` over a caller-supplied data frame; pair it with `s160_gcs_pull_csv()` for the GCS source path, or read the CSV yourself for any other source. Persisting outputs as Parquet, walking the fleet, and scheduling all live in downstream consumer projects.
+
+## Happy path -- GCS source
+
+```{r}
+library(survey160r)
+s160_gcs_init(bucket = "campaign_results")
+
+data   <- s160_gcs_pull_csv(1234)
+result <- latency_run(1234, data, field_timezone = "America/New_York")
+head(result$consolidated)
+result$meta$source_csv_hash    # sha256 of the source CSV
+result$meta$source_csv_path    # canonical gs:// path
+```
+
+## Backfill -- archived CSV on disk / Dropbox
+
+```{r}
+data   <- s160_read_csv("~/Dropbox/archive/campaign_500.csv")
+result <- latency_run(500, data, field_timezone = "America/New_York")
+result$meta$source_csv_hash    # sha256 of the local file
+result$meta$source_csv_path    # the path you passed
+```
+
+`s160_read_csv()` is the local-source sibling of `s160_gcs_pull_csv()` -- both produce a data frame with `source_csv_hash` and `source_csv_path` attributes set, which `latency_run()` then surfaces on `result$meta`. Pick the reader that matches where the CSV lives; the algorithm call is identical.
+
+For ad-hoc invocations with a hand-built data frame (synthetic / testing), pass `data` to `latency_run()` directly -- `result$meta` provenance will be `NA`, which is correct for that case.
+
+## Pure function
+
+```{r}
+data   <- s160_gcs_pull_csv(campaign_id = 1234)
+config <- latency_build_config(1234, data)
+result <- latency_report(data, config)
+
+result$consolidated     # one row per (campaign_id, date, hour_local, segment, threshold_min)
+result$latency_frame    # one row per (respondent, segment) with na_reason classification
+result$diagnostics      # parse failures, NA-by-reason counts, clamped negatives, respondent summary
+result$meta             # algorithm_version, schema_version, config_hash, run_at_utc, source_csv_hash, source_csv_path
+```
+
+## Result shape
+
+`result$consolidated` (the data frame this package returns) is also the column shape of the Parquet a consumer project writes -- one row per `(campaign_id, date, hour_local, segment, threshold_min)`, each standing on its own without sidecar manifests:
+
+| Column(s) | Purpose |
+|---|---|
+| `campaign_id`, `project_id` | Wave identity |
+| `survey_mode` | `sms` / `t2w` / `t2w_external` |
+| `date`, `hour_local` | Bucket grain (`hour_local` is `NA` for the day rollup) |
+| `segment`, `segment_index` | Pair of consecutive flow questions, e.g. `intro->q1` |
+| `threshold_min` | Universal fleet threshold (1, 3, 5, or 10 min) |
+| `n`, `pct_le` | Per-segment in-window dispatch metrics |
+| `n_respondents`, `pct_resp_hit_gt`, `pct_resp_worst_gt` | Respondent-cascade metrics |
+| `mean_delta_min`, `p50_delta_min`, `p90_delta_min`, `p95_delta_min` | Per-segment latency distribution (minutes) |
+| `n_na_parse`, `n_na_missing`, `n_na_chain` | Segments with no computable latency, by reason |
+| `n_texted`, `n_engaged`, `n_consented`, `n_completed`, `n_ineligible` | Campaign volume for the `(campaign, date, hour)` bucket -- texted (sent to), engaged (replied), consented, completed, screened out -- repeated across that bucket's segment/threshold rows |
+| `algorithm_version`, `config_hash`, `source_csv_hash`, `run_at_utc`, `run_by` | Provenance |
+
+`result$meta` carries the run-level `algorithm_version`, `schema_version`, `config_hash`, `run_at_utc`, `source_csv_hash`, and `source_csv_path`.
+
+## Config
+
+`latency_build_config(campaign_id, data, ...)` assembles the config from the CSV header alone -- pure function, no I/O. Override defaults via named args:
+
+```{r}
+config <- latency_build_config(
+  campaign_id = 1234,
+  data = s160_gcs_pull_csv(1234),
+  field_timezone = "America/New_York",
+  project_id = 9999,
+  date_filter = "2026-01-26",
+  respondent_id_column = NULL    # `userid` is agent login, not per-respondent
+)
+```
+
+`latency_validate_config()` runs fail-fast checks: required columns present, flow order matches the data, no unknown keys, no terminal states (`refusal`, `ineligible`) in `flow.questions`.
