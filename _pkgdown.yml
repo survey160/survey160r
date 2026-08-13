@@ -1,0 +1,51 @@
+url: https://survey160.r-universe.dev/survey160r
+
+reference:
+- title: Package
+  contents:
+  - survey160r-package
+- title: Disposition screening
+  desc: >
+    Screen a phone sample against the disposition dataset -- which numbers have
+    been contacted / completed / refused before.
+  contents:
+  - disposition_pull
+  - disposition_screen
+  - disposition_summary
+  - disposition_records
+  - disposition_rollup
+  - disposition_run
+  - disposition_input_columns
+- title: Latency analysis
+  desc: Per-campaign recipient-latency reports from a raw campaign CSV.
+  contents:
+  - latency_run
+  - latency_report
+  - latency_build_config
+  - latency_validate_config
+  - latency_config_hash
+  - latency_discover_questions
+  - latency_input_columns
+- title: Raw data access
+  desc: >
+    Read campaign results from GCS or a local CSV, and trigger fresh exports via
+    the API.
+  contents:
+  - s160_gcs_init
+  - s160_gcs_campaign_results_list
+  - s160_gcs_campaign_results_read
+  - s160_gcs_campaign_results_files
+  - s160_gcs_campaign_results_status
+  - s160_gcs_pull_csv
+  - s160_read_csv
+  - s160_csv_header
+  - s160_api_auth
+  - s160_api_campaign_results
+  - s160_api_campaign_get
+
+articles:
+- title: Guides
+  navbar: ~
+  contents:
+  - disposition
+  - latency

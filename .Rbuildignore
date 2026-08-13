@@ -7,3 +7,6 @@
 ^\.claude$
 ^Makefile$
 ^scripts$
+^_pkgdown\.yml$
+^docs$
+^pkgdown$
