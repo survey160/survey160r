@@ -72,36 +72,57 @@ validate_campaign_id <- function(campaign_id) {
   campaign_id
 }
 
+# Resolve the authoritative expected byte size for a GCS object from its
+# metadata, for download_with_verify()'s post-download size check. Returns the
+# byte count, or NULL when the size can't be used for verification -- emitting a
+# message (never a silent skip) in the NULL cases. NULL when:
+#   - metadata can't be fetched (permissions / transient error / object absent);
+#   - the object carries a Content-Encoding (e.g. gzip): GCS applies
+#     decompressive transcoding on download, so the saved file is the
+#     DECOMPRESSED size while `meta$size` is the COMPRESSED byte count -- the two
+#     never match, so a byte check would always fail;
+#   - `meta$size` is not a usable number. gcs_list_objects() formats `size` as a
+#     human string ("483.3 Kb"), which as.numeric() turns to NA; gcs_get_object(
+#     meta = TRUE) returns the raw byte count, but this guards the string case
+#     defensively.
+.expected_download_size <- function(object_name, bucket) {
+  meta <- tryCatch({
+    if (is.null(bucket)) {
+      gcs_get_object(object_name, meta = TRUE)
+    } else {
+      gcs_get_object(object_name, bucket = bucket, meta = TRUE)
+    }
+  }, error = function(e) NULL)
+
+  enc <- if (is.null(meta)) NULL else meta$contentEncoding
+  encoded <- !is.null(enc) && length(enc) == 1L && !is.na(enc) &&
+    nzchar(as.character(enc))
+  size <- if (is.null(meta) || encoded) {
+    NULL
+  } else {
+    coerced <- suppressWarnings(as.numeric(meta$size))
+    if (length(coerced) == 1L && !is.na(coerced)) coerced else NULL
+  }
+
+  if (is.null(size)) {
+    reason <- if (encoded) {
+      "stored with a Content-Encoding; the download is decompressed"
+    } else {
+      "object size unavailable"
+    }
+    message(sprintf(
+      "Skipping size verification for '%s' (%s).", object_name, reason
+    ))
+  }
+  size
+}
+
 # Download a GCS object to disk with size verification and retry.
 # Compares the local file size against GCS object metadata after download.
 # Retries up to max_retries times on size mismatch with exponential backoff.
 download_with_verify <- function(object_name, local_path, max_retries = 2L,
                                  bucket = NULL) {
-  # Authoritative byte size from the object's GCS metadata. gcs_list_objects()
-  # formats `size` as a human-readable string ("483.3 Kb") at every `detail`
-  # level (parse_lo() runs format_object_size() unconditionally), so it can
-  # never be compared to a byte count -- the old listing-based check was inert
-  # and accepted truncated-but-HTTP-200 downloads silently. gcs_get_object(meta
-  # = TRUE) returns the raw object metadata, whose `size` is the exact byte
-  # count. If metadata can't be fetched (permissions / transient error / object
-  # absent) we skip verification rather than fail an otherwise-good download --
-  # but with a message, so the skip is never silent.
-  expected_size <- tryCatch({
-    meta <- if (is.null(bucket)) {
-      gcs_get_object(object_name, meta = TRUE)
-    } else {
-      gcs_get_object(object_name, bucket = bucket, meta = TRUE)
-    }
-    coerced <- suppressWarnings(as.numeric(meta$size))
-    if (length(coerced) == 1L && !is.na(coerced)) coerced else NULL
-  }, error = function(e) NULL)
-
-  if (is.null(expected_size)) {
-    message(sprintf(
-      "Skipping size verification for '%s' (object size unavailable).",
-      object_name
-    ))
-  }
+  expected_size <- .expected_download_size(object_name, bucket)
 
   attempt <- 0L
   repeat {

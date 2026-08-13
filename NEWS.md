@@ -79,6 +79,16 @@
 
 ## Bug fixes
 
+* **`download_with_verify()` no longer fails on `Content-Encoding: gzip`
+  objects.** GCS applies decompressive transcoding on download, so the saved
+  file is the *decompressed* size while the object metadata's `size` is the
+  *compressed* byte count -- the byte-for-byte size check therefore always
+  failed (after retries) for a gzip-stored object. Campaign export CSVs
+  (`campaign_results/<id>/..._raw_data_download.csv`) are stored gzip-encoded,
+  so a fleet run downloading them errored on every campaign. The size check is
+  now skipped (with a message) when the object carries a `Content-Encoding`;
+  unencoded truncation is still caught, and any HTTP failure still errors.
+
 * **The export poll no longer masks a GCS listing failure as "still running".**
   `s160_api_campaign_results()` polls GCS for the export to appear; the poll
   helper previously swallowed *every* `gcs_list_objects()` error to `NULL`,
