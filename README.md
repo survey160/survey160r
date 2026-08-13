@@ -22,91 +22,50 @@ install.packages("pak")  # if not already installed
 pak::pkg_install("survey160/survey160r")
 ```
 
-## Usage
+## Raw data access
+
+Two ways in, both returning a campaign's results as a data frame. Authenticate once with `s160_gcs_init()` (see [First-time setup](#first-time-setup)); the API path additionally needs `s160_api_auth()`.
+
+### Read the last export from GCS
 
 ```r
 library(survey160r)
+s160_gcs_init(bucket = "campaign_results")   # browser sign-in on first run, then cached
 
-# Authenticate and set bucket (opens browser on first run)
-s160_gcs_init(bucket = "campaign_results")
-
-# List available campaigns
-campaigns <- s160_gcs_campaign_results_list()
+campaigns   <- s160_gcs_campaign_results_list()             # available campaign ids
 campaign_id <- campaigns[1]
+df          <- s160_gcs_campaign_results_read(campaign_id)  # results -> data frame
+files       <- s160_gcs_campaign_results_files(campaign_id) # files in the campaign folder
 
-# Read a campaign's results into a data frame
-df <- s160_gcs_campaign_results_read(campaign_id)
-
-# List files in a campaign folder
-files <- s160_gcs_campaign_results_files(campaign_id)
+# Last export time / size, without downloading:
+status <- s160_gcs_campaign_results_status(campaign_id)
+status$updated
+status$size
 ```
 
-## API usage
+### Trigger a fresh export via the API
 
-The API functions let you trigger a fresh campaign results export and
-download the data in one step. This is useful when you need the latest
-data rather than whatever was last exported to GCS.
-
-Requires both GCS auth (`s160_gcs_init`) and API auth (`s160_api_auth`).
-`s160_api_auth(env)` authenticates to a named environment -- `"prod"`
-(default) or `"staging"` -- and returns a *connection*. Addressing by
-name resolves the API URL, the campaign-results bucket, and the API key
-together, so they can't be mismatched. On first run it prompts for any
-missing credentials and saves them to `~/.Renviron`.
+When you need data newer than the last GCS export, the API triggers a fresh export, polls until it's ready, and downloads it in one step. `s160_api_auth(env)` authenticates to `"prod"` (default) or `"staging"` and returns a *connection* that pairs the API URL, bucket, and key so they can't be mismatched; on first run it prompts for any missing credentials and saves them to `~/.Renviron`.
 
 ```r
-library(survey160r)
+s160_api_auth()                                  # defaults to prod; prompts on first run
+df <- s160_api_campaign_results(campaign_id)     # fresh export -> data frame
 
-# 1. Authenticate to GCS once -- one Google sign-in reads every bucket
-s160_gcs_init(bucket = "campaign_results")
-
-# 2. Authenticate to the Survey160 API (defaults to prod; prompts on first run)
-s160_api_auth()
-
-# 3. Export and download -- triggers a fresh export, polls until ready,
-#    and returns the results as a data frame
-df <- s160_api_campaign_results(campaign_id)
-
-# Exclude open/uncontacted conversations
-df <- s160_api_campaign_results(campaign_id, filter_open = TRUE)
-
-# Increase timeout for large campaigns (default 300s)
-df <- s160_api_campaign_results(campaign_id, timeout = 600)
-
-# Save the CSV locally instead of using a temp file
-df <- s160_api_campaign_results(campaign_id, destdir = ".")
+df <- s160_api_campaign_results(campaign_id, filter_open = TRUE)  # drop open/uncontacted
+df <- s160_api_campaign_results(campaign_id, timeout = 600)       # large campaigns (default 300s)
+df <- s160_api_campaign_results(campaign_id, destdir = ".")       # keep the CSV, not a temp file
 ```
 
-### Comparing production and staging
-
-`s160_api_auth(env)` returns a connection you can capture and pass as
-`conn =`, so prod and staging stay live in the same session -- e.g. to
-A/B compare the same campaign. Each connection carries its own paired
-bucket, so the export trigger, poll, and read all target the right
-environment.
+Capture the connection to keep prod and staging live in one session -- e.g. to A/B compare the same campaign; each carries its own paired bucket:
 
 ```r
-s160_gcs_init(bucket = "campaign_results")   # one GCS auth covers all buckets
-
 prod <- s160_api_auth("prod")
 stg  <- s160_api_auth("staging")
-
 df_prod <- s160_api_campaign_results(campaign_id, conn = prod)
 df_stg  <- s160_api_campaign_results(campaign_id, conn = stg)
 ```
 
-A conn-less call uses the most recent `s160_api_auth()`, so
-single-environment use needs no `conn =`.
-
-### Check export status
-
-You can check the last export timestamp without triggering a new export:
-
-```r
-status <- s160_gcs_campaign_results_status(campaign_id)
-status$updated  # last export time
-status$size     # file size
-```
+A conn-less call uses the most recent `s160_api_auth()`.
 
 ## Latency analysis
 
@@ -161,17 +120,23 @@ result$meta             # algorithm_version, schema_version, config_hash, run_at
 
 ### Result shape
 
-`result$consolidated` (the data frame this package returns) is also the column shape of the Parquet a consumer project writes. Each row stands on its own without sidecar manifests:
+`result$consolidated` (the data frame this package returns) is also the column shape of the Parquet a consumer project writes -- one row per `(campaign_id, date, hour_local, segment, threshold_min)`, each standing on its own without sidecar manifests:
 
-| Column | Purpose |
+| Column(s) | Purpose |
 |---|---|
 | `campaign_id`, `project_id` | Wave identity |
-| `date`, `hour_local` | Bucket grain (hour_local NA for day buckets) |
+| `survey_mode` | `sms` / `t2w` / `t2w_external` |
+| `date`, `hour_local` | Bucket grain (`hour_local` is `NA` for the day rollup) |
 | `segment`, `segment_index` | Pair of consecutive flow questions, e.g. `intro->q1` |
 | `threshold_min` | Universal fleet threshold (1, 3, 5, or 10 min) |
 | `n`, `pct_le` | Per-segment in-window dispatch metrics |
 | `n_respondents`, `pct_resp_hit_gt`, `pct_resp_worst_gt` | Respondent-cascade metrics |
+| `mean_delta_min`, `p50_delta_min`, `p90_delta_min`, `p95_delta_min` | Per-segment latency distribution (minutes) |
+| `n_na_parse`, `n_na_missing`, `n_na_chain` | Segments with no computable latency, by reason |
+| `n_texted`, `n_engaged`, `n_consented`, `n_completed`, `n_ineligible` | Campaign volume for the `(campaign, date, hour)` bucket -- texted (sent to), engaged (replied), consented, completed, screened out -- repeated across that bucket's segment/threshold rows |
 | `algorithm_version`, `config_hash`, `source_csv_hash`, `run_at_utc`, `run_by` | Provenance |
+
+`result$meta` carries the run-level `algorithm_version`, `schema_version`, `config_hash`, `run_at_utc`, `source_csv_hash`, and `source_csv_path`.
 
 ### Config
 
@@ -217,6 +182,23 @@ cleaned <- disposition_screen(my_sample, dataset, phone_col = "phone")
 kept <- subset(cleaned, !(ever_complete %in% TRUE | ever_terminated %in% TRUE))
 write.csv(kept, "sample_screened.csv", row.names = FALSE)
 ```
+
+For example, screening a small list that carries its own strata columns (output illustrative):
+
+```r
+my_sample <- data.frame(
+  phone  = c("2015550101", "2015550102", "9999999999"),
+  region = c("NE", "NE", "SW"),
+  quota  = c("A", "A", "B")
+)
+disposition_screen(my_sample, dataset)
+#>        phone region quota ever_contacted n_campaigns ever_engaged ever_opted_in ever_complete ever_terminated latest_disposition campaigns
+#> 1 2015550101     NE     A           TRUE           2         TRUE          TRUE          TRUE           FALSE           complete 2339,2354
+#> 2 2015550102     NE     A           TRUE           1         TRUE         FALSE         FALSE            TRUE         terminated      2339
+#> 3 9999999999     SW     B          FALSE           0        FALSE         FALSE         FALSE           FALSE    never_contacted      <NA>
+```
+
+Your `region` / `quota` columns come back untouched and the screening columns are appended 1:1, so the same `!ever_complete & !ever_terminated` filter keeps only the never-contacted number here -- the already-completed and refused rows drop out before you field.
 
 ### Columns `disposition_screen()` appends
 
