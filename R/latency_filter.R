@@ -2,11 +2,11 @@
 # Each is a pure function: data in, data (or indices) out.
 
 # Evaluate a population-filter expression against the data. The expression is
-# whatever string the analyst placed in `filters.population` (e.g.
+# whatever string the config author placed in `filters.population` (e.g.
 # 'id.intro.finalText == "Yes"'). Evaluated in a `baseenv()`-parented env so
 # only base R functions and columns of `data` are accessible.
 #
-# Trust model: configs are authored by analysts with commit access and
+# Trust model: configs come from authors with commit access and
 # go through the standard PR review process; the strings we eval here are
 # treated as trusted input, the same way an R script committed to the
 # legacy latency-scripts repo would be. Do NOT extend this to accept

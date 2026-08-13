@@ -5,7 +5,7 @@
 # The client ID is bundled in inst/oauth-client.json (public, not a secret).
 # The client secret is read from S160_GCS_CLIENT_SECRET in ~/.Renviron.
 # On first run, s160_gcs_init() prompts for the secret and saves it to
-# ~/.Renviron so analysts only need to paste it once.
+# ~/.Renviron so the user only needs to paste it once.
 #
 # Tokens are cached between sessions so the browser prompt only appears on
 # first use or when the token expires.

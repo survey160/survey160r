@@ -1,8 +1,8 @@
 # Disposition readers -- the R-only consumers of the disposition dataset.
 #
 # The disposition dataset is one row per (phone, campaign_id), contacted-only,
-# produced upstream (per-campaign Parquet + a phone-sorted read projection). A
-# Survey Manager screens a fresh sample against it -- "which of these numbers
+# produced upstream (per-campaign Parquet + a phone-sorted read projection). The
+# caller screens a fresh sample against it -- "which of these numbers
 # have been contacted / completed / refused before?" -- to clean the list. So a
 # summary returns ONE ROW PER PHONE: the number's cross-campaign screening flags +
 # its latest disposition.
@@ -277,8 +277,8 @@ disposition_rollup <- function(data, phones = NULL, campaign_ids = NULL,
 #' Summarize the disposition dataset for a phone list (one row per phone)
 #'
 #' Reads the disposition Parquet projection and returns \strong{one row per
-#' phone} (see \code{\link{disposition_rollup}}) -- the analyst-facing engine
-#' for ad-hoc queries. For cleaning a Survey Manager's sample file in place, use
+#' phone} (see \code{\link{disposition_rollup}}) -- the engine
+#' for ad-hoc queries. For cleaning a sample file in place, use
 #' \code{\link{disposition_screen}}; for the underlying rows \emph{before} the
 #' per-phone rollup (one per \code{(phone, campaign_id)}), use
 #' \code{\link{disposition_records}}.
@@ -394,11 +394,11 @@ disposition_records <- function(dataset, phones = NULL, campaign_ids = NULL,
 
 #' Screen a sample against the disposition dataset (annotate in place)
 #'
-#' The Survey Manager surface: takes a sample data frame (a phone column plus
+#' Takes a sample data frame (a phone column plus
 #' whatever else -- strata, quota cells, ...) and returns it \strong{unchanged
 #' with the disposition summary columns appended}, 1:1 with the input rows and
-#' preserving the original phone formatting. The Manager then filters and writes
-#' it (e.g. \code{subset(out, !ever_complete & !ever_terminated)}). Mirrors the
+#' preserving the original phone formatting. The caller then filters and writes
+#' it (dropping the numbers already completed or refused). Mirrors the
 #' "append columns to my uploaded list" screening workflow.
 #'
 #' @param sample A data frame with a phone-number column.
