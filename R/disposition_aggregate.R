@@ -14,11 +14,13 @@
 # (summary_aggregate.R) computes before aggregating to (date, hour). NOTE:
 # `started`/`engaged`/`opt_in` key on the OPENING question's scriptDate/batchDate/
 # finalText -- resolved per campaign by .disposition_opening_question(), NOT a
-# hardcoded "intro" -- so a campaign whose first question is named "FIRSTNET" or
-# "intro_latinos" is not silently dropped (it was: every flag came up 0 and the
-# campaign vanished under contacted_only). build_summary_frame() still hardcodes
-# "intro" (and the older batchDate-based `texted`), so the two differ until that
-# latency view is reconciled.
+# hardcoded "intro" -- so a campaign whose only opening question is named e.g.
+# "FIRSTNET" or "intro_sp" is not silently dropped (it was: every flag came up 0
+# and the campaign vanished under contacted_only). A MIXED campaign that also has
+# an intro question is still measured on intro (see .disposition_opening_question);
+# counting its routed non-intro branch is a follow-up. build_summary_frame() still
+# hardcodes "intro" (and the older batchDate-based `texted`), so the two differ
+# until that latency view is reconciled.
 
 # Parse a timestamp column to POSIXct, tolerating an absent column (returns an
 # all-NA vector of length nrow(data)). Mirrors build_summary_frame()'s
@@ -32,15 +34,26 @@
   }
 }
 
-# The opening question of the flow: the first non-terminal question in column
-# (= flow) order, per latency_discover_questions(). The contacted/engaged/opt-in
-# signals key off THIS question's columns rather than a hardcoded "intro", so a
-# campaign whose opener is named "FIRSTNET" / "intro_latinos" is measured, not
-# dropped. Falls back to "intro" when no id.<q>.scriptDate column is present (a
-# minimal/degenerate export), preserving the historical behaviour. For a normal
-# intro-first campaign this returns "intro", so every mask is byte-identical.
+# The opening question of the flow, used to key the contacted/engaged/opt-in
+# signals instead of a hardcoded "intro" -- so a campaign whose opener is named
+# "FIRSTNET" / "intro_sp" / "intro_latinos" is measured, not dropped.
+#
+# Rule: PREFER "intro" whenever the flow has it, otherwise the first non-terminal
+# question in column (= flow) order (latency_discover_questions()). Preferring
+# intro keeps every campaign that has an intro question -- pure-intro AND a mixed
+# bilingual campaign that routes some recipients to intro and others to intro_sp
+# / intro_latinos via initialconditionals -- BYTE-IDENTICAL to before; only a
+# campaign with NO intro question at all switches to the discovered opener. This
+# avoids flipping which branch a mixed campaign counts based on column order.
+#
+# KNOWN LIMITATION: for a mixed campaign this still counts only the intro branch
+# and drops recipients routed to the non-intro opener. Counting every routed
+# branch needs a per-recipient opener set (started = any opening send), a
+# separate follow-up. Falls back to "intro" when no id.<q>.scriptDate column is
+# present (a minimal/degenerate export).
 .disposition_opening_question <- function(data) {
   qs <- latency_discover_questions(data)
+  if ("intro" %in% qs) return("intro")
   if (length(qs) == 0L) "intro" else qs[[1L]]
 }
 

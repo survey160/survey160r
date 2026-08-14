@@ -482,6 +482,22 @@ test_that("intro_latinos opener is detected (opener name varies)", {
   expect_equal(res$opt_in,  c(1L, 0L))
 })
 
+test_that("a mixed campaign that also has intro is measured on intro (unchanged)", {
+  # Bilingual routing: r1 got the English intro, r2 the Spanish intro_sp. Because
+  # the flow HAS an intro question, the opener resolves to "intro" -- byte-
+  # identical to the pre-fix behaviour (r2, on intro_sp only, is still not
+  # counted). Correctly counting the routed non-intro branch is a follow-up.
+  d <- disp_frame(
+    phone = c("+15559301", "+15559302"),
+    id.intro.scriptDate    = c(TS, ""),
+    id.intro.finalText     = c("Yes", "Yes"),
+    id.intro_sp.scriptDate = c("", TS)
+  )
+  res <- disposition_run(1234, d, contacted_only = FALSE)$consolidated
+  expect_equal(res$started, c(1L, 0L))     # intro preferred; intro_sp branch dropped
+  expect_equal(res$opt_in,  c(1L, 0L))
+})
+
 test_that("disposition_input_columns discovers a non-intro opener from `available`", {
   header <- c("phone", "id.FIRSTNET.scriptDate", "id.FIRSTNET.batchDate",
               "id.FIRSTNET.finalText", "id.close.scriptDate", "userid")

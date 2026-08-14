@@ -99,18 +99,23 @@
 
 * **`disposition_run()` no longer drops campaigns whose opening question is not
   named `intro`.** `started` / `engaged` / `opt_in` keyed on hardcoded
-  `id.intro.*` columns, so a campaign whose first question is named otherwise
-  (e.g. `FIRSTNET`, `intro_latinos`) produced all-zero flags and vanished under
-  the `contacted_only` default despite real sends (verified in prod: an
-  873-send and a 39,849-send campaign each emitted zero rows). The opening
-  question is now resolved per campaign from the column/flow order
-  (`latency_discover_questions()[1]`), and all three signals key off it;
+  `id.intro.*` columns, so a campaign whose sole opening question is named
+  otherwise (e.g. `FIRSTNET`, `intro_sp`) produced all-zero flags and vanished
+  under the `contacted_only` default despite real sends (verified in prod: an
+  873-send `FIRSTNET` campaign emitted zero rows; 47 such single-opener
+  campaigns exist). The opening question is now resolved per campaign -- `intro`
+  when the flow has it, otherwise the first question in column/flow order
+  (`latency_discover_questions()`) -- and all three signals key off it;
   `disposition_input_columns()` retains the opener's columns (leading with them
   so a projection cannot shadow the opener with a later question). Behaviour is
-  byte-identical for a normal `intro`-first campaign. Regenerate any persisted
-  disposition data to pick up the previously-dropped campaigns. The latency
-  view (`build_summary_frame()`) still hardcodes `intro`; that is tracked
-  separately.
+  byte-identical for any campaign that has an `intro` question (pure-`intro` and
+  mixed bilingual campaigns alike); only a campaign with *no* `intro` question
+  changes. Regenerate persisted disposition data to pick up the
+  previously-dropped campaigns. KNOWN LIMITATION: a mixed campaign that routes
+  some recipients to a non-`intro` opener (bilingual `intro` + `intro_sp` /
+  `intro_latinos`) is still measured on `intro` only; counting the routed branch
+  needs a per-recipient opener set (tracked separately, as is the latency
+  `build_summary_frame()` view, which still hardcodes `intro`).
 
 * **`download_with_verify()` no longer fails on `Content-Encoding: gzip`
   objects.** GCS applies decompressive transcoding on download, so the saved
