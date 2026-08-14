@@ -48,6 +48,8 @@ Everything else -- reading GCS, pulling the disposition dataset, the API -- need
 
 Two ways in, both returning a campaign's results as a data frame. Authenticate once with `s160_gcs_init()` (see [First-time setup](#first-time-setup)); the API path additionally needs `s160_api_auth()`.
 
+The `s160_gcs_campaign_results_*` functions below are the general-purpose readers (with `destdir` / `filename` control). To feed a [latency report](vignettes/latency.Rmd), read with `s160_gcs_pull_csv()` (or `s160_read_csv()` for a local file) instead -- those stamp the `source_csv_hash` / `source_csv_path` provenance that `latency_run()` records.
+
 ### Read the last export from GCS
 
 ```r
