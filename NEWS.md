@@ -8,7 +8,10 @@
   `x`: a Parquet path is read and then summarized; a data frame (e.g. from
   `disposition_records()`) is summarized directly with no I/O -- the
   read-once/summarize-many pattern. Migration: `disposition_rollup(df)` ->
-  `disposition_summary(df)`; `disposition_summary(path)` is unchanged.
+  `disposition_summary(df)`. Positional `disposition_summary(path)` is
+  unchanged, but the first argument was renamed `dataset` -> `x`, so a named
+  call `disposition_summary(dataset = path)` must become
+  `disposition_summary(path)`.
 
 * **`required_latency_columns()` renamed to `latency_input_columns()` and
   `required_disposition_columns()` renamed to `disposition_input_columns()`** --

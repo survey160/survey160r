@@ -192,8 +192,7 @@
 # there is no is.data.frame() guard here.
 .disposition_rollup <- function(data, phones = NULL, campaign_ids = NULL,
                                 statuses = NULL, date_from = NULL, date_to = NULL,
-                                page = NULL, page_size = NULL,
-                                fn = "disposition_summary") {
+                                page = NULL, page_size = NULL, fn) {
   missing_cols <- setdiff(.DISPOSITION_READ_COLS, names(data))
   if (length(missing_cols) > 0L) {
     stop_s160(sprintf("input is missing required column(s): %s",
