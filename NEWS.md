@@ -2,6 +2,14 @@
 
 ## Breaking changes
 
+* **`disposition_rollup()` removed; `disposition_summary()` now takes a path
+  *or* an in-memory data frame.** The two functions did the same per-phone
+  rollup, split only by input type. `disposition_summary(x)` now dispatches on
+  `x`: a Parquet path is read and then summarized; a data frame (e.g. from
+  `disposition_records()`) is summarized directly with no I/O -- the
+  read-once/summarize-many pattern. Migration: `disposition_rollup(df)` ->
+  `disposition_summary(df)`; `disposition_summary(path)` is unchanged.
+
 * **`required_latency_columns()` renamed to `latency_input_columns()` and
   `required_disposition_columns()` renamed to `disposition_input_columns()`** --
   the domain now leads the name (grouping with `latency_*` / `disposition_*`, and

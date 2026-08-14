@@ -7,16 +7,16 @@
 # summary returns ONE ROW PER PHONE: the number's cross-campaign screening flags +
 # its latest disposition.
 #
-# Split into a pure core plus thin IO readers. The readers stay bare and in
-# the disposition family (not s160_-prefixed): their IO is confined to the
-# private .disposition_read_parquet, and grouping the feature beats tagging IO.
-#   disposition_rollup(data, ...)      PURE  -- roll an in-memory frame up
-#   disposition_summary(dataset, ...)     IO    -- read the Parquet, summarize (per phone)
-#   disposition_records(dataset, ...)   IO    -- read the Parquet, raw per-(phone, campaign) rows
-#   disposition_screen(sample, ...)     IO    -- annotate a caller's sample
-#   disposition_pull(env, ...)          IO    -- fetch the projection Parquet from GCS
-# The Parquet read uses nanoparquet (tiny, zero-dependency); the projection is a
-# single consolidated file, so a full read + in-R filter is sub-second.
+# The readers stay bare and in the disposition family (not s160_-prefixed): their
+# IO is confined to the private .disposition_read_parquet, and grouping the
+# feature beats tagging IO.
+#   disposition_summary(x, ...)         summarize per phone; x = a Parquet path OR an in-memory frame
+#   disposition_records(dataset, ...)   read the Parquet, raw per-(phone, campaign) rows
+#   disposition_screen(sample, ...)     annotate a caller's sample in place
+#   disposition_pull(env, ...)          fetch the projection Parquet from GCS
+# The pure per-phone rollup core is the private .disposition_rollup(); the Parquet
+# read uses nanoparquet (tiny, zero-dependency) and, since the projection is one
+# consolidated file, a full read + in-R filter is sub-second.
 
 # Columns the summary reads (the Parquet read is projected to just these).
 .DISPOSITION_READ_COLS <- c("phone", "campaign_id", "engaged", "opt_in", "complete",
@@ -185,71 +185,27 @@
   as.data.frame(nanoparquet::read_parquet(dataset, col_select = columns))
 }
 
-#' Roll disposition rows up to one row per phone
-#'
-#' The pure rollup core: takes an in-memory disposition frame
-#' (one row per \code{(phone, campaign_id)}) and returns \strong{one row per
-#' phone} with its cross-campaign screening flags and latest disposition. No
-#' I/O -- \code{\link{disposition_summary}} reads a Parquet file and calls
-#' this. Use it directly to read a projection once and screen several samples
-#' against the in-memory frame.
-#'
-#' @param data A data frame with columns \code{phone}, \code{campaign_id},
-#'   \code{engaged}, \code{opt_in}, \code{complete}, \code{web_complete},
-#'   \code{terminated}, \code{date_closed_on}.
-#' @param phones Optional character vector of phone numbers to screen. When
-#'   supplied, \strong{every} input number is returned -- never-contacted ones
-#'   with \code{ever_contacted = FALSE} and
-#'   \code{latest_disposition = "never_contacted"}. \code{NULL} summarizes every
-#'   phone in \code{data}. Matched digit-normalized (a leading US \code{1} is
-#'   dropped so 11-digit numbers match 10-digit ones).
-#' @param campaign_ids Optional vector; restrict the underlying rows to these
-#'   campaigns before summarizing.
-#' @param statuses Optional subset of the derived disposition categories
-#'   (\code{never_contacted}, \code{non_response}, \code{engaged},
-#'   \code{opt_in}, \code{terminated}, \code{complete}, \code{web_complete});
-#'   keep only phones whose \code{latest_disposition} is one of them.
-#' @param date_from,date_to Optional \code{Date}/date-string bounds on
-#'   \code{date_closed_on}. In the beta \code{date_closed_on} is \code{NA}, so a
-#'   date bound drops rows with an unknown close date.
-#' @param page,page_size Optional 1-based pagination over the per-phone result.
-#' @return A data frame, one row per phone: \code{phone}, \code{ever_contacted},
-#'   \code{n_campaigns}, \code{ever_engaged}, \code{ever_opted_in},
-#'   \code{ever_complete}, \code{ever_terminated}, \code{latest_disposition},
-#'   \code{campaigns} (comma-separated campaign ids).
-#' @seealso \code{\link{disposition_summary}},
-#'   \code{\link{disposition_screen}}
-#' @examples
-#' records <- data.frame(
-#'   phone = c("5551234567", "5551234567", "5559876543"),
-#'   campaign_id = c(101L, 102L, 101L),
-#'   engaged = c(1L, 1L, 0L),
-#'   opt_in = c(1L, 0L, 0L),
-#'   complete = c(1L, 0L, 0L),
-#'   web_complete = c(0L, 0L, 0L),
-#'   terminated = c(0L, 1L, 0L),
-#'   date_closed_on = as.Date(c("2026-01-10", "2026-01-20", "2026-01-15")),
-#'   stringsAsFactors = FALSE
-#' )
-#' disposition_rollup(records)
-#' disposition_rollup(records, phones = c("5551234567", "5550000000"))
-#' @export
-disposition_rollup <- function(data, phones = NULL, campaign_ids = NULL,
-                                statuses = NULL, date_from = NULL,
-                                date_to = NULL, page = NULL, page_size = NULL) {
-  check_data_frame(data, "data", fn = "disposition_rollup")
+# Pure per-phone rollup core, shared by disposition_summary() (public; path or
+# frame) and disposition_screen(). Takes an in-memory disposition frame (one row
+# per (phone, campaign_id)) and returns one row per phone. `fn` names the public
+# caller so a validation error points at it. Callers always pass a data frame, so
+# there is no is.data.frame() guard here.
+.disposition_rollup <- function(data, phones = NULL, campaign_ids = NULL,
+                                statuses = NULL, date_from = NULL, date_to = NULL,
+                                page = NULL, page_size = NULL,
+                                fn = "disposition_summary") {
   missing_cols <- setdiff(.DISPOSITION_READ_COLS, names(data))
   if (length(missing_cols) > 0L) {
-    stop_s160(sprintf("`data` is missing column(s): %s",
+    stop_s160(sprintf("input is missing required column(s): %s",
                       paste(missing_cols, collapse = ", ")),
-              fn = "disposition_rollup")
+              fn = fn)
   }
   if (!is.null(statuses)) {
     bad <- setdiff(as.character(statuses), .DISPOSITION_CATEGORIES)
     if (length(bad) > 0L) {
       stop_s160(sprintf("unknown status(es): %s",
                         paste(bad, collapse = ", ")),
-                fn = "disposition_rollup")
+                fn = fn)
     }
   }
   date_from <- .disposition_date_bound(date_from, "date_from")
@@ -276,37 +232,80 @@ disposition_rollup <- function(data, phones = NULL, campaign_ids = NULL,
 
 #' Summarize the disposition dataset for a phone list (one row per phone)
 #'
-#' Reads the disposition Parquet projection and returns \strong{one row per
-#' phone} (see \code{\link{disposition_rollup}}) -- the engine
-#' for ad-hoc queries. For cleaning a sample file in place, use
-#' \code{\link{disposition_screen}}; for the underlying rows \emph{before} the
-#' per-phone rollup (one per \code{(phone, campaign_id)}), use
-#' \code{\link{disposition_records}}.
+#' Rolls the disposition data up to \strong{one row per phone} -- each number's
+#' cross-campaign screening flags and latest disposition. Pass either the
+#' projection \strong{path} (read it, then summarize) or an \strong{in-memory
+#' frame} already read with \code{\link{disposition_records}} (summarize it
+#' directly, no I/O), which lets you read once and summarize several phone
+#' lists. For cleaning a sample file in place, use
+#' \code{\link{disposition_screen}}; for the raw rows behind the rollup (one per
+#' \code{(phone, campaign_id)}), use \code{\link{disposition_records}}.
 #'
-#' @param dataset Path to a disposition Parquet file (the phone-sorted read
-#'   projection). Read with \pkg{nanoparquet}, projected to the summary columns.
-#' @param phones Optional character vector of phone numbers to screen; every
-#'   input number is returned (never-contacted ones flagged
-#'   \code{ever_contacted = FALSE}). \code{NULL} summarizes every phone in
-#'   \code{dataset}. See \code{\link{disposition_rollup}} for details.
-#' @inheritParams disposition_rollup
-#' @return A per-phone summary data frame (see \code{\link{disposition_rollup}}).
-#' @seealso \code{\link{disposition_rollup}}, \code{\link{disposition_screen}},
-#'   \code{\link{disposition_records}}
+#' @param x Either a path to a disposition Parquet file (the phone-sorted read
+#'   projection, e.g. from \code{\link{disposition_pull}}) or an in-memory
+#'   disposition data frame (from \code{\link{disposition_records}}). A path is
+#'   read with \pkg{nanoparquet}, projected to the summary columns; a frame must
+#'   carry \code{phone}, \code{campaign_id}, \code{engaged}, \code{opt_in},
+#'   \code{complete}, \code{web_complete}, \code{terminated}, and
+#'   \code{date_closed_on}.
+#' @param phones Optional character vector of phone numbers to screen. When
+#'   supplied, \strong{every} input number is returned -- never-contacted ones
+#'   with \code{ever_contacted = FALSE} and
+#'   \code{latest_disposition = "never_contacted"}. \code{NULL} (default)
+#'   summarizes every phone present. Matched digit-normalized (a leading US
+#'   \code{1} is dropped so 11-digit numbers match 10-digit ones).
+#' @param campaign_ids Optional vector; restrict the underlying rows to these
+#'   campaigns before summarizing.
+#' @param statuses Optional subset of the derived disposition categories
+#'   (\code{never_contacted}, \code{non_response}, \code{engaged},
+#'   \code{opt_in}, \code{terminated}, \code{complete}, \code{web_complete});
+#'   keep only phones whose \code{latest_disposition} is one of them.
+#' @param date_from,date_to Optional \code{Date}/date-string bounds on
+#'   \code{date_closed_on}. In the beta \code{date_closed_on} is \code{NA}, so a
+#'   date bound drops rows with an unknown close date.
+#' @param page,page_size Optional 1-based pagination over the per-phone result.
+#' @return A data frame, one row per phone: \code{phone}, \code{ever_contacted},
+#'   \code{n_campaigns}, \code{ever_engaged}, \code{ever_opted_in},
+#'   \code{ever_complete}, \code{ever_terminated}, \code{latest_disposition},
+#'   \code{campaigns} (comma-separated campaign ids).
+#' @seealso \code{\link{disposition_screen}}, \code{\link{disposition_records}},
+#'   \code{\link{disposition_pull}}
 #' @examples
+#' # On an in-memory frame (no I/O), so this runs:
+#' records <- data.frame(
+#'   phone = c("5551234567", "5551234567", "5559876543"),
+#'   campaign_id = c(101L, 102L, 101L),
+#'   engaged = c(1L, 1L, 0L),
+#'   opt_in = c(1L, 0L, 0L),
+#'   complete = c(1L, 0L, 0L),
+#'   web_complete = c(0L, 0L, 0L),
+#'   terminated = c(0L, 1L, 0L),
+#'   date_closed_on = as.Date(c("2026-01-10", "2026-01-20", "2026-01-15")),
+#'   stringsAsFactors = FALSE
+#' )
+#' disposition_summary(records, phones = c("5551234567", "5550000000"))
 #' \dontrun{
+#' # Or straight from the projection on disk:
 #' dataset <- disposition_pull()
 #' disposition_summary(dataset, phones = my_sample$phone)
 #' }
 #' @export
-disposition_summary <- function(dataset, phones = NULL, campaign_ids = NULL,
-                                   statuses = NULL, date_from = NULL,
-                                   date_to = NULL, page = NULL,
-                                   page_size = NULL) {
-  disposition_rollup(.disposition_read_parquet(dataset), phones = phones,
-                      campaign_ids = campaign_ids, statuses = statuses,
-                      date_from = date_from, date_to = date_to,
-                      page = page, page_size = page_size)
+disposition_summary <- function(x, phones = NULL, campaign_ids = NULL,
+                                statuses = NULL, date_from = NULL,
+                                date_to = NULL, page = NULL, page_size = NULL) {
+  data <- if (is.data.frame(x)) {
+    x
+  } else if (is.character(x) && length(x) == 1L && nzchar(x)) {
+    .disposition_read_parquet(x)
+  } else {
+    stop_s160(paste("`x` must be a disposition Parquet path (a single string)",
+                    "or an in-memory disposition data frame."),
+              fn = "disposition_summary")
+  }
+  .disposition_rollup(data, phones = phones, campaign_ids = campaign_ids,
+                      statuses = statuses, date_from = date_from,
+                      date_to = date_to, page = page, page_size = page_size,
+                      fn = "disposition_summary")
 }
 
 #' Read the raw disposition records (one row per phone + campaign)
@@ -331,7 +330,7 @@ disposition_summary <- function(dataset, phones = NULL, campaign_ids = NULL,
 #' \code{phone} is digit-normalized for matching, and a stored row whose phone is
 #' blank or unparseable is dropped.
 #'
-#' Two differences from \code{\link{disposition_rollup}} follow from the raw
+#' Two differences from the per-phone rollup follow from the raw
 #' grain: a screened phone that was never contacted has \strong{no} row here
 #' (there is no stored record to return, unlike the \code{never_contacted} row
 #' \code{summary} synthesises), and there is no \code{statuses} argument -- that
@@ -354,9 +353,8 @@ disposition_summary <- function(dataset, phones = NULL, campaign_ids = NULL,
 #' @return A data frame, one row per \code{(phone, campaign_id)}, with the
 #'   canonical disposition columns present in the file (see Details), ordered by
 #'   \code{phone} then \code{campaign_id}.
-#' @seealso \code{\link{disposition_summary}} / \code{\link{disposition_rollup}}
-#'   (the per-phone rollup), \code{\link{disposition_screen}},
-#'   \code{\link{disposition_pull}}
+#' @seealso \code{\link{disposition_summary}} (the per-phone rollup),
+#'   \code{\link{disposition_screen}}, \code{\link{disposition_pull}}
 #' @examples
 #' \dontrun{
 #' dataset <- disposition_pull()
@@ -406,7 +404,7 @@ disposition_records <- function(dataset, phones = NULL, campaign_ids = NULL,
 #' @param phone_col Name of the phone column in \code{sample}
 #'   (default \code{"phone"}).
 #' @param campaign_ids,date_from,date_to Optional scoping of the disposition
-#'   rows considered (see \code{\link{disposition_rollup}}). No \code{statuses}
+#'   rows considered (see \code{\link{disposition_summary}}). No \code{statuses}
 #'   or pagination here -- every sample row is returned.
 #' @return \code{sample} with the columns \code{ever_contacted},
 #'   \code{n_campaigns}, \code{ever_engaged}, \code{ever_opted_in},
@@ -418,7 +416,7 @@ disposition_records <- function(dataset, phones = NULL, campaign_ids = NULL,
 #'   \code{ever_*} flags \code{FALSE}, \code{latest_disposition =
 #'   "never_contacted"}, \code{campaigns = NA}); only a phone that
 #'   digit-normalizes to nothing (blank/unparseable) gets an all-\code{NA} block.
-#' @seealso \code{\link{disposition_summary}}, \code{\link{disposition_rollup}}
+#' @seealso \code{\link{disposition_summary}}, \code{\link{disposition_records}}
 #' @examples
 #' \dontrun{
 #' dataset <- disposition_pull()
@@ -444,10 +442,11 @@ disposition_screen <- function(sample, dataset, phone_col = "phone",
                       paste(clash, collapse = ", ")),
               fn = "disposition_screen")
   }
-  summ <- disposition_rollup(.disposition_read_parquet(dataset),
+  summ <- .disposition_rollup(.disposition_read_parquet(dataset),
                               phones = sample[[phone_col]],
                               campaign_ids = campaign_ids,
-                              date_from = date_from, date_to = date_to)
+                              date_from = date_from, date_to = date_to,
+                              fn = "disposition_screen")
   idx <- match(.disposition_normalize_phone(sample[[phone_col]]), summ$phone)
   for (col in disposition_cols) sample[[col]] <- summ[[col]][idx]
   sample

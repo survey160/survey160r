@@ -5,7 +5,7 @@
 \title{Summarize the disposition dataset for a phone list (one row per phone)}
 \usage{
 disposition_summary(
-  dataset,
+  x,
   phones = NULL,
   campaign_ids = NULL,
   statuses = NULL,
@@ -16,13 +16,20 @@ disposition_summary(
 )
 }
 \arguments{
-\item{dataset}{Path to a disposition Parquet file (the phone-sorted read
-projection). Read with \pkg{nanoparquet}, projected to the summary columns.}
+\item{x}{Either a path to a disposition Parquet file (the phone-sorted read
+projection, e.g. from \code{\link{disposition_pull}}) or an in-memory
+disposition data frame (from \code{\link{disposition_records}}). A path is
+read with \pkg{nanoparquet}, projected to the summary columns; a frame must
+carry \code{phone}, \code{campaign_id}, \code{engaged}, \code{opt_in},
+\code{complete}, \code{web_complete}, \code{terminated}, and
+\code{date_closed_on}.}
 
-\item{phones}{Optional character vector of phone numbers to screen; every
-input number is returned (never-contacted ones flagged
-\code{ever_contacted = FALSE}). \code{NULL} summarizes every phone in
-\code{dataset}. See \code{\link{disposition_rollup}} for details.}
+\item{phones}{Optional character vector of phone numbers to screen. When
+supplied, \strong{every} input number is returned -- never-contacted ones
+with \code{ever_contacted = FALSE} and
+\code{latest_disposition = "never_contacted"}. \code{NULL} (default)
+summarizes every phone present. Matched digit-normalized (a leading US
+\code{1} is dropped so 11-digit numbers match 10-digit ones).}
 
 \item{campaign_ids}{Optional vector; restrict the underlying rows to these
 campaigns before summarizing.}
@@ -39,23 +46,42 @@ date bound drops rows with an unknown close date.}
 \item{page, page_size}{Optional 1-based pagination over the per-phone result.}
 }
 \value{
-A per-phone summary data frame (see \code{\link{disposition_rollup}}).
+A data frame, one row per phone: \code{phone}, \code{ever_contacted},
+  \code{n_campaigns}, \code{ever_engaged}, \code{ever_opted_in},
+  \code{ever_complete}, \code{ever_terminated}, \code{latest_disposition},
+  \code{campaigns} (comma-separated campaign ids).
 }
 \description{
-Reads the disposition Parquet projection and returns \strong{one row per
-phone} (see \code{\link{disposition_rollup}}) -- the engine
-for ad-hoc queries. For cleaning a sample file in place, use
-\code{\link{disposition_screen}}; for the underlying rows \emph{before} the
-per-phone rollup (one per \code{(phone, campaign_id)}), use
-\code{\link{disposition_records}}.
+Rolls the disposition data up to \strong{one row per phone} -- each number's
+cross-campaign screening flags and latest disposition. Pass either the
+projection \strong{path} (read it, then summarize) or an \strong{in-memory
+frame} already read with \code{\link{disposition_records}} (summarize it
+directly, no I/O), which lets you read once and summarize several phone
+lists. For cleaning a sample file in place, use
+\code{\link{disposition_screen}}; for the raw rows behind the rollup (one per
+\code{(phone, campaign_id)}), use \code{\link{disposition_records}}.
 }
 \examples{
+# On an in-memory frame (no I/O), so this runs:
+records <- data.frame(
+  phone = c("5551234567", "5551234567", "5559876543"),
+  campaign_id = c(101L, 102L, 101L),
+  engaged = c(1L, 1L, 0L),
+  opt_in = c(1L, 0L, 0L),
+  complete = c(1L, 0L, 0L),
+  web_complete = c(0L, 0L, 0L),
+  terminated = c(0L, 1L, 0L),
+  date_closed_on = as.Date(c("2026-01-10", "2026-01-20", "2026-01-15")),
+  stringsAsFactors = FALSE
+)
+disposition_summary(records, phones = c("5551234567", "5550000000"))
 \dontrun{
+# Or straight from the projection on disk:
 dataset <- disposition_pull()
 disposition_summary(dataset, phones = my_sample$phone)
 }
 }
 \seealso{
-\code{\link{disposition_rollup}}, \code{\link{disposition_screen}},
-  \code{\link{disposition_records}}
+\code{\link{disposition_screen}}, \code{\link{disposition_records}},
+  \code{\link{disposition_pull}}
 }

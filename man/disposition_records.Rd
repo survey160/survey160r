@@ -60,7 +60,7 @@ in R (nanoparquet has no predicate pushdown, like \code{\link{disposition_summar
 \code{phone} is digit-normalized for matching, and a stored row whose phone is
 blank or unparseable is dropped.
 
-Two differences from \code{\link{disposition_rollup}} follow from the raw
+Two differences from the per-phone rollup follow from the raw
 grain: a screened phone that was never contacted has \strong{no} row here
 (there is no stored record to return, unlike the \code{never_contacted} row
 \code{summary} synthesises), and there is no \code{statuses} argument -- that
@@ -74,7 +74,6 @@ disposition_records(dataset, phones = my_sample$phone)
 }
 }
 \seealso{
-\code{\link{disposition_summary}} / \code{\link{disposition_rollup}}
-  (the per-phone rollup), \code{\link{disposition_screen}},
-  \code{\link{disposition_pull}}
+\code{\link{disposition_summary}} (the per-phone rollup),
+  \code{\link{disposition_screen}}, \code{\link{disposition_pull}}
 }

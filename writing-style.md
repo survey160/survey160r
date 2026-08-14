@@ -41,7 +41,7 @@ Every article follows the same skeleton, so knowing one means knowing them all:
 ## Code in articles
 
 - **Terse comments, not narration.** A trailing `# one browser sign-in, cached` beats a sentence.
-- **Runnable vs illustrative.** Chunks needing auth or network are `eval = FALSE` (shown, not run). Prefer a runnable chunk where the inputs allow -- a pure function on a small in-memory frame (e.g. `disposition_rollup()`) -- so at least some shown output is real. Some articles legitimately have none (latency's inputs are a real campaign CSV). Never present fabricated output as if it ran.
+- **Runnable vs illustrative.** Chunks needing auth or network are `eval = FALSE` (shown, not run). Prefer a runnable chunk where the inputs allow -- a pure operation on a small in-memory frame (e.g. `disposition_summary()` on a data frame) -- so at least some shown output is real. Some articles legitimately have none (latency's inputs are a real campaign CSV). Never present fabricated output as if it ran.
 - **NA-safe idioms.** Filter with `!(ever_complete %in% TRUE | ever_terminated %in% TRUE)`, never `!ever_complete & !ever_terminated` -- the latter silently drops all-`NA` blank-phone rows.
 - Canonical example values: campaign id `1234`; fictional phone numbers only (`555` / `999` ranges), never real PII.
 

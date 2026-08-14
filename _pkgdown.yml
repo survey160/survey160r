@@ -39,7 +39,6 @@ reference:
   - disposition_screen
   - disposition_summary
   - disposition_records
-  - disposition_rollup
   - disposition_run
   - disposition_input_columns
 
