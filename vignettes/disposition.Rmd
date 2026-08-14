@@ -8,125 +8,82 @@ vignette: >
 ---
 
 ```{r setup, include = FALSE}
-# The GCS / whole-dataset examples need auth and the ~137 MB projection, so they
-# are shown but not executed at build time. The pure-core example below (rolling
-# an in-memory frame up) does run, so its output is real.
+# Auth/network chunks are shown but not run at build time; the disposition_rollup
+# chunk below runs, so its output is real.
 knitr::opts_chunk$set(collapse = TRUE, comment = "#>", eval = FALSE)
 ```
 
-Screen a phone sample against the **disposition dataset** -- a shared, phone-indexed record of every recipient Survey160 has contacted across closed campaigns (one row per `(phone, campaign_id)`, contacted-only) -- to answer "which of these numbers have we contacted / completed / refused before?" and clean a sample list before you field it.
+Screen a phone sample against the **disposition dataset** -- one row per `(phone, campaign_id)` for every recipient Survey160 has contacted across closed campaigns -- to drop numbers already completed or refused before you field. Assumes you have completed First-time setup (see the package README): GCS access to `s160_disposition_prod`.
 
-> Disposition screening needs a recent survey160r (these functions arrived in 0.24.0). R-universe rebuilds from `main` and can lag a release by up to ~30 minutes; if `disposition_pull()` isn't found after installing, get the latest straight from GitHub with `pak::pkg_install("survey160/survey160r")`.
+## Screen a sample
 
-## Pull once, screen a sample in place
+Pull the dataset once (cached), then annotate your sample in place:
 
 ```{r}
 library(survey160r)
+s160_gcs_init("s160_disposition_prod")   # one browser sign-in, cached
+dataset <- disposition_pull()            # ~140 MB first pull, then cached
 
-# 1. Authenticate to GCS once (browser sign-in on first run; token cached)
-s160_gcs_init(bucket = "s160_disposition_prod")
-
-# 2. Download the shared dataset to a local, cached path
-dataset <- disposition_pull()          # env = "prod" (default) or "dev"
-
-# 3. Annotate your sample in place -- your original rows and columns are kept,
-#    the screening columns are appended 1:1
-cleaned <- disposition_screen(my_sample, dataset, phone_col = "phone")
-
-# 4. Drop the numbers you've already finished with, then write the list out.
-#    Blank/unparseable phones come back all-NA and are KEPT (so they surface
-#    for correction rather than silently vanishing).
+cleaned <- disposition_screen(my_sample, dataset)
 kept <- subset(cleaned, !(ever_complete %in% TRUE | ever_terminated %in% TRUE))
-write.csv(kept, "sample_screened.csv", row.names = FALSE)
 ```
 
-For example, screening a small list that carries its own strata columns (output illustrative):
+`disposition_screen()` returns `my_sample` unchanged with the screening columns appended 1:1 (see [What you get back](#what-you-get-back)). The `%in% TRUE` filter drops completed and refused numbers; blank or unparseable phones screen to all-`NA` and are kept, so they surface for correction rather than vanishing.
+
+## Look up specific numbers
+
+`disposition_summary()` runs the per-phone rollup as a standalone query; `disposition_records()` returns the raw stored rows, one per `(phone, campaign_id)`:
 
 ```{r}
-my_sample <- data.frame(
-  phone  = c("2015550101", "2015550102", "9999999999"),
-  region = c("NE", "NE", "SW"),
-  quota  = c("A", "A", "B")
-)
-disposition_screen(my_sample, dataset)
+disposition_summary(dataset, phones = c("2015550101", "2015550102"))
+disposition_records(dataset, campaign_ids = 2339)
 ```
 
-which returns your sample with the eight screening columns appended (output illustrative):
+Both take `phones` / `campaign_ids` filters. Phones match digit-normalized: a leading US `1` is dropped, so an 11-digit number matches a stored 10-digit one.
 
-```
-       phone region quota ever_contacted n_campaigns ever_engaged ever_opted_in ever_complete ever_terminated latest_disposition campaigns
-1 2015550101     NE     A           TRUE           2         TRUE          TRUE          TRUE           FALSE           complete 2339,2354
-2 2015550102     NE     A           TRUE           1         TRUE         FALSE         FALSE            TRUE         terminated      2339
-3 9999999999     SW     B          FALSE           0        FALSE         FALSE         FALSE           FALSE    never_contacted      <NA>
-```
+## Screen several samples
 
-Your `region` / `quota` columns come back untouched and the screening columns are appended 1:1, so the same `!(ever_complete %in% TRUE | ever_terminated %in% TRUE)` filter keeps only the never-contacted number here -- the already-completed and refused rows drop out before you field (and an all-`NA` blank-phone row would stay, for correction).
-
-## Columns `disposition_screen()` appends
-
-Each is computed across every campaign that contacted the number:
-
-| Column | Meaning |
-|---|---|
-| `ever_contacted` | `TRUE` if the number was ever sent an intro (i.e. present in the dataset). |
-| `n_campaigns` | How many distinct campaigns contacted it. |
-| `ever_engaged` | Ever replied to an intro. |
-| `ever_opted_in` | Ever gave consent (accepted the opt-in question). |
-| `ever_complete` | Ever completed a survey (reached the SMS close, or a web completion). |
-| `ever_terminated` | Ever screened out (ineligible) or refused. |
-| `latest_disposition` | The outcome of the number's most recent campaign (see below). |
-| `campaigns` | Comma-separated campaign ids that contacted the number. |
-
-`latest_disposition` is one value, in funnel order:
-`never_contacted` (not in the dataset) -> `non_response` (contacted, no reply) -> `engaged` (replied) -> `opt_in` (consented) -> `terminated` (screened out / refused) -> `complete` -> `web_complete`.
-
-## The pure core
-
-`disposition_screen()` and `disposition_summary()` are thin readers over a pure rollup, `disposition_rollup()`, which takes an in-memory frame (one row per `(phone, campaign_id)`) and returns one row per phone. It has no I/O, so it runs anywhere -- here on a hand-built frame (this block actually executes when the vignette is built):
+Each reader call reads the whole file, so read once and roll up in memory per sample. `disposition_rollup()` is pure -- here it is on an in-memory frame, which runs:
 
 ```{r rollup, eval = TRUE}
 library(survey160r)
 records <- data.frame(
   phone          = c("5551234567", "5551234567", "5559876543"),
   campaign_id    = c(101L, 102L, 101L),
-  engaged        = c(1L, 1L, 0L),
-  opt_in         = c(1L, 0L, 0L),
-  complete       = c(1L, 0L, 0L),
-  web_complete   = c(0L, 0L, 0L),
+  engaged        = c(1L, 1L, 0L), opt_in       = c(1L, 0L, 0L),
+  complete       = c(1L, 0L, 0L), web_complete = c(0L, 0L, 0L),
   terminated     = c(0L, 1L, 0L),
   date_closed_on = as.Date(c("2026-01-10", "2026-01-20", "2026-01-15"))
 )
 disposition_rollup(records, phones = c("5551234567", "5550000000"))
 ```
 
-The first number rolls up across both its campaigns (`n_campaigns = 2`, latest disposition from the newer close date); the screened-but-absent `5550000000` comes back `never_contacted`.
+In your own code, read once and reuse: `records <- disposition_records(dataset)`, then `disposition_rollup(records, phones = ...)` for each list.
 
-## Ad-hoc queries over the same dataset
+## What you get back
 
-```{r}
-# One row per phone: the cross-campaign screening flags + latest_disposition
-disposition_summary(dataset, phones = c("5551234567", "5559876543"))
+`disposition_screen()` and `disposition_summary()` return one row per phone:
 
-# The raw rows beneath that rollup: one per (phone, campaign_id)
-disposition_records(dataset, campaign_ids = 1234)
-```
+| Column | Meaning |
+|---|---|
+| `ever_contacted` | Ever sent an intro (present in the dataset). |
+| `n_campaigns` | Distinct campaigns that contacted it. |
+| `ever_engaged` | Ever replied. |
+| `ever_opted_in` | Ever consented. |
+| `ever_complete` | Ever completed (reached the SMS close, or a web completion). |
+| `ever_terminated` | Ever screened out or refused. |
+| `latest_disposition` | Outcome of the most recent campaign (funnel below). |
+| `campaigns` | Comma-separated campaign ids. |
 
-**Screening several samples? Read once.** Every reader call above loads the whole dataset into memory (there is no server-side filtering), so re-reading it is the main cost. Read the records once, then roll up in memory per sample -- no further I/O:
+`latest_disposition`, least to most advanced: `never_contacted` -> `non_response` -> `engaged` -> `opt_in` -> `terminated` -> `complete` -> `web_complete`. `disposition_records()` returns the stored per-campaign columns instead; see `?disposition_records`.
 
-```{r}
-records <- disposition_records(dataset)                 # read the file once
-disposition_rollup(records, phones = sample_a$phone)    # pure, in-memory
-disposition_rollup(records, phones = sample_b$phone)
-```
+## Notes
 
-Phone numbers are matched digit-normalized (a leading US `1` is dropped, so an 11-digit number matches a stored 10-digit one), and the original formatting in your sample is preserved.
+- **Contacted-only.** A loaded number that was never texted is not in the dataset; it screens as `never_contacted`.
+- **Text-to-web (external) campaigns** have no completion callback, so `complete` is `NA` and never a false positive.
+- **`date_closed_on` and `error` are `NA` in the beta**, so the `date_from` / `date_to` filters return no rows.
+- **Stale cache.** The dataset is re-published periodically; `disposition_pull(refresh = TRUE)` forces a fresh download.
 
-## Beta caveats
+## See also
 
-- **Contacted-only.** A loaded number that was never texted is not in the dataset; screening returns it as `never_contacted`.
-- **Text-to-web (external) campaigns.** Completion happens on an external platform with no callback, so `complete` is unknowable and left `NA`; such a row falls back to its last known in-channel step and is never reported as a false `complete`.
-- **`date_closed_on` and `error` are `NA` in the beta**, so the `date_from` / `date_to` filters return no rows for now.
-
-## Producer side
-
-Building the per-respondent disposition frame from a raw campaign CSV is `disposition_run(campaign_id, data)` -- pure and source-agnostic, like `latency_run()`. `disposition_input_columns()` gives the column-projection set (mirroring `latency_input_columns()`). Persisting the frame as Parquet, walking the fleet, and publishing the shared dataset live in the downstream consumer project.
+`?disposition_screen`, `?disposition_summary`, `?disposition_records`, `?disposition_pull`. To build the dataset from a raw campaign CSV (the producer side), `?disposition_run` and `?disposition_input_columns`. For latency reports, `vignette("latency")`.

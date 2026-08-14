@@ -48,6 +48,7 @@ Secondary conventions:
 ## Workflow
 
 - Releases are documented in `RELEASING.md`. Distribution is R-universe (auto-rebuild from `main`); tags are historical anchors only.
+- README and article-vignette writing follows `writing-style.md` (how-to register for a single R-competent Survey Manager, one shared article structure, terminology).
 
 ## Verifying changes
 
