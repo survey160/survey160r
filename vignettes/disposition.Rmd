@@ -8,7 +8,7 @@ vignette: >
 ---
 
 ```{r setup, include = FALSE}
-# The GCS / whole-dataset examples need auth and the projection file, so they are
+# The GCS / whole-dataset examples need auth and the dataset file, so they are
 # shown but not executed at build time. The pure-core example (rolling an
 # in-memory frame up) does run, so its output is real.
 knitr::opts_chunk$set(collapse = TRUE, comment = "#>", eval = FALSE)
@@ -20,21 +20,14 @@ This guide walks through cleaning a sample against the **disposition dataset**: 
 
 > Screening needs a recent survey160r (these functions arrived in 0.24.0). R-universe rebuilds from `main` and can lag a release by up to ~30 minutes; if `disposition_pull()` is not found after installing, get the latest straight from GitHub with `pak::pkg_install("survey160/survey160r")`.
 
-## Before you start
+## Step 1 -- get the dataset
 
-Load the package and sign in to Google Cloud Storage once. The first call opens a browser; after that the token is cached, so later sessions authenticate silently.
+Load the package, sign in to Google Cloud Storage once, and pull the dataset. The first call to `s160_gcs_init()` opens a browser; after that the token is cached. `disposition_pull()` then downloads the dataset to a local file and hands back its path -- cached too, so this is the one slow step of your session; every call after the first returns instantly.
 
 ```{r}
 library(survey160r)
-s160_gcs_init(bucket = "s160_disposition_prod")
-```
-
-## Step 1 -- get the dataset
-
-`disposition_pull()` downloads the dataset to a local file and hands back its path. It is cached, so this is the one slow step of your session; every call after the first returns instantly.
-
-```{r}
-dataset <- disposition_pull()   # env = "prod" (default) or "dev"
+s160_gcs_init(bucket = "s160_disposition_prod")   # one-time browser sign-in, then cached
+dataset <- disposition_pull()                      # env = "prod" (default) or "dev"
 ```
 
 That is the only network step. Everything below reads this local file.
@@ -138,8 +131,9 @@ The first number appears in two campaigns, so it rolls up to `n_campaigns = 2` w
 Every reader above loads the whole dataset into memory -- there is no server-side filtering -- so the cost is dominated by reading the file, not by how many phones you screen. If you have several samples to clean, read the records once and roll each one up in memory:
 
 ```{r}
-records <- disposition_records(dataset)                 # read the file once
-disposition_rollup(records, phones = sample_a$phone)    # pure, in-memory
+records <- disposition_records(dataset)                 # read the whole file once
+# then roll each of your sample lists up in memory -- no further I/O:
+disposition_rollup(records, phones = sample_a$phone)
 disposition_rollup(records, phones = sample_b$phone)
 ```
 
