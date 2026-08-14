@@ -8,8 +8,8 @@ vignette: >
 ---
 
 ```{r setup, include = FALSE}
-# Auth/network chunks are shown but not run at build time; the disposition_rollup
-# chunk below runs, so its output is real.
+# Auth/network chunks are shown but not run at build time; the disposition_summary
+# chunk below (on an in-memory frame) runs, so its output is real.
 knitr::opts_chunk$set(collapse = TRUE, comment = "#>", eval = FALSE)
 ```
 
@@ -43,9 +43,9 @@ Both take `phones` / `campaign_ids` filters. Phones match digit-normalized: a le
 
 ## Screen several samples
 
-Each reader call reads the whole file, so read once and roll up in memory per sample. `disposition_rollup()` is pure -- here it is on an in-memory frame, which runs:
+Each reader call reads the whole file, so read once and summarize in memory per sample. `disposition_summary()` accepts either the dataset path or an already-read frame; on a frame it does no I/O, so this runs:
 
-```{r rollup, eval = TRUE}
+```{r summary_frame, eval = TRUE}
 library(survey160r)
 records <- data.frame(
   phone          = c("5551234567", "5551234567", "5559876543"),
@@ -55,10 +55,10 @@ records <- data.frame(
   terminated     = c(0L, 1L, 0L),
   date_closed_on = as.Date(c("2026-01-10", "2026-01-20", "2026-01-15"))
 )
-disposition_rollup(records, phones = c("5551234567", "5550000000"))
+disposition_summary(records, phones = c("5551234567", "5550000000"))
 ```
 
-In your own code, read once and reuse: `records <- disposition_records(dataset)`, then `disposition_rollup(records, phones = ...)` for each list. (The file readers take a `dataset` path; `disposition_rollup()` takes the in-memory `data` frame that `disposition_records()` returns.)
+In your own code, read once and reuse: `records <- disposition_records(dataset)`, then `disposition_summary(records, phones = ...)` for each list -- `disposition_summary()` takes either a `dataset` path or the in-memory frame `disposition_records()` returns.
 
 ## What you get back
 

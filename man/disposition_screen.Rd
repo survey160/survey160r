@@ -22,7 +22,7 @@ disposition_screen(
 (default \code{"phone"}).}
 
 \item{campaign_ids, date_from, date_to}{Optional scoping of the disposition
-rows considered (see \code{\link{disposition_rollup}}). No \code{statuses}
+rows considered (see \code{\link{disposition_summary}}). No \code{statuses}
 or pagination here -- every sample row is returned.}
 }
 \value{
@@ -54,5 +54,5 @@ subset(cleaned, !(ever_complete \%in\% TRUE | ever_terminated \%in\% TRUE))
 }
 }
 \seealso{
-\code{\link{disposition_summary}}, \code{\link{disposition_rollup}}
+\code{\link{disposition_summary}}, \code{\link{disposition_records}}
 }

@@ -5,10 +5,10 @@
 #' data-access layer that reaches Survey160's own systems (the \code{s160_*}
 #' functions), and two higher-level surfaces built on top of it. \strong{Latency}
 #' analysis is pure (in-memory data frame in, data frame out, no I/O).
-#' \strong{Disposition} screening has a pure rollup core
-#' (\code{\link{disposition_rollup}}), plus readers that access the Parquet
-#' projection (\code{\link{disposition_summary}}, \code{\link{disposition_screen}},
-#' \code{\link{disposition_records}}) or fetch it from GCS (\code{\link{disposition_pull}}).
+#' \strong{Disposition} screening reads the Parquet projection
+#' (\code{\link{disposition_summary}}, \code{\link{disposition_screen}},
+#' \code{\link{disposition_records}}) or fetches it from GCS
+#' (\code{\link{disposition_pull}}).
 #'
 #' @section First-time setup:
 #' Most functions that touch Survey160 data need a one-time sign-in:
@@ -33,8 +33,8 @@
 #'     sample, 1:1 with its rows, preserving your original columns.
 #'   \item \code{\link{disposition_summary}} / \code{\link{disposition_records}}
 #'     -- ad-hoc query surfaces over the same dataset (one row per phone / one
-#'     row per \code{(phone, campaign_id)}); \code{\link{disposition_rollup}}
-#'     rolls an already-read frame up in memory.
+#'     row per \code{(phone, campaign_id)}); pass \code{disposition_summary()} a
+#'     data frame to summarize one you already read.
 #' }
 #'
 #' @section Latency analysis:

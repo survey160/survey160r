@@ -94,9 +94,9 @@ test_that("date bounds drop rows outside the range (incl. NA close dates)", {
 
 test_that("each date bound must be a single valid date", {
   d <- .disposition_row("2015550101", 2339, engaged = 1, date_closed_on = "2026-03-01")
-  expect_error(disposition_rollup(d, date_from = c("2026-01-01", "2026-02-01")),
+  expect_error(disposition_summary(d, date_from = c("2026-01-01", "2026-02-01")),
                "single valid date")
-  expect_error(disposition_rollup(d, date_to = "not-a-date"), "single valid date")
+  expect_error(disposition_summary(d, date_to = "not-a-date"), "single valid date")
 })
 
 test_that("derived disposition follows funnel precedence", {
@@ -146,26 +146,40 @@ test_that("a blank stored phone is dropped, and all-invalid input yields no rows
   expect_equal(nrow(disposition_summary(p, phones = "abc")), 0L)
 })
 
-test_that("input validation on the dataset path", {
-  expect_error(disposition_summary(character(0)), "single Parquet path")
+test_that("input validation on the x argument", {
+  expect_error(disposition_summary(character(0)), "Parquet path.*or.*data frame")
+  expect_error(disposition_summary(42), "Parquet path.*or.*data frame")
   expect_error(disposition_summary("/no/such/file.parquet"), "not found")
 })
 
-# --- disposition_rollup (pure core) ------------------------------------------
+# --- disposition_summary on an in-memory frame -------------------------------
 
-test_that("disposition_rollup works on an in-memory frame and validates input", {
+test_that("disposition_summary accepts an in-memory frame and validates input", {
   d <- rbind(
     .disposition_row("2015550101", 2339, engaged = 1, opt_in = 1, complete = 1,
             date_closed_on = "2026-03-01"),
     .disposition_row("2015550101", 2354, engaged = 1, date_closed_on = "2026-04-01"))
-  res <- disposition_rollup(d, phones = c("2015550101", "2015559999"))
+  res <- disposition_summary(d, phones = c("2015550101", "2015559999"))
   expect_setequal(res$phone, c("2015550101", "2015559999"))
   expect_true(res[res$phone == "2015550101", "ever_complete"])
   expect_false(res[res$phone == "2015559999", "ever_contacted"])
-  # validation branches (unreachable via the file reader, which always has cols)
-  expect_error(disposition_rollup(list()), "must be a data frame")
-  expect_error(disposition_rollup(d[, c("phone", "campaign_id")]),
-               "missing column")
+  # a frame missing the read columns is caught
+  expect_error(disposition_summary(d[, c("phone", "campaign_id")]),
+               "missing required column")
+})
+
+test_that("disposition_summary tolerates a frame without date_closed_on", {
+  d <- rbind(
+    .disposition_row("2015550101", 2339, engaged = 1, opt_in = 1, complete = 1,
+            date_closed_on = "2026-03-01"),
+    .disposition_row("2015550101", 2354, engaged = 1, date_closed_on = "2026-04-01"))
+  bare <- d[, setdiff(names(d), "date_closed_on"), drop = FALSE]  # un-enriched shape
+  res <- disposition_summary(bare, phones = "2015550101")
+  expect_true(res$ever_complete)          # summarizes with close dates unknown
+  expect_equal(res$n_campaigns, 2L)
+  # but a date bound with no date_closed_on column is a clear error
+  expect_error(disposition_summary(bare, date_from = "2026-01-01"),
+               "date_closed_on")
 })
 
 # --- disposition_screen --------------------------------------------------

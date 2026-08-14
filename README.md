@@ -39,7 +39,7 @@ records <- data.frame(
   web_complete = c(0L, 0L, 0L), terminated = c(0L, 1L, 0L),
   date_closed_on = as.Date(c("2026-01-10", "2026-01-20", "2026-01-15"))
 )
-disposition_rollup(records, phones = c("5551234567", "5550000000"))
+disposition_summary(records, phones = c("5551234567", "5550000000"))
 ```
 
 Everything else -- reading GCS, pulling the disposition dataset, the API -- needs the [access below](#first-time-setup).
