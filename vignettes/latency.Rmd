@@ -22,11 +22,11 @@ Read the campaign's results, then run the report:
 ```{r}
 library(survey160r)
 s160_gcs_init("campaign_results")            # one browser sign-in, cached
-data   <- s160_gcs_pull_csv(1234)            # or s160_read_csv("path/to/1234.csv")
+data   <- s160_gcs_campaign_results_read(1234, hash = TRUE)  # or s160_read_csv("path/to/1234.csv")
 result <- latency_run(1234, data, field_timezone = "America/New_York")
 ```
 
-You already read these CSVs in your own scripts; `s160_gcs_pull_csv()` and `s160_read_csv()` just add the source-hash provenance that `latency_run()` records on `result$meta`. `field_timezone` sets the local time zone for the hour-of-day buckets. `latency_run()` builds the config from the CSV header and returns a list: `consolidated` (the report), `latency_frame` (per-respondent detail), `diagnostics` (parse / NA counts), and `meta` (provenance).
+You already read these CSVs in your own scripts; `s160_gcs_campaign_results_read(hash = TRUE)` and `s160_read_csv()` just add the source-hash provenance that `latency_run()` records on `result$meta`. `field_timezone` sets the local time zone for the hour-of-day buckets. `latency_run()` builds the config from the CSV header and returns a list: `consolidated` (the report), `latency_frame` (per-respondent detail), `diagnostics` (parse / NA counts), and `meta` (provenance).
 
 ## Customize the config
 

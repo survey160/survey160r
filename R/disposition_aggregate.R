@@ -123,7 +123,7 @@ empty_disposition_frame <- function() {
 
 # Source provenance carried on the disposition result's `meta`, mirroring what
 # latency_report() surfaces from the source data's attributes (set by
-# s160_gcs_pull_csv() / s160_read_csv()). NA when the data carries no attrs.
+# s160_gcs_campaign_results_read(hash = TRUE) / s160_read_csv()). NA when the data carries no attrs.
 .disposition_meta <- function(data) {
   list(
     source_csv_hash = attr(data, "source_csv_hash") %||% NA_character_,
@@ -182,7 +182,7 @@ empty_disposition_frame <- function() {
 #'   population's inputs are not projected away.
 #' @return A character vector of unique dot-form column names, including
 #'   \code{phone}. Pass it as \code{columns =} to \code{s160_read_csv()} /
-#'   \code{s160_gcs_pull_csv()}.
+#'   \code{s160_gcs_campaign_results_read()}.
 #' @seealso \code{\link{latency_input_columns}}, the latency analogue. It leads
 #'   with its \emph{required} \code{config}; here \code{available} leads because
 #'   it is the argument you almost always pass (see the example), and there is no
@@ -212,7 +212,7 @@ disposition_input_columns <- function(available = NULL, population = NULL) {
 #' per contacted phone, with 0/1 funnel flags \code{started}, \code{engaged},
 #' \code{opt_in}, \code{complete}, \code{web_complete}, \code{terminated} and the
 #' campaign's \code{mode}) plus source provenance in \code{meta}. Pure
-#' function, no I/O -- pair with \code{s160_gcs_pull_csv()} for the GCS source.
+#' function, no I/O -- pair with \code{s160_gcs_campaign_results_read(hash = TRUE)} for the GCS source.
 #' Persisting the frame (any enrichment, provenance, and Parquet output) is
 #' handled by consumer projects.
 #'
@@ -257,7 +257,7 @@ disposition_input_columns <- function(available = NULL, population = NULL) {
 #'   \code{consolidated} frame.
 #' @examples
 #' \dontrun{
-#' data <- s160_gcs_pull_csv(1234)
+#' data <- s160_gcs_campaign_results_read(1234, hash = TRUE)
 #' res  <- disposition_run(1234, data)
 #' res$consolidated  # the disposition frame; res$meta carries source provenance
 #' }

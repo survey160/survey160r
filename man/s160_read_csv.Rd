@@ -30,7 +30,8 @@ A data frame with \code{source_csv_hash} and
   \code{source_csv_path} attributes set.
 }
 \description{
-Local-source sibling of \code{s160_gcs_pull_csv()}. Reads the CSV
+Local-source sibling of \code{s160_gcs_campaign_results_read()} (with
+\code{hash = TRUE}). Reads the CSV
 via \code{data.table::fread} (falling back to \code{utils::read.csv})
 and stamps \code{source_csv_hash} and \code{source_csv_path}
 attributes on the returned data frame so downstream

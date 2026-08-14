@@ -10,6 +10,7 @@ s160_gcs_campaign_results_read(
   destdir = NULL,
   bucket = NULL,
   columns = NULL,
+  hash = FALSE,
   ...
 )
 }
@@ -32,12 +33,22 @@ e.g. from \code{latency_input_columns()}. When set, only those columns are
 parsed (via \code{data.table::fread}'s column projection), cutting read
 time and memory on wide exports. \code{NULL} (default) reads every column.}
 
+\item{hash}{When \code{TRUE}, stamp provenance on the returned frame -- the
+sha256 of the downloaded CSV bytes as \code{source_csv_hash} and the
+canonical \code{gs://} source as \code{source_csv_path}, which
+\code{latency_run()} / \code{latency_report()} then surface on
+\code{result$meta}. \code{FALSE} (default) skips the extra hashing read and
+returns a plain frame. (The local-file sibling is
+\code{\link{s160_read_csv}}, whose \code{hash} works the same way.)}
+
 \item{...}{Additional arguments forwarded to the CSV reader
 (\code{data.table::fread}, or \code{utils::read.csv} when data.table is
 unavailable), e.g. \code{na.strings}, \code{nrows}, \code{sep}.}
 }
 \value{
-A data frame with one row per survey response.
+A data frame with one row per survey response. With
+  \code{hash = TRUE} it also carries \code{source_csv_hash} and
+  \code{source_csv_path} attributes.
 }
 \description{
 Downloads the CSV from GCS and reads it into R. By default, the file is
@@ -53,5 +64,6 @@ s160_gcs_init(bucket = "campaign_results")
 df <- s160_gcs_campaign_results_read(1980)
 df <- s160_gcs_campaign_results_read(1980, destdir = ".")
 df <- s160_gcs_campaign_results_read(1980, destdir = "~/data")
+df <- s160_gcs_campaign_results_read(1980, hash = TRUE)   # + provenance attrs
 }
 }

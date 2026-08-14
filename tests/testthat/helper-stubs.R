@@ -93,7 +93,7 @@ stub_gcs_download_ok <- function(capture_env = NULL,
 new_capture <- function() new.env(parent = emptyenv())
 
 # Load the shared synthetic CSV with the source_csv_hash/path attributes
-# that s160_gcs_pull_csv() / s160_read_csv() would attach in production.
+# that s160_gcs_campaign_results_read(hash = TRUE) / s160_read_csv() would attach in production.
 # `mutate` lets a test perturb the data inline (e.g. drop a column to
 # trigger validation).
 load_synthetic_data <- function(
@@ -154,21 +154,6 @@ minimal_synthetic_data <- function(questions = c("intro", "q1", "close"),
     }
   }
   as.data.frame(values, stringsAsFactors = FALSE)
-}
-
-# Stub s160_gcs_pull_csv to return `data`. Captures `pull_id` and
-# `pull_bucket` into `capture` when supplied.
-stub_pull_csv <- function(data, capture = NULL, env = parent.frame()) {
-  testthat::local_mocked_bindings(
-    s160_gcs_pull_csv = function(campaign_id, filename = NULL, bucket = NULL) {
-      if (!is.null(capture)) {
-        capture$pull_id <- campaign_id
-        capture$pull_bucket <- bucket
-      }
-      data
-    },
-    .env = env
-  )
 }
 
 # Build a GCS object-status list as returned by s160_gcs_*_status helpers.

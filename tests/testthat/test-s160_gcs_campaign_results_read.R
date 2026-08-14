@@ -112,3 +112,28 @@ test_that("destdir saves file, prints path, and works with '.'", {
   })
   unlink(dest_file)
 })
+
+test_that("hash = TRUE stamps sha256 + canonical gs:// provenance", {
+  stub_gcs_base()
+  stub_gcs_download_ok()
+  res <- suppressMessages(s160_gcs_campaign_results_read(1980, hash = TRUE))
+  expect_true(grepl("^sha256:", attr(res, "source_csv_hash")))
+  expect_equal(attr(res, "source_csv_path"),
+               "gs://test_bucket/1980/1980_raw_data_download.csv")
+})
+
+test_that("hash = FALSE (default) returns a plain frame, no provenance attrs", {
+  stub_gcs_base()
+  stub_gcs_download_ok()
+  res <- suppressMessages(s160_gcs_campaign_results_read(1980))
+  expect_null(attr(res, "source_csv_hash"))
+  expect_null(attr(res, "source_csv_path"))
+})
+
+test_that("a non-logical hash is rejected", {
+  stub_gcs_base()
+  expect_error(s160_gcs_campaign_results_read(1980, hash = "yes"),
+               "single TRUE or FALSE")
+  expect_error(s160_gcs_campaign_results_read(1980, hash = NA),
+               "single TRUE or FALSE")
+})
