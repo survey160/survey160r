@@ -97,6 +97,21 @@
 
 ## Bug fixes
 
+* **`disposition_run()` no longer drops campaigns whose opening question is not
+  named `intro`.** `started` / `engaged` / `opt_in` keyed on hardcoded
+  `id.intro.*` columns, so a campaign whose first question is named otherwise
+  (e.g. `FIRSTNET`, `intro_latinos`) produced all-zero flags and vanished under
+  the `contacted_only` default despite real sends (verified in prod: an
+  873-send and a 39,849-send campaign each emitted zero rows). The opening
+  question is now resolved per campaign from the column/flow order
+  (`latency_discover_questions()[1]`), and all three signals key off it;
+  `disposition_input_columns()` retains the opener's columns (leading with them
+  so a projection cannot shadow the opener with a later question). Behaviour is
+  byte-identical for a normal `intro`-first campaign. Regenerate any persisted
+  disposition data to pick up the previously-dropped campaigns. The latency
+  view (`build_summary_frame()`) still hardcodes `intro`; that is tracked
+  separately.
+
 * **`download_with_verify()` no longer fails on `Content-Encoding: gzip`
   objects.** GCS applies decompressive transcoding on download, so the saved
   file is the *decompressed* size while the object metadata's `size` is the

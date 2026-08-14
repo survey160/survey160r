@@ -443,3 +443,74 @@ test_that("disposition_run meta is NA when data carries no provenance", {
   expect_true(is.na(res$meta$source_csv_hash))
   expect_true(is.na(res$meta$source_csv_path))
 })
+
+# --- opening-question fallback (non-intro campaigns) ------------------------
+
+test_that("non-intro opener (FIRSTNET) is measured, not silently dropped", {
+  # A campaign whose first question is "FIRSTNET", not "intro". Before the
+  # opening-question fallback every flag came up 0 and contacted_only dropped
+  # the whole campaign (873-send campaign 2085 vanished in prod). r3 never texted.
+  d <- disp_frame(
+    phone = c("+15559001", "+15559002", "+15559003"),
+    id.FIRSTNET.scriptDate = c(TS, TS, ""),
+    id.FIRSTNET.batchDate  = c(TS, "", ""),      # only r1 replied
+    id.FIRSTNET.finalText  = c("Yes", "No", "Yes"),
+    id.close.scriptDate    = c(TS, "", "")
+  )
+  res <- disposition_run(1234, d, contacted_only = FALSE)$consolidated
+  expect_true(all(res$mode == "sms"))
+  expect_equal(res$started,  c(1L, 1L, 0L))
+  expect_equal(res$engaged,  c(1L, 0L, 0L))
+  expect_equal(res$opt_in,   c(1L, 0L, 0L))     # r2 said No; r3 Yes but not texted
+  expect_equal(res$complete, c(1L, 0L, 0L))     # r1 reached close & started
+
+  # contacted_only default now emits the contacted rows (was a zero-row frame)
+  kept <- disposition_run(1234, d)$consolidated
+  expect_equal(nrow(kept), 2L)
+  expect_equal(kept$phone, c("+15559001", "+15559002"))
+})
+
+test_that("intro_latinos opener is detected (opener name varies)", {
+  # Real prod case: campaign 2420's opener is "intro_latinos", not "intro".
+  d <- disp_frame(
+    phone = c("+15559101", "+15559102"),
+    id.intro_latinos.scriptDate = c(TS, TS),
+    id.intro_latinos.finalText  = c("Yes", "No")
+  )
+  res <- disposition_run(1234, d)$consolidated
+  expect_equal(res$started, c(1L, 1L))
+  expect_equal(res$opt_in,  c(1L, 0L))
+})
+
+test_that("disposition_input_columns discovers a non-intro opener from `available`", {
+  header <- c("phone", "id.FIRSTNET.scriptDate", "id.FIRSTNET.batchDate",
+              "id.FIRSTNET.finalText", "id.close.scriptDate", "userid")
+  cols <- disposition_input_columns(available = header)
+  expect_true(all(c("id.FIRSTNET.scriptDate", "id.FIRSTNET.batchDate",
+                    "id.FIRSTNET.finalText") %in% cols))
+  # The opener columns lead, so a reordered projection keeps the opener before a
+  # later question (close) -- otherwise latency_discover_questions() would pick
+  # close as the "first" question and the masks would key off the wrong column.
+  expect_lt(match("id.FIRSTNET.scriptDate", cols),
+            match("id.close.scriptDate", cols))
+  expect_false("id.intro.scriptDate" %in% cols)   # no intro hardcoding remains
+  expect_false("userid" %in% cols)
+})
+
+test_that("disposition_input_columns: projected read matches full for a non-intro opener", {
+  # Guards the projection-order robustness: base `[` reorders columns to the
+  # projected set's order, so the opener must lead or opener detection differs
+  # between the projected and full frames (which would break this equivalence).
+  full <- disp_frame(
+    phone = c("+15559201", "+15559202"),
+    id.FIRSTNET.scriptDate = c(TS, TS),
+    id.FIRSTNET.batchDate = c(TS, TS),
+    id.FIRSTNET.finalText = c("Yes", "No"),
+    id.close.scriptDate = c(TS, ""),
+    userid = c("a", "b")                          # ignored by disposition_run
+  )
+  keep <- disposition_input_columns(available = names(full))
+  projected <- full[, intersect(keep, names(full)), drop = FALSE]
+  expect_equal(disposition_run(1234, projected, contacted_only = FALSE),
+               disposition_run(1234, full, contacted_only = FALSE))
+})
