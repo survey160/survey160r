@@ -162,11 +162,12 @@
 
 ## Documentation
 
-* **Rewrote the two vignettes as tutorials.** `vignette("latency")` and
-  `vignette("disposition")` now walk through a task start to finish -- get the
-  data, run/screen, read the result -- instead of listing functions, with each
-  result explained inline. The `_pkgdown.yml` reference index is reordered to
-  match the README (raw data access -> latency -> disposition).
+* **Rewrote the two vignettes as task-oriented how-to guides.**
+  `vignette("latency")` and `vignette("disposition")` now share one structure
+  (task -> variations -> what you get back -> notes -> see also), address a
+  single R-competent Survey Manager, and follow a new documentation style guide
+  (`writing-style.md`). The `_pkgdown.yml` reference index is reordered to match
+  the README (raw data access -> latency -> disposition).
 
 * **README onboarding and troubleshooting.** Added an access checklist to
   First-time setup (client secret, bucket grant, API keys), an R-universe
