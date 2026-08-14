@@ -27,6 +27,8 @@ Distribution is via [R-universe](https://survey160.r-universe.dev), which auto-r
 | Minor (X.Y.0) | New exported function, new optional argument, backward-compatible feature. |
 | Patch (X.Y.Z) | Bug fix only, no API change. |
 
+**Pre-1.0 (current).** The package is beta (`0.y.z`). Per SemVer's `0.y` rules, breaking changes are allowed while pre-1.0 and ship in a **minor** bump (`0.y.0`) with a `## Breaking changes` section in `NEWS.md` -- the Major-column rule above applies once `1.0.0` is cut. `1.0.0` is reserved for the bundled API-consistency release (see `.claude/docs/api-consistency-plan.md`).
+
 ## Conventions
 
 - `NEWS.md` newest at top. `# survey160r (development version)` stays at the top between releases as the scratch area for incoming PRs.
