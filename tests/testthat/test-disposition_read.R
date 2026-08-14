@@ -168,6 +168,20 @@ test_that("disposition_summary accepts an in-memory frame and validates input", 
                "missing required column")
 })
 
+test_that("disposition_summary tolerates a frame without date_closed_on", {
+  d <- rbind(
+    .disposition_row("2015550101", 2339, engaged = 1, opt_in = 1, complete = 1,
+            date_closed_on = "2026-03-01"),
+    .disposition_row("2015550101", 2354, engaged = 1, date_closed_on = "2026-04-01"))
+  bare <- d[, setdiff(names(d), "date_closed_on"), drop = FALSE]  # un-enriched shape
+  res <- disposition_summary(bare, phones = "2015550101")
+  expect_true(res$ever_complete)          # summarizes with close dates unknown
+  expect_equal(res$n_campaigns, 2L)
+  # but a date bound with no date_closed_on column is a clear error
+  expect_error(disposition_summary(bare, date_from = "2026-01-01"),
+               "date_closed_on")
+})
+
 # --- disposition_screen --------------------------------------------------
 
 test_that("disposition_screen annotates the sample in place, preserving it", {

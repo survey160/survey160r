@@ -21,8 +21,11 @@ projection, e.g. from \code{\link{disposition_pull}}) or an in-memory
 disposition data frame (from \code{\link{disposition_records}}). A path is
 read with \pkg{nanoparquet}, projected to the summary columns; a frame must
 carry \code{phone}, \code{campaign_id}, \code{engaged}, \code{opt_in},
-\code{complete}, \code{web_complete}, \code{terminated}, and
-\code{date_closed_on}.}
+\code{complete}, \code{web_complete}, and \code{terminated}.
+\code{date_closed_on} is optional -- it orders each phone's latest campaign
+and backs the \code{date_from}/\code{date_to} filters; an un-enriched
+\code{\link{disposition_records}} frame that omits it still summarizes
+(close dates treated as unknown), but a date bound then errors.}
 
 \item{phones}{Optional character vector of phone numbers to screen. When
 supplied, \strong{every} input number is returned -- never-contacted ones

@@ -193,11 +193,22 @@
 .disposition_rollup <- function(data, phones = NULL, campaign_ids = NULL,
                                 statuses = NULL, date_from = NULL, date_to = NULL,
                                 page = NULL, page_size = NULL, fn) {
-  missing_cols <- setdiff(.DISPOSITION_READ_COLS, names(data))
+  # date_closed_on is optional -- it only orders each phone's latest campaign and
+  # backs the date filters -- so an un-enriched disposition_records() frame that
+  # omits it still summarizes (mirroring disposition_records(), which tolerates
+  # its absence too). The funnel-flag columns are always required.
+  missing_cols <- setdiff(setdiff(.DISPOSITION_READ_COLS, "date_closed_on"),
+                          names(data))
   if (length(missing_cols) > 0L) {
     stop_s160(sprintf("input is missing required column(s): %s",
                       paste(missing_cols, collapse = ", ")),
               fn = fn)
+  }
+  if (!"date_closed_on" %in% names(data)) {
+    if (!is.null(date_from) || !is.null(date_to)) {
+      stop_s160("input has no `date_closed_on` column to filter on.", fn = fn)
+    }
+    data$date_closed_on <- rep(as.Date(NA), nrow(data))
   }
   if (!is.null(statuses)) {
     bad <- setdiff(as.character(statuses), .DISPOSITION_CATEGORIES)
@@ -245,8 +256,11 @@
 #'   disposition data frame (from \code{\link{disposition_records}}). A path is
 #'   read with \pkg{nanoparquet}, projected to the summary columns; a frame must
 #'   carry \code{phone}, \code{campaign_id}, \code{engaged}, \code{opt_in},
-#'   \code{complete}, \code{web_complete}, \code{terminated}, and
-#'   \code{date_closed_on}.
+#'   \code{complete}, \code{web_complete}, and \code{terminated}.
+#'   \code{date_closed_on} is optional -- it orders each phone's latest campaign
+#'   and backs the \code{date_from}/\code{date_to} filters; an un-enriched
+#'   \code{\link{disposition_records}} frame that omits it still summarizes
+#'   (close dates treated as unknown), but a date bound then errors.
 #' @param phones Optional character vector of phone numbers to screen. When
 #'   supplied, \strong{every} input number is returned -- never-contacted ones
 #'   with \code{ever_contacted = FALSE} and

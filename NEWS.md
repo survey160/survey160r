@@ -11,7 +11,7 @@
   `disposition_summary(df)`. Positional `disposition_summary(path)` is
   unchanged, but the first argument was renamed `dataset` -> `x`, so a named
   call `disposition_summary(dataset = path)` must become
-  `disposition_summary(path)`.
+  `disposition_summary(path)` (or `disposition_summary(x = path)`).
 
 * **`required_latency_columns()` renamed to `latency_input_columns()` and
   `required_disposition_columns()` renamed to `disposition_input_columns()`** --
@@ -45,23 +45,21 @@
   summary columns.
 
 * **Disposition readers renamed for grain clarity.** The per-phone file reader
-  `disposition_query()` is now `disposition_summary()`, and the pure per-phone
-  rollup `disposition_summary()` is now `disposition_rollup()`. The two file
-  readers now read their grain from the name -- `disposition_summary()` (one row
-  per phone) beside `disposition_records()` (one row per `(phone, campaign_id)`)
-  -- with `disposition_rollup()` the pure core they share. Beta surface, no
+  `disposition_query()` is now `disposition_summary()`. The two file readers now
+  read their grain from the name -- `disposition_summary()` (one row per phone)
+  beside `disposition_records()` (one row per `(phone, campaign_id)`) -- sharing
+  a private per-phone rollup core (`.disposition_rollup`). Beta surface, no
   deprecation shims.
 
 ## New features
 
 * **Disposition reader surface** -- screen a phone sample against the disposition
   dataset (one row per `(phone, campaign_id)`, contacted-only):
-  * `disposition_rollup(data, ...)` -- pure core: roll an in-memory disposition
-    frame up to one row per phone (cross-campaign screening flags
-    `ever_contacted` / `ever_complete` / `ever_terminated` / ... plus
-    `latest_disposition`).
-  * `disposition_summary(dataset, ...)` -- reads the Parquet projection, then
-    `disposition_rollup()` (the engine, one row per phone).
+  * `disposition_summary(x, ...)` -- roll the disposition data up to one row per
+    phone (cross-campaign screening flags `ever_contacted` / `ever_complete` /
+    `ever_terminated` / ... plus `latest_disposition`); `x` is the Parquet
+    projection path (read then summarize) or an in-memory frame from
+    `disposition_records()` (summarize directly, no I/O).
   * `disposition_screen(sample, dataset, ...)` -- annotates a caller's
     sample data frame in place with the disposition columns, preserving the
     original rows/columns/formatting (the sample-cleaning
@@ -211,7 +209,8 @@
   `survey_mode`, the delta distribution, the NA diagnostics, and the `n_texted`
   / `n_engaged` / `n_consented` / `n_completed` / `n_ineligible` summary block --
   and the two raw-data-access sections were consolidated. The disposition
-  vignette's pure-core example (`disposition_rollup()`) executes at build time.
+  vignette's runnable example (`disposition_summary()` on a frame) executes at
+  build time.
 
 * **Package-level help (`?survey160r`).** A new overview page orients a reader to
   the three layers -- disposition screening, latency
@@ -229,10 +228,10 @@
   as the one bare function that reaches GCS -- and its Imports list adds
   `data.table` and `nanoparquet`. The README gains a "Disposition screening"
   section (`disposition_pull()` / `disposition_summary()` /
-  `disposition_screen()` / `disposition_records()` / `disposition_rollup()`).
+  `disposition_screen()` / `disposition_records()`).
   Runnable `@examples` were added to the pure functions (`latency_report()`,
   `latency_build_config()`, `latency_validate_config()`, `latency_config_hash()`,
-  `latency_discover_questions()`, `disposition_rollup()`) and usage examples to
+  `latency_discover_questions()`) and usage examples to
   the reader functions; `s160_csv_header()`'s example moved out of the
   description into a runnable `@examples`. Fixed `disposition_screen()`'s
   `@return` to distinguish an absent-but-valid phone (a `never_contacted` row)
@@ -245,7 +244,7 @@
   once instead of allocating an intermediate copy per predicate;
   `.disposition_collapse()` groups by phone through a single `by_phone()` helper
   in place of six near-identical `tapply()` calls; and the duplicated
-  phone-request normalization in `disposition_rollup()` / `disposition_records()`
+  phone-request normalization in `.disposition_rollup()` / `disposition_records()`
   moved into a shared `.disposition_request_phones()`. On the test side, the two
   byte-identical disposition-Parquet fixture writers collapsed into one shared
   `write_disposition_parquet()` helper, and a new test pins that
