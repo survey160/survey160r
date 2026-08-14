@@ -8,57 +8,61 @@ vignette: >
 ---
 
 ```{r setup, include = FALSE}
-# Examples require GCS auth / a real campaign CSV, so they are shown but not
+# Examples read a real campaign CSV / need GCS auth, so they are shown but not
 # executed at build time (like the package's `\dontrun` help examples).
 knitr::opts_chunk$set(collapse = TRUE, comment = "#>", eval = FALSE)
 ```
 
-Compute a per-campaign recipient-latency report from a raw campaign CSV and return it as an in-memory R object. This replaces the per-wave inline scripts the analytics team used to maintain by hand: one algorithm, one output schema, one config shape per campaign.
+When a wave goes out you want to know how quickly it actually reached people: how fast each message followed the one before it, and what share of recipients hit the fleet's target windows. This guide walks through building that report for one campaign and reading the numbers it returns.
 
-The package is **algorithm-only and source-agnostic**. `latency_report(data, config)` is the pure function -- no I/O or mutable globals, and fully deterministic when passed a `run_at` (otherwise `run_at_utc` comes from `Sys.time()`) -- and is the recommended entry point for tests and ad-hoc analysis. `latency_run(campaign_id, data, ...)` composes `latency_build_config()` + `latency_report()` over a caller-supplied data frame; pair it with `s160_gcs_pull_csv()` for the GCS source path, or read the CSV yourself for any other source. Persisting outputs as Parquet, walking the fleet, and scheduling all live in downstream consumer projects.
+survey160r is *algorithm-only*: you hand it a campaign's results as a data frame and it returns the report as an in-memory R object. It does not fetch, write, or schedule anything -- so the first question is where your data comes from.
 
-## Happy path -- GCS source
+## Step 1 -- get the data
+
+You need one campaign's raw results as a data frame. Two readers produce one with the provenance attributes the report expects; pick whichever matches where the CSV lives.
 
 ```{r}
 library(survey160r)
-s160_gcs_init(bucket = "campaign_results")
+s160_gcs_init(bucket = "campaign_results")   # one-time browser sign-in, then cached
 
-data   <- s160_gcs_pull_csv(1234)
+# From the last GCS export...
+data <- s160_gcs_pull_csv(1234)
+
+# ...or from a local file / Dropbox archive:
+data <- s160_read_csv("~/Dropbox/archive/campaign_1234.csv")
+```
+
+Both readers stamp the source hash and canonical path onto the frame, and the report surfaces them on `result$meta` -- so every run is traceable to its exact input. (A hand-built data frame works too; the provenance just comes back `NA`, which is correct for that case.)
+
+## Step 2 -- run the report
+
+Now run it. `latency_run()` builds the config from the CSV header and runs the algorithm in one call:
+
+```{r}
 result <- latency_run(1234, data, field_timezone = "America/New_York")
+```
+
+`field_timezone` is the campaign's local time zone -- it is what the hour-of-day buckets are computed in. The result is a list with four pieces:
+
+```{r}
+names(result)
+#> [1] "consolidated"  "latency_frame" "diagnostics"   "meta"
+```
+
+- **`consolidated`** -- the report itself: metrics per `(date, hour, segment, threshold)`. This is the table you will usually work with.
+- **`latency_frame`** -- one row per `(respondent, segment)`, the per-respondent detail the consolidated table aggregates, each tagged with why it is `NA` when a latency could not be computed.
+- **`diagnostics`** -- counts of parse failures, non-computable segments by reason, clamped negatives, and a respondent summary.
+- **`meta`** -- provenance: `algorithm_version`, `schema_version`, `config_hash`, `run_at_utc`, and the source hash/path.
+
+## Step 3 -- read the numbers
+
+Look at `result$consolidated`. Each row is one `(campaign_id, date, hour_local, segment, threshold_min)` cell:
+
+```{r}
 head(result$consolidated)
-result$meta$source_csv_hash    # sha256 of the source CSV
-result$meta$source_csv_path    # canonical gs:// path
 ```
 
-## Backfill -- archived CSV on disk / Dropbox
-
-```{r}
-data   <- s160_read_csv("~/Dropbox/archive/campaign_500.csv")
-result <- latency_run(500, data, field_timezone = "America/New_York")
-result$meta$source_csv_hash    # sha256 of the local file
-result$meta$source_csv_path    # the path you passed
-```
-
-`s160_read_csv()` is the local-source sibling of `s160_gcs_pull_csv()` -- both produce a data frame with `source_csv_hash` and `source_csv_path` attributes set, which `latency_run()` then surfaces on `result$meta`. Pick the reader that matches where the CSV lives; the algorithm call is identical.
-
-For ad-hoc invocations with a hand-built data frame (synthetic / testing), pass `data` to `latency_run()` directly -- `result$meta` provenance will be `NA`, which is correct for that case.
-
-## Pure function
-
-```{r}
-data   <- s160_gcs_pull_csv(campaign_id = 1234)
-config <- latency_build_config(1234, data)
-result <- latency_report(data, config)
-
-result$consolidated     # one row per (campaign_id, date, hour_local, segment, threshold_min)
-result$latency_frame    # one row per (respondent, segment) with na_reason classification
-result$diagnostics      # parse failures, NA-by-reason counts, clamped negatives, respondent summary
-result$meta             # algorithm_version, schema_version, config_hash, run_at_utc, source_csv_hash, source_csv_path
-```
-
-## Result shape
-
-`result$consolidated` (the data frame this package returns) is also the column shape of the Parquet a consumer project writes -- one row per `(campaign_id, date, hour_local, segment, threshold_min)`, each standing on its own without sidecar manifests:
+The columns fall into a few groups:
 
 | Column(s) | Purpose |
 |---|---|
@@ -74,21 +78,38 @@ result$meta             # algorithm_version, schema_version, config_hash, run_at
 | `n_texted`, `n_engaged`, `n_consented`, `n_completed`, `n_ineligible` | Campaign volume for the `(campaign, date, hour)` bucket -- texted (sent to), engaged (replied), consented, completed, screened out -- repeated across that bucket's segment/threshold rows |
 | `algorithm_version`, `config_hash`, `source_csv_hash`, `run_at_utc`, `run_by` | Provenance |
 
-`result$meta` carries the run-level `algorithm_version`, `schema_version`, `config_hash`, `run_at_utc`, `source_csv_hash`, and `source_csv_path`.
+This is exactly the column shape a downstream project writes to Parquet: each row stands on its own, so the table needs no sidecar manifest.
 
-## Config
+## Customizing the run
 
-`latency_build_config(campaign_id, data, ...)` assembles the config from the CSV header alone -- pure function, no I/O. Override defaults via named args:
+`latency_run()`'s config is derived from the CSV header, but you can override it. Under the hood it calls `latency_build_config()`, which you can also call directly to inspect or tweak the config before running:
 
 ```{r}
 config <- latency_build_config(
   campaign_id = 1234,
-  data = s160_gcs_pull_csv(1234),
+  data = data,
   field_timezone = "America/New_York",
   project_id = 9999,
-  date_filter = "2026-01-26",
-  respondent_id_column = NULL    # `userid` is agent login, not per-respondent
+  date_filter = "2026-01-26",      # keep a single field date
+  respondent_id_column = NULL      # `userid` is the agent login, not per-respondent
 )
 ```
 
-`latency_validate_config()` runs fail-fast checks: required columns present, flow order matches the data, no unknown keys, no terminal states (`refusal`, `ineligible`) in `flow.questions`.
+`latency_report(data, config)` then runs the pure algorithm on that config. Passing a `run_at` makes the whole run deterministic (otherwise `run_at_utc` comes from the clock) -- handy for tests and reproducible output:
+
+```{r}
+result <- latency_report(data, config,
+                         run_at = as.POSIXct("2026-01-27 12:00:00", tz = "UTC"))
+```
+
+`latency_report()` is the pure entry point -- no I/O, no mutable globals -- so it is also the one to reach for in tests and ad-hoc analysis.
+
+## Checking the config
+
+Before a run, `latency_validate_config()` fails fast on the common mistakes -- a missing required column, a flow order that does not match the data, an unknown key, or a terminal state (`refusal` / `ineligible`) listed among the flow questions:
+
+```{r}
+latency_validate_config(config, data)
+```
+
+Once the report is in hand, persisting it as Parquet, walking the whole campaign fleet, and scheduling all live in the downstream consumer project -- survey160r's job ends at the in-memory result.

@@ -162,6 +162,12 @@
 
 ## Documentation
 
+* **Rewrote the two vignettes as tutorials.** `vignette("latency")` and
+  `vignette("disposition")` now walk through a task start to finish -- get the
+  data, run/screen, read the result -- instead of listing functions, with each
+  result explained inline. The `_pkgdown.yml` reference index is reordered to
+  match the README (raw data access -> latency -> disposition).
+
 * **Dropped the "Survey Manager" audience framing.** The whole package is for
   Survey Managers, so singling out one surface as *the* Survey-Manager surface
   was redundant -- the label is removed from the README, both vignettes, the
