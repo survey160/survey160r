@@ -71,11 +71,14 @@ latency_report <- function(data, config, run_at = NULL) {
   field_tz <- config$field_timezone
   resp_id_col <- config$filters$respondent_id_column
 
-  # Stash source_csv_hash from the input attribute before any subsetting (R
-  # drops custom attributes on `[`). s160_gcs_campaign_results_read(hash = TRUE) sets this; manual
-  # callers can attach it themselves. Falls back to NA so downstream writers
-  # can still override it at persist time for ad-hoc invocations.
+  # Stash the source_csv_* provenance pair from the input attributes up front,
+  # before the transforms below, so both survive regardless of a step that
+  # rebuilds `data` and drops custom attributes.
+  # s160_gcs_campaign_results_read(hash = TRUE) / s160_read_csv() set these;
+  # manual callers can attach them. Falls back to NA so downstream writers can
+  # still override at persist time for ad-hoc invocations.
   src_csv_hash <- attr(data, "source_csv_hash") %||% NA_character_
+  src_csv_path <- attr(data, "source_csv_path") %||% NA_character_
 
   # Step 0: na_if_blank up-front so both the summary computation (pre-filter)
   # and the latency parse step (post-filter) see NA where the CSV had "".
@@ -191,7 +194,7 @@ latency_report <- function(data, config, run_at = NULL) {
     config_hash = cfg_hash,
     run_at_utc = run_at,
     source_csv_hash = src_csv_hash,
-    source_csv_path = attr(data, "source_csv_path") %||% NA_character_
+    source_csv_path = src_csv_path
   )
 
   list(
