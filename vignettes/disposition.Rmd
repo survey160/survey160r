@@ -22,15 +22,15 @@ This guide walks through cleaning a sample against the **disposition dataset**: 
 
 ## Step 1 -- get the dataset
 
-Load the package, sign in to Google Cloud Storage once, and pull the dataset. The first call to `s160_gcs_init()` opens a browser; after that the token is cached. `disposition_pull()` then downloads the dataset to a local file and hands back its path -- cached too, so this is the one slow step of your session; every call after the first returns instantly.
+Load the package, sign in to Google Cloud Storage once, and pull the dataset. The first call to `s160_gcs_init()` opens a browser; after that the token is cached. `disposition_pull()` then downloads the dataset -- about 140 MB, a few minutes the first time -- to a local file and hands back its path; it is cached, so every call after the first returns instantly.
 
 ```{r}
 library(survey160r)
 s160_gcs_init(bucket = "s160_disposition_prod")   # one-time browser sign-in, then cached
-dataset <- disposition_pull()                      # env = "prod" (default) or "dev"
+dataset <- disposition_pull()                      # ~140 MB first pull, then cached; env "prod"/"dev"
 ```
 
-That is the only network step. Everything below reads this local file.
+That is the only network step. Everything below reads this local file. The dataset is re-published periodically, so if your cached copy might be out of date, force a fresh download with `disposition_pull(refresh = TRUE)`.
 
 ## Step 2 -- screen your sample
 

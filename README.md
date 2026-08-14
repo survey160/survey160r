@@ -9,6 +9,8 @@ R package for accessing Survey160 campaign data, in three layers:
 - **[Latency analysis](vignettes/latency.Rmd)** -- compute a per-campaign recipient-latency report from a raw campaign CSV, as an in-memory R object.
 - **[Disposition screening](vignettes/disposition.Rmd)** -- screen a phone sample against every recipient Survey160 has contacted, dropping numbers already completed or refused before you field.
 
+**New here?** To screen a sample before fielding, jump to [Disposition screening](#disposition-screening). First time on this machine, start with [First-time setup](#first-time-setup) -- you need a credential and a bucket grant before any data call works.
+
 The pure entry points `latency_run()` and `disposition_run()` take an in-memory data frame and return a list with a `consolidated` data frame plus provenance `meta`. The disposition readers (`disposition_summary()` / `disposition_records()` / `disposition_screen()`) read the Parquet projection and return a data frame, and `disposition_pull()` downloads that projection from GCS and returns a local path. Fleet orchestration and Parquet persistence live in downstream consumer projects. See `?survey160r` for an overview from the R console.
 
 ## Installation
@@ -21,6 +23,26 @@ install.packages("survey160r", repos = "https://survey160.r-universe.dev")
 install.packages("pak")  # if not already installed
 pak::pkg_install("survey160/survey160r")
 ```
+
+> R-universe rebuilds from `main` and can lag a fresh release by up to ~30 minutes. If a newly added function (for example `disposition_pull()`) is not found after installing from R-universe, get the latest straight from GitHub with the `pak` line above and restart R.
+
+## Try it without credentials
+
+The pure functions run on an in-memory data frame, so you can see the package work before setting up any access. This rolls a two-campaign history up to one row per phone:
+
+```r
+library(survey160r)
+records <- data.frame(
+  phone = c("5551234567", "5551234567", "5559876543"),
+  campaign_id = c(101L, 102L, 101L),
+  engaged = c(1L, 1L, 0L), opt_in = c(1L, 0L, 0L), complete = c(1L, 0L, 0L),
+  web_complete = c(0L, 0L, 0L), terminated = c(0L, 1L, 0L),
+  date_closed_on = as.Date(c("2026-01-10", "2026-01-20", "2026-01-15"))
+)
+disposition_rollup(records, phones = c("5551234567", "5550000000"))
+```
+
+Everything else -- reading GCS, pulling the disposition dataset, the API -- needs the [access below](#first-time-setup).
 
 ## Raw data access
 
@@ -79,8 +101,9 @@ Screen a phone sample against every recipient Survey160 has contacted, dropping 
 library(survey160r)
 s160_gcs_init(bucket = "s160_disposition_prod")   # one-time browser sign-in (cached)
 
-dataset <- disposition_pull()                       # download the projection (cached)
-cleaned <- disposition_screen(my_sample, dataset)   # screening columns appended 1:1
+my_sample <- data.frame(phone = c("2015550101", "2015550102"))  # your list; extra columns are kept
+dataset   <- disposition_pull()                     # downloads ~140 MB the first time, then cached
+cleaned   <- disposition_screen(my_sample, dataset) # screening columns appended 1:1
 # drop already-completed / refused; blank-phone rows come back all-NA and are kept
 subset(cleaned, !(ever_complete %in% TRUE | ever_terminated %in% TRUE))
 ```
@@ -88,6 +111,14 @@ subset(cleaned, !(ever_complete %in% TRUE | ever_terminated %in% TRUE))
 Full walkthrough -- the appended columns, ad-hoc queries, the read-once tip, and beta caveats -- in the **[disposition guide](vignettes/disposition.Rmd)** (`vignette("disposition")` once installed).
 
 ## First-time setup
+
+Before any data call works you need, in order:
+
+1. The **OAuth client secret** -- ask your team lead; you paste it in once (below).
+2. **Access to the bucket you are reading** -- Storage Object Viewer on `campaign_results` (raw data / latency) or `s160_disposition_prod` (disposition screening), granted via the `gcp-campaign-readers` group. Without it, sign-in still succeeds but the first read returns a **403** -- ask a sysadmin to add you.
+3. For the API path only: your **API user ID and key** -- also from your team lead.
+
+The rest of this section walks through each.
 
 ### GCS (`s160_gcs_init`)
 
@@ -141,6 +172,17 @@ make e2e
 ```
 
 ## Troubleshooting
+
+Common symptoms and fixes:
+
+| Symptom | Likely cause | Fix |
+|---|---|---|
+| `GCS not initialized. Run s160_gcs_init() first.` | A GCS or disposition reader was called before authenticating | Run `s160_gcs_init(bucket = ...)` first |
+| A **403** after a successful Google sign-in | Your account lacks Storage Object Viewer on that bucket | Ask a sysadmin to add you to `gcp-campaign-readers` for the bucket (see [First-time setup](#first-time-setup)) |
+| `could not find function "disposition_pull"` | R-universe has not rebuilt the latest release yet | Install from GitHub (`pak::pkg_install("survey160/survey160r")`), then restart R |
+| `disposition_pull()` returns data you know is out of date | It reused a cached copy | Re-download with `disposition_pull(refresh = TRUE)` |
+| `unused argument (...)` from a reader | The argument belongs to a different function (e.g. `filter_open` is on `s160_api_campaign_results()`, not `s160_gcs_campaign_results_read()`) | Move it to the right function, or drop it |
+| A `date_from` / `date_to` filter returns 0 rows | In the beta, `date_closed_on` is `NA`, so any date filter matches nothing | Do not filter by date yet |
 
 Reset credentials (edit `~/.Renviron`, remove the relevant line, restart R):
 

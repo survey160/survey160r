@@ -168,6 +168,14 @@
   result explained inline. The `_pkgdown.yml` reference index is reordered to
   match the README (raw data access -> latency -> disposition).
 
+* **README onboarding and troubleshooting.** Added an access checklist to
+  First-time setup (client secret, bucket grant, API keys), an R-universe
+  version-lag note to Installation, a "try it without credentials" example, a
+  "new here?" signpost, and a symptom -> cause -> fix Troubleshooting table
+  (403, not-initialized, stale cache, missing function, wrong-argument, empty
+  date filter). The disposition guide now states the pull's download size/time
+  and how to refresh a stale cache.
+
 * **Dropped the "Survey Manager" audience framing.** The whole package is for
   Survey Managers, so singling out one surface as *the* Survey-Manager surface
   was redundant -- the label is removed from the README, both vignettes, the
