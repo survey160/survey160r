@@ -360,24 +360,38 @@ s160_gcs_init <- function(bucket) {
 #'   e.g. from \code{latency_input_columns()}. When set, only those columns are
 #'   parsed (via \code{data.table::fread}'s column projection), cutting read
 #'   time and memory on wide exports. \code{NULL} (default) reads every column.
+#' @param hash When \code{TRUE}, stamp provenance on the returned frame -- the
+#'   sha256 of the downloaded CSV bytes as \code{source_csv_hash} and the
+#'   canonical \code{gs://} source as \code{source_csv_path}, which
+#'   \code{latency_run()} / \code{latency_report()} then surface on
+#'   \code{result$meta}. \code{FALSE} (default) skips the extra hashing read and
+#'   returns a plain frame. (The local-file sibling is
+#'   \code{\link{s160_read_csv}}, whose \code{hash} stamps the same provenance.)
 #' @param ... Additional arguments forwarded to the CSV reader
 #'   (\code{data.table::fread}, or \code{utils::read.csv} when data.table is
 #'   unavailable), e.g. \code{na.strings}, \code{nrows}, \code{sep}.
-#' @return A data frame with one row per survey response.
+#' @return A data frame with one row per survey response. With
+#'   \code{hash = TRUE} it also carries \code{source_csv_hash} and
+#'   \code{source_csv_path} attributes.
 #' @examples
 #' \dontrun{
 #' s160_gcs_init(bucket = "campaign_results")
 #' df <- s160_gcs_campaign_results_read(1980)
 #' df <- s160_gcs_campaign_results_read(1980, destdir = ".")
 #' df <- s160_gcs_campaign_results_read(1980, destdir = "~/data")
+#' df <- s160_gcs_campaign_results_read(1980, hash = TRUE)   # + provenance attrs
 #' }
 #' @importFrom googleCloudStorageR gcs_get_object gcs_get_global_bucket
 #' @export
 s160_gcs_campaign_results_read <- function(campaign_id, filename = NULL,
                                            destdir = NULL, bucket = NULL,
-                                           columns = NULL, ...) {
+                                           columns = NULL, hash = FALSE, ...) {
   campaign_id <- validate_campaign_id(campaign_id)
   bucket <- resolve_bucket(bucket)
+  if (!is.logical(hash) || length(hash) != 1L || is.na(hash)) {
+    stop_s160("`hash` must be a single TRUE or FALSE.",
+              fn = "s160_gcs_campaign_results_read")
+  }
 
   if (is.null(filename)) {
     filename <- paste0(campaign_id, "_raw_data_download.csv")
@@ -420,7 +434,17 @@ s160_gcs_campaign_results_read <- function(campaign_id, filename = NULL,
     message(sprintf("Saved to: %s", local_path))
   }
 
-  fast_read_csv(local_path, columns = columns, ...)
+  data <- fast_read_csv(local_path, columns = columns, ...)
+  # Provenance (opt-in): hash the downloaded bytes + record the canonical gs://
+  # source, so latency_run()/latency_report() can surface them on result$meta.
+  # Done before the on.exit() cleanup of a NULL-destdir tempfile, so the file is
+  # still present. `gcs_path` is gs://<bucket>/<campaign_id>/<filename>.
+  if (hash) {
+    attr(data, "source_csv_hash") <-
+      paste0("sha256:", digest::digest(file = local_path, algo = "sha256"))
+    attr(data, "source_csv_path") <- gcs_path
+  }
+  data
 }
 
 #' List files in a campaign's GCS folder
@@ -493,68 +517,10 @@ s160_gcs_campaign_results_list <- function(bucket = NULL) {
   sort(campaign_ids)
 }
 
-#' Read a campaign CSV from GCS, hashing it for provenance
-#'
-#' Thin wrapper over \code{s160_gcs_campaign_results_read} that also
-#' computes a sha256 of the downloaded CSV bytes. The hash and the
-#' canonical \code{gs://} path travel back on the returned data frame
-#' as the \code{source_csv_hash} and \code{source_csv_path}
-#' attributes; \code{latency_report()} reads them and copies them onto
-#' \code{result$meta} so downstream consumers (e.g. persistence layers)
-#' don't have to fish them off attributes.
-#'
-#' @param campaign_id Campaign id (numeric or character).
-#' @param filename Optional override for the CSV filename.
-#' @param bucket Source GCS bucket. \code{NULL} (default) falls back to the
-#'   global bucket set by \code{s160_gcs_init()}; pass an explicit value to
-#'   skip the global entirely.
-#' @param columns Optional character vector of (dot-form) column names to keep
-#'   (e.g. from \code{latency_input_columns()}). Forwarded to
-#'   \code{s160_gcs_campaign_results_read()} to parse only those columns.
-#' @return A data frame with attributes \code{source_csv_hash} and
-#'   \code{source_csv_path} set.
-#' @examples
-#' \dontrun{
-#' s160_gcs_init(bucket = "campaign_results")
-#' data <- s160_gcs_pull_csv(1234)
-#' attr(data, "source_csv_hash")
-#' }
-#' @export
-s160_gcs_pull_csv <- function(campaign_id, filename = NULL, bucket = NULL,
-                              columns = NULL) {
-  bucket <- resolve_bucket(bucket)
-  tmpdir <- tempfile(pattern = "s160_latency_")
-  dir.create(tmpdir)
-  on.exit(unlink(tmpdir, recursive = TRUE), add = TRUE)
-  data <- s160_gcs_campaign_results_read(
-    campaign_id = campaign_id,
-    filename = filename,
-    destdir = tmpdir,
-    bucket = bucket,
-    columns = columns
-  )
-  fn <- if (is.null(filename)) {
-    paste0(as.character(campaign_id), "_raw_data_download.csv")
-  } else {
-    filename
-  }
-  csv_path <- file.path(tmpdir, fn)
-  attr(data, "source_csv_hash") <- if (file.exists(csv_path)) {
-    paste0("sha256:", digest::digest(file = csv_path, algo = "sha256"))
-  } else {
-    NA_character_
-  }
-  # Canonical GCS source path (not the local temp path, which is unlinked on
-  # return). Lets downstream callers record provenance without re-deriving
-  # the path from campaign_id + filename.
-  attr(data, "source_csv_path") <-
-    sprintf("gs://%s/%s/%s", bucket, as.character(campaign_id), fn)
-  data
-}
-
 #' Read a campaign CSV from a local path, hashing it for provenance
 #'
-#' Local-source sibling of \code{s160_gcs_pull_csv()}. Reads the CSV
+#' Local-source sibling of \code{s160_gcs_campaign_results_read()} (with
+#' \code{hash = TRUE}). Reads the CSV
 #' via \code{data.table::fread} (falling back to \code{utils::read.csv})
 #' and stamps \code{source_csv_hash} and \code{source_csv_path}
 #' attributes on the returned data frame so downstream

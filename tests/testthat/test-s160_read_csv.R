@@ -1,5 +1,5 @@
 # Coverage for R/s160_gcs.R::s160_read_csv. Local-source sibling of
-# s160_gcs_pull_csv -- reads + stamps the same provenance attrs.
+# s160_gcs_campaign_results_read(hash = TRUE) -- reads + stamps the same provenance attrs.
 
 test_that("s160_read_csv stamps source_csv_hash and source_csv_path", {
   tmp <- tempfile(fileext = ".csv")

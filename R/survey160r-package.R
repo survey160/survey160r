@@ -44,7 +44,7 @@
 #'     config from the CSV header, then runs the algorithm).
 #'   \item \code{\link{latency_report}} -- the pure algorithm, for tests and
 #'     ad-hoc analysis.
-#'   \item \code{\link{s160_gcs_pull_csv}} / \code{\link{s160_read_csv}} -- read a
+#'   \item \code{\link{s160_gcs_campaign_results_read}} / \code{\link{s160_read_csv}} -- read a
 #'     campaign export from GCS or from a local file, respectively.
 #' }
 #'

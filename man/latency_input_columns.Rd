@@ -38,7 +38,7 @@ projecting them away and misclassifying a \code{t2w_external} campaign as
 \code{sms}.
 
 Pass the result as \code{columns =} to \code{s160_read_csv()} /
-\code{s160_gcs_pull_csv()} to parse only the columns the algorithm needs --
+\code{s160_gcs_campaign_results_read()} to parse only the columns the algorithm needs --
 the projection yields output identical to a full read.
 }
 \examples{

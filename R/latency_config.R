@@ -21,7 +21,7 @@
 #' Discover the question flow from CSV column names
 #'
 #' Scans the column names of an in-memory CSV data frame (as returned by
-#' \code{read.csv} / \code{s160_gcs_pull_csv}) for \code{id.<q>.scriptDate}
+#' \code{read.csv} / \code{s160_gcs_campaign_results_read}) for \code{id.<q>.scriptDate}
 #' columns and returns the question ids in their original column order.
 #' Terminal flow states (\code{refusal}, \code{ineligible}) are dropped so
 #' the result is usable directly as \code{config$flow$questions}.
@@ -233,7 +233,7 @@ validate_columns_present <- function(config, data) {
 #' \code{sms}.
 #'
 #' Pass the result as \code{columns =} to \code{s160_read_csv()} /
-#' \code{s160_gcs_pull_csv()} to parse only the columns the algorithm needs --
+#' \code{s160_gcs_campaign_results_read()} to parse only the columns the algorithm needs --
 #' the projection yields output identical to a full read.
 #'
 #' @param config A config list from \code{latency_build_config()} (or one with

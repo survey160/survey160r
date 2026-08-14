@@ -38,9 +38,9 @@ The suite uses `testthat::local_mocked_bindings()` (testthat 3.x) for almost eve
 `local_mocked_bindings()` rebinds within the calling test's `local()` scope and auto-restores on exit. When wrapping it in a helper, **always pass `.env = parent.frame()`** so the mock applies in the caller's scope, not the helper's:
 
 ```r
-stub_pull_csv <- function(data, capture = NULL, env = parent.frame()) {
+stub_campaign_list <- function(ids, env = parent.frame()) {
   testthat::local_mocked_bindings(
-    s160_gcs_pull_csv = function(...) { ...; data },
+    s160_gcs_campaign_results_list = function(bucket = NULL) ids,
     .env = env
   )
 }
@@ -66,7 +66,6 @@ Prefer a capture env over `<<-` to a free variable — it survives `local_mocked
 |---|---|
 | `stub_gcs_base()` | `check_gcs_ready` + `validate_campaign_id` + `gcs_get_global_bucket` no-ops |
 | `stub_gcs_download_ok(capture)` | `gcs_get_object` answers the `meta = TRUE` size probe and writes a minimal CSV |
-| `stub_pull_csv(data, capture)` | mocks `s160_gcs_pull_csv`; records `pull_id`/`pull_bucket` |
 | `stub_campaign_list(ids)` | mocks `s160_gcs_campaign_results_list` |
 | `gcs_status(name, updated, size)` | builds the list returned by `s160_gcs_*_status` (`updated` accepts an ISO string or POSIXct) |
 
@@ -89,7 +88,7 @@ The `mutate` hook is how you trigger negative paths (drop a column, perturb a va
 ## Conventions
 
 - **Latency runner tests**: `latency_run()` is now source-agnostic -- it takes caller-supplied `data`. Tests pass a `load_synthetic_data()` frame directly; no I/O boundary to stub. Don't mock `latency_report` unless you specifically need to capture the config it was called with (see `test-latency_run.R`'s "forwards `...` overrides" case).
-- **Reader tests**: `s160_gcs_pull_csv` uses `stub_gcs_base()` + `stub_gcs_download_ok()`. `s160_read_csv` reads real files via `tempfile()`.
+- **Reader tests**: `s160_gcs_campaign_results_read` uses `stub_gcs_base()` + `stub_gcs_download_ok()`. `s160_read_csv` reads real files via `tempfile()`.
 - **Times are UTC**: tests pass POSIXct stamps with `tz = "UTC"` explicitly. `gcs_status()` parses character `updated` as UTC.
 - **Don't share fixture data across tests by file mutation**: each test loads its own copy via `load_synthetic_data()`. The fixture file is read-only.
 - **`# nocov start` / `# nocov end`** is only used for paths that require interactive auth or a live network (e.g. the OAuth bootstrap in `R/s160_gcs.R`). Document the integration test or manual run that exercises them.

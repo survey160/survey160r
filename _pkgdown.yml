@@ -14,7 +14,6 @@ reference:
   - s160_gcs_campaign_results_read
   - s160_gcs_campaign_results_files
   - s160_gcs_campaign_results_status
-  - s160_gcs_pull_csv
   - s160_read_csv
   - s160_csv_header
   - s160_api_auth

@@ -40,7 +40,7 @@ carrying the per-respondent disposition frame in \code{consolidated} (one row
 per contacted phone, with 0/1 funnel flags \code{started}, \code{engaged},
 \code{opt_in}, \code{complete}, \code{web_complete}, \code{terminated} and the
 campaign's \code{mode}) plus source provenance in \code{meta}. Pure
-function, no I/O -- pair with \code{s160_gcs_pull_csv()} for the GCS source.
+function, no I/O -- pair with \code{s160_gcs_campaign_results_read(hash = TRUE)} for the GCS source.
 Persisting the frame (any enrichment, provenance, and Parquet output) is
 handled by consumer projects.
 }
@@ -65,7 +65,7 @@ data.
 }
 \examples{
 \dontrun{
-data <- s160_gcs_pull_csv(1234)
+data <- s160_gcs_campaign_results_read(1234, hash = TRUE)
 res  <- disposition_run(1234, data)
 res$consolidated  # the disposition frame; res$meta carries source provenance
 }

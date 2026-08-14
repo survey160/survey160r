@@ -2,6 +2,15 @@
 
 ## Breaking changes
 
+* **`s160_gcs_pull_csv()` removed; `s160_gcs_campaign_results_read()` gains a
+  `hash` argument.** The two GCS CSV readers are now one:
+  `s160_gcs_campaign_results_read(id, hash = TRUE)` stamps the same
+  `source_csv_hash` / `source_csv_path` provenance the wrapper did (and that
+  `latency_run()` / `latency_report()` surface on `result$meta`); `hash = FALSE`
+  (default) returns a plain frame, unchanged from before. Mirrors the local
+  sibling `s160_read_csv(hash =)`. Migration: `s160_gcs_pull_csv(id)` ->
+  `s160_gcs_campaign_results_read(id, hash = TRUE)`.
+
 * **`disposition_rollup()` removed; `disposition_summary()` now takes a path
   *or* an in-memory data frame.** The two functions did the same per-phone
   rollup, split only by input type. `disposition_summary(x)` now dispatches on
@@ -157,8 +166,8 @@
   happy path (no drop-offs) is unchanged.
 
 * **`download_with_verify()` now actually verifies download size** (affects
-  `s160_gcs_campaign_results_read()`, `s160_gcs_pull_csv()`, and
-  `disposition_pull()`). The expected size was read from `gcs_list_objects()`,
+  `s160_gcs_campaign_results_read()` and `disposition_pull()`). The expected
+  size was read from `gcs_list_objects()`,
   whose `size` is a human-readable string (`"483.3 Kb"`) at every `detail`
   level, so `as.numeric()` produced `NA` and the size check plus its retry loop
   never ran against real GCS -- a truncated-but-`HTTP 200` download was accepted

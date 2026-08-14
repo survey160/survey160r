@@ -100,28 +100,3 @@ test_that("validate_flow_order short-circuits when no rows have parseable pairs"
   )
   expect_invisible(survey160r:::validate_flow_order(cfg, d))
 })
-
-# --- s160_gcs_pull_csv filename override -----------------------------------
-
-test_that("s160_gcs_pull_csv honors a caller-supplied filename", {
-  stub_gcs_base()
-  stub_gcs_download_ok()
-  data <- suppressMessages(
-    s160_gcs_pull_csv(1980, filename = "custom_export.csv")
-  )
-  expect_true(grepl("^sha256:", attr(data, "source_csv_hash")))
-})
-
-test_that("s160_gcs_pull_csv derives the default filename from campaign_id", {
-  stub_gcs_base()
-  # Without an explicit filename, the helper falls back to
-  # `<campaign_id>_raw_data_download.csv` for both the hash lookup and the
-  # canonical source_csv_path attribute.
-  stub_gcs_download_ok()
-  data <- suppressMessages(s160_gcs_pull_csv(1980))
-  expect_true(grepl("^sha256:", attr(data, "source_csv_hash")))
-  expect_equal(
-    attr(data, "source_csv_path"),
-    "gs://test_bucket/1980/1980_raw_data_download.csv"
-  )
-})
