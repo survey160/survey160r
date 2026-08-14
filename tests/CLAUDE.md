@@ -40,7 +40,7 @@ The suite uses `testthat::local_mocked_bindings()` (testthat 3.x) for almost eve
 ```r
 stub_campaign_list <- function(ids, env = parent.frame()) {
   testthat::local_mocked_bindings(
-    s160_gcs_campaign_results_list = function(...) ids,
+    s160_gcs_campaign_results_list = function(bucket = NULL) ids,
     .env = env
   )
 }

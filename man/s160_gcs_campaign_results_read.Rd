@@ -39,7 +39,7 @@ canonical \code{gs://} source as \code{source_csv_path}, which
 \code{latency_run()} / \code{latency_report()} then surface on
 \code{result$meta}. \code{FALSE} (default) skips the extra hashing read and
 returns a plain frame. (The local-file sibling is
-\code{\link{s160_read_csv}}, whose \code{hash} works the same way.)}
+\code{\link{s160_read_csv}}, whose \code{hash} stamps the same provenance.)}
 
 \item{...}{Additional arguments forwarded to the CSV reader
 (\code{data.table::fread}, or \code{utils::read.csv} when data.table is
