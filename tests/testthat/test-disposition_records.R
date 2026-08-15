@@ -77,9 +77,12 @@ test_that("date bounds filter on date_closed_on; NA close dates drop", {
   res2 <- disposition_records(.record_base(), date_to = "2026-03-31")
   expect_equal(nrow(res2), 2L)
   expect_true(all(res2$campaign_id == 2339L))
-  # a row with an NA close date is dropped by any bound
+  # a row with an NA close date is dropped by any bound; an all-NA dataset (the
+  # beta) warns that the filter drops everything.
   p <- write_disposition_parquet(.record_row("2015550103", 2400, engaged = 1))  # NA date
-  expect_equal(nrow(disposition_records(p, date_from = "2020-01-01")), 0L)
+  expect_warning(res <- disposition_records(p, date_from = "2020-01-01"),
+                 "returns no rows")
+  expect_equal(nrow(res), 0L)
 })
 
 test_that("a date bound with no date_closed_on column errors", {

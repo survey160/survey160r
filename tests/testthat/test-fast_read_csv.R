@@ -96,3 +96,16 @@ test_that("`...` overrides the pinned defaults (e.g. sep)", {
 
   expect_equal(names(fast_read_csv(tmp, sep = "\t")), c("a", "b"))
 })
+
+test_that("an argument the CSV reader does not accept is rejected clearly", {
+  tmp <- withr::local_tempfile(fileext = ".csv")
+  writeLines(c("a,b", "1,2"), tmp)
+  # named bogus arg -- the classic wrong-function mistake (e.g. filter_open=)
+  expect_error(fast_read_csv(tmp, filter_open = TRUE),
+               "not accepted by the CSV reader.*filter_open")
+  # unnamed positional extra (the four named formals are filled first)
+  expect_error(fast_read_csv(tmp, NULL, "UTF-8", "s160_read_csv", 99),
+               "not accepted by the CSV reader.*unnamed")
+  # surfaces through the public reader, naming the function called
+  expect_error(s160_read_csv(tmp, filter_open = TRUE), "s160_read_csv")
+})
