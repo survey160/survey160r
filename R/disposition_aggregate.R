@@ -43,44 +43,11 @@
   .opener_population(.discover_openers(x), .dot_form_headers(available))
 }
 
-# started (contacted): the recipient received ANY opening send (id.<opener>.
-# scriptDate). NOT batchDate: that is the inbound REPLY, used by `engaged`.
-.mask_started <- function(data) {
-  .opener_events(data, .discover_openers(data), "scriptDate")
-}
-
-# engaged: the recipient REPLIED to an opening question (id.<opener>.batchDate)
-# AND was started. Gating on `started` matches the latency view (n_engaged is
-# `!is.na(opener.batchDate) & texted`): a reply presupposes a send, so a stray
-# reply with no recorded send is not counted as engaged by either view. Distinct
-# from opt_in, which additionally requires an accepted "Yes" answer.
-.mask_engaged <- function(data, started) {
-  .opener_events(data, .discover_openers(data), "batchDate") & started
-}
-
-# opt_in: passed the population filter (default id.<opener>.finalText == "Yes")
-# AND was texted. Reuses population_filter_mask() so consent is defined exactly
-# as the latency view defines n_consented. Null-safe like the other masks: if a
-# column the (parseable) filter references is absent from the export, nobody
-# opted in (all FALSE) rather than erroring. A filter that will not parse falls
-# through to population_filter_mask(), which raises the "not valid R" error.
-.mask_opt_in <- function(data, population, started) {
-  vars <- tryCatch(all.vars(parse(text = population)), error = function(e) NULL)
-  if (!is.null(vars)) {
-    # A referenced symbol is a genuinely-absent data column only if it is
-    # neither in `data` nor resolvable in the eval environment.
-    # population_filter_mask() binds columns with parent = baseenv(), so base
-    # symbols (T/F/pi/Inf) and function names still resolve -- treating those
-    # as "absent" would wrongly zero a valid filter such as `col == T`.
-    missing <- setdiff(vars, names(data))
-    missing <- missing[!vapply(missing, exists, logical(1),
-                               envir = baseenv(), inherits = TRUE)]
-    if (length(missing) > 0L) {
-      return(rep(FALSE, nrow(data)))
-    }
-  }
-  population_filter_mask(data, population) & started
-}
+# started (contacted), engaged (replied & started), and opt_in (population &
+# started) are the shared per-recipient funnel masks -- .funnel_masks() (opener.R)
+# computes them identically for the latency summary, so the two views measure the
+# same funnel. disposition_run() calls .funnel_masks() once (below) rather than a
+# per-flag mask here.
 
 # web_complete: the raw web_complete callback == 1. Null-safe (absent -> FALSE).
 .mask_web_complete <- function(data) {
@@ -305,15 +272,16 @@ disposition_run <- function(campaign_id, data, population = NULL,
 
   population <- population %||% .disposition_default_population(data)
   survey_mode <- detect_survey_mode(data)
-  started <- .mask_started(data)
+  masks <- .funnel_masks(data, .discover_openers(data), population)
+  started <- masks$sent
 
   out <- data.frame(
     phone = phone,
     # via as.character() so a factor id stamps its label, not its level code.
     campaign_id = rep(as.integer(as.character(campaign_id)), length(phone)),
     started = as.integer(started),
-    engaged = as.integer(.mask_engaged(data, started)),
-    opt_in = as.integer(.mask_opt_in(data, population, started)),
+    engaged = as.integer(masks$engaged),
+    opt_in = as.integer(masks$opted_in),
     complete = as.integer(.mask_complete(data, survey_mode, started)),
     web_complete = as.integer(.mask_web_complete(data)),
     terminated = as.integer(.mask_terminated(data)),

@@ -72,3 +72,45 @@
 .dot_form_headers <- function(cols) {
   sub("^id\\[([A-Za-z0-9_]+)\\]([A-Za-z0-9_]+)$", "id.\\1.\\2", cols)
 }
+
+# The opt-in / consent mask: TRUE where the recipient passes the population
+# filter (default id.<opener>.finalText == "Yes"). Null-safe -- a population that
+# references a genuinely-absent data column yields all-FALSE rather than an eval
+# error. A referenced symbol is "absent" only if it is neither a data column nor
+# resolvable in baseenv() (population_filter_mask binds columns with parent =
+# baseenv(), so base symbols T/F/pi/Inf and function names still resolve -- a
+# valid filter such as `col == T` must not be zeroed). A population that will not
+# PARSE still raises via population_filter_mask (the "not valid R" error).
+.population_mask <- function(data, population) {
+  vars <- tryCatch(all.vars(parse(text = population)), error = function(e) NULL)
+  if (!is.null(vars)) {
+    missing <- setdiff(vars, names(data))
+    missing <- missing[!vapply(missing, exists, logical(1),
+                               envir = baseenv(), inherits = TRUE)]
+    if (length(missing) > 0L) {
+      return(rep(FALSE, nrow(data)))
+    }
+  }
+  population_filter_mask(data, population)
+}
+
+# The per-recipient funnel masks (sent / engaged / opted-in), computed once and
+# identically for the latency summary (build_summary_frame) and the disposition
+# transform (disposition_run), so the two views cannot report a different funnel.
+# Each keys on the opener SET:
+#   sent     = received ANY opener send   (opener scriptDate present)
+#   engaged  = replied to ANY opener AND was sent (a reply presupposes a send)
+#   opted_in = passed the opt-in population AND was sent
+# `send` (the coalesced opener scriptDate) is returned so the latency view can
+# bucket its summary by send date/hour; the disposition view uses only the masks.
+.funnel_masks <- function(data, openers, population) {
+  send <- .opener_timestamp(data, openers, "scriptDate")
+  reply <- .opener_timestamp(data, openers, "batchDate")
+  sent <- !is.na(send)
+  list(
+    send = send,
+    sent = sent,
+    engaged = !is.na(reply) & sent,
+    opted_in = .population_mask(data, population) & sent
+  )
+}

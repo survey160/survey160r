@@ -85,27 +85,22 @@ build_summary_frame <- function(data, config, survey_mode = "sms") {
   # Null-safe per column, so this also replaces the old unguarded read that
   # crashed on an absent id.intro.scriptDate.
   openers <- .opening_questions(config$flow$questions)
-  intro_script <- .opener_timestamp(data, openers, "scriptDate")
-  intro_batch <- .opener_timestamp(data, openers, "batchDate")
+  # sent / engaged / opted-in are the shared per-recipient funnel masks --
+  # computed identically here and in the disposition transform (.funnel_masks in
+  # opener.R) so the two views cannot report a different funnel. `send` (the
+  # coalesced opener scriptDate) is retained to bucket the summary by send
+  # date/hour. `texted`/`consented` keep the latency-local names for the counts.
+  masks <- .funnel_masks(data, openers, config$filters$population)
+  send <- masks$send
+  texted <- masks$sent
+  engaged <- masks$engaged
+  consented <- masks$opted_in
   close_script_col <- "id.close.scriptDate"
   close_script <- if (close_script_col %in% names(data)) {
     parse_s160_timestamps_chr(data[[close_script_col]])
   } else {
     rep(as.POSIXct(NA), nrow(data))
   }
-
-  # texted = the intro was SENT (id.intro.scriptDate). engaged = the recipient
-  # REPLIED (id.intro.batchDate), a strictly smaller set, reported among the
-  # texted so every counted row has a send timestamp to bucket on.
-  texted <- !is.na(intro_script)
-  engaged <- !is.na(intro_batch) & texted
-  # n_consented uses the configured population filter, not a hardcoded
-  # finalValue == 1 check. Different platform variants emit consent in
-  # different fields ("Yes"/"No" labels vs integer codes); the filter is
-  # already the project-owned expression for "who's in the funnel" so we
-  # reuse it as the canonical consent definition.
-  consented <- population_filter_mask(data, config$filters$population)
-  consented <- consented & texted
   # Completion signal is survey-mode dependent (SUR-1368):
   #   t2w          -> the web_complete callback
   #   t2w_external -> not computable; n_completed is nulled to NA in
@@ -136,8 +131,8 @@ build_summary_frame <- function(data, config, survey_mode = "sms") {
   # all-zero and dropped below; the NA bucket key it gets never survives the
   # keep filter. (This is why the funnel must bucket on the send, not the
   # reply: a texted-but-never-replied recipient has no batchDate to bucket on.)
-  seg_date <- as.Date(format(intro_script, tz = field_tz))
-  hour_local <- as.integer(format(intro_script, format = "%H", tz = field_tz))
+  seg_date <- as.Date(format(send, tz = field_tz))
+  hour_local <- as.integer(format(send, format = "%H", tz = field_tz))
 
   long <- data.frame(
     campaign_id = campaign_id,

@@ -65,3 +65,40 @@ test_that("latency and disposition resolve the SAME opener set and population", 
                  info = nm)
   }
 })
+
+test_that(".funnel_masks composes sent / engaged / opted-in on the opener set", {
+  ts <- "2026-01-26 15:00:00.000000Z"
+  d <- data.frame(
+    id.intro.scriptDate = c(ts, ts, ts, ""),   # r4 never sent
+    id.intro.batchDate  = c(ts, ts, "", ""),   # r3 no reply
+    id.intro.finalText  = c("Yes", "No", "Yes", "Yes"),
+    stringsAsFactors = FALSE, check.names = FALSE
+  )
+  m <- .funnel_masks(d, "intro", 'id.intro.finalText == "Yes"')
+  expect_s3_class(m$send, "POSIXct")                 # returned for date/hour bucketing
+  expect_equal(m$sent,     c(TRUE, TRUE, TRUE, FALSE))
+  expect_equal(m$engaged,  c(TRUE, TRUE, FALSE, FALSE))   # r3 no reply, r4 not sent
+  expect_equal(m$opted_in, c(TRUE, FALSE, TRUE, FALSE))   # r2 "No", r4 not sent
+})
+
+test_that("latency counts and disposition flags agree on sent/engaged/opted-in", {
+  # The end-to-end alignment guarantee: for the same data, the latency summary's
+  # aggregate counts equal the disposition transform's per-row flag sums, because
+  # both derive sent/engaged/opted-in from the one .funnel_masks().
+  ts <- "2026-01-26 15:00:00.000000Z"
+  d <- data.frame(
+    phone = as.character(1:5),
+    campaignid = 1L,
+    id.intro.scriptDate    = c(ts, ts, ts, "", ts),
+    id.intro.batchDate     = c(ts, ts, "", "", ts),
+    id.intro.finalText     = c("Yes", "No", "", "", "Yes"),
+    id.close.scriptDate    = c(ts, "", "", "", ""),
+    stringsAsFactors = FALSE, check.names = FALSE
+  )
+  cfg <- latency_build_config(1L, d, field_timezone = "America/New_York")
+  sf  <- build_summary_frame(d, cfg, survey_mode = "sms")
+  disp <- disposition_run(1L, d, contacted_only = FALSE)$consolidated
+  expect_equal(sum(sf$n_texted),    sum(disp$started))
+  expect_equal(sum(sf$n_engaged),   sum(disp$engaged))
+  expect_equal(sum(sf$n_consented), sum(disp$opt_in))
+})

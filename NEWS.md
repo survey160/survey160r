@@ -3,14 +3,16 @@
 ## Improvements
 
 * **Latency and disposition resolve the opener funnel from one shared module.**
-  The name-agnostic opener-set resolution, the opt-in population, and the
-  send/reply timestamp coalesce now live in a single `R/opener.R` used by both
-  the latency summary (`build_summary_frame()`) and the disposition transform
-  (`disposition_run()`), so the two views cannot drift out of alignment. As part
-  of this the last definitional gap between them is closed: disposition's
-  `engaged` is now gated on `started` (a reply presupposes a send), matching the
-  latency view's `n_engaged = !is.na(opener.batchDate) & texted`. This only
-  changes output for anomalous rows that carry a reply timestamp with no send.
+  The name-agnostic opener-set resolution, the opt-in population, the send/reply
+  timestamp coalesce, and now the composed per-recipient funnel masks
+  (`sent` / `engaged` / `opted_in`, via `.funnel_masks()`) all live in a single
+  `R/opener.R` used by both the latency summary (`build_summary_frame()`) and the
+  disposition transform (`disposition_run()`), so the two views compute the same
+  sent/engaged/opted-in funnel from one place and cannot drift. As part of this
+  the last definitional gap between them is closed: disposition's `engaged` is
+  now gated on `started` (a reply presupposes a send), matching the latency
+  view's `n_engaged = !is.na(opener.batchDate) & texted`. This only changes
+  output for anomalous rows that carry a reply timestamp with no send.
 
 * **A wrong or misspelled reader argument now fails with a clear message.**
   `s160_gcs_campaign_results_read()` / `s160_read_csv()` reject a `...`
