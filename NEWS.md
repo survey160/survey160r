@@ -1,5 +1,18 @@
 # survey160r (development version)
 
+## New features
+
+* **Internal structured logging via a caller-injected sink.** A new internal
+  `s160r_log(event, level, ...)` routes the library's diagnostics through
+  `getOption("survey160r.log_fn")` when a consumer sets it -- e.g. a Cloud Run
+  producer wiring the library into its own GCP-structured JSON logger -- and
+  otherwise falls back to `message()` on stderr (never stdout), gated by
+  `S160_LOG_LEVEL`. The GCS read/list and `disposition_pull()` progress
+  messages now flow through it, so their wording changed to stable event names
+  (`gcs.read.start`, `gcs.read.saved`, `gcs.files.none`, `gcs.campaigns.none`,
+  `disposition.pull.cache_hit`, `disposition.pull.download`). No new dependency
+  is added; the host application decides where the events go and in what format.
+
 ## Breaking changes
 
 * **`s160_gcs_pull_csv()` removed; `s160_gcs_campaign_results_read()` gains a

@@ -20,7 +20,7 @@ test_that("returns empty character with message when no objects", {
   stub_gcs_base()
   stub_gcs_list(data.frame(name = character(0), stringsAsFactors = FALSE))
   expect_message(result <- s160_gcs_campaign_results_list(),
-                 "No campaigns found")
+                 "gcs.campaigns.none")
   expect_equal(result, character(0))
 })
 

@@ -532,7 +532,7 @@ disposition_pull <- function(env = c("prod", "dev"), dest = NULL,
 
   gcs_path <- sprintf("gs://%s/%s", bucket, object_name)
   if (!refresh && file.exists(local_path)) {
-    message(sprintf("Using cached disposition projection: %s", local_path))
+    s160r_log("disposition.pull.cache_hit", path = local_path)
     return(local_path)
   }
 
@@ -544,7 +544,7 @@ disposition_pull <- function(env = c("prod", "dev"), dest = NULL,
   # the cache-hit return: reusing a local copy needs no auth.
   check_gcs_ready()
 
-  message(sprintf("Downloading %s", gcs_path))
+  s160r_log("disposition.pull.download", path = gcs_path)
   # Download to a temp file in the destination dir, then atomically move it into
   # place on success -- a failed or partial download never poisons the cache,
   # and any existing good copy survives.

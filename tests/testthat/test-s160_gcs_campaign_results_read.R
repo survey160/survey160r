@@ -102,12 +102,12 @@ test_that("destdir saves file, prints path, and works with '.'", {
   tmp_dir <- tempdir()
   dest_file <- file.path(tmp_dir, "1980_raw_data_download.csv")
 
-  expect_message(s160_gcs_campaign_results_read(1980, destdir = tmp_dir), "Saved to:")
+  expect_message(s160_gcs_campaign_results_read(1980, destdir = tmp_dir), "gcs.read.saved")
   expect_true(file.exists(dest_file))
   unlink(dest_file)
 
   withr::with_dir(tmp_dir, {
-    expect_message(s160_gcs_campaign_results_read(1980, destdir = "."), "Saved to:")
+    expect_message(s160_gcs_campaign_results_read(1980, destdir = "."), "gcs.read.saved")
     expect_true(file.exists("1980_raw_data_download.csv"))
   })
   unlink(dest_file)

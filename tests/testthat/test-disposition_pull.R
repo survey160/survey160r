@@ -92,7 +92,7 @@ test_that("an existing local copy is reused without downloading", {
   writeLines("old", cached)
   mockery::stub(disposition_pull, "download_with_verify",
                 function(...) stop("should not download on a cache hit"))
-  expect_message(p <- disposition_pull(dest = d), "Using cached")
+  expect_message(p <- disposition_pull(dest = d), "disposition.pull.cache_hit")
   expect_equal(p, cached)
 })
 

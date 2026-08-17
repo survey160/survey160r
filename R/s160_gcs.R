@@ -403,7 +403,7 @@ s160_gcs_campaign_results_read <- function(campaign_id, filename = NULL,
   object_name <- paste0(campaign_id, "/", filename)
 
   gcs_path <- sprintf("gs://%s/%s", bucket, object_name)
-  message(sprintf("Reading: %s", gcs_path))
+  s160r_log("gcs.read.start", path = gcs_path)
 
   if (is.null(destdir)) {
     local_path <- tempfile(pattern = paste0("s160_", campaign_id, "_"), fileext = ".csv")
@@ -431,7 +431,7 @@ s160_gcs_campaign_results_read <- function(campaign_id, filename = NULL,
   )
 
   if (!is.null(destdir)) {
-    message(sprintf("Saved to: %s", local_path))
+    s160r_log("gcs.read.saved", path = local_path)
   }
 
   data <- fast_read_csv(local_path, columns = columns, ...)
@@ -475,7 +475,7 @@ s160_gcs_campaign_results_files <- function(campaign_id, bucket = NULL) {
   )
 
   if (nrow(objects) == 0) {
-    message(sprintf("No files found for campaign %s", campaign_id))
+    s160r_log("gcs.files.none", campaign_id = campaign_id)
     return(character(0))
   }
 
@@ -507,7 +507,7 @@ s160_gcs_campaign_results_list <- function(bucket = NULL) {
   )
 
   if (nrow(objects) == 0) {
-    message("No campaigns found in bucket")
+    s160r_log("gcs.campaigns.none")
     return(character(0))
   }
 
