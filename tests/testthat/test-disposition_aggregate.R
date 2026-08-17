@@ -564,3 +564,17 @@ test_that("disposition_input_columns: projected read matches full for a non-intr
   expect_equal(disposition_run(1234, projected, contacted_only = FALSE),
                disposition_run(1234, full, contacted_only = FALSE))
 })
+
+test_that("engaged is gated on started: a reply with no send is not engaged", {
+  # Data anomaly -- a batchDate (reply) with no scriptDate (send). The latency
+  # view gates n_engaged on `texted`; disposition now gates `engaged` on
+  # `started` too, so a reply-without-send is engaged in neither view.
+  d <- disp_frame(
+    phone = c("+15550201", "+15550202"),
+    id.intro.scriptDate = c(TS, ""),   # r2: never sent
+    id.intro.batchDate  = c(TS, TS)    # both carry a reply timestamp
+  )
+  res <- disposition_run(1234, d, contacted_only = FALSE)$consolidated
+  expect_equal(res$started, c(1L, 0L))
+  expect_equal(res$engaged, c(1L, 0L))   # r2 gated (was c(1L, 1L) before the fix)
+})

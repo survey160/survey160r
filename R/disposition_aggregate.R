@@ -13,14 +13,14 @@
 # The per-respondent masks below mirror the signals build_summary_frame()
 # (summary_aggregate.R) computes before aggregating to (date, hour). NOTE:
 # `started`/`engaged`/`opt_in` key on the OPENING question SET (every intro-family
-# question, or a single discovered opener) resolved per campaign by
-# .disposition_opening_questions(), NOT a hardcoded "intro" -- so a campaign whose
+# question, or a single discovered opener) resolved per campaign by the shared
+# .discover_openers() (opener.R), NOT a hardcoded "intro" -- so a campaign whose
 # opener is named "FIRSTNET" / "intro_sp", or a bilingual campaign routing some
 # recipients to intro and others to intro_sp / intro_latinos, is measured on every
 # branch instead of being silently dropped (it was: routed recipients' flags came
-# up 0). The latency build_summary_frame() view resolves the opener set the same
-# way (via .opening_questions()) and keys `texted` on the send (scriptDate), so
-# the two views now measure the same name-agnostic funnel.
+# up 0). The latency build_summary_frame() view resolves the opener set from the
+# SAME shared helpers and keys `texted` on the send (scriptDate) with `engaged`
+# gated on it, so the two views measure the same name-agnostic funnel.
 
 # Parse a timestamp column to POSIXct, tolerating an absent column (returns an
 # all-NA vector of length nrow(data)). Mirrors build_summary_frame()'s
@@ -34,89 +34,20 @@
   }
 }
 
-# The opening question(s) of the flow, used to key the contacted/engaged/opt-in
-# signals instead of a hardcoded "intro" -- so a campaign whose opener is named
-# "FIRSTNET" / "intro_sp" / "intro_latinos" is measured, not dropped.
-#
-# A campaign can route recipients to MORE THAN ONE opening question (bilingual
-# intro + intro_sp, or 3-way intro + intro_black + intro_hispanic, via the v2
-# initialconditionals) -- every such routed opener is "intro"-prefixed. So the
-# opening SET is every intro-family question present (id.intro / id.intro_*), and
-# a recipient is contacted if they received ANY of them. If the flow has no
-# intro-family question the set is its single discovered opening question (e.g.
-# "FIRSTNET"); with no id.<q>.scriptDate column at all it falls back to "intro"
-# (a minimal export). For a pure-intro campaign the set is exactly {"intro"}, so
-# every mask is byte-identical to the old hardcoded behaviour.
-.disposition_opening_questions <- function(x) {
-  qs <- latency_discover_questions(x)
-  intro_family <- grep("^intro(_|$)", qs, value = TRUE)
-  if (length(intro_family) > 0L) return(intro_family)
-  if (length(qs) == 0L) "intro" else qs[1L]
-}
-
-# TRUE where the recipient received (field = "scriptDate") or replied to
-# (field = "batchDate") ANY of the opening questions -- the disjunction over the
-# opening set. Null-safe per column via .disposition_timestamp (absent -> all NA).
-.any_opening_event <- function(data, field) {
-  openers <- .disposition_opening_questions(data)
-  masks <- lapply(openers, function(q) {
-    !is.na(.disposition_timestamp(data, sprintf("id.%s.%s", q, field)))
-  })
-  Reduce(`|`, masks)
-}
-
-# Default opt-in population: the recipient's opening question was answered "Yes"
-# -- the disjunction over the opening set's finalText columns (each recipient hit
-# one branch), restricted to columns actually PRESENT so an absent branch does not
-# trip .mask_opt_in's missing-column guard and zero the whole campaign. Kept
-# disposition-local so latency's .default_population (hardcoded intro) is
-# untouched; for a pure-intro campaign it is byte-identical to it.
+# Default opt-in population for a disposition run: the opener set's accepted
+# answer is "Yes". Delegates to the shared .opener_population() so consent is
+# defined exactly as the latency view defines n_consented; .dot_form_headers()
+# normalizes a raw bracket-form header so a routed campaign keeps every branch.
 .disposition_default_population <- function(x) {
-  cols <- sprintf("id.%s.finalText", .disposition_opening_questions(x))
-  cn <- if (is.data.frame(x)) names(x) else as.character(x)
-  present <- cols[cols %in% cn]
-  # Keep one absent column when none is present so .mask_opt_in's guard zeroes
-  # opt_in (the historical null-safe behaviour) rather than emitting no filter.
-  if (length(present) == 0L) present <- cols[1L]
-  paste(sprintf("%s == \"Yes\"", present), collapse = " | ")
+  available <- if (is.data.frame(x)) names(x) else as.character(x)
+  .opener_population(.discover_openers(x), .dot_form_headers(available))
 }
 
-# started (contacted): the recipient received ANY opening send (id.<opener>.
-# scriptDate). NOT batchDate: that is the inbound REPLY, used by `engaged`.
-.mask_started <- function(data) {
-  .any_opening_event(data, "scriptDate")
-}
-
-# engaged: the recipient REPLIED to an opening question (id.<opener>.batchDate).
-# Distinct from opt_in, which additionally requires an accepted "Yes" answer
-# (id.<opener>.finalText): a recipient can reply without an accepted answer.
-.mask_engaged <- function(data) {
-  .any_opening_event(data, "batchDate")
-}
-
-# opt_in: passed the population filter (default id.<opener>.finalText == "Yes")
-# AND was texted. Reuses population_filter_mask() so consent is defined exactly
-# as the latency view defines n_consented. Null-safe like the other masks: if a
-# column the (parseable) filter references is absent from the export, nobody
-# opted in (all FALSE) rather than erroring. A filter that will not parse falls
-# through to population_filter_mask(), which raises the "not valid R" error.
-.mask_opt_in <- function(data, population, started) {
-  vars <- tryCatch(all.vars(parse(text = population)), error = function(e) NULL)
-  if (!is.null(vars)) {
-    # A referenced symbol is a genuinely-absent data column only if it is
-    # neither in `data` nor resolvable in the eval environment.
-    # population_filter_mask() binds columns with parent = baseenv(), so base
-    # symbols (T/F/pi/Inf) and function names still resolve -- treating those
-    # as "absent" would wrongly zero a valid filter such as `col == T`.
-    missing <- setdiff(vars, names(data))
-    missing <- missing[!vapply(missing, exists, logical(1),
-                               envir = baseenv(), inherits = TRUE)]
-    if (length(missing) > 0L) {
-      return(rep(FALSE, nrow(data)))
-    }
-  }
-  population_filter_mask(data, population) & started
-}
+# started (contacted), engaged (replied & started), and opt_in (population &
+# started) are the shared per-recipient funnel masks -- .funnel_masks() (opener.R)
+# computes them identically for the latency summary, so the two views measure the
+# same funnel. disposition_run() calls .funnel_masks() once (below) rather than a
+# per-flag mask here.
 
 # web_complete: the raw web_complete callback == 1. Null-safe (absent -> FALSE).
 .mask_web_complete <- function(data) {
@@ -130,17 +61,19 @@
 
 # complete: survey-mode dependent.
 #   t2w          -> the web_complete callback
-#   sms          -> reaching id.close.scriptDate
+#   sms          -> reaching the close (any close-family scriptDate: close /
+#                   close_sp / close_latinos, via .reached_close) so a bilingual
+#                   campaign's Spanish completers are counted, matching latency.
 #   t2w_external -> not computable (external platform, no webhook) -> NA
-# Non-external modes require `started`: a completion presupposes a send.
-.mask_complete <- function(data, survey_mode, started) {
+# Non-external modes require `sent`: a completion presupposes a send.
+.mask_complete <- function(data, survey_mode, sent) {
   if (identical(survey_mode, "t2w_external")) {
     return(rep(NA, nrow(data)))
   }
   if (identical(survey_mode, "t2w")) {
-    return(.mask_web_complete(data) & started)
+    return(.mask_web_complete(data) & sent)
   }
-  !is.na(.disposition_timestamp(data, "id.close.scriptDate")) & started
+  .reached_close(data, latency_discover_questions(data)) & sent
 }
 
 # terminated: any hard stop -- screened out (ineligible) or refused. Either
@@ -227,7 +160,8 @@ disposition_input_columns <- function(available = NULL, population = NULL) {
   # precede the opener and shadow it. With `available` NULL the set degrades to
   # {"intro"} (the default set) and the population default matches the historical
   # id.intro.finalText.
-  openers <- .disposition_opening_questions(available)
+  openers <- .discover_openers(available)
+  closers <- .closing_questions(latency_discover_questions(available))
   population <- population %||% .disposition_default_population(available)
   # `.report_support_patterns` is the close-message Text pattern shared with
   # latency_input_columns(); detect_survey_mode() greps the same columns.
@@ -237,7 +171,7 @@ disposition_input_columns <- function(available = NULL, population = NULL) {
     sprintf("id.%s.batchDate", openers),
     all.vars(parse(text = population)),
     "web_complete",
-    "id.close.scriptDate",
+    sprintf("id.%s.scriptDate", closers),   # close family (close / close_sp / ...)
     "id.ineligible.scriptDate",
     "id.refusal.scriptDate"
   )
@@ -341,16 +275,20 @@ disposition_run <- function(campaign_id, data, population = NULL,
 
   population <- population %||% .disposition_default_population(data)
   survey_mode <- detect_survey_mode(data)
-  started <- .mask_started(data)
+  masks <- .funnel_masks(data, .discover_openers(data), population)
+  sent <- masks$sent
 
+  # Adapter: the canonical sent / opted_in signals map to the disposition frame's
+  # established column names (started / opt_in). Keep these until the coordinated
+  # public rename to sent / opted_in. (engaged / complete already match.)
   out <- data.frame(
     phone = phone,
     # via as.character() so a factor id stamps its label, not its level code.
     campaign_id = rep(as.integer(as.character(campaign_id)), length(phone)),
-    started = as.integer(started),
-    engaged = as.integer(.mask_engaged(data)),
-    opt_in = as.integer(.mask_opt_in(data, population, started)),
-    complete = as.integer(.mask_complete(data, survey_mode, started)),
+    started = as.integer(sent),
+    engaged = as.integer(masks$engaged),
+    opt_in = as.integer(masks$opted_in),
+    complete = as.integer(.mask_complete(data, survey_mode, sent)),
     web_complete = as.integer(.mask_web_complete(data)),
     terminated = as.integer(.mask_terminated(data)),
     mode = rep(survey_mode, length(phone)),
@@ -359,9 +297,9 @@ disposition_run <- function(campaign_id, data, population = NULL,
 
   if (contacted_only) {
     # `contacted_only` is validated as a single non-NA logical above, and
-    # `started` is a non-NA logical mask, so this cannot introduce phantom
+    # `sent` is a non-NA logical mask, so this cannot introduce phantom
     # NA-indexed rows. Filter the OUTPUT (mode + dedup already ran on full data).
-    out <- out[started, , drop = FALSE]
+    out <- out[sent, , drop = FALSE]
     rownames(out) <- NULL
   }
   list(consolidated = out, meta = .disposition_meta(data))

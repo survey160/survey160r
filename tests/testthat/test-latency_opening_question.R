@@ -51,15 +51,15 @@ test_that(".opener_population builds a present-only disjunction (intro == defaul
                'id.FIRSTNET.finalText == "Yes"')
 })
 
-test_that(".opener_timestamp coalesces across the set, null-safe on absent cols", {
+test_that(".question_timestamp coalesces across the set, null-safe on absent cols", {
   d <- op_frame(
     id.intro.scriptDate    = c(TS, ""),
     id.intro_sp.scriptDate = c("", TS)
   )
-  ts <- .opener_timestamp(d, c("intro", "intro_sp"), "scriptDate")
+  ts <- .question_timestamp(d, c("intro", "intro_sp"), "scriptDate")
   expect_false(any(is.na(ts)))                 # each recipient's own branch send
   expect_equal(attr(ts, "tzone"), "UTC")
-  ts2 <- .opener_timestamp(d, c("intro", "intro_sp"), "batchDate")
+  ts2 <- .question_timestamp(d, c("intro", "intro_sp"), "batchDate")
   expect_true(all(is.na(ts2)))                 # no batchDate columns -> all NA
 })
 
@@ -101,7 +101,7 @@ test_that("bilingual campaign: summary counts BOTH opener branches", {
 
 test_that("a recipient on BOTH opener branches is counted once (OR, not sum)", {
   # Data anomaly: a single recipient has both id.intro.* and id.intro_sp.*
-  # populated. The opener set ORs the branches (.opener_timestamp coalesces,
+  # populated. The opener set ORs the branches (.question_timestamp coalesces,
   # the population disjunction is an OR), so the recipient must count once, not
   # twice -- no double-count from the set expansion.
   d <- op_frame(

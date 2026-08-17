@@ -2,6 +2,22 @@
 
 ## Improvements
 
+* **Latency and disposition resolve the opener funnel from one shared module.**
+  The name-agnostic opener-set resolution, the opt-in population, the send/reply
+  timestamp coalesce, and now the composed per-recipient funnel masks
+  (`sent` / `engaged` / `opted_in`, via `.funnel_masks()`) all live in a single
+  `R/opener.R` used by both the latency summary (`build_summary_frame()`) and the
+  disposition transform (`disposition_run()`), so the two views compute the same
+  sent/engaged/opted-in funnel from one place and cannot drift. As part of this
+  the last definitional gap between them is closed: disposition's `engaged` is
+  now gated on `started` (a reply presupposes a send), matching the latency
+  view's `n_engaged`. This only changes output for anomalous rows that carry a
+  reply timestamp with no send. Internally both views now speak one funnel
+  vocabulary (`sent` / `engaged` / `opted_in` / `complete`); the established
+  public column names (`n_texted` / `n_consented` / `n_completed`, and the
+  disposition frame's `started` / `opt_in`) are preserved unchanged via a
+  documented adapter at each output boundary, pending a coordinated rename.
+
 * **A wrong or misspelled reader argument now fails with a clear message.**
   `s160_gcs_campaign_results_read()` / `s160_read_csv()` reject a `...`
   argument the underlying CSV reader would not accept (e.g. a stray
@@ -114,6 +130,19 @@
   straight from `disposition_run()`.
 
 ## Bug fixes
+
+* **SMS completion now counts every close-family branch, not just `id.close`.**
+  Both the latency summary (`n_completed`) and the disposition transform
+  (`complete`) keyed SMS completion on a hardcoded `id.close.scriptDate`, so a
+  bilingual campaign's Spanish completers (who reach `id.close_sp` /
+  `id.close_latinos`) were dropped -- the close-side analogue of the opener bug.
+  Completion is now resolved over the close family (`grep "^close(_|$)"`, via
+  `.reached_close()`), so the union of every language's completers is counted,
+  matching the app's `phonelist.complete`. Verified against production: two
+  campaigns' `close` + `close_sp` scriptDates summed to the exact database
+  `closed` count (214 and 61). A single-close campaign is unchanged.
+  `disposition_input_columns()` now projects the close family so a pruned read
+  keeps `close_sp`.
 
 * **`disposition_run()` no longer drops or under-counts campaigns whose opening
   question is not named `intro`.** `started` / `engaged` / `opt_in` keyed on

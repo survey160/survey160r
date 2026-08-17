@@ -79,39 +79,34 @@ build_summary_frame <- function(data, config, survey_mode = "sms") {
   field_tz <- config$field_timezone
 
   # Parse the timestamps summary needs, keyed on the OPENING question set (not a
-  # hardcoded "intro") -- .opener_timestamp coalesces each recipient's opener
+  # hardcoded "intro") -- .question_timestamp coalesces each recipient's opener
   # send/reply across the intro-family / discovered opener, so a non-intro
   # (FIRSTNET) or bilingual (intro + intro_sp) campaign is measured, not dropped.
   # Null-safe per column, so this also replaces the old unguarded read that
   # crashed on an absent id.intro.scriptDate.
   openers <- .opening_questions(config$flow$questions)
-  intro_script <- .opener_timestamp(data, openers, "scriptDate")
-  intro_batch <- .opener_timestamp(data, openers, "batchDate")
-  close_script_col <- "id.close.scriptDate"
-  close_script <- if (close_script_col %in% names(data)) {
-    parse_s160_timestamps_chr(data[[close_script_col]])
-  } else {
-    rep(as.POSIXct(NA), nrow(data))
-  }
-
-  # texted = the intro was SENT (id.intro.scriptDate). engaged = the recipient
-  # REPLIED (id.intro.batchDate), a strictly smaller set, reported among the
-  # texted so every counted row has a send timestamp to bucket on.
-  texted <- !is.na(intro_script)
-  engaged <- !is.na(intro_batch) & texted
-  # n_consented uses the configured population filter, not a hardcoded
-  # finalValue == 1 check. Different platform variants emit consent in
-  # different fields ("Yes"/"No" labels vs integer codes); the filter is
-  # already the project-owned expression for "who's in the funnel" so we
-  # reuse it as the canonical consent definition.
-  consented <- population_filter_mask(data, config$filters$population)
-  consented <- consented & texted
+  # sent / engaged / opted-in are the shared per-recipient funnel masks --
+  # computed identically here and in the disposition transform (.funnel_masks in
+  # opener.R) so the two views cannot report a different funnel. `send` (the
+  # coalesced opener scriptDate) is retained to bucket the summary by send
+  # date/hour. `texted`/`consented` keep the latency-local names for the counts.
+  # sent / engaged / opted_in / complete is the one funnel vocabulary shared with
+  # the disposition transform (.funnel_masks in opener.R). It is mapped to the
+  # established public count columns (n_texted / n_engaged / n_consented /
+  # n_completed) at the summarise() below -- the only place the legacy names live.
+  masks <- .funnel_masks(data, openers, config$filters$population)
+  send <- masks$send
+  sent <- masks$sent
+  engaged <- masks$engaged
+  opted_in <- masks$opted_in
   # Completion signal is survey-mode dependent (SUR-1368):
   #   t2w          -> the web_complete callback
   #   t2w_external -> not computable; n_completed is nulled to NA in
   #                   assemble_consolidated, so the count here is a placeholder
-  #   sms          -> reaching close (id.close.scriptDate)
-  completed <- if (identical(survey_mode, "t2w")) {
+  #   sms          -> reaching the close (any close-family scriptDate: close /
+  #                   close_sp / close_latinos), so a bilingual campaign's
+  #                   Spanish completers are counted, not dropped.
+  complete <- if (identical(survey_mode, "t2w")) {
     # Null-safe: detect_survey_mode only returns "t2w" when web_complete
     # exists, but build_summary_frame shouldn't assume the caller paired
     # the mode with the column -- a missing column means zero completions.
@@ -120,12 +115,12 @@ build_summary_frame <- function(data, config, survey_mode = "sms") {
       rep(FALSE, nrow(data))
     } else {
       wc <- suppressWarnings(as.integer(as.character(wc_raw)))
-      !is.na(wc) & wc == 1L & texted
+      !is.na(wc) & wc == 1L & sent
     }
   } else if (identical(survey_mode, "t2w_external")) {
     rep(FALSE, nrow(data))
   } else {
-    !is.na(close_script) & texted
+    .reached_close(data, config$flow$questions) & sent
   }
 
   campaign_id <- as.integer(data[[campaign_col]])
@@ -136,33 +131,37 @@ build_summary_frame <- function(data, config, survey_mode = "sms") {
   # all-zero and dropped below; the NA bucket key it gets never survives the
   # keep filter. (This is why the funnel must bucket on the send, not the
   # reply: a texted-but-never-replied recipient has no batchDate to bucket on.)
-  seg_date <- as.Date(format(intro_script, tz = field_tz))
-  hour_local <- as.integer(format(intro_script, format = "%H", tz = field_tz))
+  seg_date <- as.Date(format(send, tz = field_tz))
+  hour_local <- as.integer(format(send, format = "%H", tz = field_tz))
 
   long <- data.frame(
     campaign_id = campaign_id,
     date = seg_date,
     hour_local = hour_local,
-    texted = as.integer(texted),
+    sent = as.integer(sent),
     engaged = as.integer(engaged),
-    consented = as.integer(consented),
-    completed = as.integer(completed),
+    opted_in = as.integer(opted_in),
+    complete = as.integer(complete),
     stringsAsFactors = FALSE
   )
   # Drop rows where every flag is zero -- they only happened to share a
   # row with the data but contribute nothing. Avoids carrying NA-keyed
   # zero rows through group_by.
-  keep <- long$texted > 0L | long$engaged > 0L |
-    long$consented > 0L | long$completed > 0L
+  keep <- long$sent > 0L | long$engaged > 0L |
+    long$opted_in > 0L | long$complete > 0L
   long <- long[keep, , drop = FALSE]
   if (nrow(long) == 0L) return(empty_summary_frame())
 
+  # Adapter: the canonical sent/engaged/opted_in/complete signals map to the
+  # ESTABLISHED public count columns. These legacy names (n_texted / n_consented
+  # / n_completed) are a schema contract read by the dashboards; keep them until
+  # the coordinated public rename (n_sent / n_opted_in / n_complete).
   agg <- dplyr::summarise(
     dplyr::group_by(long, .data$campaign_id, .data$date, .data$hour_local),
-    n_texted = sum(.data$texted),
+    n_texted = sum(.data$sent),
     n_engaged = sum(.data$engaged),
-    n_consented = sum(.data$consented),
-    n_completed = sum(.data$completed),
+    n_consented = sum(.data$opted_in),
+    n_completed = sum(.data$complete),
     .groups = "drop"
   )
   data.frame(
@@ -195,7 +194,7 @@ build_ineligible_frame <- function(data, config) {
   inelig_ts <- parse_s160_timestamps_chr(data[[inelig_col]])
   # Anchor on the OPENING question set's reply (coalesced), not a hardcoded
   # id.intro.batchDate, so a bilingual campaign's routed cohort is bucketed.
-  intro_batch <- .opener_timestamp(data, .opening_questions(questions), "batchDate")
+  intro_batch <- .question_timestamp(data, .opening_questions(questions), "batchDate")
 
   is_ineligible <- !is.na(inelig_ts) & !is.na(intro_batch)
   if (!any(is_ineligible)) return(empty_ineligible_frame())
