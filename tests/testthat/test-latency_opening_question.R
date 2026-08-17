@@ -85,6 +85,20 @@ test_that("bilingual campaign: summary counts BOTH opener branches", {
   expect_equal(sum(res$n_consented), 2L)   # each said Yes on its own opener
 })
 
+test_that("latency_build_config accepts a character header (bilingual population)", {
+  # latency_build_config, like latency_discover_questions, accepts a raw header
+  # vector (names() is NULL there) -- the population must still cover every
+  # present opener branch, not just the first.
+  header <- c("campaignid", "id.intro.scriptDate", "id.intro.batchDate",
+              "id.intro.finalText", "id.intro_sp.scriptDate",
+              "id.intro_sp.batchDate", "id.intro_sp.finalText",
+              "id.close.scriptDate")
+  config <- latency_build_config(1L, header, field_timezone = "America/New_York")
+  expect_equal(config$flow$questions, c("intro", "intro_sp", "close"))
+  expect_equal(config$filters$population,
+               'id.intro.finalText == "Yes" | id.intro_sp.finalText == "Yes"')
+})
+
 test_that("build_ineligible_frame anchors on the opener set (bilingual)", {
   d <- op_frame(
     id.intro.scriptDate      = c(TS, ""),

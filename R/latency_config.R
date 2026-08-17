@@ -140,8 +140,11 @@ latency_build_config <- function(campaign_id, data,
   }
   # Population (opt-in/consent) keys on the opening question SET, not a hardcoded
   # "intro", so a non-intro (FIRSTNET) / bilingual campaign is measured. Pure
-  # intro -> identical to `.default_population`.
-  population <- .opener_population(.opening_questions(questions), names(data))
+  # intro -> identical to `.default_population`. `data` may be a data frame or a
+  # character header vector (same as latency_discover_questions), so resolve the
+  # available columns accordingly -- names() is NULL for a character header.
+  available <- if (is.data.frame(data)) names(data) else as.character(data)
+  population <- .opener_population(.opening_questions(questions), available)
 
   list(
     project_id = as.integer(project_id %||% campaign_id),
@@ -277,8 +280,10 @@ validate_columns_present <- function(config, data) {
 #' set, the population-filter columns (extracted from
 #' \code{config$filters$population}), the campaign-id and optional
 #' respondent-id columns, plus the fixed non-flow support columns
-#' (\code{id.intro.finalText}, \code{web_complete},
-#' \code{id.ineligible.scriptDate}).
+#' (\code{web_complete}, \code{id.ineligible.scriptDate}). The opener
+#' \code{finalText} is not fixed here: it is one of the population-filter
+#' columns above, so it is retained per campaign only when the population
+#' references it.
 #'
 #' Some columns the report reads have data-dependent names -- the close-message
 #' Text columns (\code{id.close*.scriptText}/\code{batchText}) that
