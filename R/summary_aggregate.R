@@ -85,15 +85,12 @@ build_summary_frame <- function(data, config, survey_mode = "sms") {
   # Null-safe per column, so this also replaces the old unguarded read that
   # crashed on an absent id.intro.scriptDate.
   openers <- .opening_questions(config$flow$questions)
-  # sent / engaged / opted-in are the shared per-recipient funnel masks --
-  # computed identically here and in the disposition transform (.funnel_masks in
-  # opener.R) so the two views cannot report a different funnel. `send` (the
-  # coalesced opener scriptDate) is retained to bucket the summary by send
-  # date/hour. `texted`/`consented` keep the latency-local names for the counts.
-  # sent / engaged / opted_in / complete is the one funnel vocabulary shared with
-  # the disposition transform (.funnel_masks in opener.R). It is mapped to the
-  # established public count columns (n_sent / n_engaged / n_opted_in /
-  # n_complete) at the summarise() below -- the only place the legacy names live.
+  # sent / engaged / opted_in / complete are the shared per-recipient funnel
+  # masks -- computed identically here and in the disposition transform
+  # (.funnel_masks in opener.R), so the two views measure the same funnel. `send`
+  # (the coalesced opener scriptDate) is retained to bucket the summary by send
+  # date/hour; the masks are summed into the n_sent / n_engaged / n_opted_in /
+  # n_complete counts at the summarise() below (schema-version 6).
   masks <- .funnel_masks(data, openers, config$filters$population)
   send <- masks$send
   sent <- masks$sent
@@ -152,10 +149,9 @@ build_summary_frame <- function(data, config, survey_mode = "sms") {
   long <- long[keep, , drop = FALSE]
   if (nrow(long) == 0L) return(empty_summary_frame())
 
-  # Adapter: the canonical sent/engaged/opted_in/complete signals map to the
-  # ESTABLISHED public count columns. These legacy names (n_sent / n_opted_in
-  # / n_complete) are a schema contract read by the dashboards; keep them until
-  # the coordinated public rename (n_sent / n_opted_in / n_complete).
+  # Sum each per-recipient mask into its count column: n_<signal> is the count
+  # of that signal (n_sent / n_engaged / n_opted_in / n_complete). These are the
+  # public schema-version 6 columns the dashboards read.
   agg <- dplyr::summarise(
     dplyr::group_by(long, .data$campaign_id, .data$date, .data$hour_local),
     n_sent = sum(.data$sent),
