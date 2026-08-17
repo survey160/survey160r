@@ -1,5 +1,23 @@
 # survey160r (development version)
 
+## Improvements
+
+* **A wrong or misspelled reader argument now fails with a clear message.**
+  `s160_gcs_campaign_results_read()` / `s160_read_csv()` reject a `...`
+  argument the underlying CSV reader would not accept (e.g. a stray
+  `filter_open =`) with "argument(s) not accepted by the CSV reader", naming
+  the function -- instead of a cryptic `fread` "unused argument" error.
+
+* **`disposition_pull()` reports the cached copy's age.** On a cache hit the
+  message now reads "Using cached disposition projection (3 hr old): ..." so a
+  stale local projection is obvious; pass `refresh = TRUE` to re-download.
+
+* **A date filter against the beta's empty `date_closed_on` now warns.**
+  `disposition_summary()` / `disposition_records()` / `disposition_screen()`
+  warn when `date_from`/`date_to` is set but every `date_closed_on` is `NA`
+  (the current beta does not populate it), so the empty output is explained
+  rather than silent.
+
 ## Breaking changes
 
 * **`s160_gcs_pull_csv()` removed; `s160_gcs_campaign_results_read()` gains a

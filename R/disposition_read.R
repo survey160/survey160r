@@ -100,6 +100,20 @@
   req[!is.na(req)]
 }
 
+# Human-readable age of a file from its mtime, for the cache-hit message. Skew-
+# safe: an mtime slightly in the future clamps to "0 min old".
+.format_file_age <- function(path) {
+  mins <- max(0, as.numeric(difftime(Sys.time(), file.mtime(path), units = "mins")),
+              na.rm = TRUE)
+  if (mins < 60) {
+    sprintf("%d min old", as.integer(round(mins)))
+  } else if (mins < 60 * 48) {
+    sprintf("%d hr old", as.integer(round(mins / 60)))
+  } else {
+    sprintf("%d days old", as.integer(round(mins / 1440)))
+  }
+}
+
 # Normalize phone and apply the row-scope filters (requested phones, campaigns,
 # date_closed_on range). Pure; `data` already has .DISPOSITION_READ_COLS, and
 # `date_from`/`date_to` are already coerced to Date (or NULL) by the caller.
@@ -113,6 +127,14 @@
   }
   if (!is.null(campaign_ids)) {
     keep <- keep & as.character(data$campaign_id) %in% as.character(campaign_ids)
+  }
+  # Beta heads-up: a date bound against an all-NA date_closed_on (the current beta
+  # never populates it) silently drops every row -- warn rather than return empty.
+  if ((!is.null(date_from) || !is.null(date_to)) &&
+        nrow(data) > 0L && all(is.na(data$date_closed_on))) {
+    warning("`date_from`/`date_to` filter on `date_closed_on`, which is NA for ",
+            "every row here (the current beta does not populate it); the filter ",
+            "returns no rows.", call. = FALSE)
   }
   if (!is.null(date_from)) {
     keep <- keep & !is.na(data$date_closed_on) & data$date_closed_on >= date_from
@@ -532,7 +554,8 @@ disposition_pull <- function(env = c("prod", "dev"), dest = NULL,
 
   gcs_path <- sprintf("gs://%s/%s", bucket, object_name)
   if (!refresh && file.exists(local_path)) {
-    message(sprintf("Using cached disposition projection: %s", local_path))
+    message(sprintf("Using cached disposition projection (%s): %s",
+                    .format_file_age(local_path), local_path))
     return(local_path)
   }
 
