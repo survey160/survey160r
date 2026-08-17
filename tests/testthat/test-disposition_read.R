@@ -87,9 +87,18 @@ test_that("date bounds drop rows outside the range (incl. NA close dates)", {
   # date_to keeps only the 2026-03 rows.
   res2 <- disposition_summary(.disposition_base(), date_to = "2026-03-31")
   expect_setequal(res2$campaigns, c("2339", "2339"))
-  # a row with an NA close date is dropped by any date bound.
+  # a row with an NA close date is dropped by any date bound; when the whole
+  # dataset is NA close dates (the beta), that drop-everything is warned.
   p <- write_disposition_parquet(.disposition_row("2015550103", 2400, engaged = 1))  # NA date
-  expect_equal(nrow(disposition_summary(p, date_from = "2020-01-01")), 0L)
+  expect_warning(res <- disposition_summary(p, date_from = "2020-01-01"),
+                 "returns no rows")
+  expect_equal(nrow(res), 0L)
+})
+
+test_that("a date bound on empty data does not warn (nothing to drop)", {
+  empty <- .disposition_row("x", 1)[0, , drop = FALSE]
+  expect_no_warning(res <- disposition_summary(empty, date_from = "2020-01-01"))
+  expect_equal(nrow(res), 0L)
 })
 
 test_that("each date bound must be a single valid date", {

@@ -92,8 +92,20 @@ test_that("an existing local copy is reused without downloading", {
   writeLines("old", cached)
   mockery::stub(disposition_pull, "download_with_verify",
                 function(...) stop("should not download on a cache hit"))
-  expect_message(p <- disposition_pull(dest = d), "Using cached")
+  expect_message(p <- disposition_pull(dest = d), "Using cached.*old")
   expect_equal(p, cached)
+})
+
+test_that(".format_file_age buckets by minutes, hours, days", {
+  f <- withr::local_tempfile()
+  writeLines("x", f)
+  now <- as.POSIXct(Sys.time(), tz = "UTC")
+  Sys.setFileTime(f, now - 5 * 60)
+  expect_match(.format_file_age(f), "^[0-9]+ min old$")
+  Sys.setFileTime(f, now - 3 * 3600)
+  expect_match(.format_file_age(f), "^[0-9]+ hr old$")
+  Sys.setFileTime(f, now - 3 * 86400)
+  expect_match(.format_file_age(f), "^[0-9]+ days old$")
 })
 
 test_that("refresh = TRUE re-downloads over an existing file", {
