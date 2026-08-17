@@ -482,20 +482,54 @@ test_that("intro_latinos opener is detected (opener name varies)", {
   expect_equal(res$opt_in,  c(1L, 0L))
 })
 
-test_that("a mixed campaign that also has intro is measured on intro (unchanged)", {
-  # Bilingual routing: r1 got the English intro, r2 the Spanish intro_sp. Because
-  # the flow HAS an intro question, the opener resolves to "intro" -- byte-
-  # identical to the pre-fix behaviour (r2, on intro_sp only, is still not
-  # counted). Correctly counting the routed non-intro branch is a follow-up.
+test_that("mixed campaign counts BOTH opener branches (intro + intro_sp)", {
+  # Bilingual routing (prod: CA MIHA): r1 got the English intro, r2 the Spanish
+  # intro_sp -- both are opening sends, so both are contacted, each replies on and
+  # consents via its own branch. (Before this change only the intro branch counted.)
   d <- disp_frame(
     phone = c("+15559301", "+15559302"),
     id.intro.scriptDate    = c(TS, ""),
-    id.intro.finalText     = c("Yes", "Yes"),
-    id.intro_sp.scriptDate = c("", TS)
+    id.intro.batchDate     = c(TS, ""),
+    id.intro.finalText     = c("Yes", ""),
+    id.intro_sp.scriptDate = c("", TS),
+    id.intro_sp.batchDate  = c("", TS),
+    id.intro_sp.finalText  = c("", "Yes")
   )
   res <- disposition_run(1234, d, contacted_only = FALSE)$consolidated
-  expect_equal(res$started, c(1L, 0L))     # intro preferred; intro_sp branch dropped
-  expect_equal(res$opt_in,  c(1L, 0L))
+  expect_equal(res$started, c(1L, 1L))     # both branches contacted
+  expect_equal(res$engaged, c(1L, 1L))     # both replied
+  expect_equal(res$opt_in,  c(1L, 1L))     # each said Yes on its own opener
+})
+
+test_that("3-way routed campaign counts every intro-family branch", {
+  # prod: intro + intro_black + intro_hispanic.
+  d <- disp_frame(
+    phone = c("+15559401", "+15559402", "+15559403"),
+    id.intro.scriptDate          = c(TS, "", ""),
+    id.intro_black.scriptDate    = c("", TS, ""),
+    id.intro_hispanic.scriptDate = c("", "", TS),
+    id.intro.finalText           = c("Yes", "", ""),
+    id.intro_black.finalText     = c("", "No", ""),
+    id.intro_hispanic.finalText  = c("", "", "Yes")
+  )
+  res <- disposition_run(1234, d, contacted_only = FALSE)$consolidated
+  expect_equal(res$started, c(1L, 1L, 1L))
+  expect_equal(res$opt_in,  c(1L, 0L, 1L))  # r2 answered No on intro_black
+})
+
+test_that("mixed opt_in ignores an absent opener finalText column (null-safe)", {
+  # Only the intro branch has a finalText column; intro_sp recipients still count
+  # as contacted but the default population uses only the present branch, without
+  # erroring on the missing id.intro_sp.finalText.
+  d <- disp_frame(
+    phone = c("+15559501", "+15559502"),
+    id.intro.scriptDate    = c(TS, ""),
+    id.intro.finalText     = c("Yes", ""),
+    id.intro_sp.scriptDate = c("", TS)        # sent, but no finalText column
+  )
+  res <- disposition_run(1234, d, contacted_only = FALSE)$consolidated
+  expect_equal(res$started, c(1L, 1L))    # both contacted
+  expect_equal(res$opt_in,  c(1L, 0L))    # only the present-branch consent counts
 })
 
 test_that("disposition_input_columns discovers a non-intro opener from `available`", {

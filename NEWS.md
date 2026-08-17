@@ -97,25 +97,26 @@
 
 ## Bug fixes
 
-* **`disposition_run()` no longer drops campaigns whose opening question is not
-  named `intro`.** `started` / `engaged` / `opt_in` keyed on hardcoded
-  `id.intro.*` columns, so a campaign whose sole opening question is named
-  otherwise (e.g. `FIRSTNET`, `intro_sp`) produced all-zero flags and vanished
-  under the `contacted_only` default despite real sends (verified in prod: an
-  873-send `FIRSTNET` campaign emitted zero rows; 47 such single-opener
-  campaigns exist). The opening question is now resolved per campaign -- `intro`
-  when the flow has it, otherwise the first question in column/flow order
-  (`latency_discover_questions()`) -- and all three signals key off it;
-  `disposition_input_columns()` retains the opener's columns (leading with them
-  so a projection cannot shadow the opener with a later question). Behaviour is
-  byte-identical for any campaign that has an `intro` question (pure-`intro` and
-  mixed bilingual campaigns alike); only a campaign with *no* `intro` question
-  changes. Regenerate persisted disposition data to pick up the
-  previously-dropped campaigns. KNOWN LIMITATION: a mixed campaign that routes
-  some recipients to a non-`intro` opener (bilingual `intro` + `intro_sp` /
-  `intro_latinos`) is still measured on `intro` only; counting the routed branch
-  needs a per-recipient opener set (tracked separately, as is the latency
-  `build_summary_frame()` view, which still hardcodes `intro`).
+* **`disposition_run()` no longer drops or under-counts campaigns whose opening
+  question is not named `intro`.** `started` / `engaged` / `opt_in` keyed on
+  hardcoded `id.intro.*` columns, so (a) a campaign whose sole opening question
+  is named otherwise (e.g. `FIRSTNET`, `intro_sp`) produced all-zero flags and
+  vanished under the `contacted_only` default, and (b) a bilingual campaign that
+  routes recipients to `intro` **and** `intro_sp` / `intro_latinos` (via the v2
+  `initialconditionals`) counted only the `intro` branch and dropped the rest.
+  Verified in prod: an 873-send `FIRSTNET` campaign emitted zero rows (47 such
+  single-opener campaigns exist), and a live 39,849-send campaign counted only
+  17,415 of its recipients (22,434 on `intro_latinos` were dropped; 72 mixed
+  campaigns exist). The opening question is now resolved per campaign as a **set**
+  -- every intro-family question present (`id.intro` / `id.intro_*`), or a single
+  discovered opener (e.g. `FIRSTNET`) when there is no intro family -- and a
+  recipient is contacted if they received **any** of them; `opt_in` is the
+  disjunction over the set's `finalText` columns. `disposition_input_columns()`
+  returns every opener's columns (leading with them). Behaviour is byte-identical
+  for a pure-`intro` campaign. Regenerate persisted disposition data to pick up
+  the previously-dropped / under-counted campaigns. The latency
+  `build_summary_frame()` view still hardcodes `intro`; that is tracked
+  separately.
 
 * **`download_with_verify()` no longer fails on `Content-Encoding: gzip`
   objects.** GCS applies decompressive transcoding on download, so the saved

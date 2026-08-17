@@ -12,15 +12,15 @@
 #
 # The per-respondent masks below mirror the signals build_summary_frame()
 # (summary_aggregate.R) computes before aggregating to (date, hour). NOTE:
-# `started`/`engaged`/`opt_in` key on the OPENING question's scriptDate/batchDate/
-# finalText -- resolved per campaign by .disposition_opening_question(), NOT a
-# hardcoded "intro" -- so a campaign whose only opening question is named e.g.
-# "FIRSTNET" or "intro_sp" is not silently dropped (it was: every flag came up 0
-# and the campaign vanished under contacted_only). A MIXED campaign that also has
-# an intro question is still measured on intro (see .disposition_opening_question);
-# counting its routed non-intro branch is a follow-up. build_summary_frame() still
-# hardcodes "intro" (and the older batchDate-based `texted`), so the two differ
-# until that latency view is reconciled.
+# `started`/`engaged`/`opt_in` key on the OPENING question SET (every intro-family
+# question, or a single discovered opener) resolved per campaign by
+# .disposition_opening_questions(), NOT a hardcoded "intro" -- so a campaign whose
+# opener is named "FIRSTNET" / "intro_sp", or a bilingual campaign routing some
+# recipients to intro and others to intro_sp / intro_latinos, is measured on every
+# branch instead of being silently dropped (it was: routed recipients' flags came
+# up 0). build_summary_frame() still hardcodes "intro" (and the older
+# batchDate-based `texted`), so the two differ until that latency view is
+# reconciled.
 
 # Parse a timestamp column to POSIXct, tolerating an absent column (returns an
 # all-NA vector of length nrow(data)). Mirrors build_summary_frame()'s
@@ -34,54 +34,64 @@
   }
 }
 
-# The opening question of the flow, used to key the contacted/engaged/opt-in
+# The opening question(s) of the flow, used to key the contacted/engaged/opt-in
 # signals instead of a hardcoded "intro" -- so a campaign whose opener is named
 # "FIRSTNET" / "intro_sp" / "intro_latinos" is measured, not dropped.
 #
-# Rule: PREFER "intro" whenever the flow has it, otherwise the first non-terminal
-# question in column (= flow) order (latency_discover_questions()). Preferring
-# intro keeps every campaign that has an intro question -- pure-intro AND a mixed
-# bilingual campaign that routes some recipients to intro and others to intro_sp
-# / intro_latinos via initialconditionals -- BYTE-IDENTICAL to before; only a
-# campaign with NO intro question at all switches to the discovered opener. This
-# avoids flipping which branch a mixed campaign counts based on column order.
-#
-# KNOWN LIMITATION: for a mixed campaign this still counts only the intro branch
-# and drops recipients routed to the non-intro opener. Counting every routed
-# branch needs a per-recipient opener set (started = any opening send), a
-# separate follow-up. Falls back to "intro" when no id.<q>.scriptDate column is
-# present (a minimal/degenerate export).
-.disposition_opening_question <- function(data) {
-  qs <- latency_discover_questions(data)
-  if ("intro" %in% qs) return("intro")
-  if (length(qs) == 0L) "intro" else qs[[1L]]
+# A campaign can route recipients to MORE THAN ONE opening question (bilingual
+# intro + intro_sp, or 3-way intro + intro_black + intro_hispanic, via the v2
+# initialconditionals) -- every such routed opener is "intro"-prefixed. So the
+# opening SET is every intro-family question present (id.intro / id.intro_*), and
+# a recipient is contacted if they received ANY of them. If the flow has no
+# intro-family question the set is its single discovered opening question (e.g.
+# "FIRSTNET"); with no id.<q>.scriptDate column at all it falls back to "intro"
+# (a minimal export). For a pure-intro campaign the set is exactly {"intro"}, so
+# every mask is byte-identical to the old hardcoded behaviour.
+.disposition_opening_questions <- function(x) {
+  qs <- latency_discover_questions(x)
+  intro_family <- grep("^intro(_|$)", qs, value = TRUE)
+  if (length(intro_family) > 0L) return(intro_family)
+  if (length(qs) == 0L) "intro" else qs[1L]
 }
 
-# Default opt-in population: the opening question's accepted answer is "Yes".
-# The opener-aware analogue of latency's .default_population (which hardcodes
-# "intro"); kept disposition-local so latency's default stays untouched. For an
-# intro-first campaign it is byte-identical to .default_population.
-.disposition_default_population <- function(data) {
-  sprintf("id.%s.finalText == \"Yes\"", .disposition_opening_question(data))
+# TRUE where the recipient received (field = "scriptDate") or replied to
+# (field = "batchDate") ANY of the opening questions -- the disjunction over the
+# opening set. Null-safe per column via .disposition_timestamp (absent -> all NA).
+.any_opening_event <- function(data, field) {
+  openers <- .disposition_opening_questions(data)
+  masks <- lapply(openers, function(q) {
+    !is.na(.disposition_timestamp(data, sprintf("id.%s.%s", q, field)))
+  })
+  Reduce(`|`, masks)
 }
 
-# started (contacted): the opening question was SENT to the recipient -- keys on
-# id.<opener>.scriptDate, the outbound scripted send. NOT id.<opener>.batchDate:
-# that column is the recipient's inbound REPLY (used by `engaged` below), a
-# strictly smaller set.
+# Default opt-in population: the recipient's opening question was answered "Yes"
+# -- the disjunction over the opening set's finalText columns (each recipient hit
+# one branch), restricted to columns actually PRESENT so an absent branch does not
+# trip .mask_opt_in's missing-column guard and zero the whole campaign. Kept
+# disposition-local so latency's .default_population (hardcoded intro) is
+# untouched; for a pure-intro campaign it is byte-identical to it.
+.disposition_default_population <- function(x) {
+  cols <- sprintf("id.%s.finalText", .disposition_opening_questions(x))
+  cn <- if (is.data.frame(x)) names(x) else as.character(x)
+  present <- cols[cols %in% cn]
+  # Keep one absent column when none is present so .mask_opt_in's guard zeroes
+  # opt_in (the historical null-safe behaviour) rather than emitting no filter.
+  if (length(present) == 0L) present <- cols[1L]
+  paste(sprintf("%s == \"Yes\"", present), collapse = " | ")
+}
+
+# started (contacted): the recipient received ANY opening send (id.<opener>.
+# scriptDate). NOT batchDate: that is the inbound REPLY, used by `engaged`.
 .mask_started <- function(data) {
-  col <- sprintf("id.%s.scriptDate", .disposition_opening_question(data))
-  !is.na(.disposition_timestamp(data, col))
+  .any_opening_event(data, "scriptDate")
 }
 
-# engaged: the recipient REPLIED to the opening question at all -- keys on
-# id.<opener>.batchDate, the recipient's inbound reply (not the send).
+# engaged: the recipient REPLIED to an opening question (id.<opener>.batchDate).
 # Distinct from opt_in, which additionally requires an accepted "Yes" answer
-# (id.<opener>.finalText): a recipient can reply (engaged) without producing an
-# accepted answer. Null-safe: an absent column -> all NA -> nobody engaged.
+# (id.<opener>.finalText): a recipient can reply without an accepted answer.
 .mask_engaged <- function(data) {
-  col <- sprintf("id.%s.batchDate", .disposition_opening_question(data))
-  !is.na(.disposition_timestamp(data, col))
+  .any_opening_event(data, "batchDate")
 }
 
 # opt_in: passed the population filter (default id.<opener>.finalText == "Yes")
@@ -190,10 +200,11 @@ empty_disposition_frame <- function() {
 #'   names present in the file (e.g. from \code{s160_csv_header()}). When
 #'   supplied, the close-message Text columns are retained. Strongly recommended.
 #' @param population Optional population-filter expression defining
-#'   \code{opt_in}. \code{NULL} (default) uses the opening question's accepted
-#'   answer, \code{id.<opener>.finalText == "Yes"} (\code{id.intro.finalText} for
-#'   a normal campaign; the opener is discovered from \code{available}). Its
-#'   columns are added so a custom population's inputs are not projected away.
+#'   \code{opt_in}. \code{NULL} (default) uses the opening question set's accepted
+#'   answer -- \code{id.intro.finalText == "Yes"} for a normal campaign, a
+#'   disjunction over the intro-family openers for a routed one (opener set
+#'   discovered from \code{available}). Its columns are added so a custom
+#'   population's inputs are not projected away.
 #' @return A character vector of unique dot-form column names, including
 #'   \code{phone}. Pass it as \code{columns =} to \code{s160_read_csv()} /
 #'   \code{s160_gcs_campaign_results_read()}.
@@ -209,20 +220,21 @@ empty_disposition_frame <- function() {
 #' }
 #' @export
 disposition_input_columns <- function(available = NULL, population = NULL) {
-  # The opener's name varies per campaign, so resolve it from `available` and
-  # lead with its columns: a projection preserves column order, and
-  # .disposition_opening_question() (used by the masks) reads flow order from
-  # that order -- a later question (e.g. close) must not precede the opener and
-  # shadow it. With `available` NULL the opener degrades to "intro" (the default
-  # set), and the population default matches the historical id.intro.finalText.
-  opener <- .disposition_opening_question(available)
+  # The opener's name varies per campaign (and a routed campaign has several), so
+  # resolve the opening set from `available` and lead with its columns: a
+  # projection preserves column order, and for a single non-intro opener the mask
+  # reads flow order from that order -- a later question (e.g. close) must not
+  # precede the opener and shadow it. With `available` NULL the set degrades to
+  # {"intro"} (the default set) and the population default matches the historical
+  # id.intro.finalText.
+  openers <- .disposition_opening_questions(available)
   population <- population %||% .disposition_default_population(available)
   # `.report_support_patterns` is the close-message Text pattern shared with
   # latency_input_columns(); detect_survey_mode() greps the same columns.
   cols <- c(
     "phone",
-    sprintf("id.%s.scriptDate", opener),
-    sprintf("id.%s.batchDate", opener),
+    sprintf("id.%s.scriptDate", openers),
+    sprintf("id.%s.batchDate", openers),
     all.vars(parse(text = population)),
     "web_complete",
     "id.close.scriptDate",
@@ -269,11 +281,12 @@ disposition_input_columns <- function(available = NULL, population = NULL) {
 #' @param data In-memory campaign results CSV as a data frame (one row per
 #'   respondent). Must contain a \code{phone} column.
 #' @param population Optional population-filter expression defining
-#'   \code{opt_in}. \code{NULL} (default) uses the opening question's accepted
-#'   answer, \code{id.<opener>.finalText == "Yes"} (\code{id.intro.finalText} for
-#'   a normal campaign) -- the opener resolved per campaign from the data. The
-#'   latency view still hardcodes \code{intro} for \code{n_consented}, so the two
-#'   diverge for a non-\code{intro} campaign until that view is reconciled.
+#'   \code{opt_in}. \code{NULL} (default) uses the opening question set's accepted
+#'   answer -- \code{id.intro.finalText == "Yes"} for a normal campaign, a
+#'   disjunction over the intro-family openers for a routed one -- resolved per
+#'   campaign from the data. The latency view still hardcodes \code{intro} for
+#'   \code{n_consented}, so the two diverge for a non-\code{intro} campaign until
+#'   that view is reconciled.
 #' @param contacted_only A single logical. When \code{TRUE} (default), return
 #'   only contacted records (rows where \code{started == 1}). When \code{FALSE},
 #'   return one row per input respondent.

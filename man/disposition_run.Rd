@@ -14,11 +14,12 @@ as an integer.}
 respondent). Must contain a \code{phone} column.}
 
 \item{population}{Optional population-filter expression defining
-\code{opt_in}. \code{NULL} (default) uses the opening question's accepted
-answer, \code{id.<opener>.finalText == "Yes"} (\code{id.intro.finalText} for
-a normal campaign) -- the opener resolved per campaign from the data. The
-latency view still hardcodes \code{intro} for \code{n_consented}, so the two
-diverge for a non-\code{intro} campaign until that view is reconciled.}
+\code{opt_in}. \code{NULL} (default) uses the opening question set's accepted
+answer -- \code{id.intro.finalText == "Yes"} for a normal campaign, a
+disjunction over the intro-family openers for a routed one -- resolved per
+campaign from the data. The latency view still hardcodes \code{intro} for
+\code{n_consented}, so the two diverge for a non-\code{intro} campaign until
+that view is reconciled.}
 
 \item{contacted_only}{A single logical. When \code{TRUE} (default), return
 only contacted records (rows where \code{started == 1}). When \code{FALSE},
