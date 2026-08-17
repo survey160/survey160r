@@ -1,0 +1,74 @@
+# Opening-question resolution -- the single source of truth shared by the latency
+# summary (summary_aggregate.R) and the disposition transform
+# (disposition_aggregate.R). Both views key their contacted / replied / consent
+# signals on the campaign's opener SET rather than a hardcoded "intro", so a
+# non-intro (FIRSTNET) or bilingual (intro + intro_sp / intro_latinos) campaign is
+# measured, not dropped -- and because both call these helpers, the two views
+# cannot drift out of alignment.
+
+# The opening question(s) of a flow: the intro-family (grep "^intro(_|$)") of the
+# `questions` vector -- a routed campaign has several (intro + intro_sp /
+# intro_latinos, via v2 initialconditionals) -- else the single first question
+# (e.g. "FIRSTNET"), else "intro" (a minimal export with no discovered opener).
+# For a pure-intro campaign the set is exactly {"intro"}, so every downstream
+# signal is byte-identical to the old hardcoded behaviour.
+.opening_questions <- function(questions) {
+  intro_family <- grep("^intro(_|$)", questions, value = TRUE)
+  if (length(intro_family) > 0L) return(intro_family)
+  if (length(questions) == 0L) "intro" else questions[[1L]]
+}
+
+# The opener set resolved straight from a campaign frame or raw header: discover
+# the flow's questions, then take the opening set. The "from data" convenience
+# used by the disposition transform and the latency funnel filters (the latency
+# config path resolves from config$flow$questions instead).
+.discover_openers <- function(data) {
+  .opening_questions(latency_discover_questions(data))
+}
+
+# The per-recipient opener send/reply timestamp: parse each opener's
+# id.<q>.<field> column null-safely (absent -> all-NA, length nrow) and coalesce
+# across the set. Each recipient hit exactly one opener, so coalesce yields that
+# recipient's timestamp; it preserves POSIXct/UTC (all inputs are UTC, matching
+# parse_s160_timestamps_chr). `field` is "scriptDate" (send) or "batchDate" (reply).
+.opener_timestamp <- function(data, openers, field) {
+  n <- nrow(data)
+  ts_list <- lapply(openers, function(q) {
+    col <- sprintf("id.%s.%s", q, field)
+    if (col %in% names(data)) {
+      parse_s160_timestamps_chr(data[[col]])
+    } else {
+      rep(as.POSIXct(NA, tz = "UTC"), n)
+    }
+  })
+  do.call(dplyr::coalesce, ts_list)
+}
+
+# TRUE where the recipient received (field = "scriptDate") or replied to
+# (field = "batchDate") ANY opener -- the disjunction over the opening set.
+# !is.na(coalesce(...)) is exactly the OR of the per-opener presence masks.
+.opener_events <- function(data, openers, field) {
+  !is.na(.opener_timestamp(data, openers, field))
+}
+
+# Default opt-in population: the opening question set's accepted answer is "Yes"
+# -- a disjunction over the openers' finalText columns, restricted to those
+# PRESENT in `available` so an absent routed branch doesn't trip
+# validate_columns_present() / .mask_opt_in's missing-column guard or the
+# population eval. For a pure-intro campaign this is exactly `.default_population`.
+.opener_population <- function(openers, available) {
+  cols <- sprintf("id.%s.finalText", openers)
+  present <- cols[cols %in% available]
+  if (length(present) == 0L) present <- cols[1L]
+  paste(sprintf("%s == \"Yes\"", present), collapse = " | ")
+}
+
+# v2 CSV headers arrive dot-form (id.<q>.field, as the readers munge them via
+# make.names) OR raw bracket-form (id[<q>]field). latency_discover_questions()
+# accepts both, so normalize a raw header to dot-form before .opener_population()
+# resolves finalText columns -- otherwise a raw bilingual header matches no
+# dot-form finalText column and the population collapses to the first opener,
+# silently dropping later branches. Dot-form names pass through unchanged.
+.dot_form_headers <- function(cols) {
+  sub("^id\\[([A-Za-z0-9_]+)\\]([A-Za-z0-9_]+)$", "id.\\1.\\2", cols)
+}
