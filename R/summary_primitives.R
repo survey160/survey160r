@@ -1,9 +1,9 @@
 # Pure helpers for the summary metrics view (spec §4.1).
 # Counts per (campaign_id, date, hour_local) of:
-#   - n_texted     -- intro dispatched (id.intro.scriptDate non-NA, the send)
+#   - n_sent     -- intro dispatched (id.intro.scriptDate non-NA, the send)
 #   - n_engaged    -- subset that replied to the intro (id.intro.batchDate)
-#   - n_consented  -- subset that passes config$filters$population
-#   - n_completed  -- subset that has id.close.scriptDate non-NA (sms) /
+#   - n_opted_in  -- subset that passes config$filters$population
+#   - n_complete  -- subset that has id.close.scriptDate non-NA (sms) /
 #                     web_complete callback (t2w)
 # plus per (campaign_id, date, hour_local, segment_index):
 #   - n_ineligible -- screened out at q_k, anchored by intro.batchDate

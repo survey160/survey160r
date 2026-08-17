@@ -17,7 +17,7 @@ respondent). Must contain a \code{phone} column.}
 \code{opted_in}. \code{NULL} (default) uses the opening question set's accepted
 answer -- \code{id.intro.finalText == "Yes"} for a normal campaign, a
 disjunction over the intro-family openers for a routed one -- resolved per
-campaign from the data. The latency view resolves \code{n_consented} from
+campaign from the data. The latency view resolves \code{n_opted_in} from
 the same opener set, so the two views agree for a non-\code{intro} campaign.}
 
 \item{contacted_only}{A single logical. When \code{TRUE} (default), return

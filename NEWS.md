@@ -36,6 +36,17 @@
 
 ## Breaking changes
 
+* **Latency summary count columns renamed to the canonical funnel vocabulary.**
+  On the `latency_report()` / `latency_run()` consolidated output, `n_texted` is
+  now `n_sent`, `n_consented` is now `n_opted_in`, and `n_completed` is now
+  `n_complete` (`n_engaged` and `n_ineligible` are unchanged). This gives the
+  latency counts the same stems as the disposition flags (`sent` / `opted_in` /
+  `complete`) -- `n_<signal>` is the count of that signal. Values are identical;
+  it is a rename only. The consolidated `schema_version` bumps to `6`
+  (`algorithm_version` stays `2.2.0`). Regenerate the latency Parquet fleet and
+  update consumers that read the summary columns (the survey160-shiny dashboards
+  are updated in lockstep).
+
 * **Disposition output columns renamed to the canonical funnel vocabulary.** The
   per-row flags `started` and `opt_in` are now `sent` and `opted_in`, matching the
   latency signals and `.funnel_masks()` (`engaged` / `complete` already matched).

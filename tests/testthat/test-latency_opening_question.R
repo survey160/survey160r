@@ -75,10 +75,10 @@ test_that("FIRSTNET campaign: config validates and summary counts (no crash)", {
   expect_equal(config$filters$population, 'id.FIRSTNET.finalText == "Yes"')
   expect_silent(latency_validate_config(config, d))     # previously hard-errored
   res <- build_summary_frame(d, config, survey_mode = "sms")
-  expect_equal(sum(res$n_texted), 2L)
+  expect_equal(sum(res$n_sent), 2L)
   expect_equal(sum(res$n_engaged), 1L)
-  expect_equal(sum(res$n_consented), 1L)   # r2 "No"; r3 "Yes" but not texted
-  expect_equal(sum(res$n_completed), 1L)
+  expect_equal(sum(res$n_opted_in), 1L)   # r2 "No"; r3 "Yes" but not texted
+  expect_equal(sum(res$n_complete), 1L)
 })
 
 test_that("bilingual campaign: summary counts BOTH opener branches", {
@@ -94,9 +94,9 @@ test_that("bilingual campaign: summary counts BOTH opener branches", {
   config <- latency_build_config(1L, d, field_timezone = "America/New_York")
   expect_equal(.opening_questions(config$flow$questions), c("intro", "intro_sp"))
   res <- build_summary_frame(d, config, survey_mode = "sms")
-  expect_equal(sum(res$n_texted), 2L)      # both branches (was 1 pre-fix)
+  expect_equal(sum(res$n_sent), 2L)      # both branches (was 1 pre-fix)
   expect_equal(sum(res$n_engaged), 2L)
-  expect_equal(sum(res$n_consented), 2L)   # each said Yes on its own opener
+  expect_equal(sum(res$n_opted_in), 2L)   # each said Yes on its own opener
 })
 
 test_that("a recipient on BOTH opener branches is counted once (OR, not sum)", {
@@ -115,9 +115,9 @@ test_that("a recipient on BOTH opener branches is counted once (OR, not sum)", {
   )
   config <- latency_build_config(1L, d, field_timezone = "America/New_York")
   res <- build_summary_frame(d, config, survey_mode = "sms")
-  expect_equal(sum(res$n_texted), 1L)
+  expect_equal(sum(res$n_sent), 1L)
   expect_equal(sum(res$n_engaged), 1L)
-  expect_equal(sum(res$n_consented), 1L)
+  expect_equal(sum(res$n_opted_in), 1L)
 })
 
 test_that("latency_build_config accepts a character header (bilingual population)", {

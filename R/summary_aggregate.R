@@ -19,7 +19,7 @@
 #   * a personalized survey link but no web   -> "t2w_external"  (web survey on
 #                                               an external platform with no
 #                                               webhook; completion not
-#                                               computable -> n_completed = NA)
+#                                               computable -> n_complete = NA)
 #   * no web completes and no survey link     -> "sms"           (live SMS)
 #
 # A "survey link" is a personalized URL in the close message -- one that varies
@@ -56,22 +56,22 @@ has_personalized_close_link <- function(data) {
 
 # Build the per-(campaign_id, date, hour_local) summary frame at hourly
 # grain. Output columns: campaign_id, date (Date), hour_local (int 0..23),
-# n_texted, n_engaged, n_consented, n_completed (all int32-safe). Returns a
+# n_sent, n_engaged, n_opted_in, n_complete (all int32-safe). Returns a
 # zero-row frame with the correct schema if `data` has no respondents --
 # callers rbind multiple of these for day rollups without special-casing
 # empties.
 #
-# The funnel is send-anchored: `n_texted` counts recipients the platform
+# The funnel is send-anchored: `n_sent` counts recipients the platform
 # SENT the intro to (id.intro.scriptDate, the outbound scripted send);
 # `n_engaged` is the subset that REPLIED (id.intro.batchDate, the inbound
-# reply). Keying n_texted on scriptDate matches disposition_run()'s
+# reply). Keying n_sent on scriptDate matches disposition_run()'s
 # `sent`/`engaged` split (disposition_aggregate.R) -- an earlier version keyed
-# it on batchDate, which counted repliers, not sends. n_consented and
-# n_completed are subsets of the sent cohort.
+# it on batchDate, which counted repliers, not sends. n_opted_in and
+# n_complete are subsets of the sent cohort.
 #
 # `survey_mode` selects the completion signal (SUR-1368): "sms" (default)
 # completes on id.close.scriptDate; "t2w" on the web_complete callback;
-# "t2w_external" is not computable (n_completed nulled to NA downstream, since
+# "t2w_external" is not computable (n_complete nulled to NA downstream, since
 # the SMS close is just the external survey link sent to every consenter).
 build_summary_frame <- function(data, config, survey_mode = "sms") {
   if (nrow(data) == 0L) return(empty_summary_frame())
@@ -92,8 +92,8 @@ build_summary_frame <- function(data, config, survey_mode = "sms") {
   # date/hour. `texted`/`consented` keep the latency-local names for the counts.
   # sent / engaged / opted_in / complete is the one funnel vocabulary shared with
   # the disposition transform (.funnel_masks in opener.R). It is mapped to the
-  # established public count columns (n_texted / n_engaged / n_consented /
-  # n_completed) at the summarise() below -- the only place the legacy names live.
+  # established public count columns (n_sent / n_engaged / n_opted_in /
+  # n_complete) at the summarise() below -- the only place the legacy names live.
   masks <- .funnel_masks(data, openers, config$filters$population)
   send <- masks$send
   sent <- masks$sent
@@ -101,7 +101,7 @@ build_summary_frame <- function(data, config, survey_mode = "sms") {
   opted_in <- masks$opted_in
   # Completion signal is survey-mode dependent (SUR-1368):
   #   t2w          -> the web_complete callback
-  #   t2w_external -> not computable; n_completed is nulled to NA in
+  #   t2w_external -> not computable; n_complete is nulled to NA in
   #                   assemble_consolidated, so the count here is a placeholder
   #   sms          -> reaching the close (any close-family scriptDate: close /
   #                   close_sp / close_latinos), so a bilingual campaign's
@@ -153,25 +153,25 @@ build_summary_frame <- function(data, config, survey_mode = "sms") {
   if (nrow(long) == 0L) return(empty_summary_frame())
 
   # Adapter: the canonical sent/engaged/opted_in/complete signals map to the
-  # ESTABLISHED public count columns. These legacy names (n_texted / n_consented
-  # / n_completed) are a schema contract read by the dashboards; keep them until
+  # ESTABLISHED public count columns. These legacy names (n_sent / n_opted_in
+  # / n_complete) are a schema contract read by the dashboards; keep them until
   # the coordinated public rename (n_sent / n_opted_in / n_complete).
   agg <- dplyr::summarise(
     dplyr::group_by(long, .data$campaign_id, .data$date, .data$hour_local),
-    n_texted = sum(.data$sent),
+    n_sent = sum(.data$sent),
     n_engaged = sum(.data$engaged),
-    n_consented = sum(.data$opted_in),
-    n_completed = sum(.data$complete),
+    n_opted_in = sum(.data$opted_in),
+    n_complete = sum(.data$complete),
     .groups = "drop"
   )
   data.frame(
     campaign_id = as.integer(agg$campaign_id),
     date = agg$date,
     hour_local = as.integer(agg$hour_local),
-    n_texted = as.integer(agg$n_texted),
+    n_sent = as.integer(agg$n_sent),
     n_engaged = as.integer(agg$n_engaged),
-    n_consented = as.integer(agg$n_consented),
-    n_completed = as.integer(agg$n_completed),
+    n_opted_in = as.integer(agg$n_opted_in),
+    n_complete = as.integer(agg$n_complete),
     stringsAsFactors = FALSE
   )
 }
@@ -253,20 +253,20 @@ collapse_summary_to_day <- function(summary_frame) {
   if (nrow(summary_frame) == 0L) return(empty_summary_frame())
   agg <- dplyr::summarise(
     dplyr::group_by(summary_frame, .data$campaign_id, .data$date),
-    n_texted = sum(.data$n_texted),
+    n_sent = sum(.data$n_sent),
     n_engaged = sum(.data$n_engaged),
-    n_consented = sum(.data$n_consented),
-    n_completed = sum(.data$n_completed),
+    n_opted_in = sum(.data$n_opted_in),
+    n_complete = sum(.data$n_complete),
     .groups = "drop"
   )
   data.frame(
     campaign_id = as.integer(agg$campaign_id),
     date = agg$date,
     hour_local = NA_integer_,
-    n_texted = as.integer(agg$n_texted),
+    n_sent = as.integer(agg$n_sent),
     n_engaged = as.integer(agg$n_engaged),
-    n_consented = as.integer(agg$n_consented),
-    n_completed = as.integer(agg$n_completed),
+    n_opted_in = as.integer(agg$n_opted_in),
+    n_complete = as.integer(agg$n_complete),
     stringsAsFactors = FALSE
   )
 }
@@ -294,10 +294,10 @@ empty_summary_frame <- function() {
     campaign_id = integer(0),
     date = as.Date(character(0)),
     hour_local = integer(0),
-    n_texted = integer(0),
+    n_sent = integer(0),
     n_engaged = integer(0),
-    n_consented = integer(0),
-    n_completed = integer(0),
+    n_opted_in = integer(0),
+    n_complete = integer(0),
     stringsAsFactors = FALSE
   )
 }

@@ -178,8 +178,8 @@ test_that("latency_report preserves summary metrics when no respondents pass fil
   # still appear in the output so the "we texted N but nobody consented"
   # denominator isn't lost. Latency cell counts are 0 across the board.
   expect_gt(nrow(cons), 0L)
-  expect_true(all(cons$n_consented == 0L))
-  expect_true(any(cons$n_texted >= 1L))
+  expect_true(all(cons$n_opted_in == 0L))
+  expect_true(any(cons$n_sent >= 1L))
   expect_true(all(cons$n == 0L))
   expect_true(all(is.na(cons$pct_le)))
   # SUR-1365: an all-NA pct_le must stay a double, not collapse to logical.
@@ -469,10 +469,10 @@ test_that("consolidated declares the new columns with the right types when laten
   expect_gt(nrow(cons), 0L)
   expect_true(all(c("mean_delta_min", "p50_delta_min", "p90_delta_min",
                     "p95_delta_min", "n_na_parse", "n_na_missing",
-                    "n_na_chain", "n_texted", "n_engaged", "n_consented",
-                    "n_completed", "n_ineligible") %in% names(cons)))
+                    "n_na_chain", "n_sent", "n_engaged", "n_opted_in",
+                    "n_complete", "n_ineligible") %in% names(cons)))
   expect_type(cons$p95_delta_min, "double")
   expect_type(cons$n_na_chain, "integer")
-  expect_type(cons$n_texted, "integer")
+  expect_type(cons$n_sent, "integer")
   expect_type(cons$n_engaged, "integer")
 })

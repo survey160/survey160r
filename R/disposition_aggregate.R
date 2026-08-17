@@ -36,7 +36,7 @@
 
 # Default opt-in population for a disposition run: the opener set's accepted
 # answer is "Yes". Delegates to the shared .opener_population() so consent is
-# defined exactly as the latency view defines n_consented; .dot_form_headers()
+# defined exactly as the latency view defines n_opted_in; .dot_form_headers()
 # normalizes a raw bracket-form header so a routed campaign keeps every branch.
 .disposition_default_population <- function(x) {
   available <- if (is.data.frame(x)) names(x) else as.character(x)
@@ -220,7 +220,7 @@ disposition_input_columns <- function(available = NULL, population = NULL) {
 #'   \code{opted_in}. \code{NULL} (default) uses the opening question set's accepted
 #'   answer -- \code{id.intro.finalText == "Yes"} for a normal campaign, a
 #'   disjunction over the intro-family openers for a routed one -- resolved per
-#'   campaign from the data. The latency view resolves \code{n_consented} from
+#'   campaign from the data. The latency view resolves \code{n_opted_in} from
 #'   the same opener set, so the two views agree for a non-\code{intro} campaign.
 #' @param contacted_only A single logical. When \code{TRUE} (default), return
 #'   only contacted records (rows where \code{sent == 1}). When \code{FALSE},
