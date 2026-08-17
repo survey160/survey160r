@@ -70,14 +70,16 @@ test_that(".funnel_masks composes sent / engaged / opted-in on the opener set", 
   ts <- "2026-01-26 15:00:00.000000Z"
   d <- data.frame(
     id.intro.scriptDate = c(ts, ts, ts, ""),   # r4 never sent
-    id.intro.batchDate  = c(ts, ts, "", ""),   # r3 no reply
+    id.intro.batchDate  = c(ts, ts, "", ts),   # r3 no reply; r4 reply WITHOUT a send
     id.intro.finalText  = c("Yes", "No", "Yes", "Yes"),
     stringsAsFactors = FALSE, check.names = FALSE
   )
   m <- .funnel_masks(d, "intro", 'id.intro.finalText == "Yes"')
   expect_s3_class(m$send, "POSIXct")                 # returned for date/hour bucketing
   expect_equal(m$sent,     c(TRUE, TRUE, TRUE, FALSE))
-  expect_equal(m$engaged,  c(TRUE, TRUE, FALSE, FALSE))   # r3 no reply, r4 not sent
+  # engaged is `!is.na(reply) & sent`: r3 has a send but no reply; r4 has a reply
+  # but no send -- neither is engaged (a reply presupposes a send).
+  expect_equal(m$engaged,  c(TRUE, TRUE, FALSE, FALSE))
   expect_equal(m$opted_in, c(TRUE, FALSE, TRUE, FALSE))   # r2 "No", r4 not sent
 })
 
