@@ -97,6 +97,16 @@ latency_discover_questions <- function(data) {
   paste(sprintf("%s == \"Yes\"", present), collapse = " | ")
 }
 
+# v2 CSV headers arrive dot-form (id.<q>.field, as the readers munge them via
+# make.names) OR raw bracket-form (id[<q>]field). latency_discover_questions()
+# accepts both, so normalize a raw header to dot-form before .opener_population()
+# resolves finalText columns -- otherwise a raw bilingual header matches no
+# dot-form finalText column and the population collapses to the first opener,
+# silently dropping later branches. Dot-form names pass through unchanged.
+.dot_form_headers <- function(cols) {
+  sub("^id\\[([A-Za-z0-9_]+)\\]([A-Za-z0-9_]+)$", "id.\\1.\\2", cols)
+}
+
 #' Build a latency config from a campaign id and its CSV
 #'
 #' Pure function. Derives \code{flow.questions} from the CSV column names
@@ -144,6 +154,7 @@ latency_build_config <- function(campaign_id, data,
   # character header vector (same as latency_discover_questions), so resolve the
   # available columns accordingly -- names() is NULL for a character header.
   available <- if (is.data.frame(data)) names(data) else as.character(data)
+  available <- .dot_form_headers(available)
   population <- .opener_population(.opening_questions(questions), available)
 
   list(

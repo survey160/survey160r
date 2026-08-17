@@ -134,6 +134,22 @@ test_that("latency_build_config accepts a character header (bilingual population
                'id.intro.finalText == "Yes" | id.intro_sp.finalText == "Yes"')
 })
 
+test_that("latency_build_config normalizes a raw bracket-form header", {
+  # latency_discover_questions() also accepts raw on-disk headers
+  # (id[<q>]field, before the readers make.names-munge them to dot-form). A raw
+  # bilingual header must still cover BOTH opener branches -- previously it
+  # collapsed to the first opener because .opener_population matched only
+  # dot-form finalText names against the raw bracket-form header.
+  header <- c("campaignid", "id[intro]scriptDate", "id[intro]batchDate",
+              "id[intro]finalText", "id[intro_sp]scriptDate",
+              "id[intro_sp]batchDate", "id[intro_sp]finalText",
+              "id[close]scriptDate")
+  config <- latency_build_config(1L, header, field_timezone = "America/New_York")
+  expect_equal(config$flow$questions, c("intro", "intro_sp", "close"))
+  expect_equal(config$filters$population,
+               'id.intro.finalText == "Yes" | id.intro_sp.finalText == "Yes"')
+})
+
 test_that("build_ineligible_frame anchors on the opener set (bilingual)", {
   d <- op_frame(
     id.intro.scriptDate      = c(TS, ""),
