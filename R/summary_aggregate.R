@@ -78,10 +78,15 @@ build_summary_frame <- function(data, config, survey_mode = "sms") {
   campaign_col <- config$filters$campaign_id_column
   field_tz <- config$field_timezone
 
-  # Parse the timestamps summary needs. Idempotent on POSIXct (the main
-  # orchestrator may parse them again later); cheap on raw character.
-  intro_script <- parse_s160_timestamps_chr(data[["id.intro.scriptDate"]])
-  intro_batch <- parse_s160_timestamps_chr(data[["id.intro.batchDate"]])
+  # Parse the timestamps summary needs, keyed on the OPENING question set (not a
+  # hardcoded "intro") -- .opener_timestamp coalesces each recipient's opener
+  # send/reply across the intro-family / discovered opener, so a non-intro
+  # (FIRSTNET) or bilingual (intro + intro_sp) campaign is measured, not dropped.
+  # Null-safe per column, so this also replaces the old unguarded read that
+  # crashed on an absent id.intro.scriptDate.
+  openers <- .opening_questions(config$flow$questions)
+  intro_script <- .opener_timestamp(data, openers, "scriptDate")
+  intro_batch <- .opener_timestamp(data, openers, "batchDate")
   close_script_col <- "id.close.scriptDate"
   close_script <- if (close_script_col %in% names(data)) {
     parse_s160_timestamps_chr(data[[close_script_col]])
@@ -188,7 +193,9 @@ build_ineligible_frame <- function(data, config) {
   inelig_col <- "id.ineligible.scriptDate"
   if (!inelig_col %in% names(data)) return(empty_ineligible_frame())
   inelig_ts <- parse_s160_timestamps_chr(data[[inelig_col]])
-  intro_batch <- parse_s160_timestamps_chr(data[["id.intro.batchDate"]])
+  # Anchor on the OPENING question set's reply (coalesced), not a hardcoded
+  # id.intro.batchDate, so a bilingual campaign's routed cohort is bucketed.
+  intro_batch <- .opener_timestamp(data, .opening_questions(questions), "batchDate")
 
   is_ineligible <- !is.na(inelig_ts) & !is.na(intro_batch)
   if (!any(is_ineligible)) return(empty_ineligible_frame())

@@ -115,6 +115,45 @@
 
 ## Bug fixes
 
+* **`disposition_run()` no longer drops or under-counts campaigns whose opening
+  question is not named `intro`.** `started` / `engaged` / `opt_in` keyed on
+  hardcoded `id.intro.*` columns, so (a) a campaign whose sole opening question
+  is named otherwise (e.g. `FIRSTNET`, `intro_sp`) produced all-zero flags and
+  vanished under the `contacted_only` default, and (b) a bilingual campaign that
+  routes recipients to `intro` **and** `intro_sp` / `intro_latinos` (via the v2
+  `initialconditionals`) counted only the `intro` branch and dropped the rest.
+  Verified in prod: an 873-send `FIRSTNET` campaign emitted zero rows (47 such
+  single-opener campaigns exist), and a live 39,849-send campaign counted only
+  17,415 of its recipients (22,434 on `intro_latinos` were dropped; 72 mixed
+  campaigns exist). The opening question is now resolved per campaign as a **set**
+  -- every intro-family question present (`id.intro` / `id.intro_*`), or a single
+  discovered opener (e.g. `FIRSTNET`) when there is no intro family -- and a
+  recipient is contacted if they received **any** of them; `opt_in` is the
+  disjunction over the set's `finalText` columns. `disposition_input_columns()`
+  returns every opener's columns (leading with them). Behaviour is byte-identical
+  for a pure-`intro` campaign. Regenerate persisted disposition data to pick up
+  the previously-dropped / under-counted campaigns.
+
+* **Latency view: campaigns whose opening question is not named `intro` are no
+  longer dropped or under-counted.** `build_summary_frame()` and the config /
+  validation / funnel-filter surface hardcoded `id.intro.*`, so a campaign whose
+  opener is named otherwise (e.g. `FIRSTNET`) **hard-errored** at
+  `latency_validate_config()` (required `id.intro.finalText`), and a bilingual
+  campaign that routes recipients to `intro` **and** `intro_sp` / `intro_latinos`
+  (via the v2 `initialconditionals`) counted only the `intro` branch. The opening
+  question is now resolved per campaign as a **set** -- every intro-family question
+  present (`id.intro` / `id.intro_*`), or a single discovered opener (e.g.
+  `FIRSTNET`) -- and `n_texted` / `n_engaged` / `n_consented` / the ineligible
+  anchor / the dedupe + date filters key on it (`latency_build_config()` builds
+  the opt-in population as a disjunction over the openers' `finalText`;
+  `validate_columns_present()` requires the population's columns, not a hardcoded
+  `id.intro.finalText`). Behaviour is byte-identical for a pure-`intro` campaign,
+  and this also fixes the previous crash on an entirely-absent `id.intro.scriptDate`.
+  This aligns the latency volumes with the disposition view and the analytics
+  overview API (which are name-agnostic). NOTE: the mixed-campaign latency
+  *cascade* (parallel openers break the linear-chain delta model) is tracked
+  separately.
+
 * **`download_with_verify()` no longer fails on `Content-Encoding: gzip`
   objects.** GCS applies decompressive transcoding on download, so the saved
   file is the *decompressed* size while the object metadata's `size` is the

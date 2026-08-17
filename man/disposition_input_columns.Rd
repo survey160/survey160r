@@ -12,8 +12,10 @@ names present in the file (e.g. from \code{s160_csv_header()}). When
 supplied, the close-message Text columns are retained. Strongly recommended.}
 
 \item{population}{Optional population-filter expression defining
-\code{opt_in}. \code{NULL} (default) uses the package default
-\code{id.intro.finalText == "Yes"}. Its columns are added so a custom
+\code{opt_in}. \code{NULL} (default) uses the opening question set's accepted
+answer -- \code{id.intro.finalText == "Yes"} for a normal campaign, a
+disjunction over the intro-family openers for a routed one (opener set
+discovered from \code{available}). Its columns are added so a custom
 population's inputs are not projected away.}
 }
 \value{
