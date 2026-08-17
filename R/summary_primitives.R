@@ -8,7 +8,7 @@
 # plus per (campaign_id, date, hour_local, segment_index):
 #   - n_ineligible -- screened out at q_k, anchored by intro.batchDate
 #
-# The funnel counts (texted/engaged/consented/completed) are cohort-by-send-
+# The funnel counts (sent/engaged/opted_in/complete) are cohort-by-send-
 # time: respondents are bucketed by the hour the platform dispatched the intro
 # to them (id.intro.scriptDate), not by when the downstream event occurred.
 # That is the only anchor available to every counted recipient -- a

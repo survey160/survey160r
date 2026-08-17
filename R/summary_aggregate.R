@@ -1,5 +1,5 @@
 # Summary metrics aggregation (spec §4). Computed on the pre-filter data
-# frame so the texted/consented/completed denominators reflect the full
+# frame so the sent/opted_in/complete denominators reflect the full
 # campaign population, not just the funnel survivors.
 #
 # Orchestrator (called by latency_report() before the population filter):
@@ -122,12 +122,12 @@ build_summary_frame <- function(data, config, survey_mode = "sms") {
 
   campaign_id <- as.integer(data[[campaign_col]])
   # Bucket by intro.scriptDate (the send) in field timezone -- the
-  # send-time cohort ("of recipients we texted at hour H, how many replied /
-  # consented / completed?"). A recipient with no scriptDate was never sent
-  # to: texted is FALSE and every mask is gated on texted, so the row is
+  # send-time cohort ("of recipients we sent to at hour H, how many replied /
+  # opted-in / completed?"). A recipient with no scriptDate was never sent
+  # to: sent is FALSE and every mask is gated on sent, so the row is
   # all-zero and dropped below; the NA bucket key it gets never survives the
   # keep filter. (This is why the funnel must bucket on the send, not the
-  # reply: a texted-but-never-replied recipient has no batchDate to bucket on.)
+  # reply: a sent-but-never-replied recipient has no batchDate to bucket on.)
   seg_date <- as.Date(format(send, tz = field_tz))
   hour_local <- as.integer(format(send, format = "%H", tz = field_tz))
 

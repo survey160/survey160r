@@ -93,8 +93,8 @@ latency_report <- function(data, config, run_at = NULL) {
   # every consolidated row so downstream consumers (Shiny) can filter (SUR-1368).
   survey_mode <- detect_survey_mode(data)
 
-  # Step 1: pre-filter summary metrics (spec §4). Counts texted /
-  # consented / completed at the (campaign, date, hour_local) grain,
+  # Step 1: pre-filter summary metrics (spec §4). Counts sent /
+  # opted_in / complete at the (campaign, date, hour_local) grain,
   # plus per-segment ineligible counts. Computed on the full pre-filter
   # population so the denominators reflect every respondent the platform
   # dispatched the intro to, not just those who consented.
