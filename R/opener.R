@@ -26,12 +26,25 @@
   .opening_questions(latency_discover_questions(data))
 }
 
+# The closing question(s) of a flow: the close-family (grep "^close(_|$)") of the
+# `questions` vector. Name-agnostic like the opener set -- a bilingual campaign
+# ends on close + close_sp / close_latinos, each language's completers on its own
+# branch, so the union is the SMS-completion set (matching the app's
+# phonelist.complete). Falls back to "close" when the flow has no close-family
+# question, so the mask reads an absent id.close.scriptDate null-safely (all
+# FALSE). For a single-close campaign the set is {"close"} -- byte-identical to
+# the old hardcoded id.close.scriptDate read.
+.closing_questions <- function(questions) {
+  close_family <- grep("^close(_|$)", questions, value = TRUE)
+  if (length(close_family) > 0L) close_family else "close"
+}
+
 # The per-recipient opener send/reply timestamp: parse each opener's
 # id.<q>.<field> column null-safely (absent -> all-NA, length nrow) and coalesce
 # across the set. Each recipient hit exactly one opener, so coalesce yields that
 # recipient's timestamp; it preserves POSIXct/UTC (all inputs are UTC, matching
 # parse_s160_timestamps_chr). `field` is "scriptDate" (send) or "batchDate" (reply).
-.opener_timestamp <- function(data, openers, field) {
+.question_timestamp <- function(data, openers, field) {
   n <- nrow(data)
   ts_list <- lapply(openers, function(q) {
     col <- sprintf("id.%s.%s", q, field)
@@ -44,11 +57,20 @@
   do.call(dplyr::coalesce, ts_list)
 }
 
-# TRUE where the recipient received (field = "scriptDate") or replied to
-# (field = "batchDate") ANY opener -- the disjunction over the opening set.
-# !is.na(coalesce(...)) is exactly the OR of the per-opener presence masks.
-.opener_events <- function(data, openers, field) {
-  !is.na(.opener_timestamp(data, openers, field))
+# TRUE where the recipient has an id.<q>.<field> event for ANY question in the
+# set -- the disjunction over the set. !is.na(coalesce(...)) is exactly the OR of
+# the per-question presence masks. Generic over any question set (openers for the
+# contacted/replied signals, the close family for completion).
+.question_events <- function(data, questions, field) {
+  !is.na(.question_timestamp(data, questions, field))
+}
+
+# TRUE where the recipient reached the survey close: any close-family scriptDate
+# is present. The SMS-completion signal, name-agnostic over close / close_sp /
+# close_latinos so a bilingual campaign's Spanish completers are counted (the
+# close-side analogue of the opener set).
+.reached_close <- function(data, questions) {
+  .question_events(data, .closing_questions(questions), "scriptDate")
 }
 
 # Default opt-in population: the opening question set's accepted answer is "Yes"
@@ -104,8 +126,8 @@
 # `send` (the coalesced opener scriptDate) is returned so the latency view can
 # bucket its summary by send date/hour; the disposition view uses only the masks.
 .funnel_masks <- function(data, openers, population) {
-  send <- .opener_timestamp(data, openers, "scriptDate")
-  reply <- .opener_timestamp(data, openers, "batchDate")
+  send <- .question_timestamp(data, openers, "scriptDate")
+  reply <- .question_timestamp(data, openers, "batchDate")
   sent <- !is.na(send)
   list(
     send = send,

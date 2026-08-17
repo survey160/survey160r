@@ -31,7 +31,7 @@ dedupe_keep_rows <- function(data, resp_id_col) {
   script_cols <- sprintf("id.%s.scriptDate", openers)
   # No opener send column at all -> unorderable, keep every row (as before).
   if (!any(script_cols %in% names(data))) return(seq_len(n))
-  intro <- .opener_timestamp(data, openers, "scriptDate")
+  intro <- .question_timestamp(data, openers, "scriptDate")
   rid <- data[[resp_id_col]]
   ord <- order(rid, intro, na.last = TRUE)
   rid_sorted <- rid[ord]
@@ -48,7 +48,7 @@ date_filter_keep_rows <- function(data, date_filter, field_tz) {
   script_cols <- sprintf("id.%s.scriptDate", openers)
   # No opener send column at all -> nothing to filter on, keep every row (as before).
   if (!any(script_cols %in% names(data))) return(seq_len(nrow(data)))
-  intro <- .opener_timestamp(data, openers, "scriptDate")
+  intro <- .question_timestamp(data, openers, "scriptDate")
   local_dates <- as.Date(format(intro, tz = field_tz))
   target <- as.Date(date_filter)
   which(!is.na(local_dates) & local_dates %in% target)

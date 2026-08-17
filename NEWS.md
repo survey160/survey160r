@@ -127,6 +127,19 @@
 
 ## Bug fixes
 
+* **SMS completion now counts every close-family branch, not just `id.close`.**
+  Both the latency summary (`n_completed`) and the disposition transform
+  (`complete`) keyed SMS completion on a hardcoded `id.close.scriptDate`, so a
+  bilingual campaign's Spanish completers (who reach `id.close_sp` /
+  `id.close_latinos`) were dropped -- the close-side analogue of the opener bug.
+  Completion is now resolved over the close family (`grep "^close(_|$)"`, via
+  `.reached_close()`), so the union of every language's completers is counted,
+  matching the app's `phonelist.complete`. Verified against production: two
+  campaigns' `close` + `close_sp` scriptDates summed to the exact database
+  `closed` count (214 and 61). A single-close campaign is unchanged.
+  `disposition_input_columns()` now projects the close family so a pruned read
+  keeps `close_sp`.
+
 * **`disposition_run()` no longer drops or under-counts campaigns whose opening
   question is not named `intro`.** `started` / `engaged` / `opt_in` keyed on
   hardcoded `id.intro.*` columns, so (a) a campaign whose sole opening question

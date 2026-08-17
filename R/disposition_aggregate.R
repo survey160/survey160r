@@ -61,7 +61,9 @@
 
 # complete: survey-mode dependent.
 #   t2w          -> the web_complete callback
-#   sms          -> reaching id.close.scriptDate
+#   sms          -> reaching the close (any close-family scriptDate: close /
+#                   close_sp / close_latinos, via .reached_close) so a bilingual
+#                   campaign's Spanish completers are counted, matching latency.
 #   t2w_external -> not computable (external platform, no webhook) -> NA
 # Non-external modes require `started`: a completion presupposes a send.
 .mask_complete <- function(data, survey_mode, started) {
@@ -71,7 +73,7 @@
   if (identical(survey_mode, "t2w")) {
     return(.mask_web_complete(data) & started)
   }
-  !is.na(.disposition_timestamp(data, "id.close.scriptDate")) & started
+  .reached_close(data, latency_discover_questions(data)) & started
 }
 
 # terminated: any hard stop -- screened out (ineligible) or refused. Either
@@ -159,6 +161,7 @@ disposition_input_columns <- function(available = NULL, population = NULL) {
   # {"intro"} (the default set) and the population default matches the historical
   # id.intro.finalText.
   openers <- .discover_openers(available)
+  closers <- .closing_questions(latency_discover_questions(available))
   population <- population %||% .disposition_default_population(available)
   # `.report_support_patterns` is the close-message Text pattern shared with
   # latency_input_columns(); detect_survey_mode() greps the same columns.
@@ -168,7 +171,7 @@ disposition_input_columns <- function(available = NULL, population = NULL) {
     sprintf("id.%s.batchDate", openers),
     all.vars(parse(text = population)),
     "web_complete",
-    "id.close.scriptDate",
+    sprintf("id.%s.scriptDate", closers),   # close family (close / close_sp / ...)
     "id.ineligible.scriptDate",
     "id.refusal.scriptDate"
   )

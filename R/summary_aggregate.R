@@ -79,7 +79,7 @@ build_summary_frame <- function(data, config, survey_mode = "sms") {
   field_tz <- config$field_timezone
 
   # Parse the timestamps summary needs, keyed on the OPENING question set (not a
-  # hardcoded "intro") -- .opener_timestamp coalesces each recipient's opener
+  # hardcoded "intro") -- .question_timestamp coalesces each recipient's opener
   # send/reply across the intro-family / discovered opener, so a non-intro
   # (FIRSTNET) or bilingual (intro + intro_sp) campaign is measured, not dropped.
   # Null-safe per column, so this also replaces the old unguarded read that
@@ -95,17 +95,13 @@ build_summary_frame <- function(data, config, survey_mode = "sms") {
   texted <- masks$sent
   engaged <- masks$engaged
   consented <- masks$opted_in
-  close_script_col <- "id.close.scriptDate"
-  close_script <- if (close_script_col %in% names(data)) {
-    parse_s160_timestamps_chr(data[[close_script_col]])
-  } else {
-    rep(as.POSIXct(NA), nrow(data))
-  }
   # Completion signal is survey-mode dependent (SUR-1368):
   #   t2w          -> the web_complete callback
   #   t2w_external -> not computable; n_completed is nulled to NA in
   #                   assemble_consolidated, so the count here is a placeholder
-  #   sms          -> reaching close (id.close.scriptDate)
+  #   sms          -> reaching the close (any close-family scriptDate: close /
+  #                   close_sp / close_latinos), so a bilingual campaign's
+  #                   Spanish completers are counted, not dropped.
   completed <- if (identical(survey_mode, "t2w")) {
     # Null-safe: detect_survey_mode only returns "t2w" when web_complete
     # exists, but build_summary_frame shouldn't assume the caller paired
@@ -120,7 +116,7 @@ build_summary_frame <- function(data, config, survey_mode = "sms") {
   } else if (identical(survey_mode, "t2w_external")) {
     rep(FALSE, nrow(data))
   } else {
-    !is.na(close_script) & texted
+    .reached_close(data, config$flow$questions) & texted
   }
 
   campaign_id <- as.integer(data[[campaign_col]])
@@ -190,7 +186,7 @@ build_ineligible_frame <- function(data, config) {
   inelig_ts <- parse_s160_timestamps_chr(data[[inelig_col]])
   # Anchor on the OPENING question set's reply (coalesced), not a hardcoded
   # id.intro.batchDate, so a bilingual campaign's routed cohort is bucketed.
-  intro_batch <- .opener_timestamp(data, .opening_questions(questions), "batchDate")
+  intro_batch <- .question_timestamp(data, .opening_questions(questions), "batchDate")
 
   is_ineligible <- !is.na(inelig_ts) & !is.na(intro_batch)
   if (!any(is_ineligible)) return(empty_ineligible_frame())

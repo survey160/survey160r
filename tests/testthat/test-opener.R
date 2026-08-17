@@ -2,7 +2,7 @@
 # disposition transform resolve the opener set from. These tests lock the shared
 # helpers and, crucially, the latency<->disposition alignment: if the two views
 # ever resolved a different opener set or population, they would report different
-# funnels. (The core .opening_questions / .opener_population / .opener_timestamp /
+# funnels. (The core .opening_questions / .opener_population / .question_timestamp /
 # .dot_form_headers behaviour is covered by test-latency_opening_question.R.)
 
 # One-row frame with the named columns present (blank values); presence is all
@@ -26,19 +26,19 @@ test_that(".discover_openers resolves the opener set from a frame or raw header"
                c("intro", "intro_sp"))
 })
 
-test_that(".opener_events is the send/reply disjunction over the opener set", {
+test_that(".question_events is the send/reply disjunction over the opener set", {
   ts <- "2026-01-26 15:00:00.000000Z"
   d <- data.frame(
     id.intro.scriptDate    = c(ts, ""),
     id.intro_sp.scriptDate = c("", ts),
     stringsAsFactors = FALSE, check.names = FALSE
   )
-  ev <- .opener_events(d, c("intro", "intro_sp"), "scriptDate")
+  ev <- .question_events(d, c("intro", "intro_sp"), "scriptDate")
   expect_equal(ev, c(TRUE, TRUE))                     # each recipient's own branch
   # equals !is.na(coalesce(...)) == OR of the per-column presence masks
-  expect_equal(ev, !is.na(.opener_timestamp(d, c("intro", "intro_sp"), "scriptDate")))
+  expect_equal(ev, !is.na(.question_timestamp(d, c("intro", "intro_sp"), "scriptDate")))
   # an absent field is null-safe -> all FALSE, not an error
-  expect_equal(.opener_events(d, c("intro", "intro_sp"), "batchDate"), c(FALSE, FALSE))
+  expect_equal(.question_events(d, c("intro", "intro_sp"), "batchDate"), c(FALSE, FALSE))
 })
 
 test_that("latency and disposition resolve the SAME opener set and population", {
@@ -101,4 +101,39 @@ test_that("latency counts and disposition flags agree on sent/engaged/opted-in",
   expect_equal(sum(sf$n_texted),    sum(disp$started))
   expect_equal(sum(sf$n_engaged),   sum(disp$engaged))
   expect_equal(sum(sf$n_consented), sum(disp$opt_in))
+})
+
+test_that(".closing_questions resolves the close family, else falls back to close", {
+  expect_equal(.closing_questions(c("intro", "q1", "close")), "close")
+  expect_equal(.closing_questions(c("intro", "close", "close_sp")),
+               c("close", "close_sp"))
+  expect_equal(.closing_questions(c("intro", "q1")), "close")  # no close -> fallback
+  expect_equal(.closing_questions(character(0)), "close")
+  expect_false("closed" %in% .closing_questions(c("closed", "close")))  # word boundary
+})
+
+test_that("SMS complete counts every close-family branch (close + close_sp)", {
+  # Bilingual campaign: English completers reach id.close, Spanish reach
+  # id.close_sp. Both are completions -- the union must be counted (matching the
+  # app's phonelist.complete), not just id.close. Previously close_sp was dropped.
+  ts <- "2026-01-26 15:00:00.000000Z"
+  d <- data.frame(
+    phone = as.character(1:4),
+    campaignid = 1L,
+    id.intro.scriptDate    = c(ts, ts, ts, ts),   # all texted
+    id.close.scriptDate    = c(ts, "", "", ""),   # 1 English completer
+    id.close_sp.scriptDate = c("", ts, ts, ""),   # 2 Spanish completers
+    stringsAsFactors = FALSE, check.names = FALSE
+  )
+  cfg <- latency_build_config(1L, d, field_timezone = "America/New_York")
+  sf <- build_summary_frame(d, cfg, survey_mode = "sms")
+  expect_equal(sum(sf$n_completed), 3L)          # close (1) + close_sp (2); was 1
+
+  disp <- disposition_run(1L, d, contacted_only = FALSE)$consolidated
+  expect_equal(sum(disp$complete), 3L)
+  expect_equal(sum(sf$n_completed), sum(disp$complete))   # two views agree
+
+  # the disposition projection retains the close family (close_sp not pruned)
+  expect_true("id.close_sp.scriptDate" %in%
+                disposition_input_columns(available = names(d)))
 })

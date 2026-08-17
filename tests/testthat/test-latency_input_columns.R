@@ -127,7 +127,7 @@ test_that("projection retains a trailing opener's batchDate (all-opener flow)", 
   # An all-opener flow (intro + intro_sp, no downstream question) makes an
   # intro-family opener the LAST flow question. required_timestamp_columns()
   # drops the last question's batchDate as terminal, but build_summary_frame()
-  # reads every opener's batchDate via .opener_timestamp(); latency_input_columns()
+  # reads every opener's batchDate via .question_timestamp(); latency_input_columns()
   # must retain it so a projected read matches a full read (no n_engaged undercount).
   ts <- "2026-01-26 15:00:00.000000Z"
   d <- data.frame(
