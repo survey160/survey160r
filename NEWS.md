@@ -11,8 +11,12 @@
   sent/engaged/opted-in funnel from one place and cannot drift. As part of this
   the last definitional gap between them is closed: disposition's `engaged` is
   now gated on `started` (a reply presupposes a send), matching the latency
-  view's `n_engaged = !is.na(opener.batchDate) & texted`. This only changes
-  output for anomalous rows that carry a reply timestamp with no send.
+  view's `n_engaged`. This only changes output for anomalous rows that carry a
+  reply timestamp with no send. Internally both views now speak one funnel
+  vocabulary (`sent` / `engaged` / `opted_in` / `complete`); the established
+  public column names (`n_texted` / `n_consented` / `n_completed`, and the
+  disposition frame's `started` / `opt_in`) are preserved unchanged via a
+  documented adapter at each output boundary, pending a coordinated rename.
 
 * **A wrong or misspelled reader argument now fails with a clear message.**
   `s160_gcs_campaign_results_read()` / `s160_read_csv()` reject a `...`

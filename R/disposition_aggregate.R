@@ -65,15 +65,15 @@
 #                   close_sp / close_latinos, via .reached_close) so a bilingual
 #                   campaign's Spanish completers are counted, matching latency.
 #   t2w_external -> not computable (external platform, no webhook) -> NA
-# Non-external modes require `started`: a completion presupposes a send.
-.mask_complete <- function(data, survey_mode, started) {
+# Non-external modes require `sent`: a completion presupposes a send.
+.mask_complete <- function(data, survey_mode, sent) {
   if (identical(survey_mode, "t2w_external")) {
     return(rep(NA, nrow(data)))
   }
   if (identical(survey_mode, "t2w")) {
-    return(.mask_web_complete(data) & started)
+    return(.mask_web_complete(data) & sent)
   }
-  .reached_close(data, latency_discover_questions(data)) & started
+  .reached_close(data, latency_discover_questions(data)) & sent
 }
 
 # terminated: any hard stop -- screened out (ineligible) or refused. Either
@@ -276,16 +276,19 @@ disposition_run <- function(campaign_id, data, population = NULL,
   population <- population %||% .disposition_default_population(data)
   survey_mode <- detect_survey_mode(data)
   masks <- .funnel_masks(data, .discover_openers(data), population)
-  started <- masks$sent
+  sent <- masks$sent
 
+  # Adapter: the canonical sent / opted_in signals map to the disposition frame's
+  # established column names (started / opt_in). Keep these until the coordinated
+  # public rename to sent / opted_in. (engaged / complete already match.)
   out <- data.frame(
     phone = phone,
     # via as.character() so a factor id stamps its label, not its level code.
     campaign_id = rep(as.integer(as.character(campaign_id)), length(phone)),
-    started = as.integer(started),
+    started = as.integer(sent),
     engaged = as.integer(masks$engaged),
     opt_in = as.integer(masks$opted_in),
-    complete = as.integer(.mask_complete(data, survey_mode, started)),
+    complete = as.integer(.mask_complete(data, survey_mode, sent)),
     web_complete = as.integer(.mask_web_complete(data)),
     terminated = as.integer(.mask_terminated(data)),
     mode = rep(survey_mode, length(phone)),
@@ -294,9 +297,9 @@ disposition_run <- function(campaign_id, data, population = NULL,
 
   if (contacted_only) {
     # `contacted_only` is validated as a single non-NA logical above, and
-    # `started` is a non-NA logical mask, so this cannot introduce phantom
+    # `sent` is a non-NA logical mask, so this cannot introduce phantom
     # NA-indexed rows. Filter the OUTPUT (mode + dedup already ran on full data).
-    out <- out[started, , drop = FALSE]
+    out <- out[sent, , drop = FALSE]
     rownames(out) <- NULL
   }
   list(consolidated = out, meta = .disposition_meta(data))

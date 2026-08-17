@@ -90,11 +90,15 @@ build_summary_frame <- function(data, config, survey_mode = "sms") {
   # opener.R) so the two views cannot report a different funnel. `send` (the
   # coalesced opener scriptDate) is retained to bucket the summary by send
   # date/hour. `texted`/`consented` keep the latency-local names for the counts.
+  # sent / engaged / opted_in / complete is the one funnel vocabulary shared with
+  # the disposition transform (.funnel_masks in opener.R). It is mapped to the
+  # established public count columns (n_texted / n_engaged / n_consented /
+  # n_completed) at the summarise() below -- the only place the legacy names live.
   masks <- .funnel_masks(data, openers, config$filters$population)
   send <- masks$send
-  texted <- masks$sent
+  sent <- masks$sent
   engaged <- masks$engaged
-  consented <- masks$opted_in
+  opted_in <- masks$opted_in
   # Completion signal is survey-mode dependent (SUR-1368):
   #   t2w          -> the web_complete callback
   #   t2w_external -> not computable; n_completed is nulled to NA in
@@ -102,7 +106,7 @@ build_summary_frame <- function(data, config, survey_mode = "sms") {
   #   sms          -> reaching the close (any close-family scriptDate: close /
   #                   close_sp / close_latinos), so a bilingual campaign's
   #                   Spanish completers are counted, not dropped.
-  completed <- if (identical(survey_mode, "t2w")) {
+  complete <- if (identical(survey_mode, "t2w")) {
     # Null-safe: detect_survey_mode only returns "t2w" when web_complete
     # exists, but build_summary_frame shouldn't assume the caller paired
     # the mode with the column -- a missing column means zero completions.
@@ -111,12 +115,12 @@ build_summary_frame <- function(data, config, survey_mode = "sms") {
       rep(FALSE, nrow(data))
     } else {
       wc <- suppressWarnings(as.integer(as.character(wc_raw)))
-      !is.na(wc) & wc == 1L & texted
+      !is.na(wc) & wc == 1L & sent
     }
   } else if (identical(survey_mode, "t2w_external")) {
     rep(FALSE, nrow(data))
   } else {
-    .reached_close(data, config$flow$questions) & texted
+    .reached_close(data, config$flow$questions) & sent
   }
 
   campaign_id <- as.integer(data[[campaign_col]])
@@ -134,26 +138,30 @@ build_summary_frame <- function(data, config, survey_mode = "sms") {
     campaign_id = campaign_id,
     date = seg_date,
     hour_local = hour_local,
-    texted = as.integer(texted),
+    sent = as.integer(sent),
     engaged = as.integer(engaged),
-    consented = as.integer(consented),
-    completed = as.integer(completed),
+    opted_in = as.integer(opted_in),
+    complete = as.integer(complete),
     stringsAsFactors = FALSE
   )
   # Drop rows where every flag is zero -- they only happened to share a
   # row with the data but contribute nothing. Avoids carrying NA-keyed
   # zero rows through group_by.
-  keep <- long$texted > 0L | long$engaged > 0L |
-    long$consented > 0L | long$completed > 0L
+  keep <- long$sent > 0L | long$engaged > 0L |
+    long$opted_in > 0L | long$complete > 0L
   long <- long[keep, , drop = FALSE]
   if (nrow(long) == 0L) return(empty_summary_frame())
 
+  # Adapter: the canonical sent/engaged/opted_in/complete signals map to the
+  # ESTABLISHED public count columns. These legacy names (n_texted / n_consented
+  # / n_completed) are a schema contract read by the dashboards; keep them until
+  # the coordinated public rename (n_sent / n_opted_in / n_complete).
   agg <- dplyr::summarise(
     dplyr::group_by(long, .data$campaign_id, .data$date, .data$hour_local),
-    n_texted = sum(.data$texted),
+    n_texted = sum(.data$sent),
     n_engaged = sum(.data$engaged),
-    n_consented = sum(.data$consented),
-    n_completed = sum(.data$completed),
+    n_consented = sum(.data$opted_in),
+    n_completed = sum(.data$complete),
     .groups = "drop"
   )
   data.frame(
