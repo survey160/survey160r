@@ -413,7 +413,7 @@ s160_api_campaign_results <- function(campaign_id, filter_open = FALSE,
     current_updated <- poll_updated()
     if (!is.null(current_updated) &&
           (is.null(baseline_updated) || current_updated != baseline_updated)) {
-      message("Export completed.")
+      message("Export complete.")
       return(s160_gcs_campaign_results_read(campaign_id, destdir = destdir, # nolint object_usage_linter
                                             bucket = bucket, ...))
     }

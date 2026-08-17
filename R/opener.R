@@ -30,7 +30,7 @@
 # `questions` vector. Name-agnostic like the opener set -- a bilingual campaign
 # ends on close + close_sp / close_latinos, each language's completers on its own
 # branch, so the union is the SMS-completion set (matching the app's
-# phonelist.completed). Falls back to "close" when the flow has no close-family
+# phonelist.complete). Falls back to "close" when the flow has no close-family
 # question, so the mask reads an absent id.close.scriptDate null-safely (all
 # FALSE). For a single-close campaign the set is {"close"} -- byte-identical to
 # the old hardcoded id.close.scriptDate read.
