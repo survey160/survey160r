@@ -22,6 +22,20 @@ test_that(".opening_questions resolves the opener set", {
   expect_equal(.opening_questions(character(0)), "intro")   # degenerate -> intro
 })
 
+test_that(".opening_questions honours the intro-family word boundary", {
+  # The whole fix pivots on `^intro(_|$)`: only "intro" itself or an underscore
+  # variant (intro_sp / intro_latinos) is intro-family. A longer word that merely
+  # starts with the letters (e.g. "introduction") must NOT be folded in -- else a
+  # campaign with both `intro` and a distinct `introduction` question would
+  # inflate started / opt_in. Guards against a weakening to `^intro`.
+  expect_equal(.opening_questions(c("intro", "introduction", "close")), "intro")
+  expect_equal(.opening_questions(c("introduction", "close")), "introduction")
+  expect_equal(.opening_questions(c("intros", "close")), "intros")
+  # Case-sensitive: an uppercase opener is not intro-family (v2 emits lowercase);
+  # it falls through to the single-first-opener branch.
+  expect_equal(.opening_questions(c("Intro", "close")), "Intro")
+})
+
 test_that(".opener_population builds a present-only disjunction (intro == default)", {
   expect_equal(.opener_population("intro", "id.intro.finalText"),
                .default_population)                          # pure intro == default
@@ -83,6 +97,27 @@ test_that("bilingual campaign: summary counts BOTH opener branches", {
   expect_equal(sum(res$n_texted), 2L)      # both branches (was 1 pre-fix)
   expect_equal(sum(res$n_engaged), 2L)
   expect_equal(sum(res$n_consented), 2L)   # each said Yes on its own opener
+})
+
+test_that("a recipient on BOTH opener branches is counted once (OR, not sum)", {
+  # Data anomaly: a single recipient has both id.intro.* and id.intro_sp.*
+  # populated. The opener set ORs the branches (.opener_timestamp coalesces,
+  # the population disjunction is an OR), so the recipient must count once, not
+  # twice -- no double-count from the set expansion.
+  d <- op_frame(
+    id.intro.scriptDate    = TS,
+    id.intro.batchDate     = TS,
+    id.intro.finalText     = "Yes",
+    id.intro_sp.scriptDate = TS,
+    id.intro_sp.batchDate  = TS,
+    id.intro_sp.finalText  = "Yes",
+    id.close.scriptDate    = TS
+  )
+  config <- latency_build_config(1L, d, field_timezone = "America/New_York")
+  res <- build_summary_frame(d, config, survey_mode = "sms")
+  expect_equal(sum(res$n_texted), 1L)
+  expect_equal(sum(res$n_engaged), 1L)
+  expect_equal(sum(res$n_consented), 1L)
 })
 
 test_that("latency_build_config accepts a character header (bilingual population)", {

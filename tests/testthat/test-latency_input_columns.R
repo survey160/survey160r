@@ -122,3 +122,31 @@ test_that("projection retains close-Text cols so t2w_external survives pruning",
   expect_identical(res_full$consolidated, res_pruned$consolidated)
   expect_equal(unique(res_full$consolidated$survey_mode), "t2w_external")
 })
+
+test_that("projection retains a trailing opener's batchDate (all-opener flow)", {
+  # An all-opener flow (intro + intro_sp, no downstream question) makes an
+  # intro-family opener the LAST flow question. required_timestamp_columns()
+  # drops the last question's batchDate as terminal, but build_summary_frame()
+  # reads every opener's batchDate via .opener_timestamp(); latency_input_columns()
+  # must retain it so a projected read matches a full read (no n_engaged undercount).
+  ts <- "2026-01-26 15:00:00.000000Z"
+  d <- data.frame(
+    campaignid             = c(1L, 1L),
+    id.intro.scriptDate    = c(ts, ""),
+    id.intro.batchDate     = c(ts, ""),
+    id.intro.finalText     = c("Yes", ""),
+    id.intro_sp.scriptDate = c("", ts),
+    id.intro_sp.batchDate  = c("", ts),
+    id.intro_sp.finalText  = c("", "Yes"),
+    stringsAsFactors = FALSE, check.names = FALSE
+  )
+  cfg <- latency_build_config(1L, d, field_timezone = "America/New_York")
+  cols <- latency_input_columns(cfg, names(d))
+  expect_true("id.intro_sp.batchDate" %in% cols)   # the trailing opener's reply
+
+  full <- build_summary_frame(d, cfg, survey_mode = "sms")
+  proj <- build_summary_frame(d[, intersect(cols, names(d)), drop = FALSE],
+                              cfg, survey_mode = "sms")
+  expect_equal(sum(full$n_engaged), 2L)
+  expect_equal(sum(proj$n_engaged), sum(full$n_engaged))   # parity (was 1 vs 2)
+})

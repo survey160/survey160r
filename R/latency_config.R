@@ -314,6 +314,14 @@ validate_columns_present <- function(config, data) {
 #' @export
 latency_input_columns <- function(config, available = NULL) {
   cols <- required_timestamp_columns(config$flow$questions)
+  # build_summary_frame()/build_ineligible_frame() read every opener's batchDate
+  # via .opener_timestamp(). required_timestamp_columns() drops the batchDate of
+  # the LAST flow question (terminal/close), so an intro-family opener that is
+  # itself the last question would be projected away, undercounting n_engaged on
+  # a projected read. Retain each opener's batchDate regardless of flow position
+  # (a no-op for the usual openers-first flow, deduped by unique() below).
+  cols <- c(cols, sprintf("id.%s.batchDate",
+                          .opening_questions(config$flow$questions)))
   cols <- c(cols, .report_support_columns)
   pop <- config$filters$population
   if (!is.null(pop) && nzchar(pop)) {

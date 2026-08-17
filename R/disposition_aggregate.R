@@ -18,9 +18,9 @@
 # opener is named "FIRSTNET" / "intro_sp", or a bilingual campaign routing some
 # recipients to intro and others to intro_sp / intro_latinos, is measured on every
 # branch instead of being silently dropped (it was: routed recipients' flags came
-# up 0). build_summary_frame() still hardcodes "intro" (and the older
-# batchDate-based `texted`), so the two differ until that latency view is
-# reconciled.
+# up 0). The latency build_summary_frame() view resolves the opener set the same
+# way (via .opening_questions()) and keys `texted` on the send (scriptDate), so
+# the two views now measure the same name-agnostic funnel.
 
 # Parse a timestamp column to POSIXct, tolerating an absent column (returns an
 # all-NA vector of length nrow(data)). Mirrors build_summary_frame()'s
@@ -284,9 +284,8 @@ disposition_input_columns <- function(available = NULL, population = NULL) {
 #'   \code{opt_in}. \code{NULL} (default) uses the opening question set's accepted
 #'   answer -- \code{id.intro.finalText == "Yes"} for a normal campaign, a
 #'   disjunction over the intro-family openers for a routed one -- resolved per
-#'   campaign from the data. The latency view still hardcodes \code{intro} for
-#'   \code{n_consented}, so the two diverge for a non-\code{intro} campaign until
-#'   that view is reconciled.
+#'   campaign from the data. The latency view resolves \code{n_consented} from
+#'   the same opener set, so the two views agree for a non-\code{intro} campaign.
 #' @param contacted_only A single logical. When \code{TRUE} (default), return
 #'   only contacted records (rows where \code{started == 1}). When \code{FALSE},
 #'   return one row per input respondent.
