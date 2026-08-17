@@ -54,6 +54,49 @@ latency_discover_questions <- function(data) {
   unique(qs)
 }
 
+# The opening question(s) of the flow: the intro-family (grep "^intro(_|$)") of
+# the discovered `questions` -- a routed campaign has several (intro + intro_sp /
+# intro_latinos, via v2 initialconditionals) -- else the single first question
+# (e.g. "FIRSTNET"), else "intro". The contacted/replied/consent signals key on
+# this SET, not a hardcoded "intro", so a non-intro or bilingual campaign is
+# measured, not dropped. Mirrors the disposition transform's opener resolution
+# (kept in sync so the two views align).
+.opening_questions <- function(questions) {
+  intro_family <- grep("^intro(_|$)", questions, value = TRUE)
+  if (length(intro_family) > 0L) return(intro_family)
+  if (length(questions) == 0L) "intro" else questions[[1L]]
+}
+
+# The per-recipient opener send/reply timestamp: parse each opener's
+# id.<q>.<field> column null-safely (absent -> all-NA, length nrow) and coalesce
+# across the set. Each recipient hit exactly one opener, so coalesce yields that
+# recipient's timestamp; it preserves POSIXct/UTC (all inputs are UTC, matching
+# parse_s160_timestamps_chr). `field` is "scriptDate" (send) or "batchDate" (reply).
+.opener_timestamp <- function(data, openers, field) {
+  n <- nrow(data)
+  ts_list <- lapply(openers, function(q) {
+    col <- sprintf("id.%s.%s", q, field)
+    if (col %in% names(data)) {
+      parse_s160_timestamps_chr(data[[col]])
+    } else {
+      rep(as.POSIXct(NA, tz = "UTC"), n)
+    }
+  })
+  do.call(dplyr::coalesce, ts_list)
+}
+
+# Default opt-in population: the opening question set's accepted answer is "Yes"
+# -- a disjunction over the openers' finalText columns, restricted to those
+# PRESENT in `available` so an absent routed branch doesn't trip
+# validate_columns_present() or the population eval. For a pure-intro campaign
+# this is exactly `.default_population`.
+.opener_population <- function(openers, available) {
+  cols <- sprintf("id.%s.finalText", openers)
+  present <- cols[cols %in% available]
+  if (length(present) == 0L) present <- cols[1L]
+  paste(sprintf("%s == \"Yes\"", present), collapse = " | ")
+}
+
 #' Build a latency config from a campaign id and its CSV
 #'
 #' Pure function. Derives \code{flow.questions} from the CSV column names
@@ -95,6 +138,13 @@ latency_build_config <- function(campaign_id, data,
       paste(head(questions, 5L), collapse = ", ")
     ), fn = "latency_build_config")
   }
+  # Population (opt-in/consent) keys on the opening question SET, not a hardcoded
+  # "intro", so a non-intro (FIRSTNET) / bilingual campaign is measured. Pure
+  # intro -> identical to `.default_population`. `data` may be a data frame or a
+  # character header vector (same as latency_discover_questions), so resolve the
+  # available columns accordingly -- names() is NULL for a character header.
+  available <- if (is.data.frame(data)) names(data) else as.character(data)
+  population <- .opener_population(.opening_questions(questions), available)
 
   list(
     project_id = as.integer(project_id %||% campaign_id),
@@ -102,7 +152,7 @@ latency_build_config <- function(campaign_id, data,
     field_timezone = field_timezone,
     flow = list(questions = questions),
     filters = list(
-      population = .default_population,
+      population = population,
       campaign_id_column = "campaignid",
       respondent_id_column = respondent_id_column,
       date_filter = date_filter
@@ -179,8 +229,16 @@ required_timestamp_columns <- function(questions) {
 
 validate_columns_present <- function(config, data) {
   required <- required_timestamp_columns(config$flow$questions)
-  population_intro <- "id.intro.finalText"
-  required <- c(required, population_intro)
+  # Require the population's referenced columns (the opener-family finalText,
+  # discovered per campaign), not a hardcoded id.intro.finalText -- otherwise a
+  # non-intro (FIRSTNET) campaign is rejected here despite having its own opener.
+  pop <- config$filters$population
+  if (!is.null(pop) && nzchar(pop)) {
+    # A malformed population is surfaced later by population_filter_mask() with a
+    # "filters.population" error; don't let all.vars(parse()) raise here first.
+    pop_vars <- tryCatch(all.vars(parse(text = pop)), error = function(e) character(0))
+    required <- c(required, pop_vars)
+  }
   campaign_col <- config$filters$campaign_id_column
   required <- c(required, campaign_col)
   missing_cols <- setdiff(required, names(data))
@@ -192,16 +250,17 @@ validate_columns_present <- function(config, data) {
 
 # Non-flow columns latency_report() reads in addition to the per-question
 # scriptDate/batchDate set. KEEP IN SYNC with the data[[...]] reads elsewhere:
-#   id.intro.finalText        -- default population filter + validate_columns_present
 #   web_complete              -- detect_survey_mode() + t2w completion (summary_aggregate.R)
 #   id.ineligible.scriptDate  -- build_ineligible_frame() (a terminal state, so it
 #                                is NOT in config$flow$questions and would be missed
 #                                by required_timestamp_columns alone)
+# The opener finalText column(s) are NOT listed here: they are the population's
+# referenced columns, and latency_input_columns() already retains all.vars(pop),
+# so the opener-family finalText is projected per campaign (not hardcoded intro).
 # Dropping any of these silently changes output (e.g. a t2w campaign would
 # misclassify as "sms"), so they are always retained by latency_input_columns().
 # The projection parity test (test-latency_input_columns.R) guards against drift.
 .report_support_columns <- c(
-  "id.intro.finalText",
   "web_complete",
   "id.ineligible.scriptDate"
 )
@@ -221,8 +280,10 @@ validate_columns_present <- function(config, data) {
 #' set, the population-filter columns (extracted from
 #' \code{config$filters$population}), the campaign-id and optional
 #' respondent-id columns, plus the fixed non-flow support columns
-#' (\code{id.intro.finalText}, \code{web_complete},
-#' \code{id.ineligible.scriptDate}).
+#' (\code{web_complete}, \code{id.ineligible.scriptDate}). The opener
+#' \code{finalText} is not fixed here: it is one of the population-filter
+#' columns above, so it is retained per campaign only when the population
+#' references it.
 #'
 #' Some columns the report reads have data-dependent names -- the close-message
 #' Text columns (\code{id.close*.scriptText}/\code{batchText}) that

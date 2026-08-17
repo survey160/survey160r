@@ -58,8 +58,12 @@ test_that("latency_input_columns omits respondent id when unset, handles empty p
   cols <- latency_input_columns(cfg)
 
   expect_false("userid" %in% cols)
-  # Empty population contributes no extra columns but support cols stay.
-  expect_true("id.intro.finalText" %in% cols)
+  # Empty population contributes no consent column. The fixed support columns
+  # (web_complete, id.ineligible.scriptDate) still stay, but the opener finalText
+  # is population-derived (not a hardcoded support column), so it is not retained
+  # when the population references nothing.
+  expect_false("id.intro.finalText" %in% cols)
+  expect_true("web_complete" %in% cols)
 })
 
 test_that("projection read yields identical latency_run output to a full read", {
