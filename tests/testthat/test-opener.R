@@ -100,9 +100,9 @@ test_that("latency counts and disposition flags agree on sent/engaged/opted-in",
   cfg <- latency_build_config(1L, d, field_timezone = "America/New_York")
   sf  <- build_summary_frame(d, cfg, survey_mode = "sms")
   disp <- disposition_run(1L, d, contacted_only = FALSE)$consolidated
-  expect_equal(sum(sf$n_texted),    sum(disp$started))
+  expect_equal(sum(sf$n_texted),    sum(disp$sent))
   expect_equal(sum(sf$n_engaged),   sum(disp$engaged))
-  expect_equal(sum(sf$n_consented), sum(disp$opt_in))
+  expect_equal(sum(sf$n_consented), sum(disp$opted_in))
 })
 
 test_that(".closing_questions resolves the close family, else falls back to close", {

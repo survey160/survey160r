@@ -14,24 +14,24 @@ as an integer.}
 respondent). Must contain a \code{phone} column.}
 
 \item{population}{Optional population-filter expression defining
-\code{opt_in}. \code{NULL} (default) uses the opening question set's accepted
+\code{opted_in}. \code{NULL} (default) uses the opening question set's accepted
 answer -- \code{id.intro.finalText == "Yes"} for a normal campaign, a
 disjunction over the intro-family openers for a routed one -- resolved per
 campaign from the data. The latency view resolves \code{n_consented} from
 the same opener set, so the two views agree for a non-\code{intro} campaign.}
 
 \item{contacted_only}{A single logical. When \code{TRUE} (default), return
-only contacted records (rows where \code{started == 1}). When \code{FALSE},
+only contacted records (rows where \code{sent == 1}). When \code{FALSE},
 return one row per input respondent.}
 }
 \value{
 A list mirroring \code{latency_run()}'s shape: \code{consolidated} (a
   data frame, one row per (contacted) respondent, with columns \code{phone}
   (character), \code{campaign_id} (integer), the 0/1 integer flags
-  \code{started}, \code{engaged}, \code{opt_in}, \code{complete},
+  \code{sent}, \code{engaged}, \code{opted_in}, \code{complete},
   \code{web_complete}, \code{terminated} -- \code{complete} is \code{NA} under
   \code{t2w_external} -- and \code{mode} (character); under the default
-  \code{started} is \code{1} for every row) and \code{meta} (the source
+  \code{sent} is \code{1} for every row) and \code{meta} (the source
   \code{source_csv_hash} / \code{source_csv_path}, or \code{NA}). A zero-row
   input, or a campaign where nobody was contacted, yields a zero-row
   \code{consolidated} frame.
@@ -39,8 +39,8 @@ A list mirroring \code{latency_run()}'s shape: \code{consolidated} (a
 \description{
 Turns an in-memory campaign results CSV (one row per respondent) into a list
 carrying the per-respondent disposition frame in \code{consolidated} (one row
-per contacted phone, with 0/1 funnel flags \code{started}, \code{engaged},
-\code{opt_in}, \code{complete}, \code{web_complete}, \code{terminated} and the
+per contacted phone, with 0/1 funnel flags \code{sent}, \code{engaged},
+\code{opted_in}, \code{complete}, \code{web_complete}, \code{terminated} and the
 campaign's \code{mode}) plus source provenance in \code{meta}. Pure
 function, no I/O -- pair with \code{s160_gcs_campaign_results_read(hash = TRUE)} for the GCS source.
 Persisting the frame (any enrichment, provenance, and Parquet output) is
@@ -49,7 +49,7 @@ handled by consumer projects.
 \details{
 By default (\code{contacted_only = TRUE}) the frame holds only records that
 were actually contacted -- rows where an intro was dispatched
-(\code{started == 1}). A never-attempted record has no disposition to report,
+(\code{sent == 1}). A never-attempted record has no disposition to report,
 so it is excluded; non-responses (contacted but no reply) are kept. Pass
 \code{contacted_only = FALSE} to emit one row per input respondent instead.
 
@@ -60,8 +60,10 @@ classification always run on the full data, so the \code{contacted_only}
 filter never changes \code{mode} or masks a duplicate.
 
 The \code{complete} flag is survey-mode dependent: for a \code{t2w} campaign
-it is the \code{web_complete} callback; for \code{sms} it is reaching
-\code{id.close.scriptDate}; for \code{t2w_external} it is not computable and
+it is the \code{web_complete} callback; for \code{sms} it is reaching the
+close -- any close-family \code{scriptDate} (\code{id.close.scriptDate} /
+\code{id.close_sp.scriptDate} / ...), so a bilingual campaign's Spanish
+completers count; for \code{t2w_external} it is not computable and
 is \code{NA} for every row. \code{mode} is classified per campaign from the
 data.
 }

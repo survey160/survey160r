@@ -12,7 +12,7 @@
 #
 # The per-respondent masks below mirror the signals build_summary_frame()
 # (summary_aggregate.R) computes before aggregating to (date, hour). NOTE:
-# `started`/`engaged`/`opt_in` key on the OPENING question SET (every intro-family
+# `sent`/`engaged`/`opted_in` key on the OPENING question SET (every intro-family
 # question, or a single discovered opener) resolved per campaign by the shared
 # .discover_openers() (opener.R), NOT a hardcoded "intro" -- so a campaign whose
 # opener is named "FIRSTNET" / "intro_sp", or a bilingual campaign routing some
@@ -43,8 +43,8 @@
   .opener_population(.discover_openers(x), .dot_form_headers(available))
 }
 
-# started (contacted), engaged (replied & started), and opt_in (population &
-# started) are the shared per-recipient funnel masks -- .funnel_masks() (opener.R)
+# sent (contacted), engaged (replied & sent), and opted_in (population &
+# sent) are the shared per-recipient funnel masks -- .funnel_masks() (opener.R)
 # computes them identically for the latency summary, so the two views measure the
 # same funnel. disposition_run() calls .funnel_masks() once (below) rather than a
 # per-flag mask here.
@@ -90,9 +90,9 @@ empty_disposition_frame <- function() {
   data.frame(
     phone = character(0),
     campaign_id = integer(0),
-    started = integer(0),
+    sent = integer(0),
     engaged = integer(0),
-    opt_in = integer(0),
+    opted_in = integer(0),
     complete = integer(0),
     web_complete = integer(0),
     terminated = integer(0),
@@ -133,7 +133,7 @@ empty_disposition_frame <- function() {
 #'   names present in the file (e.g. from \code{s160_csv_header()}). When
 #'   supplied, the close-message Text columns are retained. Strongly recommended.
 #' @param population Optional population-filter expression defining
-#'   \code{opt_in}. \code{NULL} (default) uses the opening question set's accepted
+#'   \code{opted_in}. \code{NULL} (default) uses the opening question set's accepted
 #'   answer -- \code{id.intro.finalText == "Yes"} for a normal campaign, a
 #'   disjunction over the intro-family openers for a routed one (opener set
 #'   discovered from \code{available}). Its columns are added so a custom
@@ -185,8 +185,8 @@ disposition_input_columns <- function(available = NULL, population = NULL) {
 #'
 #' Turns an in-memory campaign results CSV (one row per respondent) into a list
 #' carrying the per-respondent disposition frame in \code{consolidated} (one row
-#' per contacted phone, with 0/1 funnel flags \code{started}, \code{engaged},
-#' \code{opt_in}, \code{complete}, \code{web_complete}, \code{terminated} and the
+#' per contacted phone, with 0/1 funnel flags \code{sent}, \code{engaged},
+#' \code{opted_in}, \code{complete}, \code{web_complete}, \code{terminated} and the
 #' campaign's \code{mode}) plus source provenance in \code{meta}. Pure
 #' function, no I/O -- pair with \code{s160_gcs_campaign_results_read(hash = TRUE)} for the GCS source.
 #' Persisting the frame (any enrichment, provenance, and Parquet output) is
@@ -194,7 +194,7 @@ disposition_input_columns <- function(available = NULL, population = NULL) {
 #'
 #' By default (\code{contacted_only = TRUE}) the frame holds only records that
 #' were actually contacted -- rows where an intro was dispatched
-#' (\code{started == 1}). A never-attempted record has no disposition to report,
+#' (\code{sent == 1}). A never-attempted record has no disposition to report,
 #' so it is excluded; non-responses (contacted but no reply) are kept. Pass
 #' \code{contacted_only = FALSE} to emit one row per input respondent instead.
 #'
@@ -205,8 +205,10 @@ disposition_input_columns <- function(available = NULL, population = NULL) {
 #' filter never changes \code{mode} or masks a duplicate.
 #'
 #' The \code{complete} flag is survey-mode dependent: for a \code{t2w} campaign
-#' it is the \code{web_complete} callback; for \code{sms} it is reaching
-#' \code{id.close.scriptDate}; for \code{t2w_external} it is not computable and
+#' it is the \code{web_complete} callback; for \code{sms} it is reaching the
+#' close -- any close-family \code{scriptDate} (\code{id.close.scriptDate} /
+#' \code{id.close_sp.scriptDate} / ...), so a bilingual campaign's Spanish
+#' completers count; for \code{t2w_external} it is not computable and
 #' is \code{NA} for every row. \code{mode} is classified per campaign from the
 #' data.
 #'
@@ -215,21 +217,21 @@ disposition_input_columns <- function(available = NULL, population = NULL) {
 #' @param data In-memory campaign results CSV as a data frame (one row per
 #'   respondent). Must contain a \code{phone} column.
 #' @param population Optional population-filter expression defining
-#'   \code{opt_in}. \code{NULL} (default) uses the opening question set's accepted
+#'   \code{opted_in}. \code{NULL} (default) uses the opening question set's accepted
 #'   answer -- \code{id.intro.finalText == "Yes"} for a normal campaign, a
 #'   disjunction over the intro-family openers for a routed one -- resolved per
 #'   campaign from the data. The latency view resolves \code{n_consented} from
 #'   the same opener set, so the two views agree for a non-\code{intro} campaign.
 #' @param contacted_only A single logical. When \code{TRUE} (default), return
-#'   only contacted records (rows where \code{started == 1}). When \code{FALSE},
+#'   only contacted records (rows where \code{sent == 1}). When \code{FALSE},
 #'   return one row per input respondent.
 #' @return A list mirroring \code{latency_run()}'s shape: \code{consolidated} (a
 #'   data frame, one row per (contacted) respondent, with columns \code{phone}
 #'   (character), \code{campaign_id} (integer), the 0/1 integer flags
-#'   \code{started}, \code{engaged}, \code{opt_in}, \code{complete},
+#'   \code{sent}, \code{engaged}, \code{opted_in}, \code{complete},
 #'   \code{web_complete}, \code{terminated} -- \code{complete} is \code{NA} under
 #'   \code{t2w_external} -- and \code{mode} (character); under the default
-#'   \code{started} is \code{1} for every row) and \code{meta} (the source
+#'   \code{sent} is \code{1} for every row) and \code{meta} (the source
 #'   \code{source_csv_hash} / \code{source_csv_path}, or \code{NA}). A zero-row
 #'   input, or a campaign where nobody was contacted, yields a zero-row
 #'   \code{consolidated} frame.
@@ -278,16 +280,15 @@ disposition_run <- function(campaign_id, data, population = NULL,
   masks <- .funnel_masks(data, .discover_openers(data), population)
   sent <- masks$sent
 
-  # Adapter: the canonical sent / opted_in signals map to the disposition frame's
-  # established column names (started / opt_in). Keep these until the coordinated
-  # public rename to sent / opted_in. (engaged / complete already match.)
+  # Output columns use the canonical funnel vocabulary (sent / engaged /
+  # opted_in / complete), matching the latency signals and .funnel_masks().
   out <- data.frame(
     phone = phone,
     # via as.character() so a factor id stamps its label, not its level code.
     campaign_id = rep(as.integer(as.character(campaign_id)), length(phone)),
-    started = as.integer(sent),
+    sent = as.integer(sent),
     engaged = as.integer(masks$engaged),
-    opt_in = as.integer(masks$opted_in),
+    opted_in = as.integer(masks$opted_in),
     complete = as.integer(.mask_complete(data, survey_mode, sent)),
     web_complete = as.integer(.mask_web_complete(data)),
     terminated = as.integer(.mask_terminated(data)),

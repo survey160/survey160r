@@ -19,12 +19,12 @@
 # consolidated file, a full read + in-R filter is sub-second.
 
 # Columns the summary reads (the Parquet read is projected to just these).
-.DISPOSITION_READ_COLS <- c("phone", "campaign_id", "engaged", "opt_in", "complete",
+.DISPOSITION_READ_COLS <- c("phone", "campaign_id", "engaged", "opted_in", "complete",
                    "web_complete", "terminated", "date_closed_on")
 
 # The derived disposition categories, in funnel order (least -> most advanced).
 # `never_contacted` is only produced for screened phones absent from the data.
-.DISPOSITION_CATEGORIES <- c("never_contacted", "non_response", "engaged", "opt_in",
+.DISPOSITION_CATEGORIES <- c("never_contacted", "non_response", "engaged", "opted_in",
                     "terminated", "complete", "web_complete")
 
 # Columns of the per-phone summary (also the block appended by _screen()).
@@ -33,11 +33,11 @@
                       "latest_disposition", "campaigns")
 
 # The stored disposition schema (SUR-1518), in canonical order -- what
-# disposition_records() returns. `started`/`mode` come from disposition_run();
+# disposition_records() returns. `sent`/`mode` come from disposition_run();
 # `error`/`loi`/`topic`/`date_closed_on` are added by downstream enrichment, so
 # an un-enriched projection lacks them and records() returns just the subset present.
-.DISPOSITION_RECORD_COLS <- c("phone", "campaign_id", "started", "engaged",
-                      "opt_in", "complete", "web_complete", "terminated",
+.DISPOSITION_RECORD_COLS <- c("phone", "campaign_id", "sent", "engaged",
+                      "opted_in", "complete", "web_complete", "terminated",
                       "error", "loi", "topic", "mode", "date_closed_on")
 
 # Digit-normalize a phone for matching: strip non-digits, then drop a leading US
@@ -56,9 +56,9 @@
 # it falls through to the last known in-channel step -- never a false complete.
 .disposition_derive_category <- function(d) {
   is1 <- function(v) !is.na(v) & v == 1L
-  out <- rep("non_response", nrow(d))   # data is contacted-only (started == 1)
+  out <- rep("non_response", nrow(d))   # data is contacted-only (sent == 1)
   out[is1(d$engaged)] <- "engaged"
-  out[is1(d$opt_in)] <- "opt_in"
+  out[is1(d$opted_in)] <- "opted_in"
   out[is1(d$terminated)] <- "terminated"
   out[is1(d$complete)] <- "complete"
   out[is1(d$web_complete)] <- "web_complete"
@@ -164,7 +164,7 @@
     ever_contacted = TRUE,
     n_campaigns = as.integer(by_phone(d$campaign_id, function(x) length(unique(x)))),
     ever_engaged = as.logical(by_phone(d$engaged == 1L, any_true)),
-    ever_opted_in = as.logical(by_phone(d$opt_in == 1L, any_true)),
+    ever_opted_in = as.logical(by_phone(d$opted_in == 1L, any_true)),
     ever_complete = as.logical(
       by_phone((d$complete == 1L) | (d$web_complete == 1L), any_true)),
     ever_terminated = as.logical(by_phone(d$terminated == 1L, any_true)),
@@ -277,7 +277,7 @@
 #'   projection, e.g. from \code{\link{disposition_pull}}) or an in-memory
 #'   disposition data frame (from \code{\link{disposition_records}}). A path is
 #'   read with \pkg{nanoparquet}, projected to the summary columns; a frame must
-#'   carry \code{phone}, \code{campaign_id}, \code{engaged}, \code{opt_in},
+#'   carry \code{phone}, \code{campaign_id}, \code{engaged}, \code{opted_in},
 #'   \code{complete}, \code{web_complete}, and \code{terminated}.
 #'   \code{date_closed_on} is optional -- it orders each phone's latest campaign
 #'   and backs the \code{date_from}/\code{date_to} filters; an un-enriched
@@ -293,7 +293,7 @@
 #'   campaigns before summarizing.
 #' @param statuses Optional subset of the derived disposition categories
 #'   (\code{never_contacted}, \code{non_response}, \code{engaged},
-#'   \code{opt_in}, \code{terminated}, \code{complete}, \code{web_complete});
+#'   \code{opted_in}, \code{terminated}, \code{complete}, \code{web_complete});
 #'   keep only phones whose \code{latest_disposition} is one of them.
 #' @param date_from,date_to Optional \code{Date}/date-string bounds on
 #'   \code{date_closed_on}. In the beta \code{date_closed_on} is \code{NA}, so a
@@ -311,7 +311,7 @@
 #'   phone = c("5551234567", "5551234567", "5559876543"),
 #'   campaign_id = c(101L, 102L, 101L),
 #'   engaged = c(1L, 1L, 0L),
-#'   opt_in = c(1L, 0L, 0L),
+#'   opted_in = c(1L, 0L, 0L),
 #'   complete = c(1L, 0L, 0L),
 #'   web_complete = c(0L, 0L, 0L),
 #'   terminated = c(0L, 1L, 0L),
@@ -347,8 +347,8 @@ disposition_summary <- function(x, phones = NULL, campaign_ids = NULL,
 #'
 #' Reads the disposition Parquet projection and returns its rows \strong{as
 #' stored} -- one row per \code{(phone, campaign_id)}, carrying the full
-#' disposition schema: \code{phone}, \code{campaign_id}, \code{started},
-#' \code{engaged}, \code{opt_in}, \code{complete}, \code{web_complete},
+#' disposition schema: \code{phone}, \code{campaign_id}, \code{sent},
+#' \code{engaged}, \code{opted_in}, \code{complete}, \code{web_complete},
 #' \code{terminated}, \code{error}, \code{loi}, \code{topic}, \code{mode},
 #' \code{date_closed_on}. This is the level directly beneath
 #' \code{\link{disposition_summary}}: where \code{summary} rolls every phone up to a

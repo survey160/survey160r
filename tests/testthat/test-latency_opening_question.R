@@ -27,7 +27,7 @@ test_that(".opening_questions honours the intro-family word boundary", {
   # variant (intro_sp / intro_latinos) is intro-family. A longer word that merely
   # starts with the letters (e.g. "introduction") must NOT be folded in -- else a
   # campaign with both `intro` and a distinct `introduction` question would
-  # inflate started / opt_in. Guards against a weakening to `^intro`.
+  # inflate sent / opted_in. Guards against a weakening to `^intro`.
   expect_equal(.opening_questions(c("intro", "introduction", "close")), "intro")
   expect_equal(.opening_questions(c("introduction", "close")), "introduction")
   expect_equal(.opening_questions(c("intros", "close")), "intros")
