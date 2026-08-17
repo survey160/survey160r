@@ -21,7 +21,7 @@ projection, e.g. from \code{\link{disposition_pull}}) or an in-memory
 disposition data frame (from \code{\link{disposition_records}}). A path is
 read with \pkg{nanoparquet}, projected to the summary columns; a frame must
 carry \code{phone}, \code{campaign_id}, \code{engaged}, \code{opted_in},
-\code{complete}, \code{web_complete}, and \code{terminated}.
+\code{completed}, \code{web_complete}, and \code{terminated}.
 \code{date_closed_on} is optional -- it orders each phone's latest campaign
 and backs the \code{date_from}/\code{date_to} filters; an un-enriched
 \code{\link{disposition_records}} frame that omits it still summarizes
@@ -39,7 +39,7 @@ campaigns before summarizing.}
 
 \item{statuses}{Optional subset of the derived disposition categories
 (\code{never_contacted}, \code{non_response}, \code{engaged},
-\code{opted_in}, \code{terminated}, \code{complete}, \code{web_complete});
+\code{opted_in}, \code{terminated}, \code{completed}, \code{web_complete});
 keep only phones whose \code{latest_disposition} is one of them.}
 
 \item{date_from, date_to}{Optional \code{Date}/date-string bounds on
@@ -51,7 +51,7 @@ date bound drops rows with an unknown close date.}
 \value{
 A data frame, one row per phone: \code{phone}, \code{ever_contacted},
   \code{n_campaigns}, \code{ever_engaged}, \code{ever_opted_in},
-  \code{ever_complete}, \code{ever_terminated}, \code{latest_disposition},
+  \code{ever_completed}, \code{ever_terminated}, \code{latest_disposition},
   \code{campaigns} (comma-separated campaign ids).
 }
 \description{
@@ -71,7 +71,7 @@ records <- data.frame(
   campaign_id = c(101L, 102L, 101L),
   engaged = c(1L, 1L, 0L),
   opted_in = c(1L, 0L, 0L),
-  complete = c(1L, 0L, 0L),
+  completed = c(1L, 0L, 0L),
   web_complete = c(0L, 0L, 0L),
   terminated = c(0L, 1L, 0L),
   date_closed_on = as.Date(c("2026-01-10", "2026-01-20", "2026-01-15")),

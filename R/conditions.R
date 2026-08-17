@@ -13,7 +13,7 @@
 #     of which entry point (latency_run / latency_report / ...) reached it.
 #   * Names of arguments and config keys are wrapped in `backticks`. Values
 #     (paths, ids, column lists) follow a colon with no trailing period;
-#     complete sentences end with a period.
+#     completed sentences end with a period.
 #
 # Where the prefix lives: a check written directly in an exported function's
 # body carries that function's `fn`. A REUSED validator called by several

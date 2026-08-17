@@ -114,10 +114,10 @@ test_that(".closing_questions resolves the close family, else falls back to clos
   expect_false("closed" %in% .closing_questions(c("closed", "close")))  # word boundary
 })
 
-test_that("SMS complete counts every close-family branch (close + close_sp)", {
+test_that("SMS completed counts every close-family branch (close + close_sp)", {
   # Bilingual campaign: English completers reach id.close, Spanish reach
   # id.close_sp. Both are completions -- the union must be counted (matching the
-  # app's phonelist.complete), not just id.close. Previously close_sp was dropped.
+  # app's phonelist.completed), not just id.close. Previously close_sp was dropped.
   ts <- "2026-01-26 15:00:00.000000Z"
   d <- data.frame(
     phone = as.character(1:4),
@@ -129,11 +129,11 @@ test_that("SMS complete counts every close-family branch (close + close_sp)", {
   )
   cfg <- latency_build_config(1L, d, field_timezone = "America/New_York")
   sf <- build_summary_frame(d, cfg, survey_mode = "sms")
-  expect_equal(sum(sf$n_complete), 3L)          # close (1) + close_sp (2); was 1
+  expect_equal(sum(sf$n_completed), 3L)          # close (1) + close_sp (2); was 1
 
   disp <- disposition_run(1L, d, contacted_only = FALSE)$consolidated
-  expect_equal(sum(disp$complete), 3L)
-  expect_equal(sum(sf$n_complete), sum(disp$complete))   # two views agree
+  expect_equal(sum(disp$completed), 3L)
+  expect_equal(sum(sf$n_completed), sum(disp$completed))   # two views agree
 
   # the disposition projection retains the close family (close_sp not pruned)
   expect_true("id.close_sp.scriptDate" %in%

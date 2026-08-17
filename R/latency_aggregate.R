@@ -252,7 +252,7 @@ assemble_consolidated <- function(scaffold, cells, totals, cascade,
   joined <- dplyr::left_join(joined, cascade,
                              by = c(.bucket_keys, "threshold_min"))
 
-  # Summary metrics join. n_sent/n_engaged/n_opted_in/n_complete
+  # Summary metrics join. n_sent/n_engaged/n_opted_in/n_completed
   # denormalise across every (segment, threshold) row sharing the bucket key
   # (one value per bucket repeats across N-1 segments × 4 thresholds).
   joined <- dplyr::left_join(joined, summary_frame, by = .bucket_keys)
@@ -278,7 +278,7 @@ assemble_consolidated <- function(scaffold, cells, totals, cascade,
   # row means "no respondents in this bucket" -> 0, not "unknown".
   count_cols <- c("n", "n_le", "n_resp_over",
                   "n_na_parse", "n_na_missing", "n_na_chain",
-                  "n_sent", "n_engaged", "n_opted_in", "n_complete",
+                  "n_sent", "n_engaged", "n_opted_in", "n_completed",
                   "n_ineligible")
   for (col in count_cols) {
     if (col %in% names(joined)) {
@@ -310,7 +310,7 @@ assemble_consolidated <- function(scaffold, cells, totals, cascade,
     n_sent = as.integer(joined$n_sent),
     n_engaged = as.integer(joined$n_engaged),
     n_opted_in = as.integer(joined$n_opted_in),
-    n_complete = as.integer(joined$n_complete),
+    n_completed = as.integer(joined$n_completed),
     n_ineligible = as.integer(joined$n_ineligible),
     algorithm_version = .algorithm_version,
     config_hash = cfg_hash,
@@ -320,10 +320,10 @@ assemble_consolidated <- function(scaffold, cells, totals, cascade,
     stringsAsFactors = FALSE
   )
   # Text-to-Web on an external platform with no webhook (SUR-1368): completion
-  # cannot be computed from the export, so n_complete is NA (not 0/consent) --
+  # cannot be computed from the export, so n_completed is NA (not 0/consent) --
   # n_sent / n_opted_in remain valid.
   if (identical(survey_mode, "t2w_external")) {
-    out$n_complete <- NA_integer_
+    out$n_completed <- NA_integer_
   }
   out <- out[order(out$campaign_id, out$date, out$hour_local,
                    out$segment_index, out$threshold_min), , drop = FALSE]
@@ -356,7 +356,7 @@ empty_consolidated <- function(project_id, cfg_hash, run_at) {
     n_sent = integer(0),
     n_engaged = integer(0),
     n_opted_in = integer(0),
-    n_complete = integer(0),
+    n_completed = integer(0),
     n_ineligible = integer(0),
     algorithm_version = character(0),
     config_hash = character(0),

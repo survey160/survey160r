@@ -8,16 +8,16 @@
 #   latency_aggregate.R    -- consolidated table (Parquet payload)
 #   latency_diagnostics.R  -- diagnostics list per spec §3.3
 #   summary_primitives.R   -- pre-filter mask + last-reached helpers
-#   summary_aggregate.R    -- per-bucket sent/engaged/opted_in/complete/inelig
+#   summary_aggregate.R    -- per-bucket sent/engaged/opted_in/completed/inelig
 
 # Algorithm + schema versions stamped onto every result. Used by
 # latency_aggregate.R and latency_diagnostics.R; package-namespace visible.
 # 2.2.0: summary n_texted corrected to key on the send (id.intro.scriptDate)
 # instead of the reply, and a new n_engaged (reply) count added -- schema 5.
-# Schema 6: the summary count columns renamed to the canonical funnel
-# vocabulary -- n_texted -> n_sent, n_consented -> n_opted_in, n_completed ->
-# n_complete (n_engaged / n_ineligible unchanged). Values identical, a rename
-# only, so algorithm_version stays 2.2.0.
+# Schema 6: summary count columns renamed to the canonical funnel vocabulary --
+# n_texted -> n_sent and n_consented -> n_opted_in (n_engaged / n_completed /
+# n_ineligible unchanged), so the counts share the disposition flags' stems.
+# Values identical, a rename only, so algorithm_version stays 2.2.0.
 .algorithm_version <- "2.2.0"
 .schema_version <- "6"
 
@@ -94,7 +94,7 @@ latency_report <- function(data, config, run_at = NULL) {
   survey_mode <- detect_survey_mode(data)
 
   # Step 1: pre-filter summary metrics (spec §4). Counts sent /
-  # opted_in / complete at the (campaign, date, hour_local) grain,
+  # opted_in / completed at the (campaign, date, hour_local) grain,
   # plus per-segment ineligible counts. Computed on the full pre-filter
   # population so the denominators reflect every respondent the platform
   # dispatched the intro to, not just those who consented.

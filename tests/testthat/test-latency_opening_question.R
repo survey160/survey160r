@@ -78,7 +78,7 @@ test_that("FIRSTNET campaign: config validates and summary counts (no crash)", {
   expect_equal(sum(res$n_sent), 2L)
   expect_equal(sum(res$n_engaged), 1L)
   expect_equal(sum(res$n_opted_in), 1L)   # r2 "No"; r3 "Yes" but not texted
-  expect_equal(sum(res$n_complete), 1L)
+  expect_equal(sum(res$n_completed), 1L)
 })
 
 test_that("bilingual campaign: summary counts BOTH opener branches", {

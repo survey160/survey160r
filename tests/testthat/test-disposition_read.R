@@ -8,11 +8,11 @@
 # nanoparquet quirk; the real reader subsets *arrow*-written files, validated
 # separately on 2.2M rows).
 .disposition_row <- function(phone, campaign_id, engaged = 0L, opted_in = 0L,
-                    complete = 0L, web_complete = 0L, terminated = 0L,
+                    completed = 0L, web_complete = 0L, terminated = 0L,
                     date_closed_on = as.Date(NA)) {
   data.frame(phone = phone, campaign_id = as.integer(campaign_id),
              engaged = as.integer(engaged),
-             opted_in = as.integer(opted_in), complete = as.integer(complete),
+             opted_in = as.integer(opted_in), completed = as.integer(completed),
              web_complete = as.integer(web_complete),
              terminated = as.integer(terminated),
              date_closed_on = as.Date(date_closed_on), stringsAsFactors = FALSE)
@@ -22,7 +22,7 @@
 # helper in helper-stubs.R) writes the rows to a temp Parquet and returns the path.
 .disposition_base <- function() {
   write_disposition_parquet(rbind(
-    .disposition_row("2015550101", 2339, engaged = 1, opted_in = 1, complete = 1,
+    .disposition_row("2015550101", 2339, engaged = 1, opted_in = 1, completed = 1,
             date_closed_on = "2026-03-01"),
     .disposition_row("2015550101", 2354, engaged = 1, date_closed_on = "2026-04-01"),
     .disposition_row("2015550102", 2339, terminated = 1, date_closed_on = "2026-03-01")
@@ -33,12 +33,12 @@ test_that("summarizes one row per phone with cross-campaign flags", {
   res <- disposition_summary(.disposition_base())
   expect_equal(nrow(res), 2L)
   expect_named(res, c("phone", "ever_contacted", "n_campaigns", "ever_engaged",
-                      "ever_opted_in", "ever_complete", "ever_terminated",
+                      "ever_opted_in", "ever_completed", "ever_terminated",
                       "latest_disposition", "campaigns"))
   r1 <- res[res$phone == "2015550101", ]
   expect_equal(r1$n_campaigns, 2L)
   expect_true(r1$ever_contacted)
-  expect_true(r1$ever_complete)      # from 2339
+  expect_true(r1$ever_completed)      # from 2339
   expect_true(r1$ever_opted_in)
   expect_false(r1$ever_terminated)
   expect_equal(r1$campaigns, "2339,2354")
@@ -46,7 +46,7 @@ test_that("summarizes one row per phone with cross-campaign flags", {
   r2 <- res[res$phone == "2015550102", ]
   expect_equal(r2$latest_disposition, "terminated")
   expect_true(r2$ever_terminated)
-  expect_false(r2$ever_complete)
+  expect_false(r2$ever_completed)
 })
 
 test_that("screens a phone list, normalizing formats and flagging never-contacted", {
@@ -60,7 +60,7 @@ test_that("screens a phone list, normalizing formats and flagging never-contacte
   expect_equal(nc$n_campaigns, 0L)
   expect_true(is.na(nc$campaigns))
   # the +1/formatted number matched the stored 10-digit one
-  expect_true(res[res$phone == "2015550101", "ever_complete"])
+  expect_true(res[res$phone == "2015550101", "ever_completed"])
 })
 
 test_that("campaign_ids filter scopes the underlying rows before rollup", {
@@ -68,7 +68,7 @@ test_that("campaign_ids filter scopes the underlying rows before rollup", {
   r1 <- res[res$phone == "2015550101", ]
   expect_equal(r1$campaigns, "2339")
   expect_equal(r1$n_campaigns, 1L)
-  expect_equal(r1$latest_disposition, "complete")   # 2354 excluded
+  expect_equal(r1$latest_disposition, "completed")   # 2354 excluded
 })
 
 test_that("statuses filter keeps matching latest_disposition; unknown status errors", {
@@ -110,24 +110,24 @@ test_that("each date bound must be a single valid date", {
 
 test_that("derived disposition follows funnel precedence", {
   res <- disposition_summary(write_disposition_parquet(rbind(
-    .disposition_row("1", 1, engaged = 1, opted_in = 1, complete = 1, web_complete = 1),
-    .disposition_row("2", 1, engaged = 1, opted_in = 1, complete = 1),
+    .disposition_row("1", 1, engaged = 1, opted_in = 1, completed = 1, web_complete = 1),
+    .disposition_row("2", 1, engaged = 1, opted_in = 1, completed = 1),
     .disposition_row("3", 1, engaged = 1, opted_in = 1, terminated = 1),
     .disposition_row("4", 1, engaged = 1, opted_in = 1),
     .disposition_row("5", 1, engaged = 1),
     .disposition_row("6", 1))))
   d <- stats::setNames(res$latest_disposition, res$phone)
   expect_equal(unname(d[c("1", "2", "3", "4", "5", "6")]),
-               c("web_complete", "complete", "terminated", "opted_in",
+               c("web_complete", "completed", "terminated", "opted_in",
                  "engaged", "non_response"))
 })
 
-test_that("t2w_external complete = NA does not become a false complete", {
+test_that("t2w_external completed = NA does not become a false completed", {
   res <- disposition_summary(
     write_disposition_parquet(.disposition_row("2015550101", 1, engaged = 1, opted_in = 1,
-                      complete = NA_integer_)))
+                      completed = NA_integer_)))
   expect_equal(res$latest_disposition, "opted_in")
-  expect_false(res$ever_complete)
+  expect_false(res$ever_completed)
 })
 
 test_that("pagination slices the phone-ordered result", {
@@ -149,7 +149,7 @@ test_that("empty dataset yields an empty result; screened phones come back never
 })
 
 test_that("a blank stored phone is dropped, and all-invalid input yields no rows", {
-  p <- write_disposition_parquet(rbind(.disposition_row("2015550101", 1, complete = 1),
+  p <- write_disposition_parquet(rbind(.disposition_row("2015550101", 1, completed = 1),
                        .disposition_row("", 2)))            # blank phone -> dropped on read
   expect_equal(disposition_summary(p)$phone, "2015550101")
   expect_equal(nrow(disposition_summary(p, phones = "abc")), 0L)
@@ -165,12 +165,12 @@ test_that("input validation on the x argument", {
 
 test_that("disposition_summary accepts an in-memory frame and validates input", {
   d <- rbind(
-    .disposition_row("2015550101", 2339, engaged = 1, opted_in = 1, complete = 1,
+    .disposition_row("2015550101", 2339, engaged = 1, opted_in = 1, completed = 1,
             date_closed_on = "2026-03-01"),
     .disposition_row("2015550101", 2354, engaged = 1, date_closed_on = "2026-04-01"))
   res <- disposition_summary(d, phones = c("2015550101", "2015559999"))
   expect_setequal(res$phone, c("2015550101", "2015559999"))
-  expect_true(res[res$phone == "2015550101", "ever_complete"])
+  expect_true(res[res$phone == "2015550101", "ever_completed"])
   expect_false(res[res$phone == "2015559999", "ever_contacted"])
   # a frame missing the read columns is caught
   expect_error(disposition_summary(d[, c("phone", "campaign_id")]),
@@ -179,12 +179,12 @@ test_that("disposition_summary accepts an in-memory frame and validates input", 
 
 test_that("disposition_summary tolerates a frame without date_closed_on", {
   d <- rbind(
-    .disposition_row("2015550101", 2339, engaged = 1, opted_in = 1, complete = 1,
+    .disposition_row("2015550101", 2339, engaged = 1, opted_in = 1, completed = 1,
             date_closed_on = "2026-03-01"),
     .disposition_row("2015550101", 2354, engaged = 1, date_closed_on = "2026-04-01"))
   bare <- d[, setdiff(names(d), "date_closed_on"), drop = FALSE]  # un-enriched shape
   res <- disposition_summary(bare, phones = "2015550101")
-  expect_true(res$ever_complete)          # summarizes with close dates unknown
+  expect_true(res$ever_completed)          # summarizes with close dates unknown
   expect_equal(res$n_campaigns, 2L)
   # but a date bound with no date_closed_on column is a clear error
   expect_error(disposition_summary(bare, date_from = "2026-01-01"),
@@ -202,9 +202,9 @@ test_that("disposition_screen annotates the sample in place, preserving it", {
 
   expect_equal(out$phone, sample$phone)          # original formatting kept
   expect_equal(out$region, c("NE", "NE", "SW"))  # original columns preserved
-  expect_true(all(c("ever_complete", "latest_disposition", "campaigns") %in%
+  expect_true(all(c("ever_completed", "latest_disposition", "campaigns") %in%
                     names(out)))
-  expect_true(out$ever_complete[1])                       # +1/formatted matched
+  expect_true(out$ever_completed[1])                       # +1/formatted matched
   expect_equal(out$latest_disposition[2], "terminated")
   expect_false(out$ever_contacted[3])                    # absent -> never_contacted
   expect_equal(out$latest_disposition[3], "never_contacted")
@@ -215,7 +215,7 @@ test_that("disposition_screen validates sample, phone_col, and column clashes", 
   expect_error(disposition_screen(list(), p), "must be a data frame")
   expect_error(disposition_screen(data.frame(x = 1), p),
                "phone column")
-  clash <- data.frame(phone = "2015550101", ever_complete = TRUE,
+  clash <- data.frame(phone = "2015550101", ever_completed = TRUE,
                       stringsAsFactors = FALSE)
   expect_error(disposition_screen(clash, p), "already has")
 })

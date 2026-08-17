@@ -42,7 +42,7 @@ A data frame, one row per \code{(phone, campaign_id)}, with the
 Reads the disposition Parquet projection and returns its rows \strong{as
 stored} -- one row per \code{(phone, campaign_id)}, carrying the full
 disposition schema: \code{phone}, \code{campaign_id}, \code{sent},
-\code{engaged}, \code{opted_in}, \code{complete}, \code{web_complete},
+\code{engaged}, \code{opted_in}, \code{completed}, \code{web_complete},
 \code{terminated}, \code{error}, \code{loi}, \code{topic}, \code{mode},
 \code{date_closed_on}. This is the level directly beneath
 \code{\link{disposition_summary}}: where \code{summary} rolls every phone up to a

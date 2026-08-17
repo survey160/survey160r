@@ -59,14 +59,14 @@
   !is.na(wc_int) & wc_int == 1L
 }
 
-# complete: survey-mode dependent.
+# completed: survey-mode dependent.
 #   t2w          -> the web_complete callback
 #   sms          -> reaching the close (any close-family scriptDate: close /
 #                   close_sp / close_latinos, via .reached_close) so a bilingual
 #                   campaign's Spanish completers are counted, matching latency.
 #   t2w_external -> not computable (external platform, no webhook) -> NA
 # Non-external modes require `sent`: a completion presupposes a send.
-.mask_complete <- function(data, survey_mode, sent) {
+.mask_completed <- function(data, survey_mode, sent) {
   if (identical(survey_mode, "t2w_external")) {
     return(rep(NA, nrow(data)))
   }
@@ -93,7 +93,7 @@ empty_disposition_frame <- function() {
     sent = integer(0),
     engaged = integer(0),
     opted_in = integer(0),
-    complete = integer(0),
+    completed = integer(0),
     web_complete = integer(0),
     terminated = integer(0),
     mode = character(0),
@@ -186,7 +186,7 @@ disposition_input_columns <- function(available = NULL, population = NULL) {
 #' Turns an in-memory campaign results CSV (one row per respondent) into a list
 #' carrying the per-respondent disposition frame in \code{consolidated} (one row
 #' per contacted phone, with 0/1 funnel flags \code{sent}, \code{engaged},
-#' \code{opted_in}, \code{complete}, \code{web_complete}, \code{terminated} and the
+#' \code{opted_in}, \code{completed}, \code{web_complete}, \code{terminated} and the
 #' campaign's \code{mode}) plus source provenance in \code{meta}. Pure
 #' function, no I/O -- pair with \code{s160_gcs_campaign_results_read(hash = TRUE)} for the GCS source.
 #' Persisting the frame (any enrichment, provenance, and Parquet output) is
@@ -204,7 +204,7 @@ disposition_input_columns <- function(available = NULL, population = NULL) {
 #' classification always run on the full data, so the \code{contacted_only}
 #' filter never changes \code{mode} or masks a duplicate.
 #'
-#' The \code{complete} flag is survey-mode dependent: for a \code{t2w} campaign
+#' The \code{completed} flag is survey-mode dependent: for a \code{t2w} campaign
 #' it is the \code{web_complete} callback; for \code{sms} it is reaching the
 #' close -- any close-family \code{scriptDate} (\code{id.close.scriptDate} /
 #' \code{id.close_sp.scriptDate} / ...), so a bilingual campaign's Spanish
@@ -228,8 +228,8 @@ disposition_input_columns <- function(available = NULL, population = NULL) {
 #' @return A list mirroring \code{latency_run()}'s shape: \code{consolidated} (a
 #'   data frame, one row per (contacted) respondent, with columns \code{phone}
 #'   (character), \code{campaign_id} (integer), the 0/1 integer flags
-#'   \code{sent}, \code{engaged}, \code{opted_in}, \code{complete},
-#'   \code{web_complete}, \code{terminated} -- \code{complete} is \code{NA} under
+#'   \code{sent}, \code{engaged}, \code{opted_in}, \code{completed},
+#'   \code{web_complete}, \code{terminated} -- \code{completed} is \code{NA} under
 #'   \code{t2w_external} -- and \code{mode} (character); under the default
 #'   \code{sent} is \code{1} for every row) and \code{meta} (the source
 #'   \code{source_csv_hash} / \code{source_csv_path}, or \code{NA}). A zero-row
@@ -281,7 +281,7 @@ disposition_run <- function(campaign_id, data, population = NULL,
   sent <- masks$sent
 
   # Output columns use the canonical funnel vocabulary (sent / engaged /
-  # opted_in / complete), matching the latency signals and .funnel_masks().
+  # opted_in / completed), matching the latency signals and .funnel_masks().
   out <- data.frame(
     phone = phone,
     # via as.character() so a factor id stamps its label, not its level code.
@@ -289,7 +289,7 @@ disposition_run <- function(campaign_id, data, population = NULL,
     sent = as.integer(sent),
     engaged = as.integer(masks$engaged),
     opted_in = as.integer(masks$opted_in),
-    complete = as.integer(.mask_complete(data, survey_mode, sent)),
+    completed = as.integer(.mask_completed(data, survey_mode, sent)),
     web_complete = as.integer(.mask_web_complete(data)),
     terminated = as.integer(.mask_terminated(data)),
     mode = rep(survey_mode, length(phone)),

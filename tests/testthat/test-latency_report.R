@@ -470,7 +470,7 @@ test_that("consolidated declares the new columns with the right types when laten
   expect_true(all(c("mean_delta_min", "p50_delta_min", "p90_delta_min",
                     "p95_delta_min", "n_na_parse", "n_na_missing",
                     "n_na_chain", "n_sent", "n_engaged", "n_opted_in",
-                    "n_complete", "n_ineligible") %in% names(cons)))
+                    "n_completed", "n_ineligible") %in% names(cons)))
   expect_type(cons$p95_delta_min, "double")
   expect_type(cons$n_na_chain, "integer")
   expect_type(cons$n_sent, "integer")
