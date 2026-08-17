@@ -219,8 +219,28 @@ read_header_raw <- function(path, encoding = "UTF-8") {
 # requested but NONE match the header (a desync, e.g. a renamed export), we
 # warn and read in full -- identical in both branches, and visible rather than
 # a silent OOM-inducing full read.
-fast_read_csv <- function(path, columns = NULL, encoding = "UTF-8", ...) {
+fast_read_csv <- function(path, columns = NULL, encoding = "UTF-8",
+                          fn = "s160_read_csv", ...) {
   extra <- list(...)
+  # Reject `...` names the active CSV reader would not accept, so a typo or a
+  # wrong-function argument (e.g. filter_open=) fails with a clear message here
+  # rather than a cryptic "unused argument" (fread) or a silently-dropped extra
+  # (read.csv fallback assembly no-ops an unnamed arg). Validate against
+  # whichever reader will run.
+  if (length(extra) > 0L) {
+    valid <- if (requireNamespace("data.table", quietly = TRUE)) {
+      names(formals(data.table::fread))
+    } else {
+      c(names(formals(utils::read.csv)), names(formals(utils::read.table)))
+    }
+    nms <- names(extra)
+    bad <- setdiff(if (is.null(nms)) "" else nms, valid)
+    if (length(bad) > 0L) {
+      bad[!nzchar(bad)] <- "unnamed"
+      stop_s160(sprintf("argument(s) not accepted by the CSV reader: %s",
+                        paste(unique(bad), collapse = ", ")), fn = fn)
+    }
+  }
   select_raw <- NULL
   munged_keep <- NULL
   if (!is.null(columns)) {
@@ -434,7 +454,8 @@ s160_gcs_campaign_results_read <- function(campaign_id, filename = NULL,
     message(sprintf("Saved to: %s", local_path))
   }
 
-  data <- fast_read_csv(local_path, columns = columns, ...)
+  data <- fast_read_csv(local_path, columns = columns,
+                        fn = "s160_gcs_campaign_results_read", ...)
   # Provenance (opt-in): hash the downloaded bytes + record the canonical gs://
   # source, so latency_run()/latency_report() can surface them on result$meta.
   # Done before the on.exit() cleanup of a NULL-destdir tempfile, so the file is
@@ -558,7 +579,7 @@ s160_read_csv <- function(path, columns = NULL, hash = TRUE, ...) {
   if (!is.logical(hash) || length(hash) != 1L || is.na(hash)) {
     stop_s160("`hash` must be a single TRUE or FALSE.", fn = "s160_read_csv")
   }
-  data <- fast_read_csv(path, columns = columns, ...)
+  data <- fast_read_csv(path, columns = columns, fn = "s160_read_csv", ...)
   attr(data, "source_csv_hash") <- if (hash) {
     paste0("sha256:", digest::digest(file = path, algo = "sha256"))
   } else {
