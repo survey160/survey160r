@@ -99,7 +99,7 @@ test_that("an existing local copy is reused without downloading", {
 test_that(".format_file_age buckets by minutes, hours, days", {
   f <- withr::local_tempfile()
   writeLines("x", f)
-  now <- Sys.time()
+  now <- as.POSIXct(Sys.time(), tz = "UTC")
   Sys.setFileTime(f, now - 5 * 60)
   expect_match(.format_file_age(f), "^[0-9]+ min old$")
   Sys.setFileTime(f, now - 3 * 3600)

@@ -222,14 +222,19 @@ read_header_raw <- function(path, encoding = "UTF-8") {
 fast_read_csv <- function(path, columns = NULL, encoding = "UTF-8",
                           fn = "s160_read_csv", ...) {
   extra <- list(...)
-  # Reject `...` names the CSV reader would not accept, so a typo or a
+  # Reject `...` names the active CSV reader would not accept, so a typo or a
   # wrong-function argument (e.g. filter_open=) fails with a clear message here
-  # rather than a cryptic "unused argument" from deep inside fread's do.call.
-  # (Guards the fread path only; the read.csv fallback has its own `...`.)
-  if (length(extra) > 0L && requireNamespace("data.table", quietly = TRUE)) {
+  # rather than a cryptic "unused argument" (fread) or a silently-dropped extra
+  # (read.csv fallback assembly no-ops an unnamed arg). Validate against
+  # whichever reader will run.
+  if (length(extra) > 0L) {
+    valid <- if (requireNamespace("data.table", quietly = TRUE)) {
+      names(formals(data.table::fread))
+    } else {
+      c(names(formals(utils::read.csv)), names(formals(utils::read.table)))
+    }
     nms <- names(extra)
-    bad <- setdiff(if (is.null(nms)) "" else nms,
-                   names(formals(data.table::fread)))
+    bad <- setdiff(if (is.null(nms)) "" else nms, valid)
     if (length(bad) > 0L) {
       bad[!nzchar(bad)] <- "unnamed"
       stop_s160(sprintf("argument(s) not accepted by the CSV reader: %s",
