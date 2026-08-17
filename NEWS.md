@@ -97,6 +97,26 @@
 
 ## Bug fixes
 
+* **Latency view: campaigns whose opening question is not named `intro` are no
+  longer dropped or under-counted.** `build_summary_frame()` and the config /
+  validation / funnel-filter surface hardcoded `id.intro.*`, so a campaign whose
+  opener is named otherwise (e.g. `FIRSTNET`) **hard-errored** at
+  `latency_validate_config()` (required `id.intro.finalText`), and a bilingual
+  campaign that routes recipients to `intro` **and** `intro_sp` / `intro_latinos`
+  (via the v2 `initialconditionals`) counted only the `intro` branch. The opening
+  question is now resolved per campaign as a **set** — every intro-family question
+  present (`id.intro` / `id.intro_*`), or a single discovered opener (e.g.
+  `FIRSTNET`) — and `n_texted` / `n_engaged` / `n_consented` / the ineligible
+  anchor / the dedupe + date filters key on it (`latency_build_config()` builds
+  the opt-in population as a disjunction over the openers' `finalText`;
+  `validate_columns_present()` requires the population's columns, not a hardcoded
+  `id.intro.finalText`). Behaviour is byte-identical for a pure-`intro` campaign,
+  and this also fixes the previous crash on an entirely-absent `id.intro.scriptDate`.
+  This aligns the latency volumes with the disposition view and the analytics
+  overview API (which are name-agnostic). NOTE: the mixed-campaign latency
+  *cascade* (parallel openers break the linear-chain delta model) is tracked
+  separately.
+
 * **`download_with_verify()` no longer fails on `Content-Encoding: gzip`
   objects.** GCS applies decompressive transcoding on download, so the saved
   file is the *decompressed* size while the object metadata's `size` is the

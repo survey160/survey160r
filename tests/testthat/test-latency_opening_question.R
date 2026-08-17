@@ -1,0 +1,118 @@
+# Opening-question resolution shared by the latency summary / config / funnel
+# filter (R/latency_config.R helpers + R/summary_aggregate.R + R/latency_filter.R).
+# Pure-intro campaigns are byte-identical to the pre-fix behaviour (guarded by
+# test-summary_aggregate.R / test-latency_parity_legacy.R / test-latency_config.R);
+# these cover the NON-intro (FIRSTNET) and bilingual (intro + intro_sp) paths.
+
+TS <- "2026-01-26 15:00:00.000000Z"
+
+# One-campaign frame from named column vectors (dot-form names preserved).
+op_frame <- function(...) {
+  cols <- list(...)
+  n <- length(cols[[1L]])
+  cols$campaignid <- rep(1L, n)
+  as.data.frame(cols, stringsAsFactors = FALSE, check.names = FALSE)
+}
+
+test_that(".opening_questions resolves the opener set", {
+  expect_equal(.opening_questions(c("intro", "q1", "close")), "intro")
+  expect_equal(.opening_questions(c("intro", "intro_sp", "q1")),
+               c("intro", "intro_sp"))
+  expect_equal(.opening_questions(c("FIRSTNET", "q1", "close")), "FIRSTNET")
+  expect_equal(.opening_questions(character(0)), "intro")   # degenerate -> intro
+})
+
+test_that(".opener_population builds a present-only disjunction (intro == default)", {
+  expect_equal(.opener_population("intro", "id.intro.finalText"),
+               .default_population)                          # pure intro == default
+  expect_equal(
+    .opener_population(c("intro", "intro_sp"),
+                      c("id.intro.finalText", "id.intro_sp.finalText")),
+    'id.intro.finalText == "Yes" | id.intro_sp.finalText == "Yes"'
+  )
+  # an absent branch is dropped; if none present, keep one (null-safe zero)
+  expect_equal(.opener_population(c("intro", "intro_sp"), "id.intro.finalText"),
+               'id.intro.finalText == "Yes"')
+  expect_equal(.opener_population("FIRSTNET", character(0)),
+               'id.FIRSTNET.finalText == "Yes"')
+})
+
+test_that(".opener_timestamp coalesces across the set, null-safe on absent cols", {
+  d <- op_frame(
+    id.intro.scriptDate    = c(TS, ""),
+    id.intro_sp.scriptDate = c("", TS)
+  )
+  ts <- .opener_timestamp(d, c("intro", "intro_sp"), "scriptDate")
+  expect_false(any(is.na(ts)))                 # each recipient's own branch send
+  expect_equal(attr(ts, "tzone"), "UTC")
+  ts2 <- .opener_timestamp(d, c("intro", "intro_sp"), "batchDate")
+  expect_true(all(is.na(ts2)))                 # no batchDate columns -> all NA
+})
+
+test_that("FIRSTNET campaign: config validates and summary counts (no crash)", {
+  d <- op_frame(
+    id.FIRSTNET.scriptDate = c(TS, TS, ""),
+    id.FIRSTNET.batchDate  = c(TS, "", ""),
+    id.FIRSTNET.finalText  = c("Yes", "No", "Yes"),
+    id.close.scriptDate    = c(TS, "", "")
+  )
+  config <- latency_build_config(1L, d, field_timezone = "America/New_York")
+  expect_equal(config$flow$questions[[1L]], "FIRSTNET")
+  expect_equal(config$filters$population, 'id.FIRSTNET.finalText == "Yes"')
+  expect_silent(latency_validate_config(config, d))     # previously hard-errored
+  res <- build_summary_frame(d, config, survey_mode = "sms")
+  expect_equal(sum(res$n_texted), 2L)
+  expect_equal(sum(res$n_engaged), 1L)
+  expect_equal(sum(res$n_consented), 1L)   # r2 "No"; r3 "Yes" but not texted
+  expect_equal(sum(res$n_completed), 1L)
+})
+
+test_that("bilingual campaign: summary counts BOTH opener branches", {
+  d <- op_frame(
+    id.intro.scriptDate    = c(TS, ""),
+    id.intro.batchDate     = c(TS, ""),
+    id.intro.finalText     = c("Yes", ""),
+    id.intro_sp.scriptDate = c("", TS),
+    id.intro_sp.batchDate  = c("", TS),
+    id.intro_sp.finalText  = c("", "Yes"),
+    id.close.scriptDate    = c(TS, TS)
+  )
+  config <- latency_build_config(1L, d, field_timezone = "America/New_York")
+  expect_equal(.opening_questions(config$flow$questions), c("intro", "intro_sp"))
+  res <- build_summary_frame(d, config, survey_mode = "sms")
+  expect_equal(sum(res$n_texted), 2L)      # both branches (was 1 pre-fix)
+  expect_equal(sum(res$n_engaged), 2L)
+  expect_equal(sum(res$n_consented), 2L)   # each said Yes on its own opener
+})
+
+test_that("build_ineligible_frame anchors on the opener set (bilingual)", {
+  d <- op_frame(
+    id.intro.scriptDate      = c(TS, ""),
+    id.intro.batchDate       = c(TS, ""),
+    id.intro_sp.scriptDate   = c("", TS),
+    id.intro_sp.batchDate    = c("", TS),
+    id.q1.scriptDate         = c(TS, TS),
+    id.ineligible.scriptDate = c(TS, TS)     # both screened out at segment 1
+  )
+  config <- latency_build_config(1L, d, field_timezone = "America/New_York")
+  res <- build_ineligible_frame(d, config)
+  expect_equal(sum(res$n_ineligible), 2L)    # intro_sp respondent not dropped
+})
+
+test_that("latency funnel filters key on the opener set", {
+  d <- op_frame(
+    userid                 = c("a", "b"),
+    id.intro.scriptDate    = c(TS, ""),
+    id.intro_sp.scriptDate = c("", TS)
+  )
+  # date filter must keep the intro_sp send (both are on 2026-01-26)
+  expect_equal(date_filter_keep_rows(d, as.Date("2026-01-26"), "UTC"), c(1L, 2L))
+  # dedupe keeps both distinct respondents, ordered by their own opener send
+  expect_equal(dedupe_keep_rows(d, "userid"), c(1L, 2L))
+})
+
+test_that("funnel filters keep every row when no opener send column exists", {
+  d <- op_frame(userid = c("a", "b"), status = c("open", "open"))
+  expect_equal(date_filter_keep_rows(d, as.Date("2026-01-26"), "UTC"), c(1L, 2L))
+  expect_equal(dedupe_keep_rows(d, "userid"), c(1L, 2L))
+})
