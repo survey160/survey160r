@@ -205,8 +205,10 @@ disposition_input_columns <- function(available = NULL, population = NULL) {
 #' filter never changes \code{mode} or masks a duplicate.
 #'
 #' The \code{complete} flag is survey-mode dependent: for a \code{t2w} campaign
-#' it is the \code{web_complete} callback; for \code{sms} it is reaching
-#' \code{id.close.scriptDate}; for \code{t2w_external} it is not computable and
+#' it is the \code{web_complete} callback; for \code{sms} it is reaching the
+#' close -- any close-family \code{scriptDate} (\code{id.close.scriptDate} /
+#' \code{id.close_sp.scriptDate} / ...), so a bilingual campaign's Spanish
+#' completers count; for \code{t2w_external} it is not computable and
 #' is \code{NA} for every row. \code{mode} is classified per campaign from the
 #' data.
 #'
