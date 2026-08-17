@@ -7,12 +7,12 @@
 # `col_select` subset -- which segfaults on multi-row nanoparquet-written files (a
 # nanoparquet quirk; the real reader subsets *arrow*-written files, validated
 # separately on 2.2M rows).
-.disposition_row <- function(phone, campaign_id, engaged = 0L, opt_in = 0L,
+.disposition_row <- function(phone, campaign_id, engaged = 0L, opted_in = 0L,
                     complete = 0L, web_complete = 0L, terminated = 0L,
                     date_closed_on = as.Date(NA)) {
   data.frame(phone = phone, campaign_id = as.integer(campaign_id),
              engaged = as.integer(engaged),
-             opt_in = as.integer(opt_in), complete = as.integer(complete),
+             opted_in = as.integer(opted_in), complete = as.integer(complete),
              web_complete = as.integer(web_complete),
              terminated = as.integer(terminated),
              date_closed_on = as.Date(date_closed_on), stringsAsFactors = FALSE)
@@ -22,7 +22,7 @@
 # helper in helper-stubs.R) writes the rows to a temp Parquet and returns the path.
 .disposition_base <- function() {
   write_disposition_parquet(rbind(
-    .disposition_row("2015550101", 2339, engaged = 1, opt_in = 1, complete = 1,
+    .disposition_row("2015550101", 2339, engaged = 1, opted_in = 1, complete = 1,
             date_closed_on = "2026-03-01"),
     .disposition_row("2015550101", 2354, engaged = 1, date_closed_on = "2026-04-01"),
     .disposition_row("2015550102", 2339, terminated = 1, date_closed_on = "2026-03-01")
@@ -110,23 +110,23 @@ test_that("each date bound must be a single valid date", {
 
 test_that("derived disposition follows funnel precedence", {
   res <- disposition_summary(write_disposition_parquet(rbind(
-    .disposition_row("1", 1, engaged = 1, opt_in = 1, complete = 1, web_complete = 1),
-    .disposition_row("2", 1, engaged = 1, opt_in = 1, complete = 1),
-    .disposition_row("3", 1, engaged = 1, opt_in = 1, terminated = 1),
-    .disposition_row("4", 1, engaged = 1, opt_in = 1),
+    .disposition_row("1", 1, engaged = 1, opted_in = 1, complete = 1, web_complete = 1),
+    .disposition_row("2", 1, engaged = 1, opted_in = 1, complete = 1),
+    .disposition_row("3", 1, engaged = 1, opted_in = 1, terminated = 1),
+    .disposition_row("4", 1, engaged = 1, opted_in = 1),
     .disposition_row("5", 1, engaged = 1),
     .disposition_row("6", 1))))
   d <- stats::setNames(res$latest_disposition, res$phone)
   expect_equal(unname(d[c("1", "2", "3", "4", "5", "6")]),
-               c("web_complete", "complete", "terminated", "opt_in",
+               c("web_complete", "complete", "terminated", "opted_in",
                  "engaged", "non_response"))
 })
 
 test_that("t2w_external complete = NA does not become a false complete", {
   res <- disposition_summary(
-    write_disposition_parquet(.disposition_row("2015550101", 1, engaged = 1, opt_in = 1,
+    write_disposition_parquet(.disposition_row("2015550101", 1, engaged = 1, opted_in = 1,
                       complete = NA_integer_)))
-  expect_equal(res$latest_disposition, "opt_in")
+  expect_equal(res$latest_disposition, "opted_in")
   expect_false(res$ever_complete)
 })
 
@@ -165,7 +165,7 @@ test_that("input validation on the x argument", {
 
 test_that("disposition_summary accepts an in-memory frame and validates input", {
   d <- rbind(
-    .disposition_row("2015550101", 2339, engaged = 1, opt_in = 1, complete = 1,
+    .disposition_row("2015550101", 2339, engaged = 1, opted_in = 1, complete = 1,
             date_closed_on = "2026-03-01"),
     .disposition_row("2015550101", 2354, engaged = 1, date_closed_on = "2026-04-01"))
   res <- disposition_summary(d, phones = c("2015550101", "2015559999"))
@@ -179,7 +179,7 @@ test_that("disposition_summary accepts an in-memory frame and validates input", 
 
 test_that("disposition_summary tolerates a frame without date_closed_on", {
   d <- rbind(
-    .disposition_row("2015550101", 2339, engaged = 1, opt_in = 1, complete = 1,
+    .disposition_row("2015550101", 2339, engaged = 1, opted_in = 1, complete = 1,
             date_closed_on = "2026-03-01"),
     .disposition_row("2015550101", 2354, engaged = 1, date_closed_on = "2026-04-01"))
   bare <- d[, setdiff(names(d), "date_closed_on"), drop = FALSE]  # un-enriched shape

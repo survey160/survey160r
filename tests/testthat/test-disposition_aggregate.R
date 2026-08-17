@@ -27,15 +27,15 @@ test_that("sms campaign: per-respondent flags and mode", {
   )
   res <- disposition_run(1234, d, contacted_only = FALSE)$consolidated
 
-  expect_named(res, c("phone", "campaign_id", "started", "engaged", "opt_in",
+  expect_named(res, c("phone", "campaign_id", "sent", "engaged", "opted_in",
                       "complete", "web_complete", "terminated", "mode"))
   expect_equal(res$phone, c("+15550101", "+15550102", "+15550103"))
   expect_true(is.integer(res$campaign_id))
   expect_equal(res$campaign_id, rep(1234L, 3L))
-  expect_equal(res$started,      c(1L, 1L, 0L))
+  expect_equal(res$sent,      c(1L, 1L, 0L))
   expect_equal(res$engaged,      c(1L, 1L, 0L))
-  expect_equal(res$opt_in,       c(1L, 0L, 0L))  # r3 said Yes but never texted
-  expect_equal(res$complete,     c(1L, 0L, 0L))  # r3 has close ts but started=0
+  expect_equal(res$opted_in,       c(1L, 0L, 0L))  # r3 said Yes but never texted
+  expect_equal(res$complete,     c(1L, 0L, 0L))  # r3 has close ts but sent=0
   expect_equal(res$web_complete, c(0L, 0L, 0L))
   expect_equal(res$terminated,   c(0L, 0L, 0L))
   expect_true(all(res$mode == "sms"))
@@ -53,7 +53,7 @@ test_that("t2w campaign: complete comes from the web_complete callback", {
 
   expect_true(all(res$mode == "t2w"))
   expect_equal(res$web_complete, c(1L, 0L, 1L))
-  # complete = web_complete==1 AND started; r3 has wc=1 but started=0.
+  # complete = web_complete==1 AND sent; r3 has wc=1 but sent=0.
   expect_equal(res$complete, c(1L, 0L, 0L))
 })
 
@@ -69,8 +69,8 @@ test_that("t2w_external campaign: complete is NA for every row", {
 
   expect_true(all(res$mode == "t2w_external"))
   expect_true(all(is.na(res$complete)))
-  expect_equal(res$started, c(1L, 1L))
-  expect_equal(res$opt_in, c(1L, 1L))
+  expect_equal(res$sent, c(1L, 1L))
+  expect_equal(res$opted_in, c(1L, 1L))
 })
 
 test_that("terminated flags ineligible OR refusal", {
@@ -85,14 +85,14 @@ test_that("terminated flags ineligible OR refusal", {
   expect_equal(res$terminated, c(1L, 1L, 1L, 0L))
 })
 
-test_that("custom population expression drives opt_in", {
+test_that("custom population expression drives opted_in", {
   d <- disp_frame(
     phone = c("+15550501", "+15550502"),
     id.intro.scriptDate = c(TS, TS),
     id.intro.finalText = c("Maybe", "Yes")
   )
   res <- disposition_run(1234, d, population = "id.intro.finalText == \"Maybe\"")$consolidated
-  expect_equal(res$opt_in, c(1L, 0L))
+  expect_equal(res$opted_in, c(1L, 0L))
 })
 
 test_that("optional columns absent: masks are null-safe (no error)", {
@@ -105,9 +105,9 @@ test_that("optional columns absent: masks are null-safe (no error)", {
   )
   res <- disposition_run(1234, d, contacted_only = FALSE)$consolidated
   expect_true(all(res$mode == "sms"))
-  expect_equal(res$started,      c(1L, 0L))
+  expect_equal(res$sent,      c(1L, 0L))
   expect_equal(res$engaged,      c(0L, 0L))  # no batchDate (reply) column
-  expect_equal(res$opt_in,       c(1L, 0L))
+  expect_equal(res$opted_in,       c(1L, 0L))
   expect_equal(res$complete,     c(0L, 0L))  # no close column
   expect_equal(res$web_complete, c(0L, 0L))
   expect_equal(res$terminated,   c(0L, 0L))
@@ -153,34 +153,34 @@ test_that("zero-row input returns the empty disposition frame", {
   )
   res <- disposition_run(1234, d)$consolidated
   expect_equal(nrow(res), 0L)
-  expect_named(res, c("phone", "campaign_id", "started", "engaged", "opt_in",
+  expect_named(res, c("phone", "campaign_id", "sent", "engaged", "opted_in",
                       "complete", "web_complete", "terminated", "mode"))
-  expect_true(is.integer(res$started))
+  expect_true(is.integer(res$sent))
   expect_true(is.character(res$phone))
 })
 
-test_that("opt_in is null-safe when the population column is absent", {
+test_that("opted_in is null-safe when the population column is absent", {
   # No id.intro.finalText at all -> default population can't be evaluated;
-  # opt_in degrades to 0 like the other masks rather than erroring.
+  # opted_in degrades to 0 like the other masks rather than erroring.
   d <- disp_frame(
     phone = c("+15551001", "+15551002"),
     id.intro.scriptDate = c(TS, TS)
   )
   res <- disposition_run(1234, d)$consolidated
-  expect_equal(res$opt_in, c(0L, 0L))
-  expect_equal(res$started, c(1L, 1L))
+  expect_equal(res$opted_in, c(0L, 0L))
+  expect_equal(res$sent, c(1L, 1L))
 })
 
-test_that("opt_in handles a base symbol in the population expression", {
+test_that("opted_in handles a base symbol in the population expression", {
   # `T` is a base constant, not a data column -- it must not be misread as an
-  # absent column (which would wrongly zero opt_in for every row).
+  # absent column (which would wrongly zero opted_in for every row).
   d <- disp_frame(
     phone = c("+15551501", "+15551502"),
     id.intro.scriptDate = c(TS, TS),
     id.intro.finalText = c("Yes", "No")
   )
   res <- disposition_run(1234, d, population = 'id.intro.finalText == "Yes" & T')$consolidated
-  expect_equal(res$opt_in, c(1L, 0L))
+  expect_equal(res$opted_in, c(1L, 0L))
 })
 
 test_that("an unparseable population expression still errors", {
@@ -271,7 +271,7 @@ test_that("contacted_only default drops never-attempted rows", {
   )
   res <- disposition_run(1234, d)$consolidated                 # default contacted_only = TRUE
   expect_equal(nrow(res), 2L)
-  expect_true(all(res$started == 1L))
+  expect_true(all(res$sent == 1L))
   expect_equal(res$phone, c("+15552001", "+15552003"))
   expect_identical(rownames(res), c("1", "2"))    # rownames reset after the filter
 })
@@ -284,7 +284,7 @@ test_that("contacted_only = FALSE emits one row per input respondent", {
   )
   res <- disposition_run(1234, d, contacted_only = FALSE)$consolidated
   expect_equal(nrow(res), 3L)
-  expect_equal(res$started, c(1L, 0L, 1L))
+  expect_equal(res$sent, c(1L, 0L, 1L))
 })
 
 test_that("contacted_only defaults to TRUE", {
@@ -317,9 +317,9 @@ test_that("contacted_only with no contacted rows yields a typed zero-row frame",
   )
   res <- disposition_run(1234, d)$consolidated
   expect_equal(nrow(res), 0L)
-  expect_named(res, c("phone", "campaign_id", "started", "engaged", "opt_in",
+  expect_named(res, c("phone", "campaign_id", "sent", "engaged", "opted_in",
                       "complete", "web_complete", "terminated", "mode"))
-  expect_true(is.integer(res$started))
+  expect_true(is.integer(res$sent))
   expect_true(is.character(res$phone))
 })
 
@@ -459,10 +459,10 @@ test_that("non-intro opener (FIRSTNET) is measured, not silently dropped", {
   )
   res <- disposition_run(1234, d, contacted_only = FALSE)$consolidated
   expect_true(all(res$mode == "sms"))
-  expect_equal(res$started,  c(1L, 1L, 0L))
+  expect_equal(res$sent,  c(1L, 1L, 0L))
   expect_equal(res$engaged,  c(1L, 0L, 0L))
-  expect_equal(res$opt_in,   c(1L, 0L, 0L))     # r2 said No; r3 Yes but not texted
-  expect_equal(res$complete, c(1L, 0L, 0L))     # r1 reached close & started
+  expect_equal(res$opted_in,   c(1L, 0L, 0L))     # r2 said No; r3 Yes but not texted
+  expect_equal(res$complete, c(1L, 0L, 0L))     # r1 reached close & sent
 
   # contacted_only default now emits the contacted rows (was a zero-row frame)
   kept <- disposition_run(1234, d)$consolidated
@@ -478,8 +478,8 @@ test_that("intro_latinos opener is detected (opener name varies)", {
     id.intro_latinos.finalText  = c("Yes", "No")
   )
   res <- disposition_run(1234, d)$consolidated
-  expect_equal(res$started, c(1L, 1L))
-  expect_equal(res$opt_in,  c(1L, 0L))
+  expect_equal(res$sent, c(1L, 1L))
+  expect_equal(res$opted_in,  c(1L, 0L))
 })
 
 test_that("mixed campaign counts BOTH opener branches (intro + intro_sp)", {
@@ -496,9 +496,9 @@ test_that("mixed campaign counts BOTH opener branches (intro + intro_sp)", {
     id.intro_sp.finalText  = c("", "Yes")
   )
   res <- disposition_run(1234, d, contacted_only = FALSE)$consolidated
-  expect_equal(res$started, c(1L, 1L))     # both branches contacted
+  expect_equal(res$sent, c(1L, 1L))     # both branches contacted
   expect_equal(res$engaged, c(1L, 1L))     # both replied
-  expect_equal(res$opt_in,  c(1L, 1L))     # each said Yes on its own opener
+  expect_equal(res$opted_in,  c(1L, 1L))     # each said Yes on its own opener
 })
 
 test_that("3-way routed campaign counts every intro-family branch", {
@@ -513,11 +513,11 @@ test_that("3-way routed campaign counts every intro-family branch", {
     id.intro_hispanic.finalText  = c("", "", "Yes")
   )
   res <- disposition_run(1234, d, contacted_only = FALSE)$consolidated
-  expect_equal(res$started, c(1L, 1L, 1L))
-  expect_equal(res$opt_in,  c(1L, 0L, 1L))  # r2 answered No on intro_black
+  expect_equal(res$sent, c(1L, 1L, 1L))
+  expect_equal(res$opted_in,  c(1L, 0L, 1L))  # r2 answered No on intro_black
 })
 
-test_that("mixed opt_in ignores an absent opener finalText column (null-safe)", {
+test_that("mixed opted_in ignores an absent opener finalText column (null-safe)", {
   # Only the intro branch has a finalText column; intro_sp recipients still count
   # as contacted but the default population uses only the present branch, without
   # erroring on the missing id.intro_sp.finalText.
@@ -528,8 +528,8 @@ test_that("mixed opt_in ignores an absent opener finalText column (null-safe)", 
     id.intro_sp.scriptDate = c("", TS)        # sent, but no finalText column
   )
   res <- disposition_run(1234, d, contacted_only = FALSE)$consolidated
-  expect_equal(res$started, c(1L, 1L))    # both contacted
-  expect_equal(res$opt_in,  c(1L, 0L))    # only the present-branch consent counts
+  expect_equal(res$sent, c(1L, 1L))    # both contacted
+  expect_equal(res$opted_in,  c(1L, 0L))    # only the present-branch consent counts
 })
 
 test_that("disposition_input_columns discovers a non-intro opener from `available`", {
@@ -565,16 +565,16 @@ test_that("disposition_input_columns: projected read matches full for a non-intr
                disposition_run(1234, full, contacted_only = FALSE))
 })
 
-test_that("engaged is gated on started: a reply with no send is not engaged", {
+test_that("engaged is gated on sent: a reply with no send is not engaged", {
   # Data anomaly -- a batchDate (reply) with no scriptDate (send). The latency
   # view gates n_engaged on `texted`; disposition now gates `engaged` on
-  # `started` too, so a reply-without-send is engaged in neither view.
+  # `sent` too, so a reply-without-send is engaged in neither view.
   d <- disp_frame(
     phone = c("+15550201", "+15550202"),
     id.intro.scriptDate = c(TS, ""),   # r2: never sent
     id.intro.batchDate  = c(TS, TS)    # both carry a reply timestamp
   )
   res <- disposition_run(1234, d, contacted_only = FALSE)$consolidated
-  expect_equal(res$started, c(1L, 0L))
+  expect_equal(res$sent, c(1L, 0L))
   expect_equal(res$engaged, c(1L, 0L))   # r2 gated (was c(1L, 1L) before the fix)
 })

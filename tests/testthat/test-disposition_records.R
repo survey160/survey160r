@@ -6,15 +6,15 @@
 
 # One full-schema (phone, campaign) row; override any column. Defaults model a
 # contacted-but-no-reply t2w record.
-.record_row <- function(phone, campaign_id, started = 1L, engaged = 0L,
-                        opt_in = 0L, complete = 0L, web_complete = 0L,
+.record_row <- function(phone, campaign_id, sent = 1L, engaged = 0L,
+                        opted_in = 0L, complete = 0L, web_complete = 0L,
                         terminated = 0L, error = NA_character_, loi = NA_real_,
                         topic = NA_character_, mode = "t2w",
                         date_closed_on = as.Date(NA)) {
   data.frame(
     phone = phone, campaign_id = as.integer(campaign_id),
-    started = as.integer(started), engaged = as.integer(engaged),
-    opt_in = as.integer(opt_in), complete = as.integer(complete),
+    sent = as.integer(sent), engaged = as.integer(engaged),
+    opted_in = as.integer(opted_in), complete = as.integer(complete),
     web_complete = as.integer(web_complete),
     terminated = as.integer(terminated), error = as.character(error),
     loi = as.numeric(loi), topic = as.character(topic),
@@ -32,13 +32,13 @@
                 topic = "Policy", date_closed_on = "2026-03-01"),
     .record_row("2015550101", 2354, engaged = 1, loi = 11, topic = "Brand",
                 date_closed_on = "2026-04-01"),
-    .record_row("2015550101", 2339, engaged = 1, opt_in = 1, complete = 1,
+    .record_row("2015550101", 2339, engaged = 1, opted_in = 1, complete = 1,
                 web_complete = 1, loi = 12, topic = "Brand",
                 date_closed_on = "2026-03-01")
   ))
 }
 
-.RECORD_COLS <- c("phone", "campaign_id", "started", "engaged", "opt_in",
+.RECORD_COLS <- c("phone", "campaign_id", "sent", "engaged", "opted_in",
                   "complete", "web_complete", "terminated", "error", "loi",
                   "topic", "mode", "date_closed_on")
 
@@ -86,7 +86,7 @@ test_that("date bounds filter on date_closed_on; NA close dates drop", {
 })
 
 test_that("a date bound with no date_closed_on column errors", {
-  bare_cols <- c("phone", "campaign_id", "started", "engaged", "opt_in",
+  bare_cols <- c("phone", "campaign_id", "sent", "engaged", "opted_in",
                  "complete", "web_complete", "terminated", "mode")
   p <- write_disposition_parquet(.record_row("2015550101", 2339, engaged = 1)[, bare_cols])
   expect_error(disposition_records(p, date_from = "2026-01-01"), "date_closed_on")
@@ -94,7 +94,7 @@ test_that("a date bound with no date_closed_on column errors", {
 })
 
 test_that("an un-enriched projection returns just the nine computed columns", {
-  bare_cols <- c("phone", "campaign_id", "started", "engaged", "opt_in",
+  bare_cols <- c("phone", "campaign_id", "sent", "engaged", "opted_in",
                  "complete", "web_complete", "terminated", "mode")
   res <- disposition_records(
     write_disposition_parquet(.record_row("2015550101", 2339, engaged = 1)[, bare_cols]))
@@ -107,7 +107,7 @@ test_that("output is canonical order; extra (provenance) columns are dropped", {
                      error = "DELIVERY_FAILED", date_closed_on = "2026-03-01")
   row$source_csv_hash <- "abc123"                        # extra column
   row <- row[, c("mode", "source_csv_hash", "campaign_id", "phone", "loi",
-                 "topic", "date_closed_on", "started", "engaged", "opt_in",
+                 "topic", "date_closed_on", "sent", "engaged", "opted_in",
                  "complete", "web_complete", "terminated", "error")]  # scrambled
   res <- disposition_records(write_disposition_parquet(row))
   expect_named(res, .RECORD_COLS)                        # canonical order restored

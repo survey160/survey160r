@@ -65,9 +65,9 @@ has_personalized_close_link <- function(data) {
 # SENT the intro to (id.intro.scriptDate, the outbound scripted send);
 # `n_engaged` is the subset that REPLIED (id.intro.batchDate, the inbound
 # reply). Keying n_texted on scriptDate matches disposition_run()'s
-# `started`/`engaged` split (disposition_aggregate.R) and the "texted"
-# name -- an earlier version keyed it on batchDate, which counted repliers,
-# not sends. n_consented and n_completed are subsets of the sent cohort.
+# `sent`/`engaged` split (disposition_aggregate.R) -- an earlier version keyed
+# it on batchDate, which counted repliers, not sends. n_consented and
+# n_completed are subsets of the sent cohort.
 #
 # `survey_mode` selects the completion signal (SUR-1368): "sms" (default)
 # completes on id.close.scriptDate; "t2w" on the web_complete callback;

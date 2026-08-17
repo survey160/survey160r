@@ -36,6 +36,18 @@
 
 ## Breaking changes
 
+* **Disposition output columns renamed to the canonical funnel vocabulary.** The
+  per-row flags `started` and `opt_in` are now `sent` and `opted_in`, matching the
+  latency signals and `.funnel_masks()` (`engaged` / `complete` already matched).
+  The derived `latest_disposition` category `"opt_in"` is likewise `"opted_in"`,
+  so `disposition_summary(statuses = "opt_in")` becomes `statuses = "opted_in"`.
+  This touches `disposition_run()`'s frame, the `disposition_records()` /
+  `disposition_summary()` / `disposition_screen()` schemas, and the disposition
+  Parquet projection. Regenerate any persisted disposition Parquet and update
+  consumers (the survey160-shiny disposition pipeline is updated in lockstep).
+  The per-phone summary rollup names (`ever_contacted`, `ever_opted_in`, …) are
+  unchanged. This is a beta surface, so no deprecation shim.
+
 * **`s160_gcs_pull_csv()` removed; `s160_gcs_campaign_results_read()` gains a
   `hash` argument.** The two GCS CSV readers are now one:
   `s160_gcs_campaign_results_read(id, hash = TRUE)` stamps the same

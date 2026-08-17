@@ -50,7 +50,7 @@ library(survey160r)
 records <- data.frame(
   phone          = c("5551234567", "5551234567", "5559876543"),
   campaign_id    = c(101L, 102L, 101L),
-  engaged        = c(1L, 1L, 0L), opt_in       = c(1L, 0L, 0L),
+  engaged        = c(1L, 1L, 0L), opted_in       = c(1L, 0L, 0L),
   complete       = c(1L, 0L, 0L), web_complete = c(0L, 0L, 0L),
   terminated     = c(0L, 1L, 0L),
   date_closed_on = as.Date(c("2026-01-10", "2026-01-20", "2026-01-15"))
@@ -75,7 +75,7 @@ In your own code, read once and reuse: `records <- disposition_records(dataset)`
 | `latest_disposition` | Outcome of the most recent campaign (funnel below). |
 | `campaigns` | Comma-separated campaign ids. |
 
-`latest_disposition`, least to most advanced: `never_contacted` -> `non_response` -> `engaged` -> `opt_in` -> `terminated` -> `complete` -> `web_complete`. `disposition_records()` returns the stored per-campaign columns instead; see `?disposition_records`.
+`latest_disposition`, least to most advanced: `never_contacted` -> `non_response` -> `engaged` -> `opted_in` -> `terminated` -> `complete` -> `web_complete`. `disposition_records()` returns the stored per-campaign columns instead; see `?disposition_records`.
 
 ## Notes
 
