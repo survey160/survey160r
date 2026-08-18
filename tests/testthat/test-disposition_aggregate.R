@@ -28,20 +28,20 @@ test_that("sms campaign: per-respondent flags and mode", {
   res <- disposition_run(1234, d, contacted_only = FALSE)$consolidated
 
   expect_named(res, c("phone", "campaign_id", "sent", "engaged", "opted_in",
-                      "complete", "web_complete", "terminated", "mode"))
+                      "completed", "web_complete", "terminated", "mode"))
   expect_equal(res$phone, c("+15550101", "+15550102", "+15550103"))
   expect_true(is.integer(res$campaign_id))
   expect_equal(res$campaign_id, rep(1234L, 3L))
   expect_equal(res$sent,      c(1L, 1L, 0L))
   expect_equal(res$engaged,      c(1L, 1L, 0L))
   expect_equal(res$opted_in,       c(1L, 0L, 0L))  # r3 said Yes but never texted
-  expect_equal(res$complete,     c(1L, 0L, 0L))  # r3 has close ts but sent=0
+  expect_equal(res$completed,     c(1L, 0L, 0L))  # r3 has close ts but sent=0
   expect_equal(res$web_complete, c(0L, 0L, 0L))
   expect_equal(res$terminated,   c(0L, 0L, 0L))
   expect_true(all(res$mode == "sms"))
 })
 
-test_that("t2w campaign: complete comes from the web_complete callback", {
+test_that("t2w campaign: completed comes from the web_complete callback", {
   d <- disp_frame(
     phone = c("+15550201", "+15550202", "+15550203"),
     id.intro.scriptDate  = c(TS, TS, ""),      # r3 never texted
@@ -53,11 +53,11 @@ test_that("t2w campaign: complete comes from the web_complete callback", {
 
   expect_true(all(res$mode == "t2w"))
   expect_equal(res$web_complete, c(1L, 0L, 1L))
-  # complete = web_complete==1 AND sent; r3 has wc=1 but sent=0.
-  expect_equal(res$complete, c(1L, 0L, 0L))
+  # completed = web_complete==1 AND sent; r3 has wc=1 but sent=0.
+  expect_equal(res$completed, c(1L, 0L, 0L))
 })
 
-test_that("t2w_external campaign: complete is NA for every row", {
+test_that("t2w_external campaign: completed is NA for every row", {
   d <- disp_frame(
     phone = c("+15550301", "+15550302"),
     id.intro.scriptDate = c(TS, TS),
@@ -68,7 +68,7 @@ test_that("t2w_external campaign: complete is NA for every row", {
   res <- disposition_run(1234, d)$consolidated
 
   expect_true(all(res$mode == "t2w_external"))
-  expect_true(all(is.na(res$complete)))
+  expect_true(all(is.na(res$completed)))
   expect_equal(res$sent, c(1L, 1L))
   expect_equal(res$opted_in, c(1L, 1L))
 })
@@ -108,7 +108,7 @@ test_that("optional columns absent: masks are null-safe (no error)", {
   expect_equal(res$sent,      c(1L, 0L))
   expect_equal(res$engaged,      c(0L, 0L))  # no batchDate (reply) column
   expect_equal(res$opted_in,       c(1L, 0L))
-  expect_equal(res$complete,     c(0L, 0L))  # no close column
+  expect_equal(res$completed,     c(0L, 0L))  # no close column
   expect_equal(res$web_complete, c(0L, 0L))
   expect_equal(res$terminated,   c(0L, 0L))
 })
@@ -154,7 +154,7 @@ test_that("zero-row input returns the empty disposition frame", {
   res <- disposition_run(1234, d)$consolidated
   expect_equal(nrow(res), 0L)
   expect_named(res, c("phone", "campaign_id", "sent", "engaged", "opted_in",
-                      "complete", "web_complete", "terminated", "mode"))
+                      "completed", "web_complete", "terminated", "mode"))
   expect_true(is.integer(res$sent))
   expect_true(is.character(res$phone))
 })
@@ -318,12 +318,12 @@ test_that("contacted_only with no contacted rows yields a typed zero-row frame",
   res <- disposition_run(1234, d)$consolidated
   expect_equal(nrow(res), 0L)
   expect_named(res, c("phone", "campaign_id", "sent", "engaged", "opted_in",
-                      "complete", "web_complete", "terminated", "mode"))
+                      "completed", "web_complete", "terminated", "mode"))
   expect_true(is.integer(res$sent))
   expect_true(is.character(res$phone))
 })
 
-test_that("contacted_only keeps t2w_external contacted rows (complete = NA)", {
+test_that("contacted_only keeps t2w_external contacted rows (completed = NA)", {
   d <- disp_frame(
     phone = c("+15552501", "+15552502"),
     id.intro.scriptDate = c(TS, TS),
@@ -333,7 +333,7 @@ test_that("contacted_only keeps t2w_external contacted rows (complete = NA)", {
   res <- disposition_run(1234, d)$consolidated                 # default TRUE
   expect_equal(nrow(res), 2L)
   expect_true(all(res$mode == "t2w_external"))
-  expect_true(all(is.na(res$complete)))
+  expect_true(all(is.na(res$completed)))
 })
 
 test_that("contacted_only does not change mode (mode is computed on full data)", {
@@ -398,7 +398,7 @@ test_that("disposition_input_columns: projected read matches a full read", {
     id.ineligible.scriptDate = c("", TS),
     id.refusal.scriptDate = c("", ""),
     userid = c("agent-1", "agent-2"),            # ignored by disposition_run
-    status = c("complete", "open")               # ignored by disposition_run
+    status = c("completed", "open")               # ignored by disposition_run
   )
   keep <- disposition_input_columns(available = names(full))
   projected <- full[, intersect(keep, names(full)), drop = FALSE]
@@ -462,7 +462,7 @@ test_that("non-intro opener (FIRSTNET) is measured, not silently dropped", {
   expect_equal(res$sent,  c(1L, 1L, 0L))
   expect_equal(res$engaged,  c(1L, 0L, 0L))
   expect_equal(res$opted_in,   c(1L, 0L, 0L))     # r2 said No; r3 Yes but not texted
-  expect_equal(res$complete, c(1L, 0L, 0L))     # r1 reached close & sent
+  expect_equal(res$completed, c(1L, 0L, 0L))     # r1 reached close & sent
 
   # contacted_only default now emits the contacted rows (was a zero-row frame)
   kept <- disposition_run(1234, d)$consolidated

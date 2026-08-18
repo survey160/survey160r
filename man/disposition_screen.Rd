@@ -28,7 +28,7 @@ or pagination here -- every sample row is returned.}
 \value{
 \code{sample} with the columns \code{ever_contacted},
   \code{n_campaigns}, \code{ever_engaged}, \code{ever_opted_in},
-  \code{ever_complete}, \code{ever_terminated}, \code{latest_disposition},
+  \code{ever_completed}, \code{ever_terminated}, \code{latest_disposition},
   \code{campaigns} appended. A valid phone that is absent from the rows
   selected by \code{campaign_ids}, \code{date_from}, and \code{date_to} (the
   whole dataset when those are unset) gets a \code{never_contacted} row
@@ -50,7 +50,7 @@ it (dropping the numbers already completed or refused). Mirrors the
 dataset <- disposition_pull()
 cleaned <- disposition_screen(my_sample, dataset, phone_col = "phone")
 # drop finished/terminated; blank-phone rows come back all-NA and are kept
-subset(cleaned, !(ever_complete \%in\% TRUE | ever_terminated \%in\% TRUE))
+subset(cleaned, !(ever_completed \%in\% TRUE | ever_terminated \%in\% TRUE))
 }
 }
 \seealso{

@@ -25,7 +25,7 @@ s160_gcs_init("s160_disposition_prod")   # one browser sign-in, cached
 dataset <- disposition_pull()            # ~140 MB first pull, then cached
 
 cleaned <- disposition_screen(my_sample, dataset)
-kept <- subset(cleaned, !(ever_complete %in% TRUE | ever_terminated %in% TRUE))
+kept <- subset(cleaned, !(ever_completed %in% TRUE | ever_terminated %in% TRUE))
 ```
 
 `disposition_screen()` returns `my_sample` unchanged with the screening columns appended 1:1 (see [What you get back](#what-you-get-back)). The `%in% TRUE` filter drops completed and refused numbers; blank or unparseable phones screen to all-`NA` and are kept, so they surface for correction rather than vanishing.
@@ -51,7 +51,7 @@ records <- data.frame(
   phone          = c("5551234567", "5551234567", "5559876543"),
   campaign_id    = c(101L, 102L, 101L),
   engaged        = c(1L, 1L, 0L), opted_in       = c(1L, 0L, 0L),
-  complete       = c(1L, 0L, 0L), web_complete = c(0L, 0L, 0L),
+  completed       = c(1L, 0L, 0L), web_complete = c(0L, 0L, 0L),
   terminated     = c(0L, 1L, 0L),
   date_closed_on = as.Date(c("2026-01-10", "2026-01-20", "2026-01-15"))
 )
@@ -70,17 +70,17 @@ In your own code, read once and reuse: `records <- disposition_records(dataset)`
 | `n_campaigns` | Distinct campaigns that contacted it. |
 | `ever_engaged` | Ever replied. |
 | `ever_opted_in` | Ever consented. |
-| `ever_complete` | Ever completed (reached the SMS close, or a web completion). |
+| `ever_completed` | Ever completed (reached the SMS close, or a web completion). |
 | `ever_terminated` | Ever screened out or refused. |
 | `latest_disposition` | Outcome of the most recent campaign (funnel below). |
 | `campaigns` | Comma-separated campaign ids. |
 
-`latest_disposition`, least to most advanced: `never_contacted` -> `non_response` -> `engaged` -> `opted_in` -> `terminated` -> `complete` -> `web_complete`. `disposition_records()` returns the stored per-campaign columns instead; see `?disposition_records`.
+`latest_disposition`, least to most advanced: `never_contacted` -> `non_response` -> `engaged` -> `opted_in` -> `terminated` -> `completed` -> `web_complete`. `disposition_records()` returns the stored per-campaign columns instead; see `?disposition_records`.
 
 ## Notes
 
 - **Contacted-only.** A loaded number that was never texted is not in the dataset; it screens as `never_contacted`.
-- **Text-to-web (external) campaigns** have no completion callback, so `complete` is `NA` and never a false positive.
+- **Text-to-web (external) campaigns** have no completion callback, so `completed` is `NA` and never a false positive.
 - **`date_closed_on` and `error` are `NA` in the beta**, so the `date_from` / `date_to` filters return no rows.
 - **Stale cache.** The dataset is re-published periodically; `disposition_pull(refresh = TRUE)` forces a fresh download.
 - **`env`.** `disposition_pull()`'s `env` is `"prod"` (default) or `"dev"` -- the disposition buckets have no staging tier, so this differs from `s160_api_auth()`'s `"prod"` / `"staging"`.

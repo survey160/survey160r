@@ -35,7 +35,7 @@ library(survey160r)
 records <- data.frame(
   phone = c("5551234567", "5551234567", "5559876543"),
   campaign_id = c(101L, 102L, 101L),
-  engaged = c(1L, 1L, 0L), opt_in = c(1L, 0L, 0L), complete = c(1L, 0L, 0L),
+  engaged = c(1L, 1L, 0L), opted_in = c(1L, 0L, 0L), completed = c(1L, 0L, 0L),
   web_complete = c(0L, 0L, 0L), terminated = c(0L, 1L, 0L),
   date_closed_on = as.Date(c("2026-01-10", "2026-01-20", "2026-01-15"))
 )
@@ -107,7 +107,7 @@ my_sample <- data.frame(phone = c("2015550101", "2015550102"))  # your list; ext
 dataset   <- disposition_pull()                     # downloads ~140 MB the first time, then cached
 cleaned   <- disposition_screen(my_sample, dataset) # screening columns appended 1:1
 # drop already-completed / refused; blank-phone rows come back all-NA and are kept
-subset(cleaned, !(ever_complete %in% TRUE | ever_terminated %in% TRUE))
+subset(cleaned, !(ever_completed %in% TRUE | ever_terminated %in% TRUE))
 ```
 
 Full walkthrough -- the appended columns, ad-hoc queries, the read-once tip, and beta caveats -- in the **[disposition guide](vignettes/disposition.Rmd)** (`vignette("disposition")` once installed).

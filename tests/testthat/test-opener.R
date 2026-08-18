@@ -100,9 +100,9 @@ test_that("latency counts and disposition flags agree on sent/engaged/opted-in",
   cfg <- latency_build_config(1L, d, field_timezone = "America/New_York")
   sf  <- build_summary_frame(d, cfg, survey_mode = "sms")
   disp <- disposition_run(1L, d, contacted_only = FALSE)$consolidated
-  expect_equal(sum(sf$n_texted),    sum(disp$sent))
+  expect_equal(sum(sf$n_sent),    sum(disp$sent))
   expect_equal(sum(sf$n_engaged),   sum(disp$engaged))
-  expect_equal(sum(sf$n_consented), sum(disp$opted_in))
+  expect_equal(sum(sf$n_opted_in), sum(disp$opted_in))
 })
 
 test_that(".closing_questions resolves the close family, else falls back to close", {
@@ -114,7 +114,7 @@ test_that(".closing_questions resolves the close family, else falls back to clos
   expect_false("closed" %in% .closing_questions(c("closed", "close")))  # word boundary
 })
 
-test_that("SMS complete counts every close-family branch (close + close_sp)", {
+test_that("SMS completed counts every close-family branch (close + close_sp)", {
   # Bilingual campaign: English completers reach id.close, Spanish reach
   # id.close_sp. Both are completions -- the union must be counted (matching the
   # app's phonelist.complete), not just id.close. Previously close_sp was dropped.
@@ -132,8 +132,8 @@ test_that("SMS complete counts every close-family branch (close + close_sp)", {
   expect_equal(sum(sf$n_completed), 3L)          # close (1) + close_sp (2); was 1
 
   disp <- disposition_run(1L, d, contacted_only = FALSE)$consolidated
-  expect_equal(sum(disp$complete), 3L)
-  expect_equal(sum(sf$n_completed), sum(disp$complete))   # two views agree
+  expect_equal(sum(disp$completed), 3L)
+  expect_equal(sum(sf$n_completed), sum(disp$completed))   # two views agree
 
   # the disposition projection retains the close family (close_sp not pruned)
   expect_true("id.close_sp.scriptDate" %in%

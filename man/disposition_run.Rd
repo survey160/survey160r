@@ -17,7 +17,7 @@ respondent). Must contain a \code{phone} column.}
 \code{opted_in}. \code{NULL} (default) uses the opening question set's accepted
 answer -- \code{id.intro.finalText == "Yes"} for a normal campaign, a
 disjunction over the intro-family openers for a routed one -- resolved per
-campaign from the data. The latency view resolves \code{n_consented} from
+campaign from the data. The latency view resolves \code{n_opted_in} from
 the same opener set, so the two views agree for a non-\code{intro} campaign.}
 
 \item{contacted_only}{A single logical. When \code{TRUE} (default), return
@@ -28,8 +28,8 @@ return one row per input respondent.}
 A list mirroring \code{latency_run()}'s shape: \code{consolidated} (a
   data frame, one row per (contacted) respondent, with columns \code{phone}
   (character), \code{campaign_id} (integer), the 0/1 integer flags
-  \code{sent}, \code{engaged}, \code{opted_in}, \code{complete},
-  \code{web_complete}, \code{terminated} -- \code{complete} is \code{NA} under
+  \code{sent}, \code{engaged}, \code{opted_in}, \code{completed},
+  \code{web_complete}, \code{terminated} -- \code{completed} is \code{NA} under
   \code{t2w_external} -- and \code{mode} (character); under the default
   \code{sent} is \code{1} for every row) and \code{meta} (the source
   \code{source_csv_hash} / \code{source_csv_path}, or \code{NA}). A zero-row
@@ -40,7 +40,7 @@ A list mirroring \code{latency_run()}'s shape: \code{consolidated} (a
 Turns an in-memory campaign results CSV (one row per respondent) into a list
 carrying the per-respondent disposition frame in \code{consolidated} (one row
 per contacted phone, with 0/1 funnel flags \code{sent}, \code{engaged},
-\code{opted_in}, \code{complete}, \code{web_complete}, \code{terminated} and the
+\code{opted_in}, \code{completed}, \code{web_complete}, \code{terminated} and the
 campaign's \code{mode}) plus source provenance in \code{meta}. Pure
 function, no I/O -- pair with \code{s160_gcs_campaign_results_read(hash = TRUE)} for the GCS source.
 Persisting the frame (any enrichment, provenance, and Parquet output) is
@@ -59,7 +59,7 @@ than silently collapsing rows. The uniqueness guard and survey-mode
 classification always run on the full data, so the \code{contacted_only}
 filter never changes \code{mode} or masks a duplicate.
 
-The \code{complete} flag is survey-mode dependent: for a \code{t2w} campaign
+The \code{completed} flag is survey-mode dependent: for a \code{t2w} campaign
 it is the \code{web_complete} callback; for \code{sms} it is reaching the
 close -- any close-family \code{scriptDate} (\code{id.close.scriptDate} /
 \code{id.close_sp.scriptDate} / ...), so a bilingual campaign's Spanish

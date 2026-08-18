@@ -10,13 +10,10 @@
   disposition transform (`disposition_run()`), so the two views compute the same
   sent/engaged/opted-in funnel from one place and cannot drift. As part of this
   the last definitional gap between them is closed: disposition's `engaged` is
-  now gated on `started` (a reply presupposes a send), matching the latency
-  view's `n_engaged`. This only changes output for anomalous rows that carry a
-  reply timestamp with no send. Internally both views now speak one funnel
-  vocabulary (`sent` / `engaged` / `opted_in` / `complete`); the established
-  public column names (`n_texted` / `n_consented` / `n_completed`, and the
-  disposition frame's `started` / `opt_in`) are preserved unchanged via a
-  documented adapter at each output boundary, pending a coordinated rename.
+  now gated on `sent` (a reply presupposes a send), matching the latency view's
+  `n_engaged`. This only changes output for anomalous rows that carry a reply
+  timestamp with no send. (The public output columns were then renamed to the
+  canonical past-tense vocabulary -- see Breaking changes below.)
 
 * **A wrong or misspelled reader argument now fails with a clear message.**
   `s160_gcs_campaign_results_read()` / `s160_read_csv()` reject a `...`
@@ -36,17 +33,30 @@
 
 ## Breaking changes
 
+* **Latency summary count columns renamed to the canonical funnel vocabulary.**
+  On the `latency_report()` / `latency_run()` consolidated output, `n_texted` is
+  now `n_sent` and `n_consented` is now `n_opted_in` (`n_engaged`, `n_completed`,
+  and `n_ineligible` are unchanged). This gives the counts the same past-tense
+  stems as the disposition flags (`sent` / `engaged` / `opted_in` / `completed`)
+  -- `n_<signal>` is the count of that signal. Values are identical; a rename
+  only. The consolidated `schema_version` bumps to `6` (`algorithm_version` stays
+  `2.2.0`). Regenerate the latency Parquet fleet and update consumers (the
+  survey160-shiny dashboards are updated in lockstep).
+
 * **Disposition output columns renamed to the canonical funnel vocabulary.** The
-  per-row flags `started` and `opt_in` are now `sent` and `opted_in`, matching the
-  latency signals and `.funnel_masks()` (`engaged` / `complete` already matched).
-  The derived `latest_disposition` category `"opt_in"` is likewise `"opted_in"`,
-  so `disposition_summary(statuses = "opt_in")` becomes `statuses = "opted_in"`.
-  This touches `disposition_run()`'s frame, the `disposition_records()` /
-  `disposition_summary()` / `disposition_screen()` schemas, and the disposition
-  Parquet projection. Regenerate any persisted disposition Parquet and update
-  consumers (the survey160-shiny disposition pipeline is updated in lockstep).
-  The per-phone summary rollup names (`ever_contacted`, `ever_opted_in`, …) are
-  unchanged. This is a beta surface, so no deprecation shim.
+  per-row flags `started` and `opt_in` are now `sent` and `opted_in`, and
+  `complete` is now `completed` -- past tense, matching `sent` / `engaged` /
+  `opted_in` and the latency `n_completed` count (`web_complete` is unchanged; it
+  mirrors the fixed export column name). The derived `latest_disposition`
+  categories change likewise (`"opt_in"` -> `"opted_in"`, `"complete"` ->
+  `"completed"`), so e.g. `disposition_summary(statuses = "opt_in")` becomes
+  `statuses = "opted_in"`, and the per-phone rollup `ever_complete` is now
+  `ever_completed`. This touches `disposition_run()`'s frame, the
+  `disposition_records()` / `disposition_summary()` / `disposition_screen()`
+  schemas, and the disposition Parquet projection. Regenerate any persisted
+  disposition Parquet and update consumers (the survey160-shiny disposition
+  pipeline is updated in lockstep). Other rollup names (`ever_contacted`,
+  `ever_opted_in`, …) are unchanged. Beta surface, so no deprecation shim.
 
 * **`s160_gcs_pull_csv()` removed; `s160_gcs_campaign_results_read()` gains a
   `hash` argument.** The two GCS CSV readers are now one:

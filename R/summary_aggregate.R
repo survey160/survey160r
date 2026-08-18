@@ -1,5 +1,5 @@
 # Summary metrics aggregation (spec §4). Computed on the pre-filter data
-# frame so the texted/consented/completed denominators reflect the full
+# frame so the sent/opted_in/completed denominators reflect the full
 # campaign population, not just the funnel survivors.
 #
 # Orchestrator (called by latency_report() before the population filter):
@@ -56,17 +56,17 @@ has_personalized_close_link <- function(data) {
 
 # Build the per-(campaign_id, date, hour_local) summary frame at hourly
 # grain. Output columns: campaign_id, date (Date), hour_local (int 0..23),
-# n_texted, n_engaged, n_consented, n_completed (all int32-safe). Returns a
+# n_sent, n_engaged, n_opted_in, n_completed (all int32-safe). Returns a
 # zero-row frame with the correct schema if `data` has no respondents --
 # callers rbind multiple of these for day rollups without special-casing
 # empties.
 #
-# The funnel is send-anchored: `n_texted` counts recipients the platform
+# The funnel is send-anchored: `n_sent` counts recipients the platform
 # SENT the intro to (id.intro.scriptDate, the outbound scripted send);
 # `n_engaged` is the subset that REPLIED (id.intro.batchDate, the inbound
-# reply). Keying n_texted on scriptDate matches disposition_run()'s
+# reply). Keying n_sent on scriptDate matches disposition_run()'s
 # `sent`/`engaged` split (disposition_aggregate.R) -- an earlier version keyed
-# it on batchDate, which counted repliers, not sends. n_consented and
+# it on batchDate, which counted repliers, not sends. n_opted_in and
 # n_completed are subsets of the sent cohort.
 #
 # `survey_mode` selects the completion signal (SUR-1368): "sms" (default)
@@ -85,15 +85,12 @@ build_summary_frame <- function(data, config, survey_mode = "sms") {
   # Null-safe per column, so this also replaces the old unguarded read that
   # crashed on an absent id.intro.scriptDate.
   openers <- .opening_questions(config$flow$questions)
-  # sent / engaged / opted-in are the shared per-recipient funnel masks --
-  # computed identically here and in the disposition transform (.funnel_masks in
-  # opener.R) so the two views cannot report a different funnel. `send` (the
-  # coalesced opener scriptDate) is retained to bucket the summary by send
-  # date/hour. `texted`/`consented` keep the latency-local names for the counts.
-  # sent / engaged / opted_in / complete is the one funnel vocabulary shared with
-  # the disposition transform (.funnel_masks in opener.R). It is mapped to the
-  # established public count columns (n_texted / n_engaged / n_consented /
-  # n_completed) at the summarise() below -- the only place the legacy names live.
+  # sent / engaged / opted_in / completed are the shared per-recipient funnel
+  # masks -- computed identically here and in the disposition transform
+  # (.funnel_masks in opener.R), so the two views measure the same funnel. `send`
+  # (the coalesced opener scriptDate) is retained to bucket the summary by send
+  # date/hour; the masks are summed into the n_sent / n_engaged / n_opted_in /
+  # n_completed counts at the summarise() below (schema-version 6).
   masks <- .funnel_masks(data, openers, config$filters$population)
   send <- masks$send
   sent <- masks$sent
@@ -106,7 +103,7 @@ build_summary_frame <- function(data, config, survey_mode = "sms") {
   #   sms          -> reaching the close (any close-family scriptDate: close /
   #                   close_sp / close_latinos), so a bilingual campaign's
   #                   Spanish completers are counted, not dropped.
-  complete <- if (identical(survey_mode, "t2w")) {
+  completed <- if (identical(survey_mode, "t2w")) {
     # Null-safe: detect_survey_mode only returns "t2w" when web_complete
     # exists, but build_summary_frame shouldn't assume the caller paired
     # the mode with the column -- a missing column means zero completions.
@@ -125,12 +122,12 @@ build_summary_frame <- function(data, config, survey_mode = "sms") {
 
   campaign_id <- as.integer(data[[campaign_col]])
   # Bucket by intro.scriptDate (the send) in field timezone -- the
-  # send-time cohort ("of recipients we texted at hour H, how many replied /
-  # consented / completed?"). A recipient with no scriptDate was never sent
-  # to: texted is FALSE and every mask is gated on texted, so the row is
+  # send-time cohort ("of recipients we sent to at hour H, how many replied /
+  # opted-in / completed?"). A recipient with no scriptDate was never sent
+  # to: sent is FALSE and every mask is gated on sent, so the row is
   # all-zero and dropped below; the NA bucket key it gets never survives the
   # keep filter. (This is why the funnel must bucket on the send, not the
-  # reply: a texted-but-never-replied recipient has no batchDate to bucket on.)
+  # reply: a sent-but-never-replied recipient has no batchDate to bucket on.)
   seg_date <- as.Date(format(send, tz = field_tz))
   hour_local <- as.integer(format(send, format = "%H", tz = field_tz))
 
@@ -141,36 +138,35 @@ build_summary_frame <- function(data, config, survey_mode = "sms") {
     sent = as.integer(sent),
     engaged = as.integer(engaged),
     opted_in = as.integer(opted_in),
-    complete = as.integer(complete),
+    completed = as.integer(completed),
     stringsAsFactors = FALSE
   )
   # Drop rows where every flag is zero -- they only happened to share a
   # row with the data but contribute nothing. Avoids carrying NA-keyed
   # zero rows through group_by.
   keep <- long$sent > 0L | long$engaged > 0L |
-    long$opted_in > 0L | long$complete > 0L
+    long$opted_in > 0L | long$completed > 0L
   long <- long[keep, , drop = FALSE]
   if (nrow(long) == 0L) return(empty_summary_frame())
 
-  # Adapter: the canonical sent/engaged/opted_in/complete signals map to the
-  # ESTABLISHED public count columns. These legacy names (n_texted / n_consented
-  # / n_completed) are a schema contract read by the dashboards; keep them until
-  # the coordinated public rename (n_sent / n_opted_in / n_complete).
+  # Sum each per-recipient mask into its count column: n_<signal> is the count
+  # of that signal (n_sent / n_engaged / n_opted_in / n_completed). These are the
+  # public schema-version 6 columns the dashboards read.
   agg <- dplyr::summarise(
     dplyr::group_by(long, .data$campaign_id, .data$date, .data$hour_local),
-    n_texted = sum(.data$sent),
+    n_sent = sum(.data$sent),
     n_engaged = sum(.data$engaged),
-    n_consented = sum(.data$opted_in),
-    n_completed = sum(.data$complete),
+    n_opted_in = sum(.data$opted_in),
+    n_completed = sum(.data$completed),
     .groups = "drop"
   )
   data.frame(
     campaign_id = as.integer(agg$campaign_id),
     date = agg$date,
     hour_local = as.integer(agg$hour_local),
-    n_texted = as.integer(agg$n_texted),
+    n_sent = as.integer(agg$n_sent),
     n_engaged = as.integer(agg$n_engaged),
-    n_consented = as.integer(agg$n_consented),
+    n_opted_in = as.integer(agg$n_opted_in),
     n_completed = as.integer(agg$n_completed),
     stringsAsFactors = FALSE
   )
@@ -253,9 +249,9 @@ collapse_summary_to_day <- function(summary_frame) {
   if (nrow(summary_frame) == 0L) return(empty_summary_frame())
   agg <- dplyr::summarise(
     dplyr::group_by(summary_frame, .data$campaign_id, .data$date),
-    n_texted = sum(.data$n_texted),
+    n_sent = sum(.data$n_sent),
     n_engaged = sum(.data$n_engaged),
-    n_consented = sum(.data$n_consented),
+    n_opted_in = sum(.data$n_opted_in),
     n_completed = sum(.data$n_completed),
     .groups = "drop"
   )
@@ -263,9 +259,9 @@ collapse_summary_to_day <- function(summary_frame) {
     campaign_id = as.integer(agg$campaign_id),
     date = agg$date,
     hour_local = NA_integer_,
-    n_texted = as.integer(agg$n_texted),
+    n_sent = as.integer(agg$n_sent),
     n_engaged = as.integer(agg$n_engaged),
-    n_consented = as.integer(agg$n_consented),
+    n_opted_in = as.integer(agg$n_opted_in),
     n_completed = as.integer(agg$n_completed),
     stringsAsFactors = FALSE
   )
@@ -294,9 +290,9 @@ empty_summary_frame <- function() {
     campaign_id = integer(0),
     date = as.Date(character(0)),
     hour_local = integer(0),
-    n_texted = integer(0),
+    n_sent = integer(0),
     n_engaged = integer(0),
-    n_consented = integer(0),
+    n_opted_in = integer(0),
     n_completed = integer(0),
     stringsAsFactors = FALSE
   )

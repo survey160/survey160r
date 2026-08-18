@@ -67,7 +67,7 @@ A hand-built data frame works too; `result$meta` provenance is then `NA`, which 
 | `n_respondents`, `pct_resp_hit_gt`, `pct_resp_worst_gt` | Respondent-cascade metrics |
 | `mean_delta_min`, `p50_delta_min`, `p90_delta_min`, `p95_delta_min` | Per-segment latency distribution (minutes) |
 | `n_na_parse`, `n_na_missing`, `n_na_chain` | Segments with no computable latency, by reason |
-| `n_texted`, `n_engaged`, `n_consented`, `n_completed`, `n_ineligible` | Bucket volume: texted, engaged, consented, completed, screened out |
+| `n_sent`, `n_engaged`, `n_opted_in`, `n_completed`, `n_ineligible` | Bucket volume: sent, engaged, opted-in, completed, screened out |
 | `algorithm_version`, `config_hash`, `source_csv_hash`, `run_at_utc`, `run_by` | Provenance |
 
 `result$meta` carries `algorithm_version`, `schema_version`, `config_hash`, `run_at_utc`, `source_csv_hash`, and `source_csv_path`. See `?latency_run` for the full argument list.

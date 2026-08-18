@@ -76,7 +76,7 @@
 # Default opt-in population: the opening question set's accepted answer is "Yes"
 # -- a disjunction over the openers' finalText columns, restricted to those
 # PRESENT in `available` so an absent routed branch doesn't trip
-# validate_columns_present() / .mask_opt_in's missing-column guard or the
+# validate_columns_present() / .population_mask's missing-column guard or the
 # population eval. For a pure-intro campaign this is exactly `.default_population`.
 .opener_population <- function(openers, available) {
   cols <- sprintf("id.%s.finalText", openers)

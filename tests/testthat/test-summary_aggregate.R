@@ -15,14 +15,18 @@ test_that("build_summary_frame: send-anchored counts on the synthetic fixture", 
   expect_setequal(frame$hour_local, c(15L, 16L, 17L))
   expect_equal(unique(frame$campaign_id), 1L)
   expect_equal(unique(as.character(frame$date)), "2026-01-26")
-  expect_equal(day$n_texted, 4L)
+  expect_equal(day$n_sent, 4L)
   expect_equal(day$n_engaged, 3L)
-  expect_equal(day$n_consented, 3L)
+  expect_equal(day$n_opted_in, 3L)
   expect_equal(day$n_completed, 3L)
   # Hour 17 holds two sends (r2 @22:00Z, r4 @22:30Z) but only r2 replied.
   h17 <- frame[frame$hour_local == 17L, ]
-  expect_equal(h17$n_texted, 2L)
+  expect_equal(h17$n_sent, 2L)
   expect_equal(h17$n_engaged, 1L)
+  # Schema-6 no-dual-emit contract: the renamed-away legacy names are gone from
+  # both grains. (n_completed is a KEPT column, not a legacy alias.)
+  expect_false(any(c("n_texted", "n_consented") %in% names(frame)))
+  expect_false(any(c("n_texted", "n_consented") %in% names(day)))
 })
 
 test_that("build_summary_frame: a replying 'No' respondent is engaged but not consented", {
@@ -35,9 +39,9 @@ test_that("build_summary_frame: a replying 'No' respondent is engaged but not co
   cfg <- synthetic_config()
   day <- collapse_summary_to_day(build_summary_frame(d, cfg))
 
-  expect_equal(day$n_texted, 4L)        # all 4 were sent the intro
+  expect_equal(day$n_sent, 4L)        # all 4 were sent the intro
   expect_equal(day$n_engaged, 4L)       # all 4 now replied
-  expect_equal(day$n_consented, 3L)     # 3 said "Yes", 1 said "No"
+  expect_equal(day$n_opted_in, 3L)     # 3 said "Yes", 1 said "No"
   expect_equal(day$n_completed, 3L)     # 3 reached close (No-respondent didn't)
 })
 
@@ -47,7 +51,7 @@ test_that("build_summary_frame: zero rows returns empty schema", {
   frame <- build_summary_frame(d, cfg)
   expect_equal(nrow(frame), 0L)
   expect_named(frame, c("campaign_id", "date", "hour_local",
-                        "n_texted", "n_engaged", "n_consented", "n_completed"))
+                        "n_sent", "n_engaged", "n_opted_in", "n_completed"))
 })
 
 test_that("build_summary_frame: data without close.scriptDate column treats n_completed as zero", {
@@ -58,7 +62,7 @@ test_that("build_summary_frame: data without close.scriptDate column treats n_co
   })
   day <- collapse_summary_to_day(build_summary_frame(d, cfg))
   expect_equal(day$n_completed, 0L)
-  expect_equal(day$n_texted, 4L)        # all 4 sent
+  expect_equal(day$n_sent, 4L)        # all 4 sent
   expect_equal(day$n_engaged, 3L)       # r1/r2/r3 replied
 })
 
@@ -79,18 +83,18 @@ test_that("collapse_summary_to_day: sums hourly counts per (campaign, date)", {
     campaign_id = c(1L, 1L, 1L),
     date = as.Date(c("2026-01-26", "2026-01-26", "2026-01-26")),
     hour_local = c(15L, 16L, 17L),
-    n_texted = c(2L, 3L, 5L),
+    n_sent = c(2L, 3L, 5L),
     n_engaged = c(2L, 2L, 4L),
-    n_consented = c(1L, 2L, 4L),
+    n_opted_in = c(1L, 2L, 4L),
     n_completed = c(1L, 1L, 3L),
     stringsAsFactors = FALSE
   )
   day <- collapse_summary_to_day(hourly)
   expect_equal(nrow(day), 1L)
   expect_true(is.na(day$hour_local))
-  expect_equal(day$n_texted, 10L)
+  expect_equal(day$n_sent, 10L)
   expect_equal(day$n_engaged, 8L)
-  expect_equal(day$n_consented, 7L)
+  expect_equal(day$n_opted_in, 7L)
   expect_equal(day$n_completed, 5L)
 })
 
@@ -249,9 +253,9 @@ test_that("latency_report integrates summary columns into consolidated", {
 
   # Day rollup row: 4 texted (all sent); 3 engaged/consented/completed.
   day <- cons[is.na(cons$hour_local), ]
-  expect_true(all(day$n_texted == 4L))
+  expect_true(all(day$n_sent == 4L))
   expect_true(all(day$n_engaged == 3L))
-  expect_true(all(day$n_consented == 3L))
+  expect_true(all(day$n_opted_in == 3L))
   expect_true(all(day$n_completed == 3L))
   expect_true(all(day$n_ineligible == 0L))
 
@@ -260,15 +264,15 @@ test_that("latency_report integrates summary columns into consolidated", {
   hr <- cons[!is.na(cons$hour_local), ]
   for (h in c(15L, 16L)) {
     cell <- hr[hr$hour_local == h, ]
-    expect_true(all(cell$n_texted == 1L))
+    expect_true(all(cell$n_sent == 1L))
     expect_true(all(cell$n_engaged == 1L))
-    expect_true(all(cell$n_consented == 1L))
+    expect_true(all(cell$n_opted_in == 1L))
     expect_true(all(cell$n_completed == 1L))
   }
   h17 <- hr[hr$hour_local == 17L, ]
-  expect_true(all(h17$n_texted == 2L))
+  expect_true(all(h17$n_sent == 2L))
   expect_true(all(h17$n_engaged == 1L))
-  expect_true(all(h17$n_consented == 1L))
+  expect_true(all(h17$n_opted_in == 1L))
   expect_true(all(h17$n_completed == 1L))
 })
 
@@ -301,8 +305,8 @@ test_that("build_consolidated_scaffold: summary-only buckets included in scaffol
     campaign_id = c(1L, 1L),
     date = as.Date(c("2026-01-26", "2026-01-26")),
     hour_local = c(20L, 21L),
-    n_texted = c(50L, 75L),
-    n_consented = c(0L, 0L),
+    n_sent = c(50L, 75L),
+    n_opted_in = c(0L, 0L),
     n_completed = c(0L, 0L),
     stringsAsFactors = FALSE
   )
@@ -326,8 +330,8 @@ test_that("build_consolidated_scaffold: union of latency + summary buckets, dedu
     campaign_id = c(1L, 1L),
     date = as.Date(c("2026-01-26", "2026-01-26")),
     hour_local = c(16L, 17L),  # overlap on 16, summary-only on 17
-    n_texted = c(5L, 5L),
-    n_consented = c(5L, 5L),
+    n_sent = c(5L, 5L),
+    n_opted_in = c(5L, 5L),
     n_completed = c(5L, 5L),
     stringsAsFactors = FALSE
   )
@@ -378,8 +382,8 @@ test_that("build_summary_frame: t2w completion counts web_complete, not close", 
 
   expect_equal(day_sms$n_completed, 3L)   # reached close
   expect_equal(day_t2w$n_completed, 1L)   # only r1 web_complete==1
-  expect_equal(day_t2w$n_texted, 4L)      # texted/consented unaffected by mode
-  expect_equal(day_t2w$n_consented, 3L)
+  expect_equal(day_t2w$n_sent, 4L)      # texted/consented unaffected by mode
+  expect_equal(day_t2w$n_opted_in, 3L)
 })
 
 test_that("build_summary_frame: t2w with no web_complete column -> 0 completed", {
@@ -390,7 +394,7 @@ test_that("build_summary_frame: t2w with no web_complete column -> 0 completed",
   cfg <- synthetic_config()
   day <- collapse_summary_to_day(build_summary_frame(d, cfg, "t2w"))
   expect_equal(day$n_completed, 0L)
-  expect_equal(day$n_texted, 4L)
+  expect_equal(day$n_sent, 4L)
 })
 
 test_that("latency_report stamps survey_mode on every consolidated row", {
@@ -427,8 +431,8 @@ test_that("latency_report: t2w_external nulls n_completed to NA, keeps texted", 
   expect_equal(unique(cons$survey_mode), "t2w_external")
   expect_true(all(is.na(cons$n_completed)))          # completion not computable
   day <- cons[is.na(cons$hour_local) & cons$threshold_min == 1L, ]
-  expect_true(all(day$n_texted == 4L))               # texted/consented still valid
-  expect_true(all(day$n_consented == 3L))
+  expect_true(all(day$n_sent == 4L))               # texted/consented still valid
+  expect_true(all(day$n_opted_in == 3L))
 })
 
 test_that("build_consolidated_scaffold: NA hour_local dedups (day-rollup grain)", {
@@ -447,7 +451,7 @@ test_that("build_consolidated_scaffold: NA hour_local dedups (day-rollup grain)"
     campaign_id = 1L,
     date = as.Date("2026-01-26"),
     hour_local = NA_integer_,
-    n_texted = 10L, n_consented = 8L, n_completed = 6L,
+    n_sent = 10L, n_opted_in = 8L, n_completed = 6L,
     stringsAsFactors = FALSE
   )
   scaffold <- build_consolidated_scaffold(bucketed, summary, cfg, thresholds)
@@ -472,9 +476,9 @@ test_that("aggregate_consolidated tolerates NULL summary/ineligible (defensive d
   # filled with 0 in assemble_consolidated -- symmetric with n_ineligible.
   # "No summary row for this bucket" semantically means "no respondents
   # in this bucket" -> 0, not "unknown".
-  expect_true(all(cons$n_texted == 0L))
+  expect_true(all(cons$n_sent == 0L))
   expect_true(all(cons$n_engaged == 0L))
-  expect_true(all(cons$n_consented == 0L))
+  expect_true(all(cons$n_opted_in == 0L))
   expect_true(all(cons$n_completed == 0L))
   expect_true(all(cons$n_ineligible == 0L))
 })
