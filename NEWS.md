@@ -532,7 +532,7 @@
 
 ## New features
 
-* **Three-way `survey_mode` (SUR-1368).** Adds a third `survey_mode`
+* **Three-way `survey_mode`.** Adds a third `survey_mode`
   value `"t2w_external"` -- a personalized survey link in the close
   message but no web completes (external platform, no webhook).
   Completion is not computable from the export, so `n_completed` is
@@ -545,7 +545,7 @@
 
 ## New features
 
-* **Text-to-Web support + `survey_mode` column (SUR-1368).**
+* **Text-to-Web support + `survey_mode` column.**
   `consolidated` gains a per-campaign `survey_mode` column, classified
   from the source CSV:
   * `"t2w"` -- web completes present; `n_completed` counts the
@@ -572,7 +572,7 @@
   (`Invalid: cannot convert`) and silently dropped the campaign's
   Parquet output. Affected campaigns are valid but degenerate --
   every recipient hit a carrier delivery error or sat in limbo, so
-  none produced a measurable latency delta (SUR-1365).
+  none produced a measurable latency delta.
 
 # survey160r 0.14.0
 
@@ -658,7 +658,7 @@
 
 ## New features
 
-* `consolidated` now carries seven new per-cell columns (SUR-1316):
+* `consolidated` now carries seven new per-cell columns:
   `mean_delta_min`, `p50_delta_min`, `p90_delta_min`, `p95_delta_min`
   (distribution shape, threshold-independent so identical across the
   four threshold rows of a cell) and `n_na_parse`, `n_na_missing`,
@@ -673,7 +673,7 @@
 ## Breaking changes
 
 * The package is now algorithm-only. Fleet orchestration, GCS writes, and
-  scheduling have moved to a consumer project (SUR-1313).
+  scheduling have moved to a consumer project.
 * `run_latency()` is renamed to `latency_run()` and is now
   source-agnostic. The signature is
   \code{latency_run(campaign_id, data, config = NULL, run_at = NULL,
@@ -721,13 +721,13 @@
   `aggregate_consolidated()` into per-aggregation helpers
   (`aggregate_totals()`, `aggregate_worst_cascade()`,
   `aggregate_segment_cells()`, `assemble_consolidated()`). Numeric output
-  is unchanged; the refactor only reshapes the call graph (SUR-1305).
+  is unchanged; the refactor only reshapes the call graph.
 
 # survey160r 0.10.0
 
 ## New features
 
-* Parallel fleet runs and skip-unchanged campaigns (SUR-1305, #20).
+* Parallel fleet runs and skip-unchanged campaigns (#20).
   `run_latency_all()` parallelizes per-campaign processing and skips
   campaigns whose source CSV is unchanged since the last run.
   (`run_latency_all()` itself is later removed in 0.11.0, when fleet
@@ -749,7 +749,7 @@
   `time_bucket` argument, and `validate_config()` rejects `reports` as
   an unknown key. Existing Parquets in `gs://s160_analytics_*/latency/`
   (which carried only one grain) must be regenerated via the
-  a consumer project's fleet runner (SUR-1304, SUR-1313).
+  a consumer project's fleet runner.
 * Note for naive aggregators: summing the hour rows' `n_respondents`
   over-counts cross-hour respondents (a respondent active in two hours
   appears in both hours' distinct-respondent counts). Always read the
@@ -764,7 +764,7 @@
   Diagnostics field `n_out_of_window_dropped` and
   `windows_normalized_utc` are dropped along with the feature.
   `latency_build_config()` and `latency_run()` no longer accept a
-  `texting_windows` argument (SUR-1304).
+  `texting_windows` argument.
 
 # survey160r 0.8.0
 
@@ -777,20 +777,20 @@
   `field_timezone = "UTC"`, `project_id = campaign_id`,
   `texting_windows = list()`); each is overridable via a named argument.
   `run_latency()` no longer requires `s160_api_auth()` -- the config is
-  derived from the CSV alone (SUR-1299).
+  derived from the CSV alone.
 * `read_config()` and the YAML config schema are removed entirely. Configs
   are now built programmatically via `build_config()` or as hand-written
   lists with the same shape. The `yaml` package is dropped from `Imports`.
   Existing per-wave YAMLs under `latency-scripts/*.yaml` must be translated
   to `run_latency(..., field_timezone=..., project_id=...,
   texting_windows=..., date_filter=...)` calls; the YAML files themselves
-  are retained outside this repo as historical record (SUR-1299).
+  are retained outside this repo as historical record.
 * The config schema is trimmed to the fields `latency_report()` actually
   reads: `project_id`, `campaign_id`, `field_timezone`, `flow`, `filters`,
   `texting_windows`, `reports`. Previously accepted but never-used keys
   (`project_name`, `wave_run`, `display_timezone`,
   `reports$extra_grouping_columns`, `input`, `output`) are no longer
-  recognized; `validate_config()` rejects them as unknown (SUR-1299).
+  recognized; `validate_config()` rejects them as unknown.
 * The Parquet `date` and `hour_local` columns are now bucketed in UTC by
   default. Callers consuming
   `gs://s160_analytics_*/latency/*_latency.parquet` that previously
@@ -803,16 +803,16 @@
   names (either a data frame or a character vector of header tokens).
   Accepts both the raw `id[<q>]scriptDate` bracket form and the dotted
   `id.<q>.scriptDate` form produced by `read.csv()`. Terminal flow states
-  (`refusal`, `ineligible`) are dropped (SUR-1299).
+  (`refusal`, `ineligible`) are dropped.
 * `build_config(campaign_id, data, ...)` is a pure function that assembles
   a validated config from the CSV header alone. Named arguments for every
   override (`field_timezone`, `project_id`, `texting_windows`,
   `date_filter`, `respondent_id_column`, `time_bucket`). No I/O, no API
-  call (SUR-1299).
+  call.
 * `pull_csv_from_gcs()` now stamps a `source_csv_path` attribute on the
   returned data frame (the canonical `gs://...` URI) alongside the
   existing `source_csv_hash`. Lets downstream callers record provenance
-  without re-deriving the path (SUR-1299).
+  without re-deriving the path.
 * All reader functions and the latency runners now take an explicit
   `bucket` (or `source_bucket`) argument that defaults to the global set
   by `s160_gcs_init()`. Callers can either keep using `s160_gcs_init()`
@@ -822,7 +822,7 @@
   every layer. Affects `s160_gcs_campaign_results_read`,
   `s160_gcs_campaign_results_list`, `s160_gcs_campaign_results_files`,
   `s160_gcs_campaign_results_status`, `pull_csv_from_gcs`, and
-  `run_latency` (SUR-1299).
+  `run_latency`.
 * `R/latency_report.R` (531 lines) is split into five cohesive files:
   `latency_report.R` keeps the orchestrator and shared constants;
   `latency_filter.R` holds the population / dedupe / date filters;
@@ -830,20 +830,19 @@
   `latency_aggregate.R` holds the consolidated-table aggregation;
   `latency_diagnostics.R` holds the diagnostics-list assembly. The `%||%`
   operator (used in three files) moves to `aaa_utils.R`. Pure internal
-  refactor; no behavior change, verified by the legacy-parity test
-  (SUR-1299).
+  refactor; no behavior change, verified by the legacy-parity test.
 * The four unprefixed latency exports have been renamed under the
   `latency_*` namespace to prevent collisions with other R packages and
   signal cohesion: `discover_questions` -> `latency_discover_questions`,
   `build_config` -> `latency_build_config`, `validate_config` ->
   `latency_validate_config`, `config_hash` -> `latency_config_hash`. The
   old names are removed without a deprecation period; callers using the
-  pre-0.8.0 names must update (SUR-1299).
+  pre-0.8.0 names must update.
 * `latency_report()` and `run_latency()` accept an optional `run_at`
   argument (defaults to `Sys.time()`). `run_latency_all()` stamps a single
   fleet-wide timestamp on every campaign in one pass so the latest fleet
   output can be selected with `WHERE run_at_utc = (SELECT MAX(run_at_utc)
-  FROM latency)` (SUR-1299).
+  FROM latency)`.
 * `run_latency_all(source_bucket, bucket, ...)` runs the latency pipeline
   for every campaign with an export CSV under `source_bucket` and writes the
   per-campaign Parquet to `bucket`. Per-campaign failures are caught by
@@ -852,10 +851,10 @@
   and restores the global GCS bucket so the caller's session state is
   untouched. Replaces the bespoke iteration loop in
   `scripts/bulk_reprocess.R`, which is now a thin shell wrapper around
-  this function (SUR-1299).
+  this function.
 * `scripts/bulk_reprocess.R` is refactored to call `run_latency_all()`;
   the inline `discover_questions`, `build_config`, and process-one helpers
-  are removed, and the script no longer needs API auth (SUR-1299).
+  are removed, and the script no longer needs API auth.
 
 ## Bug fixes
 
@@ -865,7 +864,7 @@
   hit `if (actual_size == NA)` and aborted with "missing value where
   TRUE/FALSE needed". A non-numeric size is now treated as "unknown" and
   the download proceeds without verification. Discovered while running
-  `run_latency` against the production `campaign_results` bucket (SUR-1299).
+  `run_latency` against the production `campaign_results` bucket.
 
 ## Documentation
 
@@ -887,7 +886,7 @@
   `"2026-01-15T09:30:00.123456Z"` (which PostgreSQL can emit) come back as
   `POSIXct` rather than falling through to the string fallback. Numeric UTC
   offsets (`+05:30`, `-0400`) are also covered. The `httr::GET` import is
-  now declared explicitly to match the other `httr` imports (SUR-1253).
+  now declared explicitly to match the other `httr` imports.
 
 # survey160r 0.7.0
 
@@ -903,7 +902,7 @@
   dropping to direct database access. Per-campaign read; not intended for
   tight loops over hundreds of IDs. ISO-8601 timestamp columns
   (`startdate`, `archive_scheduled_date`, ...) are parsed to `POSIXct`
-  in UTC so callers do not have to re-parse them (SUR-1253).
+  in UTC so callers do not have to re-parse them.
 
 ## Documentation
 

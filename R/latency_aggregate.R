@@ -319,7 +319,7 @@ assemble_consolidated <- function(scaffold, cells, totals, cascade,
     run_by = NA_character_,
     stringsAsFactors = FALSE
   )
-  # Text-to-Web on an external platform with no webhook (SUR-1368): completion
+  # Text-to-Web on an external platform with no webhook: completion
   # cannot be computed from the export, so n_completed is NA (not 0/consent) --
   # n_sent / n_opted_in remain valid.
   if (identical(survey_mode, "t2w_external")) {

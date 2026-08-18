@@ -225,7 +225,7 @@ test_that("disposition_screen appends exactly what disposition_summary computes"
   }
 })
 
-# --- review regressions + documented behaviors (SUR-1514 cleanup) ----------
+# --- review regressions + documented behaviors ----------------------------
 
 test_that("summary reads a column-short projection path (no date_closed_on)", {
   # Regression (finding #1): .disposition_read_parquet() used to col_select the

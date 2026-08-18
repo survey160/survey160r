@@ -12,7 +12,7 @@
 # Shiny consumer on one read; the doc decided in favour of that over a
 # sidecar parquet (campaign_scripts.md §4.3, decision: one parquet).
 
-# Classify a campaign's survey mode from the source data (SUR-1368), per this
+# Classify a campaign's survey mode from the source data, per this
 # rule:
 #   * web completes present                  -> "t2w"           (web survey,
 #                                               completion = web_complete)
@@ -69,7 +69,7 @@ has_personalized_close_link <- function(data) {
 # it on batchDate, which counted repliers, not sends. n_opted_in and
 # n_completed are subsets of the sent cohort.
 #
-# `survey_mode` selects the completion signal (SUR-1368): "sms" (default)
+# `survey_mode` selects the completion signal: "sms" (default)
 # completes on id.close.scriptDate; "t2w" on the web_complete callback;
 # "t2w_external" is not computable (n_completed nulled to NA downstream, since
 # the SMS close is just the external survey link sent to every consenter).
@@ -96,7 +96,7 @@ build_summary_frame <- function(data, config, survey_mode = "sms") {
   sent <- masks$sent
   engaged <- masks$engaged
   opted_in <- masks$opted_in
-  # Completion signal is survey-mode dependent (SUR-1368):
+  # Completion signal is survey-mode dependent:
   #   t2w          -> the web_complete callback
   #   t2w_external -> not computable; n_completed is nulled to NA in
   #                   assemble_consolidated, so the count here is a placeholder

@@ -32,7 +32,7 @@
                       "ever_opted_in", "ever_completed", "ever_terminated",
                       "latest_disposition", "campaigns")
 
-# The stored disposition schema (SUR-1518), in canonical order -- what
+# The stored disposition schema, in canonical order -- what
 # disposition_records() returns. `sent`/`mode` come from disposition_run();
 # `error`/`loi`/`topic`/`date_closed_on` are added by downstream enrichment, so
 # an un-enriched projection lacks them and records() returns just the subset present.

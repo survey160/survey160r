@@ -183,7 +183,7 @@ test_that("latency_report preserves summary metrics when no respondents pass fil
   expect_true(any(cons$n_sent >= 1L))
   expect_true(all(cons$n == 0L))
   expect_true(all(is.na(cons$pct_le)))
-  # SUR-1365: an all-NA pct_le must stay a double, not collapse to logical.
+  # An all-NA pct_le must stay a double, not collapse to logical.
   # The fleet writer casts this column to a float64 Arrow schema; a logical
   # NA vector fails that cast ("Invalid: cannot convert") and drops the
   # campaign's Parquet output.
