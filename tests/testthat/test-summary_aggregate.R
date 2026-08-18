@@ -23,6 +23,10 @@ test_that("build_summary_frame: send-anchored counts on the synthetic fixture", 
   h17 <- frame[frame$hour_local == 17L, ]
   expect_equal(h17$n_sent, 2L)
   expect_equal(h17$n_engaged, 1L)
+  # Schema-6 no-dual-emit contract: the renamed-away legacy names are gone from
+  # both grains. (n_completed is a KEPT column, not a legacy alias.)
+  expect_false(any(c("n_texted", "n_consented") %in% names(frame)))
+  expect_false(any(c("n_texted", "n_consented") %in% names(day)))
 })
 
 test_that("build_summary_frame: a replying 'No' respondent is engaged but not consented", {

@@ -64,7 +64,7 @@ aggregate_consolidated <- function(frame, config, cfg_hash, run_at,
 
   # Scaffold: union of bucket keys from latency frame and summary frame.
   # Without this, hours where every respondent was filtered out (e.g.
-  # 100 texted, 0 consented) lose their n_sent denominator because
+  # 100 sent, 0 opted_in) lose their n_sent denominator because
   # the latency frame has no rows for those buckets. CodeRabbit
   # (PR #26) flagged the original cells-only seeding as defeating the
   # pre-filter summary contract. Scaffolding from the union preserves

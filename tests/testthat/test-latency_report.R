@@ -80,6 +80,7 @@ test_that("latency_report consolidated has hour and day rollup rows", {
   expect_equal(unique(cons$campaign_id), 1L)
   expect_equal(unique(cons$project_id), 1L)
   expect_equal(unique(cons$algorithm_version), "2.2.0")
+  expect_equal(result$meta$schema_version, "6")
 
   # n per hour cell is 1 (the single respondent in that hour). All three
   # respondents now count -- there's no texting-window exclusion.
@@ -475,4 +476,6 @@ test_that("consolidated declares the new columns with the right types when laten
   expect_type(cons$n_na_chain, "integer")
   expect_type(cons$n_sent, "integer")
   expect_type(cons$n_engaged, "integer")
+  # Schema-6 no-dual-emit contract: the renamed-away legacy names are absent.
+  expect_false(any(c("n_texted", "n_consented") %in% names(cons)))
 })
