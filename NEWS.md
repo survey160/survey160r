@@ -121,7 +121,7 @@
 * **Disposition reader surface** -- screen a phone sample against the disposition
   dataset (one row per `(phone, campaign_id)`, contacted-only):
   * `disposition_summary(x, ...)` -- roll the disposition data up to one row per
-    phone (cross-campaign screening flags `ever_contacted` / `ever_complete` /
+    phone (cross-campaign screening flags `ever_contacted` / `ever_completed` /
     `ever_terminated` / ... plus `latest_disposition`); `x` is the Parquet
     projection path (read then summarize) or an in-memory frame from
     `disposition_records()` (summarize directly, no I/O).
@@ -141,7 +141,7 @@
 
 * **`disposition_records()`** -- read the disposition projection's rows as
   stored: one row per `(phone, campaign_id)` with the full disposition schema
-  (`started`, `engaged`, `opt_in`, `complete`, `web_complete`, `terminated`,
+  (`sent`, `engaged`, `opted_in`, `completed`, `web_complete`, `terminated`,
   `error`, `loi`, `topic`, `mode`, `date_closed_on`). The raw level beneath
   `disposition_summary()` (which rolls each phone up to one screening row) -- use
   it to inspect, export, or build a custom rollup. Takes the same `phones` /
@@ -152,6 +152,20 @@
   straight from `disposition_run()`.
 
 ## Bug fixes
+
+* **`disposition_summary()` / `disposition_screen()` no longer crash on a
+  column-short projection path.** `.disposition_read_parquet()` projected the
+  read with a fixed `col_select`, so pointing either reader at an un-enriched
+  projection (the computed columns only, no `date_closed_on`) raised a raw
+  `nanoparquet` "Column ... does not exist" error instead of the graceful
+  optional-`date_closed_on` handling the docs promise (and that the in-memory
+  frame path already had). The read now intersects `col_select` with the file's
+  actual schema; a short projection summarizes, and a genuinely missing required
+  column still returns the clean "missing required column" error.
+
+* **`page` / `page_size = Inf` now errors with "positive integers"** instead of
+  an internal "missing value where TRUE/FALSE needed" (the integer check used
+  `x %% 1`, and `Inf %% 1` is `NaN`).
 
 * **SMS completion now counts every close-family branch, not just `id.close`.**
   Both the latency summary (`n_completed`) and the disposition transform

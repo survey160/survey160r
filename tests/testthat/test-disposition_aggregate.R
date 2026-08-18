@@ -578,3 +578,21 @@ test_that("engaged is gated on sent: a reply with no send is not engaged", {
   expect_equal(res$sent, c(1L, 0L))
   expect_equal(res$engaged, c(1L, 0L))   # r2 gated (was c(1L, 1L) before the fix)
 })
+
+test_that("dedup guard is raw-phone: a mixed-format collision is not caught", {
+  # Documented (finding #2): disposition_run() dedups on the RAW phone, but the
+  # readers normalize (strip a leading US 1). Two formats of one number in one
+  # campaign are distinct raw strings, so they pass the guard and emit two rows
+  # -- which then collide to one (normalized phone, campaign_id) downstream,
+  # making disposition_summary()'s latest_disposition order-dependent. Requires
+  # mixed-format duplicates within a campaign (not seen in prod exports, which
+  # were verified on raw values); pinned so the raw-only guard is a known limit.
+  d <- disp_frame(
+    phone = c("15551234567", "5551234567"),   # same number, two formats
+    id.intro.scriptDate = c(TS, TS),
+    id.intro.finalText = c("Yes", "Yes")
+  )
+  res <- disposition_run(2339, d)$consolidated
+  expect_equal(nrow(res), 2L)                  # raw guard passed -> two rows
+  expect_setequal(res$phone, c("15551234567", "5551234567"))
+})

@@ -1,22 +1,9 @@
-# Coverage for disposition_summary() + its helpers. Synthetic disposition
-# Parquet fixtures are written with nanoparquet (no arrow, no network).
-
-# One (phone, campaign) row with exactly the columns disposition_summary() reads
-# (`.DISPOSITION_READ_COLS`) and sensible funnel defaults; override via args.
-# Writing exactly the read set means nanoparquet does a full read, not a
-# `col_select` subset -- which segfaults on multi-row nanoparquet-written files (a
-# nanoparquet quirk; the real reader subsets *arrow*-written files, validated
-# separately on 2.2M rows).
-.disposition_row <- function(phone, campaign_id, engaged = 0L, opted_in = 0L,
-                    completed = 0L, web_complete = 0L, terminated = 0L,
-                    date_closed_on = as.Date(NA)) {
-  data.frame(phone = phone, campaign_id = as.integer(campaign_id),
-             engaged = as.integer(engaged),
-             opted_in = as.integer(opted_in), completed = as.integer(completed),
-             web_complete = as.integer(web_complete),
-             terminated = as.integer(terminated),
-             date_closed_on = as.Date(date_closed_on), stringsAsFactors = FALSE)
-}
+# Coverage for disposition_summary() + its helpers. Fixtures use the shared
+# .disposition_row() + write_disposition_parquet() helpers (helper-stubs.R):
+# per-(phone, campaign) frames written to a temp Parquet and read back through
+# the real nanoparquet path (no arrow, no network). The reader intersects its
+# col_select with the file's actual schema (see .disposition_read_parquet), so a
+# fixture need only carry the columns a test asserts on.
 
 # A two-phone fixture reused across tests. write_disposition_parquet() (a shared
 # helper in helper-stubs.R) writes the rows to a temp Parquet and returns the path.
@@ -236,4 +223,70 @@ test_that("disposition_screen appends exactly what disposition_summary computes"
   for (col in setdiff(names(summ), "phone")) {
     expect_equal(out[[col]], summ[[col]][idx], info = col)
   }
+})
+
+# --- review regressions + documented behaviors (SUR-1514 cleanup) ----------
+
+test_that("summary reads a column-short projection path (no date_closed_on)", {
+  # Regression (finding #1): .disposition_read_parquet() used to col_select the
+  # full read set unconditionally, so a path to an un-enriched projection (no
+  # date_closed_on) crashed with a raw nanoparquet "Column ... does not exist"
+  # before the rollup's optional-date guard could run. It now intersects
+  # col_select with the file schema and summarizes cleanly.
+  row <- .disposition_row("2015550101", 2339, engaged = 1, opted_in = 1,
+                          completed = 1)
+  p <- write_disposition_parquet(row[, setdiff(names(row), "date_closed_on")])
+  res <- disposition_summary(p, phones = "2015550101")
+  expect_true(res$ever_completed)
+  expect_equal(res$n_campaigns, 1L)
+  # disposition_screen() reads through the same path -- also unbroken now.
+  out <- disposition_screen(data.frame(phone = "2015550101"), p)
+  expect_true(out$ever_completed)
+})
+
+test_that("a required column missing from a projection path errors cleanly", {
+  # The intersect drops only the OPTIONAL date_closed_on; a genuinely required
+  # funnel column absent from the file still reaches the rollup's clean guard.
+  row <- .disposition_row("2015550101", 2339, engaged = 1)
+  p <- write_disposition_parquet(row[, setdiff(names(row), "opted_in")])
+  expect_error(disposition_summary(p), "missing required column")
+})
+
+test_that("page / page_size = Inf errors cleanly, not a cryptic NA", {
+  # Regression (finding #3): ok() used `x %% 1 == 0`, and `Inf %% 1` is NaN, so
+  # the guard returned NA and `if (!ok(...))` failed with "missing value where
+  # TRUE/FALSE needed". is.finite() now yields the intended message.
+  p <- write_disposition_parquet(rbind(.disposition_row("1", 1),
+                                       .disposition_row("2", 1)))
+  expect_error(disposition_summary(p, page_size = Inf), "positive integers")
+  expect_error(disposition_summary(p, page = Inf), "positive integers")
+})
+
+test_that("terminated + completed resolves to completed (funnel order)", {
+  # Documented (finding #4): .DISPOSITION_CATEGORIES ranks completed above
+  # terminated, so a row carrying both resolves to "completed" (last-assignment
+  # -wins). Internally consistent; pinned so a reorder is a conscious choice.
+  res <- disposition_summary(write_disposition_parquet(
+    .disposition_row("1", 1, engaged = 1, opted_in = 1, completed = 1,
+                     terminated = 1)))
+  expect_equal(res$latest_disposition, "completed")
+  expect_true(res$ever_terminated)          # the terminated flag still rolls up
+})
+
+test_that("a partially-dated dataset relabels a contacted-but-undated phone", {
+  # Documented (finding #5): the "returns no rows" warning fires only when EVERY
+  # date_closed_on is NA. With a mix, a date bound silently drops the NA-dated
+  # (but genuinely contacted) phone, which then screens back as never_contacted
+  # -- and no warning fires because the dataset is not all-NA. Beta-latent:
+  # today's projection is all-NA, so the mixed case does not yet occur in prod.
+  p <- write_disposition_parquet(rbind(
+    .disposition_row("2015550101", 2339, engaged = 1,
+                     date_closed_on = "2026-03-01"),           # dated
+    .disposition_row("2015550102", 2340, engaged = 1)))        # NA date
+  expect_no_warning(
+    res <- disposition_summary(p, phones = c("2015550101", "2015550102"),
+                               date_from = "2026-01-01"))
+  undated <- res[res$phone == "2015550102", ]
+  expect_false(undated$ever_contacted)
+  expect_equal(undated$latest_disposition, "never_contacted")
 })

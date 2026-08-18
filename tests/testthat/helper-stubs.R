@@ -283,3 +283,36 @@ write_disposition_parquet <- function(rows) {
   nanoparquet::write_parquet(rows, p)
   p
 }
+
+# One (phone, campaign) row carrying exactly the columns disposition_summary()
+# projects (`.DISPOSITION_READ_COLS`), with sensible funnel defaults; override
+# via args. Shared by the disposition_summary / disposition_screen reader tests.
+.disposition_row <- function(phone, campaign_id, engaged = 0L, opted_in = 0L,
+                             completed = 0L, web_complete = 0L, terminated = 0L,
+                             date_closed_on = as.Date(NA)) {
+  data.frame(phone = phone, campaign_id = as.integer(campaign_id),
+             engaged = as.integer(engaged), opted_in = as.integer(opted_in),
+             completed = as.integer(completed),
+             web_complete = as.integer(web_complete),
+             terminated = as.integer(terminated),
+             date_closed_on = as.Date(date_closed_on), stringsAsFactors = FALSE)
+}
+
+# One full-schema (phone, campaign) record; override any column. Defaults model
+# a contacted-but-no-reply t2w record. Shared by the disposition_records tests.
+.record_row <- function(phone, campaign_id, sent = 1L, engaged = 0L,
+                        opted_in = 0L, completed = 0L, web_complete = 0L,
+                        terminated = 0L, error = NA_character_, loi = NA_real_,
+                        topic = NA_character_, mode = "t2w",
+                        date_closed_on = as.Date(NA)) {
+  data.frame(
+    phone = phone, campaign_id = as.integer(campaign_id),
+    sent = as.integer(sent), engaged = as.integer(engaged),
+    opted_in = as.integer(opted_in), completed = as.integer(completed),
+    web_complete = as.integer(web_complete),
+    terminated = as.integer(terminated), error = as.character(error),
+    loi = as.numeric(loi), topic = as.character(topic),
+    mode = as.character(mode), date_closed_on = as.Date(date_closed_on),
+    stringsAsFactors = FALSE
+  )
+}

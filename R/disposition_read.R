@@ -181,7 +181,9 @@
   ps <- if (is.null(page_size)) max(1L, nrow(summ)) else page_size
   pg <- if (is.null(page)) 1L else page
   ok <- function(x) {
-    is.numeric(x) && length(x) == 1L && !is.na(x) && x >= 1L && x %% 1 == 0
+    # is.finite() rejects NA/NaN/Inf in one check (an Inf page slipped through the
+    # old `x %% 1 == 0`, since `Inf %% 1` is NaN, and errored cryptically).
+    is.numeric(x) && length(x) == 1L && is.finite(x) && x >= 1L && x %% 1 == 0
   }
   if (!ok(ps) || !ok(pg)) {
     stop("`page` and `page_size` must be positive integers.", call. = FALSE)
@@ -193,16 +195,25 @@
 
 # I/O: validate the path and read the projection. `columns` picks what to read:
 # the default reads just the summary columns; `NULL` reads every column
-# (disposition_records() uses this for the full stored schema). A `NULL` full read
-# is also the safe choice on nanoparquet-*written* multi-row files, which can crash
-# on a `col_select` subset -- col_select is fine on the real arrow/duckdb-written
-# projection (see the test-file note).
+# (disposition_records() uses this for the full stored schema).
+#
+# The requested set is intersected with the file's actual columns before the
+# read: nanoparquet errors if a `col_select` names a column the file lacks, so
+# requesting the full summary set from a column-short projection (e.g. an
+# un-enriched frame with no `date_closed_on`) would crash here -- before the
+# rollup's own clean missing-required-column / optional-`date_closed_on` guards
+# could run. Intersecting keeps the read projected (a real win on the 29M-row
+# file) while letting those guards produce the clean S160 error or the
+# optional-column handling; reading the schema first is a cheap footer-only read.
 .disposition_read_parquet <- function(dataset, columns = .DISPOSITION_READ_COLS) {
   if (!is.character(dataset) || length(dataset) != 1L || !nzchar(dataset)) {
     stop("`dataset` must be a single Parquet path.", call. = FALSE)
   }
   if (!file.exists(dataset)) {
     stop_not_found("disposition dataset", dataset)
+  }
+  if (!is.null(columns)) {
+    columns <- intersect(columns, nanoparquet::read_parquet_schema(dataset)$name)
   }
   as.data.frame(nanoparquet::read_parquet(dataset, col_select = columns))
 }
