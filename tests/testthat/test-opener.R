@@ -117,7 +117,7 @@ test_that(".closing_questions resolves the close family, else falls back to clos
 test_that("SMS completed counts every close-family branch (close + close_sp)", {
   # Bilingual campaign: English completers reach id.close, Spanish reach
   # id.close_sp. Both are completions -- the union must be counted (matching the
-  # app's phonelist.completed), not just id.close. Previously close_sp was dropped.
+  # app's phonelist.complete), not just id.close. Previously close_sp was dropped.
   ts <- "2026-01-26 15:00:00.000000Z"
   d <- data.frame(
     phone = as.character(1:4),

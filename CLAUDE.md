@@ -42,7 +42,7 @@ Secondary conventions:
 
 - **Domain-leads-name for families**, so parallel functions group: `latency_input_columns` / `disposition_input_columns`, `latency_run` / `disposition_run`.
 - **The token after `s160_`** names the salient concern -- the external system (`s160_gcs_*`) or the format/action (`s160_read_csv`, `s160_csv_header`).
-- **Spell names out**; avoid abbreviations (`disposition`, not `disp`/`dispo`; `.mask_opt_in` to match the `opt_in` column, not `.mask_optin`).
+- **Spell names out**; avoid abbreviations (`disposition`, not `disp`/`dispo`; name helpers to match their column, e.g. `opted_in`, not `optin`).
 - **`lintr::object_length_linter` caps names at 30 characters** -- keep helper names under it.
 
 ## Workflow
