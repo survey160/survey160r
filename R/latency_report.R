@@ -90,7 +90,7 @@ latency_report <- function(data, config, run_at = NULL) {
 
   # Survey mode (sms vs t2w) is detected once from the pre-filter data. It
   # drives the completion signal in build_summary_frame and is stamped on
-  # every consolidated row so downstream consumers (Shiny) can filter (SUR-1368).
+  # every consolidated row so downstream consumers (Shiny) can filter.
   survey_mode <- detect_survey_mode(data)
 
   # Step 1: pre-filter summary metrics (spec §4). Counts sent /

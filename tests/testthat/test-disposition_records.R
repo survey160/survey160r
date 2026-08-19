@@ -1,27 +1,7 @@
 # Coverage for disposition_records() -- the raw per-(phone, campaign) reader.
-# Full-schema (SUR-1518) disposition Parquet fixtures, written with nanoparquet.
-# records() reads the whole file (col_select = NULL), so a full read -- never a
-# `col_select` subset -- runs on these nanoparquet-written fixtures (the subset
-# path segfaults on multi-row nanoparquet files; see test-disposition_read.R).
-
-# One full-schema (phone, campaign) row; override any column. Defaults model a
-# contacted-but-no-reply t2w record.
-.record_row <- function(phone, campaign_id, sent = 1L, engaged = 0L,
-                        opted_in = 0L, completed = 0L, web_complete = 0L,
-                        terminated = 0L, error = NA_character_, loi = NA_real_,
-                        topic = NA_character_, mode = "t2w",
-                        date_closed_on = as.Date(NA)) {
-  data.frame(
-    phone = phone, campaign_id = as.integer(campaign_id),
-    sent = as.integer(sent), engaged = as.integer(engaged),
-    opted_in = as.integer(opted_in), completed = as.integer(completed),
-    web_complete = as.integer(web_complete),
-    terminated = as.integer(terminated), error = as.character(error),
-    loi = as.numeric(loi), topic = as.character(topic),
-    mode = as.character(mode), date_closed_on = as.Date(date_closed_on),
-    stringsAsFactors = FALSE
-  )
-}
+# records() reads the whole file (col_select = NULL) and returns the canonical
+# columns present, so it uses the full-schema fixture builder .record_row()
+# (helper-stubs.R). Fixtures are written with nanoparquet (no arrow, no network).
 
 # Two phones across three (phone, campaign) rows, written OUT of phone order.
 # write_disposition_parquet() (a shared helper in helper-stubs.R) writes the
