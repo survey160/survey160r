@@ -6,9 +6,9 @@ on:
   pull_request:
     branches: [main]
 
-# Cancel superseded runs (head_ref on PRs, ref on push). No setup-r step to
-# guard here -- R comes from the container -- so the job timeout below is the
-# sole hang backstop (cf. survey160-shiny's per-step setup-r cap).
+# Cancel superseded runs (head_ref on PRs, ref on push). R comes from the
+# container image (no download step to hang), so the job timeout below is the
+# sole backstop against a stalled step.
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
   cancel-in-progress: true
