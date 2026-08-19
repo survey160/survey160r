@@ -252,14 +252,17 @@ test_that("a required column missing from a projection path errors cleanly", {
   expect_error(disposition_summary(p), "missing required column")
 })
 
-test_that("page / page_size = Inf errors cleanly, not a cryptic NA", {
+test_that("page / page_size non-finite (NA/NaN/Inf) errors cleanly", {
   # Regression (finding #3): ok() used `x %% 1 == 0`, and `Inf %% 1` is NaN, so
   # the guard returned NA and `if (!ok(...))` failed with "missing value where
-  # TRUE/FALSE needed". is.finite() now yields the intended message.
+  # TRUE/FALSE needed". is.finite() now rejects NA / NaN / Inf with the intended
+  # message.
   p <- write_disposition_parquet(rbind(.disposition_row("1", 1),
                                        .disposition_row("2", 1)))
-  expect_error(disposition_summary(p, page_size = Inf), "positive integers")
-  expect_error(disposition_summary(p, page = Inf), "positive integers")
+  for (bad in c(NA_real_, NaN, Inf)) {
+    expect_error(disposition_summary(p, page_size = bad), "positive integers")
+    expect_error(disposition_summary(p, page = bad), "positive integers")
+  }
 })
 
 test_that("terminated + completed resolves to completed (funnel order)", {
