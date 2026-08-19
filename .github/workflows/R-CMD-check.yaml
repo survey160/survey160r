@@ -6,12 +6,21 @@ on:
   pull_request:
     branches: [main]
 
+# Cancel superseded runs (head_ref on PRs, ref on push). R comes from the
+# container image (no download step to hang), so the job timeout below is the
+# sole backstop against a stalled step.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
 jobs:
   R-CMD-check:
     runs-on: ubuntu-latest
+    # Backstop below the 360m default; healthy runs finish in ~2.3m.
+    timeout-minutes: 20
     container:
       image: ghcr.io/r-hub/containers/ubuntu-release:latest
 
