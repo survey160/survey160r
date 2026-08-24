@@ -31,8 +31,8 @@ A list mirroring \code{latency_run()}'s shape: \code{consolidated} (a
   \code{sent}, \code{engaged}, \code{opted_in}, \code{completed},
   \code{web_complete}, \code{terminated} -- \code{completed} is \code{NA} under
   \code{t2w_external} -- \code{mode} (character), and \code{error} (character;
-  the raw carrier delivery-error code, \code{NA} when the send delivered
-  cleanly); under the default \code{sent} is \code{1} for every row) and
+  the raw carrier delivery-error code, \code{NA} when the export carries no
+  usable error code); under the default \code{sent} is \code{1} for every row) and
   \code{meta} (the source
   \code{source_csv_hash} / \code{source_csv_path}, or \code{NA}). A zero-row
   input, or a campaign where nobody was contacted, yields a zero-row

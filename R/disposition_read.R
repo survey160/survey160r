@@ -372,7 +372,8 @@ disposition_summary <- function(x, phones = NULL, campaign_ids = NULL,
 #' delivery-error code -- but not \code{loi} / \code{topic} / \code{date_closed_on};
 #' the enriched projection carries all thirteen. In the current beta
 #' \code{date_closed_on} is \code{NA} for every row; \code{error} is populated
-#' from the export (\code{NA} only when a record's send delivered cleanly). The
+#' from the export (\code{NA} when the export carries no usable error code -- a
+#' clean send, or a legacy/minimal export lacking the column). The
 #' whole projection is read into memory and filtered
 #' in R (nanoparquet has no predicate pushdown, like \code{\link{disposition_summary}});
 #' \code{phone} is digit-normalized for matching, and a stored row whose phone is

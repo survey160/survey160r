@@ -97,8 +97,8 @@
 # logical, only a column carrying "None"/alpha stays character -- so as.character()
 # re-renders it. Real 4-5 digit carrier codes have no leading zeros, so the
 # string is stable. Blank / whitespace / "None" / a reader-supplied NA all
-# normalize to NA, so `error` is NA for every cleanly delivered record. Null-safe
-# (column absent -> all NA), mirroring the masks.
+# normalize to NA, so `error` is NA whenever the export carries no usable code.
+# Null-safe (column absent -> all NA), mirroring the masks.
 .disposition_error <- function(data) {
   ec <- data[["error_code"]]
   if (is.null(ec)) {
@@ -261,8 +261,8 @@ disposition_input_columns <- function(available = NULL, population = NULL) {
 #'   \code{sent}, \code{engaged}, \code{opted_in}, \code{completed},
 #'   \code{web_complete}, \code{terminated} -- \code{completed} is \code{NA} under
 #'   \code{t2w_external} -- \code{mode} (character), and \code{error} (character;
-#'   the raw carrier delivery-error code, \code{NA} when the send delivered
-#'   cleanly); under the default \code{sent} is \code{1} for every row) and
+#'   the raw carrier delivery-error code, \code{NA} when the export carries no
+#'   usable error code); under the default \code{sent} is \code{1} for every row) and
 #'   \code{meta} (the source
 #'   \code{source_csv_hash} / \code{source_csv_path}, or \code{NA}). A zero-row
 #'   input, or a campaign where nobody was contacted, yields a zero-row
