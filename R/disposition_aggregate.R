@@ -84,23 +84,30 @@
   inelig | refusal
 }
 
-# error: the raw carrier delivery-error code for this record, as a string. The
+# error: the carrier delivery-error code for this record, as a string. The
 # export carries phonelist.error_code, written only on a send/delivery failure
 # (a 4-digit Bandwidth code; a clean send leaves it NULL, which the export
 # renders as ""). It is a delivery-quality attribute orthogonal to the funnel --
 # an errored record is almost always a non-response whose message never landed,
-# and it co-occurs with, rather than replaces, a funnel outcome. Passthrough:
-# the code is emitted verbatim, never interpreted or bucketed here (a
-# human-readable category, if ever wanted, is a read-time concern). Blank /
-# whitespace / "None" normalize to NA so `error` is NA for every cleanly
-# delivered record. Null-safe (column absent -> all NA), mirroring the masks.
+# and it co-occurs with, rather than replaces, a funnel outcome. The code is
+# carried through as a string, never interpreted or bucketed here (a
+# human-readable category, if ever wanted, is a read-time concern). NOTE the CSV
+# reader (fread) infers this column's type per file: codes+blanks come back
+# integer, an all-blank column (a campaign with no errors -- the common case)
+# logical, only a column carrying "None"/alpha stays character -- so as.character()
+# re-renders it. Real 4-5 digit carrier codes have no leading zeros, so the
+# string is stable. Blank / whitespace / "None" / a reader-supplied NA all
+# normalize to NA, so `error` is NA for every cleanly delivered record. Null-safe
+# (column absent -> all NA), mirroring the masks.
 .disposition_error <- function(data) {
   ec <- data[["error_code"]]
   if (is.null(ec)) {
     return(rep(NA_character_, nrow(data)))
   }
   ec <- trimws(as.character(ec))
-  ec[ec == "" | ec == "None"] <- NA_character_
+  # is.na() leads so the logical index never itself contains NA (a NA index
+  # would be a silent no-op here, correct but fragile); a reader NA stays NA.
+  ec[is.na(ec) | ec == "" | ec == "None"] <- NA_character_
   ec
 }
 

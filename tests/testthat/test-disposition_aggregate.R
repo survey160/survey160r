@@ -51,8 +51,32 @@ test_that("error: raw carrier code passes through; blank/None/whitespace -> NA",
   )
   res <- disposition_run(1234, d, contacted_only = FALSE)$consolidated
   expect_true(is.character(res$error))
-  # verbatim passthrough; whitespace trimmed; blank / "None" -> NA
+  # string passthrough; whitespace trimmed; blank / "None" -> NA
   expect_equal(res$error, c("4720", NA, NA, "4753", "9902"))
+})
+
+test_that("error: reader-inferred integer / all-NA logical error_code coerce to strings", {
+  # fread infers error_code's type per file: codes+blanks -> integer (blanks NA),
+  # an all-blank column (no errors, the common case) -> logical all-NA. Both must
+  # coerce to the character `error`, mirroring the real read path (not just the
+  # character column the other test forces via "None").
+  d_int <- disp_frame(
+    phone = c("+15550401", "+15550402", "+15550403"),
+    id.intro.scriptDate = rep(TS, 3),
+    id.intro.finalText  = rep("Yes", 3),
+    error_code          = c(4720L, NA_integer_, 4753L)     # integer column
+  )
+  expect_equal(disposition_run(1234, d_int, contacted_only = FALSE)$consolidated$error,
+               c("4720", NA, "4753"))
+  d_lgl <- disp_frame(
+    phone = c("+15550404", "+15550405"),
+    id.intro.scriptDate = rep(TS, 2),
+    id.intro.finalText  = rep("Yes", 2),
+    error_code          = c(NA, NA)                          # logical all-NA column
+  )
+  res <- disposition_run(1234, d_lgl, contacted_only = FALSE)$consolidated
+  expect_true(is.character(res$error))
+  expect_true(all(is.na(res$error)))
 })
 
 test_that("t2w campaign: completed comes from the web_complete callback", {
@@ -171,6 +195,7 @@ test_that("zero-row input returns the empty disposition frame", {
                       "completed", "web_complete", "terminated", "mode", "error"))
   expect_true(is.integer(res$sent))
   expect_true(is.character(res$phone))
+  expect_true(is.character(res$error))   # empty-frame error type matches the live path
 })
 
 test_that("opted_in is null-safe when the population column is absent", {
@@ -335,6 +360,7 @@ test_that("contacted_only with no contacted rows yields a typed zero-row frame",
                       "completed", "web_complete", "terminated", "mode", "error"))
   expect_true(is.integer(res$sent))
   expect_true(is.character(res$phone))
+  expect_true(is.character(res$error))   # empty-frame error type matches the live path
 })
 
 test_that("contacted_only keeps t2w_external contacted rows (completed = NA)", {
@@ -411,13 +437,16 @@ test_that("disposition_input_columns: projected read matches a full read", {
     id.close.scriptText = c("go https://a", "go https://b"),  # -> t2w_external
     id.ineligible.scriptDate = c("", TS),
     id.refusal.scriptDate = c("", ""),
+    error_code = c("4720", ""),                  # retained by the projection
     userid = c("agent-1", "agent-2"),            # ignored by disposition_run
     status = c("completed", "open")               # ignored by disposition_run
   )
   keep <- disposition_input_columns(available = names(full))
+  expect_true("error_code" %in% intersect(keep, names(full)))  # projection keeps it
   projected <- full[, intersect(keep, names(full)), drop = FALSE]
-  expect_equal(disposition_run(1234, projected, contacted_only = FALSE),
-               disposition_run(1234, full, contacted_only = FALSE))
+  full_res <- disposition_run(1234, full, contacted_only = FALSE)
+  expect_equal(disposition_run(1234, projected, contacted_only = FALSE), full_res)
+  expect_equal(full_res$consolidated$error, c("4720", NA))     # survived projection
 })
 
 # --- result shape (list mirroring latency_run) ------------------------------

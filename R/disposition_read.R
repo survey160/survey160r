@@ -33,9 +33,9 @@
                       "latest_disposition", "campaigns")
 
 # The stored disposition schema, in canonical order -- what
-# disposition_records() returns. `sent`/`mode` come from disposition_run();
-# `error`/`loi`/`topic`/`date_closed_on` are added by downstream enrichment, so
-# an un-enriched projection lacks them and records() returns just the subset present.
+# disposition_records() returns. `sent`/`mode`/`error` come from disposition_run();
+# `loi`/`topic`/`date_closed_on` are added by downstream enrichment, so an
+# un-enriched projection lacks those three and records() returns just the subset present.
 .DISPOSITION_RECORD_COLS <- c("phone", "campaign_id", "sent", "engaged",
                       "opted_in", "completed", "web_complete", "terminated",
                       "error", "loi", "topic", "mode", "date_closed_on")
@@ -368,10 +368,12 @@ disposition_summary <- function(x, phones = NULL, campaign_ids = NULL,
 #'
 #' Only the canonical columns \emph{present in the file} are returned, in the
 #' order above. A projection written straight from \code{\link{disposition_run}}
-#' carries just the nine computed columns (no \code{error} / \code{loi} /
-#' \code{topic} / \code{date_closed_on}); the enriched projection carries all
-#' thirteen. In the current beta \code{error} and \code{date_closed_on} are
-#' \code{NA} for every row. The whole projection is read into memory and filtered
+#' carries the ten computed columns -- including \code{error}, the carrier
+#' delivery-error code -- but not \code{loi} / \code{topic} / \code{date_closed_on};
+#' the enriched projection carries all thirteen. In the current beta
+#' \code{date_closed_on} is \code{NA} for every row; \code{error} is populated
+#' from the export (\code{NA} only when a record's send delivered cleanly). The
+#' whole projection is read into memory and filtered
 #' in R (nanoparquet has no predicate pushdown, like \code{\link{disposition_summary}});
 #' \code{phone} is digit-normalized for matching, and a stored row whose phone is
 #' blank or unparseable is dropped.

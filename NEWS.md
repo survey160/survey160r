@@ -4,9 +4,9 @@
 
 * **Disposition frame now carries the raw carrier `error` code.**
   `disposition_run()` emits an `error` column: the per-recipient Bandwidth
-  delivery-error code from the export's `error_code` field, passed through
-  verbatim as a string (blank / `"None"` normalize to `NA`, so `error` is `NA`
-  for every cleanly delivered record), and `disposition_input_columns()` projects
+  delivery-error code from the export's `error_code` field, passed through as a
+  string (blank / `"None"` / a reader-supplied `NA` normalize to `NA`, so `error`
+  is `NA` for every cleanly delivered record), and `disposition_input_columns()` projects
   `error_code` accordingly. The code is a delivery-quality attribute orthogonal
   to the funnel flags -- an errored record is almost always a non-response whose
   message never landed -- and is emitted uninterpreted; a human-readable category
