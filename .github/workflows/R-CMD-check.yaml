@@ -6,11 +6,12 @@ on:
   pull_request:
     branches: [main]
 
-# Cancel superseded runs (head_ref on PRs, ref on push). R comes from the
-# container image (no download step to hang), so the job timeout below is the
-# sole backstop against a stalled step.
+# Cancel superseded runs (PR number on PRs, ref on push). Keying on the PR
+# number (not head_ref) keeps fork PRs and PRs to different bases from sharing a
+# group and cancelling each other. R comes from the container image (no download
+# step to hang), so the job timeout below is the sole backstop against a stall.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 permissions:

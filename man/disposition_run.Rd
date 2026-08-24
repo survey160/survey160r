@@ -30,8 +30,10 @@ A list mirroring \code{latency_run()}'s shape: \code{consolidated} (a
   (character), \code{campaign_id} (integer), the 0/1 integer flags
   \code{sent}, \code{engaged}, \code{opted_in}, \code{completed},
   \code{web_complete}, \code{terminated} -- \code{completed} is \code{NA} under
-  \code{t2w_external} -- and \code{mode} (character); under the default
-  \code{sent} is \code{1} for every row) and \code{meta} (the source
+  \code{t2w_external} -- \code{mode} (character), and \code{error} (character;
+  the raw carrier delivery-error code, \code{NA} when the export carries no
+  usable error code); under the default \code{sent} is \code{1} for every row) and
+  \code{meta} (the source
   \code{source_csv_hash} / \code{source_csv_path}, or \code{NA}). A zero-row
   input, or a campaign where nobody was contacted, yields a zero-row
   \code{consolidated} frame.
@@ -40,8 +42,9 @@ A list mirroring \code{latency_run()}'s shape: \code{consolidated} (a
 Turns an in-memory campaign results CSV (one row per respondent) into a list
 carrying the per-respondent disposition frame in \code{consolidated} (one row
 per contacted phone, with 0/1 funnel flags \code{sent}, \code{engaged},
-\code{opted_in}, \code{completed}, \code{web_complete}, \code{terminated} and the
-campaign's \code{mode}) plus source provenance in \code{meta}. Pure
+\code{opted_in}, \code{completed}, \code{web_complete}, \code{terminated}, the
+campaign's \code{mode}, and the raw carrier delivery-error code \code{error})
+plus source provenance in \code{meta}. Pure
 function, no I/O -- pair with \code{s160_gcs_campaign_results_read(hash = TRUE)} for the GCS source.
 Persisting the frame (any enrichment, provenance, and Parquet output) is
 handled by consumer projects.

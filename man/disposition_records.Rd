@@ -52,10 +52,13 @@ for inspection, export, or a custom rollup.
 \details{
 Only the canonical columns \emph{present in the file} are returned, in the
 order above. A projection written straight from \code{\link{disposition_run}}
-carries just the nine computed columns (no \code{error} / \code{loi} /
-\code{topic} / \code{date_closed_on}); the enriched projection carries all
-thirteen. In the current beta \code{error} and \code{date_closed_on} are
-\code{NA} for every row. The whole projection is read into memory and filtered
+carries the ten computed columns -- including \code{error}, the carrier
+delivery-error code -- but not \code{loi} / \code{topic} / \code{date_closed_on};
+the enriched projection carries all thirteen. In the current beta
+\code{date_closed_on} is \code{NA} for every row; \code{error} is populated
+from the export (\code{NA} when the export carries no usable error code -- a
+clean send, or a legacy/minimal export lacking the column). The
+whole projection is read into memory and filtered
 in R (nanoparquet has no predicate pushdown, like \code{\link{disposition_summary}});
 \code{phone} is digit-normalized for matching, and a stored row whose phone is
 blank or unparseable is dropped.

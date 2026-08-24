@@ -73,7 +73,11 @@ test_that("a date bound with no date_closed_on column errors", {
   expect_error(disposition_records(p, date_to = "2026-01-01"), "date_closed_on")
 })
 
-test_that("an un-enriched projection returns just the nine computed columns", {
+test_that("a minimal projection returns only the columns present", {
+  # A file missing the enrichment columns (loi/topic/date_closed_on) -- and, for a
+  # pre-0.36 producer, `error` too -- reads back as just the columns it carries.
+  # disposition_run() now emits `error`, so a current un-enriched projection is ten
+  # columns; this bare fixture omits it to exercise the reader's subset tolerance.
   bare_cols <- c("phone", "campaign_id", "sent", "engaged", "opted_in",
                  "completed", "web_complete", "terminated", "mode")
   res <- disposition_records(
