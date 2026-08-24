@@ -84,6 +84,26 @@
   inelig | refusal
 }
 
+# error: the raw carrier delivery-error code for this record, as a string. The
+# export carries phonelist.error_code, written only on a send/delivery failure
+# (a 4-digit Bandwidth code; a clean send leaves it NULL, which the export
+# renders as ""). It is a delivery-quality attribute orthogonal to the funnel --
+# an errored record is almost always a non-response whose message never landed,
+# and it co-occurs with, rather than replaces, a funnel outcome. Passthrough:
+# the code is emitted verbatim, never interpreted or bucketed here (a
+# human-readable category, if ever wanted, is a read-time concern). Blank /
+# whitespace / "None" normalize to NA so `error` is NA for every cleanly
+# delivered record. Null-safe (column absent -> all NA), mirroring the masks.
+.disposition_error <- function(data) {
+  ec <- data[["error_code"]]
+  if (is.null(ec)) {
+    return(rep(NA_character_, nrow(data)))
+  }
+  ec <- trimws(as.character(ec))
+  ec[ec == "" | ec == "None"] <- NA_character_
+  ec
+}
+
 # Empty (0-row) disposition frame with the pinned column set + types. Lets
 # callers handle a campaign whose export has no rows without special-casing.
 empty_disposition_frame <- function() {
@@ -97,6 +117,7 @@ empty_disposition_frame <- function() {
     web_complete = integer(0),
     terminated = integer(0),
     mode = character(0),
+    error = character(0),
     stringsAsFactors = FALSE
   )
 }
@@ -171,6 +192,7 @@ disposition_input_columns <- function(available = NULL, population = NULL) {
     sprintf("id.%s.batchDate", openers),
     all.vars(parse(text = population)),
     "web_complete",
+    "error_code",                           # raw carrier delivery-error code (-> `error`)
     sprintf("id.%s.scriptDate", closers),   # close family (close / close_sp / ...)
     "id.ineligible.scriptDate",
     "id.refusal.scriptDate"
@@ -186,8 +208,9 @@ disposition_input_columns <- function(available = NULL, population = NULL) {
 #' Turns an in-memory campaign results CSV (one row per respondent) into a list
 #' carrying the per-respondent disposition frame in \code{consolidated} (one row
 #' per contacted phone, with 0/1 funnel flags \code{sent}, \code{engaged},
-#' \code{opted_in}, \code{completed}, \code{web_complete}, \code{terminated} and the
-#' campaign's \code{mode}) plus source provenance in \code{meta}. Pure
+#' \code{opted_in}, \code{completed}, \code{web_complete}, \code{terminated}, the
+#' campaign's \code{mode}, and the raw carrier delivery-error code \code{error})
+#' plus source provenance in \code{meta}. Pure
 #' function, no I/O -- pair with \code{s160_gcs_campaign_results_read(hash = TRUE)} for the GCS source.
 #' Persisting the frame (any enrichment, provenance, and Parquet output) is
 #' handled by consumer projects.
@@ -230,8 +253,10 @@ disposition_input_columns <- function(available = NULL, population = NULL) {
 #'   (character), \code{campaign_id} (integer), the 0/1 integer flags
 #'   \code{sent}, \code{engaged}, \code{opted_in}, \code{completed},
 #'   \code{web_complete}, \code{terminated} -- \code{completed} is \code{NA} under
-#'   \code{t2w_external} -- and \code{mode} (character); under the default
-#'   \code{sent} is \code{1} for every row) and \code{meta} (the source
+#'   \code{t2w_external} -- \code{mode} (character), and \code{error} (character;
+#'   the raw carrier delivery-error code, \code{NA} when the send delivered
+#'   cleanly); under the default \code{sent} is \code{1} for every row) and
+#'   \code{meta} (the source
 #'   \code{source_csv_hash} / \code{source_csv_path}, or \code{NA}). A zero-row
 #'   input, or a campaign where nobody was contacted, yields a zero-row
 #'   \code{consolidated} frame.
@@ -293,6 +318,7 @@ disposition_run <- function(campaign_id, data, population = NULL,
     web_complete = as.integer(.mask_web_complete(data)),
     terminated = as.integer(.mask_terminated(data)),
     mode = rep(survey_mode, length(phone)),
+    error = .disposition_error(data),
     stringsAsFactors = FALSE
   )
 

@@ -1,5 +1,18 @@
 # survey160r (development version)
 
+## Features
+
+* **Disposition frame now carries the raw carrier `error` code.**
+  `disposition_run()` emits an `error` column: the per-recipient Bandwidth
+  delivery-error code from the export's `error_code` field, passed through
+  verbatim as a string (blank / `"None"` normalize to `NA`, so `error` is `NA`
+  for every cleanly delivered record), and `disposition_input_columns()` projects
+  `error_code` accordingly. The code is a delivery-quality attribute orthogonal
+  to the funnel flags -- an errored record is almost always a non-response whose
+  message never landed -- and is emitted uninterpreted; a human-readable category
+  is left to the read layer. This fills the first of the disposition frame's two
+  enrichment columns (`error`); `date_closed_on` remains a downstream placeholder.
+
 ## Improvements
 
 * **Latency and disposition resolve the opener funnel from one shared module.**

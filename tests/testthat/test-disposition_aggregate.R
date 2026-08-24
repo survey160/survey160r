@@ -28,7 +28,7 @@ test_that("sms campaign: per-respondent flags and mode", {
   res <- disposition_run(1234, d, contacted_only = FALSE)$consolidated
 
   expect_named(res, c("phone", "campaign_id", "sent", "engaged", "opted_in",
-                      "completed", "web_complete", "terminated", "mode"))
+                      "completed", "web_complete", "terminated", "mode", "error"))
   expect_equal(res$phone, c("+15550101", "+15550102", "+15550103"))
   expect_true(is.integer(res$campaign_id))
   expect_equal(res$campaign_id, rep(1234L, 3L))
@@ -39,6 +39,20 @@ test_that("sms campaign: per-respondent flags and mode", {
   expect_equal(res$web_complete, c(0L, 0L, 0L))
   expect_equal(res$terminated,   c(0L, 0L, 0L))
   expect_true(all(res$mode == "sms"))
+  expect_true(all(is.na(res$error)))            # no error_code column -> all NA
+})
+
+test_that("error: raw carrier code passes through; blank/None/whitespace -> NA", {
+  d <- disp_frame(
+    phone = c("+15550301", "+15550302", "+15550303", "+15550304", "+15550305"),
+    id.intro.scriptDate = rep(TS, 5),             # all contacted
+    id.intro.finalText  = rep("Yes", 5),
+    error_code          = c("4720", "", "None", "  4753  ", "9902")
+  )
+  res <- disposition_run(1234, d, contacted_only = FALSE)$consolidated
+  expect_true(is.character(res$error))
+  # verbatim passthrough; whitespace trimmed; blank / "None" -> NA
+  expect_equal(res$error, c("4720", NA, NA, "4753", "9902"))
 })
 
 test_that("t2w campaign: completed comes from the web_complete callback", {
@@ -154,7 +168,7 @@ test_that("zero-row input returns the empty disposition frame", {
   res <- disposition_run(1234, d)$consolidated
   expect_equal(nrow(res), 0L)
   expect_named(res, c("phone", "campaign_id", "sent", "engaged", "opted_in",
-                      "completed", "web_complete", "terminated", "mode"))
+                      "completed", "web_complete", "terminated", "mode", "error"))
   expect_true(is.integer(res$sent))
   expect_true(is.character(res$phone))
 })
@@ -318,7 +332,7 @@ test_that("contacted_only with no contacted rows yields a typed zero-row frame",
   res <- disposition_run(1234, d)$consolidated
   expect_equal(nrow(res), 0L)
   expect_named(res, c("phone", "campaign_id", "sent", "engaged", "opted_in",
-                      "completed", "web_complete", "terminated", "mode"))
+                      "completed", "web_complete", "terminated", "mode", "error"))
   expect_true(is.integer(res$sent))
   expect_true(is.character(res$phone))
 })
@@ -365,7 +379,7 @@ test_that("duplicate phone is rejected even when a duplicate is never-attempted"
 test_that("disposition_input_columns: default set is exactly the read columns", {
   cols <- disposition_input_columns()
   expect_setequal(cols, c("phone", "id.intro.scriptDate", "id.intro.batchDate",
-                          "web_complete", "id.close.scriptDate",
+                          "web_complete", "error_code", "id.close.scriptDate",
                           "id.ineligible.scriptDate", "id.refusal.scriptDate",
                           "id.intro.finalText"))
   expect_false("campaignid" %in% cols)           # stamped from the argument
