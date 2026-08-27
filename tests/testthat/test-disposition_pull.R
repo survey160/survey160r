@@ -7,11 +7,12 @@
 # (or fails with `fail`, to exercise the error branches).
 mock_download <- function(capture = NULL, fail = NULL, not_found = FALSE,
                           write_first = FALSE) {
-  function(object_name, local_path, bucket) {
+  function(object_name, local_path, bucket, progress = FALSE) {
     if (!is.null(capture)) {
       capture$object_name <- object_name
       capture$bucket <- bucket
       capture$local_path <- local_path
+      capture$progress <- progress
     }
     # write_first mimics download_with_verify() writing a partial file to the
     # temp path before its size check fails, so disposition_pull()'s on.exit
@@ -153,6 +154,29 @@ test_that("invalid refresh is rejected", {
   expect_error(disposition_pull(refresh = NA), "single TRUE or FALSE")
   expect_error(disposition_pull(refresh = c(TRUE, FALSE)), "single TRUE or FALSE")
   expect_error(disposition_pull(refresh = 1), "single TRUE or FALSE")
+})
+
+test_that("invalid progress is rejected", {
+  expect_error(disposition_pull(progress = NULL), "single TRUE or FALSE")
+  expect_error(disposition_pull(progress = NA), "single TRUE or FALSE")
+  expect_error(disposition_pull(progress = c(TRUE, FALSE)), "single TRUE or FALSE")
+  expect_error(disposition_pull(progress = 1), "single TRUE or FALSE")
+})
+
+test_that("progress flag threads through to download_with_verify", {
+  stub_gcs_base()
+  tmp <- withr::local_tempdir()
+  cap <- new.env(parent = emptyenv())
+  mockery::stub(disposition_pull, "tools::R_user_dir", function(...) tmp)
+  mockery::stub(disposition_pull, "download_with_verify", mock_download(cap))
+
+  suppressMessages(disposition_pull(progress = TRUE))
+  expect_true(cap$progress)
+
+  # refresh past the cache the first pull just wrote, so download_with_verify
+  # runs again and records the FALSE.
+  suppressMessages(disposition_pull(progress = FALSE, refresh = TRUE))
+  expect_false(cap$progress)
 })
 
 test_that("different bucket overrides use separate default caches", {

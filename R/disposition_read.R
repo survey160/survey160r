@@ -501,6 +501,17 @@ disposition_screen <- function(sample, dataset, phone_col = "phone",
   sample
 }
 
+# Validate that `x` is exactly TRUE or FALSE, else stop with the standard
+# "<arg> must be a single TRUE or FALSE" message. Shared by disposition_pull()'s
+# `refresh` and `progress` flags -- kept out of the function body so its
+# cyclomatic complexity stays under the linter cap.
+.require_single_logical <- function(x, arg, fn) {
+  if (!is.logical(x) || length(x) != 1L || is.na(x)) {
+    stop_s160(sprintf("`%s` must be a single TRUE or FALSE.", arg), fn = fn)
+  }
+  invisible(x)
+}
+
 #' Download the disposition projection from GCS
 #'
 #' Pulls the phone-sorted disposition projection
@@ -528,6 +539,10 @@ disposition_screen <- function(sample, dataset, phone_col = "phone",
 #' @param refresh When \code{FALSE} (default), reuse an existing local copy;
 #'   \code{TRUE} always re-downloads (the projection is rebuilt each pipeline
 #'   pass, so refresh to pick up a newer one).
+#' @param progress Show a download progress bar. Defaults to
+#'   \code{interactive()}: a live bar in an interactive session, silent in batch
+#'   or scheduled runs. The projection is around 150 MB, so an interactive pull
+#'   otherwise looks stalled while it transfers.
 #' @return The local path to the downloaded Parquet (a single string).
 #' @seealso \code{\link{disposition_summary}}, \code{\link{disposition_screen}},
 #'   \code{\link{s160_gcs_init}}
@@ -539,12 +554,11 @@ disposition_screen <- function(sample, dataset, phone_col = "phone",
 #' }
 #' @export
 disposition_pull <- function(env = c("prod", "dev"), dest = NULL,
-                             bucket = NULL, refresh = FALSE) {
+                             bucket = NULL, refresh = FALSE,
+                             progress = interactive()) {
   env <- match.arg(env)
-  if (!is.logical(refresh) || length(refresh) != 1L || is.na(refresh)) {
-    stop_s160("`refresh` must be a single TRUE or FALSE.",
-              fn = "disposition_pull")
-  }
+  .require_single_logical(refresh, "refresh", "disposition_pull")
+  .require_single_logical(progress, "progress", "disposition_pull")
   if (is.null(bucket)) bucket <- sprintf("s160_disposition_%s", env)
   bucket <- resolve_bucket(bucket)
   object_name <- "disposition_by_phone/disposition_all.parquet"
@@ -589,7 +603,7 @@ disposition_pull <- function(env = c("prod", "dev"), dest = NULL,
   on.exit(unlink(tmp), add = TRUE)
   tryCatch(
     download_with_verify(object_name = object_name, local_path = tmp,
-                         bucket = bucket),
+                         bucket = bucket, progress = progress),
     s160_not_found = function(e) {
       stop_not_found("disposition projection", gcs_path, fn = "disposition_pull")
     },
