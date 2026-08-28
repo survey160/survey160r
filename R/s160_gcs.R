@@ -121,18 +121,29 @@ validate_campaign_id <- function(campaign_id) {
 # Compares the local file size against GCS object metadata after download.
 # Retries up to max_retries times on size mismatch with exponential backoff.
 download_with_verify <- function(object_name, local_path, max_retries = 2L,
-                                 bucket = NULL) {
+                                 bucket = NULL, progress = FALSE) {
   expected_size <- .expected_download_size(object_name, bucket)
 
   attempt <- 0L
   repeat {
     attempt <- attempt + 1L
     download_err <- tryCatch({
-      if (is.null(bucket)) {
-        gcs_get_object(object_name = object_name, saveToDisk = local_path, overwrite = TRUE)
+      fetch <- function() {
+        if (is.null(bucket)) {
+          gcs_get_object(object_name = object_name, saveToDisk = local_path, overwrite = TRUE)
+        } else {
+          gcs_get_object(object_name = object_name, saveToDisk = local_path,
+                         overwrite = TRUE, bucket = bucket)
+        }
+      }
+      # gcs_get_object() streams to disk through httr, so layering httr::progress()
+      # via the global config shows a live download bar with no change to the auth
+      # path. Interactive callers opt in (disposition_pull defaults progress to
+      # interactive()); batch and scheduled runs stay quiet.
+      if (isTRUE(progress)) {
+        httr::with_config(httr::progress(), fetch())
       } else {
-        gcs_get_object(object_name = object_name, saveToDisk = local_path,
-                       overwrite = TRUE, bucket = bucket)
+        fetch()
       }
       NULL
     }, error = function(e) e)

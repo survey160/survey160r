@@ -15,6 +15,13 @@
 
 ## Improvements
 
+* **`disposition_pull()` can show a download progress bar.** A new `progress`
+  argument (default `interactive()`) surfaces a live bar while the ~150 MB
+  projection downloads, so an interactive pull no longer reads as a hang; batch
+  and scheduled runs stay silent. The bar is layered onto the existing
+  `gcs_get_object()` transfer via `httr::progress()`, leaving the auth path
+  unchanged.
+
 * **Latency and disposition resolve the opener funnel from one shared module.**
   The name-agnostic opener-set resolution, the opt-in population, the send/reply
   timestamp coalesce, and now the composed per-recipient funnel masks

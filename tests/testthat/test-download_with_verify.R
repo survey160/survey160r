@@ -170,3 +170,16 @@ test_that("download retries then succeeds on second attempt", {
   expect_equal(captured$attempts, 2L)
   expect_true(file.exists(tmp))
 })
+
+test_that("progress = TRUE wraps the download in an httr progress bar", {
+  # progress = TRUE routes the (mocked) download through
+  # httr::with_config(httr::progress(), ...). The real httr calls run over the
+  # stub with no network request, so no bar prints, but the branch is exercised
+  # and the file still lands.
+  tmp <- tempfile(fileext = ".csv")
+  on.exit(unlink(tmp), add = TRUE)
+  stub_gcs_download_ok()
+
+  download_with_verify("100/data.csv", tmp, progress = TRUE)
+  expect_true(file.exists(tmp))
+})
