@@ -42,9 +42,10 @@ reference:
   - disposition_input_columns
 - title: Opt-out screening
   desc: >
-    Screen a phone sample against the opt-out list -- which numbers have opted
-    out -- annotating the sample without dropping rows.
+    Download the current opt-out list and screen a phone sample against it --
+    which numbers have opted out -- annotating the sample without dropping rows.
   contents:
+  - opt_out_pull
   - opt_out_screen
 
 articles:

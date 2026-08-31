@@ -37,7 +37,7 @@ disposition and current opt-out status in one pass, then filter once.
 }
 \examples{
 \dontrun{
-cleaned <- opt_out_screen(my_sample, "global_opt_out.parquet")
+cleaned <- opt_out_screen(my_sample, opt_out_pull())
 # chain with disposition, then drop on the caller's own rules:
 cleaned <- disposition_screen(cleaned, disposition_pull())
 subset(cleaned, !(opted_out \%in\% TRUE | ever_completed \%in\% TRUE))
