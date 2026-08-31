@@ -55,6 +55,31 @@ test_that("opt_out_screen tolerates a list with no date_added column", {
   expect_true(all(is.na(out$opt_out_date))) # no date column -> NA throughout
 })
 
+test_that("opt_out_screen preserves a POSIXct date_added (the snapshot's type)", {
+  # The real opt-out snapshot stores date_added as a timestamp, not a string;
+  # opt_out_date must carry the POSIXct through untouched (matched rows) and be
+  # NA for the rest -- lock the type-agnostic contract the fixtures otherwise
+  # only exercise with character dates.
+  ts <- as.POSIXct(c("2026-08-01 12:00:00", "2026-08-15 09:30:00"), tz = "UTC")
+  p <- write_opt_out_parquet(data.frame(
+    phone = c("2015550101", "2015550102"), date_added = ts,
+    stringsAsFactors = FALSE))
+  out <- opt_out_screen(
+    data.frame(phone = c("2015550101", "2015559999"), stringsAsFactors = FALSE), p)
+  expect_s3_class(out$opt_out_date, "POSIXct")
+  expect_equal(as.numeric(out$opt_out_date[1]), as.numeric(ts[1])) # instant kept
+  expect_true(is.na(out$opt_out_date[2]))                          # absent -> NA
+})
+
+test_that("opt_out_screen returns a 0-row sample with both columns appended", {
+  out <- opt_out_screen(
+    data.frame(phone = character(0), region = character(0),
+               stringsAsFactors = FALSE), .opt_out_base())
+  expect_equal(nrow(out), 0L)
+  expect_equal(names(out), c("phone", "region", "opted_out", "opt_out_date"))
+  expect_type(out$opted_out, "logical")
+})
+
 test_that("opt_out_screen honors a custom phone_col", {
   sample <- data.frame(cell = c("2015550101", "2015559999"),
                        stringsAsFactors = FALSE)
