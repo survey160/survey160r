@@ -2,6 +2,18 @@
 
 ## Features
 
+* **Screen a sample against the opt-out list: `opt_out_screen()`.** A new
+  reader parallel to `disposition_screen()`. It takes a phone sample and a
+  path to the opt-out Parquet (a `phone` column plus an optional `date_added`)
+  and returns the sample unchanged with two columns appended, 1:1 with the
+  input rows: `opted_out` (logical) and `opt_out_date` (the list's
+  `date_added`, uninterpreted). A valid phone absent from the list is
+  `opted_out = FALSE`; a blank/unparseable phone is `opted_out = NA` (unknown,
+  not a claim it is contactable). Like `disposition_screen()` it **never drops
+  rows** -- the caller decides what to suppress -- so the two screens chain:
+  annotate a sample on prior disposition and current opt-out status in one
+  pass, then filter once on the caller's own rules.
+
 * **Disposition frame now carries the raw carrier `error` code.**
   `disposition_run()` emits an `error` column: the per-recipient Bandwidth
   delivery-error code from the export's `error_code` field, passed through as a
@@ -14,6 +26,12 @@
   enrichment columns (`error`); `date_closed_on` remains a downstream placeholder.
 
 ## Improvements
+
+* **Phone matching is now a single shared normalizer.** The digit-normalize
+  step (strip non-digits, drop a leading US country code) moved to a private
+  `.normalize_phone()` in `aaa_utils.R`, so `disposition_screen()` and the new
+  `opt_out_screen()` match a sample against their datasets identically. No
+  behavior change.
 
 * **`disposition_pull()` can show a download progress bar.** A new `progress`
   argument (default `interactive()`) surfaces a live bar while the ~150 MB

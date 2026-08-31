@@ -298,6 +298,23 @@ write_disposition_parquet <- function(rows) {
              date_closed_on = as.Date(date_closed_on), stringsAsFactors = FALSE)
 }
 
+# Write an opt-out fixture (phone + date_added) to a temp Parquet, read back
+# through the real nanoparquet path -- no arrow, no network. Shared by the
+# opt_out_screen reader tests.
+write_opt_out_parquet <- function(rows) {
+  p <- tempfile(fileext = ".parquet")
+  nanoparquet::write_parquet(rows, p)
+  p
+}
+
+# One opt-out row (phone + date_added). date_added is carried through the screen
+# uninterpreted, so the fixture uses a plain string for a deterministic assertion
+# (the real snapshot stores a timestamp; opt_out_screen is type-agnostic).
+.opt_out_row <- function(phone, date_added = NA_character_) {
+  data.frame(phone = phone, date_added = as.character(date_added),
+             stringsAsFactors = FALSE)
+}
+
 # One full-schema (phone, campaign) record; override any column. Defaults model
 # a contacted-but-no-reply t2w record. Shared by the disposition_records tests.
 .record_row <- function(phone, campaign_id, sent = 1L, engaged = 0L,
