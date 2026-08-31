@@ -40,16 +40,8 @@
                       "opted_in", "completed", "web_complete", "terminated",
                       "error", "loi", "topic", "mode", "date_closed_on")
 
-# Digit-normalize a phone for matching: strip non-digits, then drop a leading US
-# country code so an 11-digit "1NXXNXXXXXX" matches a stored 10-digit number.
-# Blank/NA -> NA.
-.disposition_normalize_phone <- function(x) {
-  x <- gsub("[^0-9]", "", as.character(x))
-  x[!nzchar(x)] <- NA_character_
-  eleven <- !is.na(x) & nchar(x) == 11L & startsWith(x, "1")
-  x[eleven] <- substr(x[eleven], 2L, 11L)
-  x
-}
+# Phone matching uses the shared .normalize_phone (aaa_utils.R) so a sample
+# matches the disposition and opt-out datasets identically.
 
 # Derive one disposition category per row from the 0/1 funnel flags, by funnel
 # precedence (later assignment wins). A t2w_external row has completed = NA, so
@@ -96,7 +88,7 @@
   if (is.null(phones)) {
     return(NULL)
   }
-  req <- unique(.disposition_normalize_phone(phones))
+  req <- unique(.normalize_phone(phones))
   req[!is.na(req)]
 }
 
@@ -120,7 +112,7 @@
 # One combined keep-mask, subset once -- avoids the intermediate frame copies a
 # filter-per-predicate chain allocates.
 .disposition_filter <- function(data, keep_phones, campaign_ids, date_from, date_to) {
-  data$phone <- .disposition_normalize_phone(data$phone)
+  data$phone <- .normalize_phone(data$phone)
   keep <- !is.na(data$phone)
   if (!is.null(keep_phones)) {
     keep <- keep & data$phone %in% keep_phones
@@ -496,7 +488,7 @@ disposition_screen <- function(sample, dataset, phone_col = "phone",
                               campaign_ids = campaign_ids,
                               date_from = date_from, date_to = date_to,
                               fn = "disposition_screen")
-  idx <- match(.disposition_normalize_phone(sample[[phone_col]]), summ$phone)
+  idx <- match(.normalize_phone(sample[[phone_col]]), summ$phone)
   for (col in disposition_cols) sample[[col]] <- summ[[col]][idx]
   sample
 }
