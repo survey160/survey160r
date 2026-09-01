@@ -1,14 +1,16 @@
 #' survey160r: R Client for Survey160 Data
 #'
 #' @description
-#' Access Survey160 campaign data from R. The package has three layers: a raw
-#' data-access layer that reaches Survey160's own systems (the \code{s160_*}
-#' functions), and two higher-level surfaces built on top of it. \strong{Latency}
-#' analysis is pure (in-memory data frame in, data frame out, no I/O).
-#' \strong{Disposition} screening reads the Parquet projection
-#' (\code{\link{disposition_summary}}, \code{\link{disposition_screen}},
-#' \code{\link{disposition_records}}) or fetches it from GCS
-#' (\code{\link{disposition_pull}}).
+#' Access Survey160 campaign data from R, in a raw data-access layer that reaches
+#' Survey160's own systems (the \code{s160_*} functions) plus higher-level
+#' surfaces built on top of it. \strong{Latency} analysis is pure (in-memory data
+#' frame in, data frame out, no I/O). \strong{Disposition} screening reads the
+#' Parquet projection (\code{\link{disposition_summary}},
+#' \code{\link{disposition_screen}}, \code{\link{disposition_records}}) or fetches
+#' it from GCS (\code{\link{disposition_pull}}). \strong{Opt-out} screening
+#' annotates a sample with each number's opt-out status
+#' (\code{\link{opt_out_screen}}), fetched from GCS with
+#' \code{\link{opt_out_pull}}.
 #'
 #' @section First-time setup:
 #' Most functions that touch Survey160 data need a one-time sign-in:
@@ -35,6 +37,16 @@
 #'     -- ad-hoc query surfaces over the same dataset (one row per phone / one
 #'     row per \code{(phone, campaign_id)}); pass \code{disposition_summary()} a
 #'     data frame to summarize one you already read.
+#' }
+#'
+#' @section Opt-out screening:
+#' Answer "which of these phone numbers have opted out?" and flag or drop them
+#' before you field. Pull the opt-out list once, then screen a sample in place:
+#' \itemize{
+#'   \item \code{\link{opt_out_pull}} -- download the opt-out list from GCS
+#'     (cached locally; it shares the disposition bucket).
+#'   \item \code{\link{opt_out_screen}} -- append \code{opted_out} and
+#'     \code{opt_out_date} to your sample, 1:1 with its rows, never dropping any.
 #' }
 #'
 #' @section Latency analysis:

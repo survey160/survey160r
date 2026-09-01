@@ -39,6 +39,12 @@
   `opt_out_pull()` + `opt_out_screen()`, including chaining with disposition
   screening and filtering once.
 
+* **Documentation consistency pass alongside the opt-out family.** Corrected
+  `disposition_pull()`'s `dest` help (a directory saves `<bucket>.parquet`, not
+  the previously-documented `disposition_all_<env>.parquet`), added reciprocal
+  `See also` links between the opt-out and disposition screens, and listed
+  opt-out screening in the package overview (`?survey160r`).
+
 * **Phone matching is now a single shared normalizer.** The digit-normalize
   step (strip non-digits, drop a leading US country code) moved to a private
   `.normalize_phone()` in `aaa_utils.R`, so `disposition_screen()` and the new

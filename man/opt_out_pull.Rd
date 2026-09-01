@@ -14,7 +14,9 @@ opt_out_pull(
 }
 \arguments{
 \item{env}{Environment for the source bucket: \code{"prod"} (default) or
-\code{"dev"} (the \code{s160_disposition_<env>} buckets).}
+\code{"dev"} (the \code{s160_disposition_<env>} buckets). There is no
+staging tier, so the values differ from \code{\link{s160_api_auth}}'s
+\code{prod}/\code{staging} by design.}
 
 \item{dest}{Where to save. \code{NULL} (default) caches under
 \code{tools::R_user_dir("survey160r", "cache")}. A directory saves the

@@ -457,7 +457,8 @@ disposition_records <- function(dataset, phones = NULL, campaign_ids = NULL,
 #'   \code{ever_*} flags \code{FALSE}, \code{latest_disposition =
 #'   "never_contacted"}, \code{campaigns = NA}); only a phone that
 #'   digit-normalizes to nothing (blank/unparseable) gets an all-\code{NA} block.
-#' @seealso \code{\link{disposition_summary}}, \code{\link{disposition_records}}
+#' @seealso \code{\link{disposition_summary}}, \code{\link{disposition_records}},
+#'   \code{\link{opt_out_screen}}
 #' @examples
 #' \dontrun{
 #' dataset <- disposition_pull()
@@ -494,9 +495,9 @@ disposition_screen <- function(sample, dataset, phone_col = "phone",
 }
 
 # Validate that `x` is exactly TRUE or FALSE, else stop with the standard
-# "<arg> must be a single TRUE or FALSE" message. Shared by disposition_pull()'s
-# `refresh` and `progress` flags -- kept out of the function body so its
-# cyclomatic complexity stays under the linter cap.
+# "<arg> must be a single TRUE or FALSE" message. Shared by disposition_pull()
+# and opt_out_pull()'s `refresh` and `progress` flags -- kept out of the function
+# body so their cyclomatic complexity stays under the linter cap.
 .require_single_logical <- function(x, arg, fn) {
   if (!is.logical(x) || length(x) != 1L || is.na(x)) {
     stop_s160(sprintf("`%s` must be a single TRUE or FALSE.", arg), fn = fn)
@@ -523,9 +524,9 @@ disposition_screen <- function(sample, dataset, phone_col = "phone",
 #'   \code{prod}/\code{staging} by design -- each names the environments its own
 #'   subsystem actually has.
 #' @param dest Where to save. \code{NULL} (default) caches under
-#'   \code{tools::R_user_dir("survey160r", "cache")}. A directory saves
-#'   \code{disposition_all_<env>.parquet} inside it; any other single string is
-#'   treated as the exact output path (its parent is created).
+#'   \code{tools::R_user_dir("survey160r", "cache")}. A directory saves the
+#'   default filename (\code{<bucket>.parquet}) inside it; any other single
+#'   string is treated as the exact output path (its parent is created).
 #' @param bucket Source GCS bucket. \code{NULL} (default) derives it from
 #'   \code{env}; pass a bucket name to override.
 #' @param refresh When \code{FALSE} (default), reuse an existing local copy;
@@ -537,7 +538,7 @@ disposition_screen <- function(sample, dataset, phone_col = "phone",
 #'   otherwise looks stalled while it transfers.
 #' @return The local path to the downloaded Parquet (a single string).
 #' @seealso \code{\link{disposition_summary}}, \code{\link{disposition_screen}},
-#'   \code{\link{s160_gcs_init}}
+#'   \code{\link{opt_out_pull}}, \code{\link{s160_gcs_init}}
 #' @examples
 #' \dontrun{
 #' s160_gcs_init(bucket = "s160_disposition_prod")   # one-time browser OAuth
