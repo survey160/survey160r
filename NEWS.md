@@ -34,6 +34,11 @@
 
 ## Improvements
 
+* **New Opt-out screening guide.** `vignette("opt-out")` (and a matching README
+  section) walks through pulling the opt-out list and screening a sample with
+  `opt_out_pull()` + `opt_out_screen()`, including chaining with disposition
+  screening and filtering once.
+
 * **Phone matching is now a single shared normalizer.** The digit-normalize
   step (strip non-digits, drop a leading US country code) moved to a private
   `.normalize_phone()` in `aaa_utils.R`, so `disposition_screen()` and the new

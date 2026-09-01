@@ -1,0 +1,66 @@
+---
+title: "Opt-out screening"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Opt-out screening}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+# Auth/network chunks are shown but not run at build time.
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>", eval = FALSE)
+```
+
+Screen a phone sample against the **opt-out list** -- every number that has opted out of Survey160 messaging -- to flag or drop opted-out numbers before you field. Assumes you have completed First-time setup (see the package README): GCS access to `s160_disposition_prod`.
+
+## Screen a sample
+
+Pull the list once (cached), then annotate your sample in place:
+
+```{r}
+library(survey160r)
+s160_gcs_init("s160_disposition_prod")   # one browser sign-in, cached
+optout <- opt_out_pull()                  # small download, then cached
+
+cleaned <- opt_out_screen(my_sample, optout)
+kept <- subset(cleaned, !(opted_out %in% TRUE))
+```
+
+`opt_out_screen()` returns `my_sample` unchanged with two columns appended 1:1 (see [What you get back](#what-you-get-back)). The `%in% TRUE` filter drops the opted-out numbers; a blank or unparseable phone screens to `NA` and is kept, so it surfaces for correction rather than being silently treated as contactable.
+
+## Screen for opt-out and prior contact together
+
+The opt-out and disposition screens are independent and compose -- each appends its own columns and never drops rows -- so chain them and filter once on your own rules:
+
+```{r}
+cleaned <- opt_out_screen(my_sample, opt_out_pull())
+cleaned <- disposition_screen(cleaned, disposition_pull())
+
+kept <- subset(cleaned,
+  !(opted_out %in% TRUE | ever_completed %in% TRUE | ever_terminated %in% TRUE))
+```
+
+Both lists live in the same `s160_disposition_prod` bucket and cache to separate files, so one `s160_gcs_init()` covers both pulls.
+
+## What you get back
+
+`opt_out_screen()` returns your sample with two columns appended, 1:1 with the input rows and in input order:
+
+| Column | Meaning |
+|---|---|
+| `opted_out` | `TRUE` if the number is on the opt-out list, `FALSE` if it is absent, `NA` if the phone is blank or unparseable. |
+| `opt_out_date` | When the number opted out (carried from the list); `NA` for numbers not on it. |
+
+Your original phone column and every other column of the sample are returned untouched.
+
+## Notes
+
+- **`NA` is not "contactable".** A blank or unparseable phone screens to `opted_out = NA`, not `FALSE` -- the list cannot speak to a number it cannot read. Keep those rows (the `%in% TRUE` idiom does) and fix the phones.
+- **The complete list, not contacted-only.** Unlike the disposition dataset (recipients Survey160 has contacted), the opt-out list covers every opted-out number, whether or not it has been in a campaign -- so screen against it even for a fresh, never-fielded sample.
+- **Stale cache.** The list is re-published on every sync; `opt_out_pull(refresh = TRUE)` forces a fresh download.
+- **`env`.** `opt_out_pull()`'s `env` is `"prod"` (default) or `"dev"` -- the bucket has no staging tier, so this differs from `s160_api_auth()`'s `"prod"` / `"staging"`.
+
+## See also
+
+`?opt_out_screen`, `?opt_out_pull`. To screen the same sample on prior contact history, `vignette("disposition")`. For latency reports, `vignette("latency")`.
