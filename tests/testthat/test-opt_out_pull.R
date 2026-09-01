@@ -48,6 +48,7 @@ test_that("opt-out and disposition caches do not collide in a shared bucket", {
     })
   p_disp <- suppressMessages(disposition_pull(dest = d))
   p_opt  <- suppressMessages(opt_out_pull(dest = d))
-  expect_false(p_disp == p_opt)
+  expect_equal(basename(p_disp), "s160_disposition_prod.parquet")
+  expect_equal(basename(p_opt), "s160_disposition_prod.global_opt_out.parquet")
   expect_true(file.exists(p_disp) && file.exists(p_opt))
 })
