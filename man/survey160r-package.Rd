@@ -23,8 +23,9 @@ Most functions that touch Survey160 data need a one-time sign-in:
 \itemize{
   \item \code{\link{s160_gcs_init}} -- authenticate to Google Cloud Storage
     (a browser sign-in on first run; the token is cached). Needed to read
-    campaign exports and to \code{\link{disposition_pull}} the disposition
-    projection (when it must download; a cache hit needs no auth).
+    campaign exports and to \code{\link{disposition_pull}} /
+    \code{\link{opt_out_pull}} the disposition projection and opt-out list
+    (when they must download; a cache hit needs no auth).
   \item \code{\link{s160_api_auth}} -- authenticate to the Survey160 REST API,
     only needed to trigger a \emph{fresh} export via
     \code{\link{s160_api_campaign_results}}.

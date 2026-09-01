@@ -23,6 +23,7 @@ library(survey160r)
 s160_gcs_init("s160_disposition_prod")   # one browser sign-in, cached
 optout <- opt_out_pull()                  # small download, then cached
 
+my_sample <- data.frame(phone = c("2015550101", "2015550102"))   # your phone sample
 cleaned <- opt_out_screen(my_sample, optout)
 kept <- subset(cleaned, !(opted_out %in% TRUE))
 ```
