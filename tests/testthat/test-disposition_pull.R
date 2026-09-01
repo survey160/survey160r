@@ -5,7 +5,7 @@
 
 test_that("disposition_pull forwards the projection params and resolves env", {
   cap <- new.env(parent = emptyenv())
-  mockery::stub(disposition_pull, ".gcs_pull_cached", function(...) {
+  testthat::local_mocked_bindings(.gcs_pull_cached = function(...) {
     cap$args <- list(...)
     "PATH"
   })
@@ -21,7 +21,7 @@ test_that("disposition_pull forwards the projection params and resolves env", {
 
 test_that("disposition_pull defaults env to prod and threads its args", {
   cap <- new.env(parent = emptyenv())
-  mockery::stub(disposition_pull, ".gcs_pull_cached", function(...) {
+  testthat::local_mocked_bindings(.gcs_pull_cached = function(...) {
     cap$args <- list(...)
     "P"
   })

@@ -739,9 +739,20 @@ s160_gcs_campaign_results_status <- function(campaign_id, bucket = NULL) {
       stop_failed(sprintf("download %s", gcs_path), conditionMessage(e), fn = fn)
     }
   )
-  if (!file.rename(tmp, local_path) &&
-        !file.copy(tmp, local_path, overwrite = TRUE)) {
-    stop_failed("move the downloaded file into place", local_path, fn = fn)
+  # Move the temp file into place. file.rename is atomic on the same filesystem
+  # (tmp lives in dirname(local_path)); when it cannot overwrite an existing
+  # dest (e.g. on Windows), fall back to a copy -- but move any existing cache
+  # aside first so a failed copy is rolled back rather than left as a partial
+  # file that a later refresh = FALSE would serve.
+  if (!file.rename(tmp, local_path)) {
+    backup <- paste0(local_path, ".bak")
+    had_cache <- file.exists(local_path) && file.rename(local_path, backup)
+    if (file.copy(tmp, local_path, overwrite = TRUE)) {
+      if (had_cache) unlink(backup)
+    } else {
+      if (had_cache) file.rename(backup, local_path)
+      stop_failed("move the downloaded file into place", local_path, fn = fn)
+    }
   }
   local_path
 }

@@ -44,6 +44,15 @@ gpc_args <- function(dest = NULL, bucket = NULL, refresh = FALSE,
        cache_suffix = ".parquet", noun = "disposition projection")
 }
 
+# Force only the tmp -> local_path move to fail (its `from` ends in .part),
+# leaving the backup-aside and restore renames working, so the copy fallback's
+# rollback is exercised realistically rather than every rename failing at once.
+fail_part_rename <- function() {
+  function(from, to) {
+    if (grepl("\\.part$", from)) FALSE else base::file.rename(from, to)
+  }
+}
+
 test_that("default pulls into the user cache and returns the path", {
   stub_gcs_base()
   tmp <- withr::local_tempdir()
@@ -232,15 +241,38 @@ test_that("a failed download preserves the cache and leaves no partial file", {
   expect_length(list.files(d, pattern = "\\.part$"), 0L)   # written partial cleaned up
 })
 
-test_that("rename fallback copies, and a total move failure errors", {
+test_that("rename fallback copies when there is no existing cache", {
   stub_gcs_base()
   d <- withr::local_tempdir()
   mockery::stub(.gcs_pull_cached, "download_with_verify", mock_download())
-  mockery::stub(.gcs_pull_cached, "file.rename", function(...) FALSE)
-  p <- suppressMessages(do.call(.gcs_pull_cached, gpc_args(dest = d)))  # rename -> copy
+  mockery::stub(.gcs_pull_cached, "file.rename", fail_part_rename())
+  p <- suppressMessages(do.call(.gcs_pull_cached, gpc_args(dest = d)))
   expect_true(file.exists(p))
+})
+
+test_that("rename fallback copies over an existing cache and drops the backup", {
+  stub_gcs_base()
+  d <- withr::local_tempdir()
+  cached <- file.path(d, "s160_disposition_prod.parquet")
+  writeLines("old", cached)
+  mockery::stub(.gcs_pull_cached, "download_with_verify", mock_download())
+  mockery::stub(.gcs_pull_cached, "file.rename", fail_part_rename())
+  p <- suppressMessages(do.call(.gcs_pull_cached, gpc_args(dest = d, refresh = TRUE)))
+  expect_equal(readLines(p), "x")                          # new (mock) content installed
+  expect_length(list.files(d, pattern = "\\.bak$"), 0L)    # backup cleaned up
+})
+
+test_that("a failed copy fallback restores the existing cache and errors", {
+  stub_gcs_base()
+  d <- withr::local_tempdir()
+  cached <- file.path(d, "s160_disposition_prod.parquet")
+  writeLines("good", cached)
+  mockery::stub(.gcs_pull_cached, "download_with_verify", mock_download())
+  mockery::stub(.gcs_pull_cached, "file.rename", fail_part_rename())
   mockery::stub(.gcs_pull_cached, "file.copy", function(...) FALSE)
   expect_error(suppressMessages(do.call(.gcs_pull_cached,
                                         gpc_args(dest = d, refresh = TRUE))),
-               "move the downloaded file into place")       # both fail -> error
+               "move the downloaded file into place")
+  expect_equal(readLines(cached), "good")                  # original cache restored
+  expect_length(list.files(d, pattern = "\\.bak$"), 0L)    # no backup left behind
 })
