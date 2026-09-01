@@ -3,15 +3,16 @@
 [![R-CMD-check](https://github.com/survey160/survey160r/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/survey160/survey160r/actions/workflows/R-CMD-check.yaml)
 [![R-universe](https://survey160.r-universe.dev/badges/survey160r)](https://survey160.r-universe.dev/survey160r)
 
-R package for accessing Survey160 campaign data, in three layers:
+R package for accessing Survey160 campaign data, across these areas:
 
 - **[Raw data access](#raw-data-access)** -- read campaign results from Google Cloud Storage (`s160_gcs_*`) and trigger fresh exports via the API (`s160_api_*`).
 - **[Latency analysis](vignettes/latency.Rmd)** -- compute a per-campaign recipient-latency report from a raw campaign CSV, as an in-memory R object.
 - **[Disposition screening](vignettes/disposition.Rmd)** -- screen a phone sample against every recipient Survey160 has contacted, dropping numbers already completed or refused before you field.
+- **[Opt-out screening](vignettes/opt-out.Rmd)** -- screen a phone sample against the opt-out list, flagging numbers that have opted out before you field.
 
 **New here?** To screen a sample before fielding, jump to [Disposition screening](#disposition-screening). First time on this machine, start with [First-time setup](#first-time-setup) -- you need a credential and a bucket grant before any data call works.
 
-The pure entry points `latency_run()` and `disposition_run()` take an in-memory data frame and return a list with a `consolidated` data frame plus provenance `meta`. The disposition readers (`disposition_summary()` / `disposition_records()` / `disposition_screen()`) read the Parquet projection and return a data frame, and `disposition_pull()` downloads that projection from GCS and returns a local path. Fleet orchestration and Parquet persistence live in downstream consumer projects. See `?survey160r` for an overview from the R console.
+The pure entry points `latency_run()` and `disposition_run()` take an in-memory data frame and return a list with a `consolidated` data frame plus provenance `meta`. The disposition readers (`disposition_summary()` / `disposition_records()` / `disposition_screen()`) read the Parquet projection and return a data frame, and `disposition_pull()` downloads that projection from GCS and returns a local path. The opt-out readers mirror that pair: `opt_out_pull()` downloads the opt-out list and `opt_out_screen()` annotates a sample with each number's opt-out status. Fleet orchestration and Parquet persistence live in downstream consumer projects. See `?survey160r` for an overview from the R console.
 
 ## Installation
 
@@ -112,6 +113,23 @@ subset(cleaned, !(ever_completed %in% TRUE | ever_terminated %in% TRUE))
 
 Full walkthrough -- the appended columns, ad-hoc queries, the read-once tip, and beta caveats -- in the **[disposition guide](vignettes/disposition.Rmd)** (`vignette("disposition")` once installed).
 
+## Opt-out screening
+
+Screen a phone sample against the opt-out list, flagging numbers that have opted out before you field. Pull the shared list once, then screen in place:
+
+```r
+library(survey160r)
+s160_gcs_init(bucket = "s160_disposition_prod")   # one-time browser sign-in (cached)
+
+my_sample <- data.frame(phone = c("2015550101", "2015550102"))  # your list; extra columns are kept
+optout    <- opt_out_pull()                       # small download, then cached
+cleaned   <- opt_out_screen(my_sample, optout)    # opted_out + opt_out_date appended 1:1
+# drop opted-out numbers; blank-phone rows screen to NA and are kept
+subset(cleaned, !(opted_out %in% TRUE))
+```
+
+The opt-out list lives in the same `s160_disposition_prod` bucket as the disposition dataset, so the same access covers both, and the two screens chain (annotate for opt-out and prior contact, then filter once). Full walkthrough in the **[opt-out guide](vignettes/opt-out.Rmd)** (`vignette("opt-out")` once installed).
+
 ## First-time setup
 
 Before any data call works you need, in order:
@@ -159,7 +177,7 @@ again. Get these from your team lead.
 
 ## Documentation
 
-- **Guides (articles):** [Latency analysis](vignettes/latency.Rmd) and [Disposition screening](vignettes/disposition.Rmd) -- also rendered as Articles on the [package site](https://survey160.r-universe.dev/survey160r). In R: `vignette("latency")` / `vignette("disposition")`.
+- **Guides (articles):** [Latency analysis](vignettes/latency.Rmd), [Disposition screening](vignettes/disposition.Rmd), and [Opt-out screening](vignettes/opt-out.Rmd) -- also rendered as Articles on the [package site](https://survey160.r-universe.dev/survey160r). In R: `vignette("latency")` / `vignette("disposition")` / `vignette("opt-out")`.
 - **Function reference:** `?survey160r`, or `help(package = "survey160r")`.
 - **Changelog:** `NEWS.md` (or `news(package = "survey160r")` after install). Cutting a release: [`RELEASING.md`](RELEASING.md). Project conventions and agent context: `CLAUDE.md`.
 
@@ -179,7 +197,7 @@ Common symptoms and fixes:
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| `GCS not initialized. Run s160_gcs_init() first.` | A GCS or disposition reader was called before authenticating | Run `s160_gcs_init(bucket = ...)` first |
+| `GCS not initialized. Run s160_gcs_init() first.` | A GCS, disposition, or opt-out reader was called before authenticating | Run `s160_gcs_init(bucket = ...)` first |
 | A **403** after a successful Google sign-in | Your account lacks Storage Object Viewer on that bucket | Ask a sysadmin to add you to `gcp-campaign-readers` for the bucket (see [First-time setup](#first-time-setup)) |
 | `could not find function "disposition_pull"` | R-universe has not rebuilt the latest release yet | Install from GitHub (`pak::pkg_install("survey160/survey160r")`), then restart R |
 | `disposition_pull()` returns data you know is out of date | It reused a cached copy | Re-download with `disposition_pull(refresh = TRUE)` |

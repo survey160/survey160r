@@ -92,20 +92,6 @@
   req[!is.na(req)]
 }
 
-# Human-readable age of a file from its mtime, for the cache-hit message. Skew-
-# safe: an mtime slightly in the future clamps to "0 min old".
-.format_file_age <- function(path) {
-  mins <- max(0, as.numeric(difftime(Sys.time(), file.mtime(path), units = "mins")),
-              na.rm = TRUE)
-  if (mins < 60) {
-    sprintf("%d min old", as.integer(round(mins)))
-  } else if (mins < 60 * 48) {
-    sprintf("%d hr old", as.integer(round(mins / 60)))
-  } else {
-    sprintf("%d days old", as.integer(round(mins / 1440)))
-  }
-}
-
 # Normalize phone and apply the row-scope filters (requested phones, campaigns,
 # date_closed_on range). Pure; `data` already has .DISPOSITION_READ_COLS, and
 # `date_from`/`date_to` are already coerced to Date (or NULL) by the caller.
@@ -457,7 +443,8 @@ disposition_records <- function(dataset, phones = NULL, campaign_ids = NULL,
 #'   \code{ever_*} flags \code{FALSE}, \code{latest_disposition =
 #'   "never_contacted"}, \code{campaigns = NA}); only a phone that
 #'   digit-normalizes to nothing (blank/unparseable) gets an all-\code{NA} block.
-#' @seealso \code{\link{disposition_summary}}, \code{\link{disposition_records}}
+#' @seealso \code{\link{disposition_summary}}, \code{\link{disposition_records}},
+#'   \code{\link{opt_out_screen}}
 #' @examples
 #' \dontrun{
 #' dataset <- disposition_pull()
@@ -493,17 +480,6 @@ disposition_screen <- function(sample, dataset, phone_col = "phone",
   sample
 }
 
-# Validate that `x` is exactly TRUE or FALSE, else stop with the standard
-# "<arg> must be a single TRUE or FALSE" message. Shared by disposition_pull()'s
-# `refresh` and `progress` flags -- kept out of the function body so its
-# cyclomatic complexity stays under the linter cap.
-.require_single_logical <- function(x, arg, fn) {
-  if (!is.logical(x) || length(x) != 1L || is.na(x)) {
-    stop_s160(sprintf("`%s` must be a single TRUE or FALSE.", arg), fn = fn)
-  }
-  invisible(x)
-}
-
 #' Download the disposition projection from GCS
 #'
 #' Pulls the phone-sorted disposition projection
@@ -523,9 +499,9 @@ disposition_screen <- function(sample, dataset, phone_col = "phone",
 #'   \code{prod}/\code{staging} by design -- each names the environments its own
 #'   subsystem actually has.
 #' @param dest Where to save. \code{NULL} (default) caches under
-#'   \code{tools::R_user_dir("survey160r", "cache")}. A directory saves
-#'   \code{disposition_all_<env>.parquet} inside it; any other single string is
-#'   treated as the exact output path (its parent is created).
+#'   \code{tools::R_user_dir("survey160r", "cache")}. A directory saves the
+#'   default filename (\code{<bucket>.parquet}) inside it; any other single
+#'   string is treated as the exact output path (its parent is created).
 #' @param bucket Source GCS bucket. \code{NULL} (default) derives it from
 #'   \code{env}; pass a bucket name to override.
 #' @param refresh When \code{FALSE} (default), reuse an existing local copy;
@@ -537,7 +513,7 @@ disposition_screen <- function(sample, dataset, phone_col = "phone",
 #'   otherwise looks stalled while it transfers.
 #' @return The local path to the downloaded Parquet (a single string).
 #' @seealso \code{\link{disposition_summary}}, \code{\link{disposition_screen}},
-#'   \code{\link{s160_gcs_init}}
+#'   \code{\link{opt_out_pull}}, \code{\link{s160_gcs_init}}
 #' @examples
 #' \dontrun{
 #' s160_gcs_init(bucket = "s160_disposition_prod")   # one-time browser OAuth
@@ -549,65 +525,9 @@ disposition_pull <- function(env = c("prod", "dev"), dest = NULL,
                              bucket = NULL, refresh = FALSE,
                              progress = interactive()) {
   env <- match.arg(env)
-  .require_single_logical(refresh, "refresh", "disposition_pull")
-  .require_single_logical(progress, "progress", "disposition_pull")
-  if (is.null(bucket)) bucket <- sprintf("s160_disposition_%s", env)
-  bucket <- resolve_bucket(bucket)
-  object_name <- "disposition_by_phone/disposition_all.parquet"
-  # Key the default cache on the resolved bucket, not just env: two `bucket=`
-  # overrides with `dest = NULL` must not share (and silently reuse) one file.
-  default_name <- sprintf("%s.parquet", bucket)
-
-  if (is.null(dest)) {
-    cache_dir <- tools::R_user_dir("survey160r", "cache")
-    dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
-    local_path <- file.path(cache_dir, default_name)
-  } else if (!is.character(dest) || length(dest) != 1L || !nzchar(trimws(dest))) {
-    stop_s160("`dest` must be a single non-empty path or directory.",
-              fn = "disposition_pull")
-  } else if (dir.exists(dest)) {
-    local_path <- file.path(dest, default_name)
-  } else {
-    dir.create(dirname(dest), recursive = TRUE, showWarnings = FALSE)
-    local_path <- dest
-  }
-
-  gcs_path <- sprintf("gs://%s/%s", bucket, object_name)
-  if (!refresh && file.exists(local_path)) {
-    message(sprintf("Using cached disposition projection (%s): %s",
-                    .format_file_age(local_path), local_path))
-    return(local_path)
-  }
-
-  # A download needs an authenticated GCS session. `disposition_pull()` always
-  # resolves a concrete bucket (so resolve_bucket() never reaches this check),
-  # yet the download still fails without s160_gcs_init(); check explicitly here
-  # so an un-initialized session gets the standard clear message rather than a
-  # raw googleCloudStorageR error wrapped as "Failed to download". Placed after
-  # the cache-hit return: reusing a local copy needs no auth.
-  check_gcs_ready()
-
-  message(sprintf("Downloading %s", gcs_path))
-  # Download to a temp file in the destination dir, then atomically move it into
-  # place on success -- a failed or partial download never poisons the cache,
-  # and any existing good copy survives.
-  tmp <- tempfile(tmpdir = dirname(local_path), fileext = ".part")
-  on.exit(unlink(tmp), add = TRUE)
-  tryCatch(
-    download_with_verify(object_name = object_name, local_path = tmp,
-                         bucket = bucket, progress = progress),
-    s160_not_found = function(e) {
-      stop_not_found("disposition projection", gcs_path, fn = "disposition_pull")
-    },
-    error = function(e) {
-      stop_failed(sprintf("download %s", gcs_path), conditionMessage(e),
-                  fn = "disposition_pull")
-    }
-  )
-  if (!file.rename(tmp, local_path) &&
-        !file.copy(tmp, local_path, overwrite = TRUE)) {
-    stop_failed("move the downloaded file into place", local_path,
-                fn = "disposition_pull")
-  }
-  local_path
+  .gcs_pull_cached(
+    fn = "disposition_pull", env = env, dest = dest, bucket = bucket,
+    refresh = refresh, progress = progress,
+    object_name = "disposition_by_phone/disposition_all.parquet",
+    cache_suffix = ".parquet", noun = "disposition projection")
 }

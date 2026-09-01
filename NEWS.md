@@ -2,6 +2,13 @@
 
 ## Features
 
+* **Download the opt-out list: `opt_out_pull()`.** Fetches the opt-out Parquet
+  from the environment's `s160_disposition_<env>` bucket to a local cache and
+  returns the path, ready to hand straight to `opt_out_screen()`. Parallel to
+  `disposition_pull()` (same auth, caching, and `refresh`/`dest`/`progress`
+  arguments); it shares the disposition bucket but caches to a distinct file, so
+  the two pulls never collide.
+
 * **Screen a sample against the opt-out list: `opt_out_screen()`.** A new
   reader parallel to `disposition_screen()`. It takes a phone sample and a
   path to the opt-out Parquet (a `phone` column plus an optional `date_added`)
@@ -26,6 +33,17 @@
   enrichment columns (`error`); `date_closed_on` remains a downstream placeholder.
 
 ## Improvements
+
+* **New Opt-out screening guide.** `vignette("opt-out")` (and a matching README
+  section) walks through pulling the opt-out list and screening a sample with
+  `opt_out_pull()` + `opt_out_screen()`, including chaining with disposition
+  screening and filtering once.
+
+* **Documentation consistency pass alongside the opt-out family.** Corrected
+  `disposition_pull()`'s `dest` help (a directory saves `<bucket>.parquet`, not
+  the previously-documented `disposition_all_<env>.parquet`), added reciprocal
+  `See also` links between the opt-out and disposition screens, and listed
+  opt-out screening in the package overview (`?survey160r`).
 
 * **Phone matching is now a single shared normalizer.** The digit-normalize
   step (strip non-digits, drop a leading US country code) moved to a private

@@ -20,9 +20,9 @@ disposition bucket, so the values differ from \code{\link{s160_api_auth}}'s
 subsystem actually has.}
 
 \item{dest}{Where to save. \code{NULL} (default) caches under
-\code{tools::R_user_dir("survey160r", "cache")}. A directory saves
-\code{disposition_all_<env>.parquet} inside it; any other single string is
-treated as the exact output path (its parent is created).}
+\code{tools::R_user_dir("survey160r", "cache")}. A directory saves the
+default filename (\code{<bucket>.parquet}) inside it; any other single
+string is treated as the exact output path (its parent is created).}
 
 \item{bucket}{Source GCS bucket. \code{NULL} (default) derives it from
 \code{env}; pass a bucket name to override.}
@@ -60,5 +60,5 @@ disposition_screen(my_sample, dataset)
 }
 \seealso{
 \code{\link{disposition_summary}}, \code{\link{disposition_screen}},
-  \code{\link{s160_gcs_init}}
+  \code{\link{opt_out_pull}}, \code{\link{s160_gcs_init}}
 }

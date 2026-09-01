@@ -54,5 +54,6 @@ subset(cleaned, !(ever_completed \%in\% TRUE | ever_terminated \%in\% TRUE))
 }
 }
 \seealso{
-\code{\link{disposition_summary}}, \code{\link{disposition_records}}
+\code{\link{disposition_summary}}, \code{\link{disposition_records}},
+  \code{\link{opt_out_screen}}
 }

@@ -3,8 +3,9 @@
 # The opt-out list is one row per opted-out phone (phone + date_added),
 # produced upstream as a phone-keyed Parquet snapshot. A caller screens a
 # fresh sample against it -- "which of these numbers have opted out?" -- to
-# clean the list before a send. opt_out_screen() annotates the sample in
-# place and never drops rows; the caller decides what to drop.
+# clean the list before a send. opt_out_pull() fetches the list from GCS;
+# opt_out_screen() annotates the sample in place and never drops rows, and the
+# caller decides what to drop.
 #
 # The reader stays bare and in the opt_out family (not s160_-prefixed): it
 # reads a survey160r-derived artifact (the opt-out projection), not a raw
@@ -88,7 +89,7 @@
 #' @seealso \code{\link{disposition_screen}}
 #' @examples
 #' \dontrun{
-#' cleaned <- opt_out_screen(my_sample, "global_opt_out.parquet")
+#' cleaned <- opt_out_screen(my_sample, opt_out_pull())
 #' # chain with disposition, then drop on the caller's own rules:
 #' cleaned <- disposition_screen(cleaned, disposition_pull())
 #' subset(cleaned, !(opted_out %in% TRUE | ever_completed %in% TRUE))
@@ -116,4 +117,59 @@ opt_out_screen <- function(sample, dataset, phone_col = "phone") {
   sample[["opted_out"]] <- opted
   sample[["opt_out_date"]] <- lst$date_added[idx]
   sample
+}
+
+#' Download the opt-out list from Cloud Storage
+#'
+#' Pulls the opt-out Parquet (\code{global_opt_out/global_opt_out.parquet}) from
+#' the environment's disposition bucket to a local file and returns the path --
+#' ready to hand to \code{\link{opt_out_screen}}. Downloaded once and reused from
+#' the local cache on later calls (pass \code{refresh = TRUE} to force a fresh
+#' download). Parallels \code{\link{disposition_pull}} and reaches GCS the same
+#' way: authenticate first with \code{\link{s160_gcs_init}} (any bucket) so the
+#' session's GCS credentials are set. A download without an initialized session
+#' errors with \dQuote{GCS not initialized. Run s160_gcs_init() first.} (a cache
+#' hit is served without needing auth).
+#'
+#' The opt-out list shares the environment's \code{s160_disposition_<env>} bucket
+#' with the disposition projection -- it is the same phone-keyed PII class -- so
+#' the two \code{*_pull()} helpers fetch different objects from one bucket, into
+#' distinct cache files.
+#'
+#' @param env Environment for the source bucket: \code{"prod"} (default) or
+#'   \code{"dev"} (the \code{s160_disposition_<env>} buckets). There is no
+#'   staging tier, so the values differ from \code{\link{s160_api_auth}}'s
+#'   \code{prod}/\code{staging} by design.
+#' @param dest Where to save. \code{NULL} (default) caches under
+#'   \code{tools::R_user_dir("survey160r", "cache")}. A directory saves the
+#'   default filename (\code{<bucket>.global_opt_out.parquet}) inside it; any
+#'   other single string is treated as the exact output path (its parent is
+#'   created).
+#' @param bucket Source GCS bucket. \code{NULL} (default) derives it from
+#'   \code{env}; pass a bucket name to override.
+#' @param refresh When \code{FALSE} (default), reuse an existing local copy;
+#'   \code{TRUE} always re-downloads (the list is republished on every sync, so
+#'   refresh to pick up a newer one).
+#' @param progress Show a download progress bar. Defaults to
+#'   \code{interactive()}: a live bar in an interactive session, silent in batch
+#'   or scheduled runs.
+#' @return The local path to the downloaded Parquet (a single string), ready for
+#'   \code{\link{opt_out_screen}}.
+#' @seealso \code{\link{opt_out_screen}}, \code{\link{disposition_pull}},
+#'   \code{\link{s160_gcs_init}}
+#' @examples
+#' \dontrun{
+#' s160_gcs_init(bucket = "s160_disposition_prod")   # one-time browser OAuth
+#' cleaned <- opt_out_screen(my_sample, opt_out_pull())
+#' }
+#' @export
+opt_out_pull <- function(env = c("prod", "dev"), dest = NULL,
+                         bucket = NULL, refresh = FALSE,
+                         progress = interactive()) {
+  env <- match.arg(env)
+  .gcs_pull_cached(
+    fn = "opt_out_pull", env = env, dest = dest, bucket = bucket,
+    refresh = refresh, progress = progress,
+    object_name = "global_opt_out/global_opt_out.parquet",
+    cache_suffix = ".global_opt_out.parquet", noun = "opt-out list")
 }

@@ -32,7 +32,8 @@ reference:
 - title: Disposition screening
   desc: >
     Screen a phone sample against the disposition dataset -- which numbers have
-    been contacted / completed / refused before.
+    been contacted / completed / refused before -- and build that dataset from a
+    raw campaign CSV.
   contents:
   - disposition_pull
   - disposition_screen
@@ -42,9 +43,10 @@ reference:
   - disposition_input_columns
 - title: Opt-out screening
   desc: >
-    Screen a phone sample against the opt-out list -- which numbers have opted
-    out -- annotating the sample without dropping rows.
+    Download the current opt-out list and screen a phone sample against it --
+    which numbers have opted out -- annotating the sample without dropping rows.
   contents:
+  - opt_out_pull
   - opt_out_screen
 
 articles:
@@ -53,3 +55,4 @@ articles:
   contents:
   - latency
   - disposition
+  - opt-out

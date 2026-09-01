@@ -87,6 +87,17 @@ check_data_frame <- function(x, name, fn = NULL) {
   invisible(x)
 }
 
+# Validate that `x` is exactly TRUE or FALSE, else stop with the standard
+# "<arg> must be a single TRUE or FALSE" message. Shared by .gcs_pull_cached()
+# for the *_pull() helpers' `refresh` and `progress` flags -- kept out of the
+# function body so their cyclomatic complexity stays under the linter cap.
+.require_single_logical <- function(x, arg, fn) {
+  if (!is.logical(x) || length(x) != 1L || is.na(x)) {
+    stop_s160(sprintf("`%s` must be a single TRUE or FALSE.", arg), fn = fn)
+  }
+  invisible(x)
+}
+
 # "<service> not initialized. Run <init_fn>() first." Raised from the private
 # readiness checks on behalf of whichever exported call needs auth, so it stays
 # bare and names the fix rather than the failing helper.
