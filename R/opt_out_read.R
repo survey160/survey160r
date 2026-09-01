@@ -167,62 +167,9 @@ opt_out_pull <- function(env = c("prod", "dev"), dest = NULL,
                          bucket = NULL, refresh = FALSE,
                          progress = interactive()) {
   env <- match.arg(env)
-  .require_single_logical(refresh, "refresh", "opt_out_pull")
-  .require_single_logical(progress, "progress", "opt_out_pull")
-  if (is.null(bucket)) bucket <- sprintf("s160_disposition_%s", env)
-  bucket <- resolve_bucket(bucket)
-  object_name <- "global_opt_out/global_opt_out.parquet"
-  # The opt-out list shares the disposition bucket, so key the default cache on
-  # the object too -- keying on the bucket alone would collide with the
-  # disposition projection's cache file (<bucket>.parquet).
-  default_name <- sprintf("%s.global_opt_out.parquet", bucket)
-
-  if (is.null(dest)) {
-    cache_dir <- tools::R_user_dir("survey160r", "cache")
-    dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
-    local_path <- file.path(cache_dir, default_name)
-  } else if (!is.character(dest) || length(dest) != 1L || !nzchar(trimws(dest))) {
-    stop_s160("`dest` must be a single non-empty path or directory.",
-              fn = "opt_out_pull")
-  } else if (dir.exists(dest)) {
-    local_path <- file.path(dest, default_name)
-  } else {
-    dir.create(dirname(dest), recursive = TRUE, showWarnings = FALSE)
-    local_path <- dest
-  }
-
-  gcs_path <- sprintf("gs://%s/%s", bucket, object_name)
-  if (!refresh && file.exists(local_path)) {
-    message(sprintf("Using cached opt-out list (%s): %s",
-                    .format_file_age(local_path), local_path))
-    return(local_path)
-  }
-
-  # A download needs an authenticated GCS session; checked after the cache-hit
-  # return, since reusing a local copy needs no auth (mirrors disposition_pull).
-  check_gcs_ready()
-
-  message(sprintf("Downloading %s", gcs_path))
-  # Download to a temp file in the destination dir, then atomically move it into
-  # place on success -- a failed or partial download never poisons the cache,
-  # and any existing good copy survives.
-  tmp <- tempfile(tmpdir = dirname(local_path), fileext = ".part")
-  on.exit(unlink(tmp), add = TRUE)
-  tryCatch(
-    download_with_verify(object_name = object_name, local_path = tmp,
-                         bucket = bucket, progress = progress),
-    s160_not_found = function(e) {
-      stop_not_found("opt-out list", gcs_path, fn = "opt_out_pull")
-    },
-    error = function(e) {
-      stop_failed(sprintf("download %s", gcs_path), conditionMessage(e),
-                  fn = "opt_out_pull")
-    }
-  )
-  if (!file.rename(tmp, local_path) &&
-        !file.copy(tmp, local_path, overwrite = TRUE)) {
-    stop_failed("move the downloaded file into place", local_path,
-                fn = "opt_out_pull")
-  }
-  local_path
+  .gcs_pull_cached(
+    fn = "opt_out_pull", env = env, dest = dest, bucket = bucket,
+    refresh = refresh, progress = progress,
+    object_name = "global_opt_out/global_opt_out.parquet",
+    cache_suffix = ".global_opt_out.parquet", noun = "opt-out list")
 }
