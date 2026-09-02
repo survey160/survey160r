@@ -493,17 +493,14 @@ disposition_screen <- function(sample, dataset, phone_col = "phone",
 #' session errors with \dQuote{GCS not initialized. Run s160_gcs_init() first.}
 #' (a cache hit is served without needing auth).
 #'
-#' @param env Environment for the disposition bucket: \code{"prod"} (default) or
-#'   \code{"dev"} (the \code{s160_disposition_<env>} buckets). There is no staging
-#'   disposition bucket, so the values differ from \code{\link{s160_api_auth}}'s
-#'   \code{prod}/\code{staging} by design -- each names the environments its own
-#'   subsystem actually has.
+#' @param env Environment: \code{"prod"} (default) or \code{"dev"}. There is no
+#'   staging disposition tier; passing \code{env = "staging"} errors clearly.
 #' @param dest Where to save. \code{NULL} (default) caches under
 #'   \code{tools::R_user_dir("survey160r", "cache")}. A directory saves the
 #'   default filename (\code{<bucket>.parquet}) inside it; any other single
 #'   string is treated as the exact output path (its parent is created).
-#' @param bucket Source GCS bucket. \code{NULL} (default) derives it from
-#'   \code{env}; pass a bucket name to override.
+#' @param bucket \strong{Deprecated.} Select data with \code{env =} instead; a
+#'   supplied bucket is honored with a warning for back-compat.
 #' @param refresh When \code{FALSE} (default), reuse an existing local copy;
 #'   \code{TRUE} always re-downloads (the projection is rebuilt each pipeline
 #'   pass, so refresh to pick up a newer one).
@@ -521,13 +518,14 @@ disposition_screen <- function(sample, dataset, phone_col = "phone",
 #' disposition_screen(my_sample, dataset)
 #' }
 #' @export
-disposition_pull <- function(env = c("prod", "dev"), dest = NULL,
+disposition_pull <- function(env = c("prod", "staging", "dev"), dest = NULL,
                              bucket = NULL, refresh = FALSE,
                              progress = interactive()) {
   env <- match.arg(env)
+  loc <- .locate("disposition", env, bucket, "disposition_pull")
   .gcs_pull_cached(
-    fn = "disposition_pull", env = env, dest = dest, bucket = bucket,
+    fn = "disposition_pull", dest = dest, bucket = loc$bucket,
     refresh = refresh, progress = progress,
-    object_name = "disposition_by_phone/disposition_all.parquet",
+    object_name = loc$object,
     cache_suffix = ".parquet", noun = "disposition projection")
 }

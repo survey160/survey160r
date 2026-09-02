@@ -48,11 +48,11 @@ test_that("auth errors when no prod key var is set in non-interactive mode", {
   withr::local_envvar(S160_API_USERID = "svc", S160_PROD_API_KEY = NA,
                       S160_API_KEY = NA)
   local_mocked_bindings(interactive = function() FALSE, .package = "base")
-  expect_error(s160_api_auth("prod"), "S160_PROD_API_KEY not set")
+  expect_error(s160_api_auth(env = "prod"), "S160_PROD_API_KEY not set")
 })
 
 test_that("auth rejects an unknown environment", {
-  expect_error(s160_api_auth("banana"), "should be one of")
+  expect_error(s160_api_auth(env = "banana"), "should be one of")
 })
 
 test_that("auth errors on unexpected response format", {
@@ -119,7 +119,7 @@ test_that("env name resolves url + bucket atomically; prod prefers S160_PROD_API
   local_mocked_bindings(api_do_auth = fake_do_auth_capture(seen))
   .defer_api_env_reset()
 
-  conn <- suppressMessages(s160_api_auth("prod"))
+  conn <- suppressMessages(s160_api_auth(env = "prod"))
   expect_equal(seen$base_url, "https://api.survey160.com")
   expect_equal(seen$api_key, "prod-key")           # not the legacy fallback
   expect_equal(conn$bucket, "campaign_results")
@@ -133,7 +133,7 @@ test_that("prod falls back to legacy S160_API_KEY when S160_PROD_API_KEY unset",
   local_mocked_bindings(api_do_auth = fake_do_auth_capture(seen))
   .defer_api_env_reset()
 
-  suppressMessages(s160_api_auth("prod"))
+  suppressMessages(s160_api_auth(env = "prod"))
   expect_equal(seen$api_key, "legacy-key")
 })
 
@@ -143,11 +143,31 @@ test_that("staging resolves its own url, bucket, and key var", {
   local_mocked_bindings(api_do_auth = fake_do_auth_capture(seen))
   .defer_api_env_reset()
 
-  conn <- suppressMessages(s160_api_auth("staging"))
+  conn <- suppressMessages(s160_api_auth(env = "staging"))
   expect_equal(seen$base_url, "https://staging-api.survey160.com")
   expect_equal(seen$api_key, "stg-key")
   expect_equal(conn$bucket, "campaign_results_staging")
   expect_equal(conn$env, "staging")
+})
+
+test_that("s160_api_auth errors on the dev environment (API has none)", {
+  expect_error(s160_api_auth(env = "dev"), "no dev API environment")
+})
+
+test_that("s160_api_auth deprecates passing the environment positionally", {
+  withr::local_envvar(S160_API_USERID = "svc", S160_PROD_API_KEY = "pk")
+  local_mocked_bindings(api_do_auth = function(conn, base_url, userid, api_key) {
+    conn$jwt <- "jwt"
+    conn$auth_time <- Sys.time()
+  })
+  .defer_api_env_reset()
+
+  expect_warning(
+    suppressMessages(s160_api_auth("prod")),
+    "positionally.*deprecated"
+  )
+  # Named passing (the fixed form) is silent.
+  expect_silent(suppressMessages(s160_api_auth(env = "prod")))
 })
 
 test_that("prod and staging connections are independent; default tracks latest", {
@@ -162,8 +182,8 @@ test_that("prod and staging connections are independent; default tracks latest",
   })
   .defer_api_env_reset()
 
-  prod <- suppressMessages(s160_api_auth("prod"))
-  stg  <- suppressMessages(s160_api_auth("staging"))
+  prod <- suppressMessages(s160_api_auth(env = "prod"))
+  stg  <- suppressMessages(s160_api_auth(env = "staging"))
 
   expect_false(identical(prod, stg))
   expect_equal(prod$base_url, "https://api.survey160.com")
@@ -182,7 +202,7 @@ test_that("a connection prints as an opaque handle, masking the key", {
   local_mocked_bindings(api_do_auth = fake_do_auth_capture(new_capture()))
   .defer_api_env_reset()
 
-  conn <- suppressMessages(s160_api_auth("prod"))
+  conn <- suppressMessages(s160_api_auth(env = "prod"))
   expect_s3_class(conn, "s160_api_conn")
 
   out <- capture.output(print(conn))
@@ -460,7 +480,7 @@ test_that("results triggers export and returns data frame after GCS update", {
 
   poll_count <- 0
   local_mocked_bindings(
-    get_gcs_file_updated = function(campaign_id, filename) {
+    get_gcs_file_updated = function(campaign_id, filename, ...) {
       poll_count <<- poll_count + 1
       if (poll_count <= 1) "2024-01-01T00:00:00Z" else "2024-01-01T01:00:00Z"
     },
@@ -483,7 +503,7 @@ test_that("results works when no prior export exists (baseline is NULL)", {
 
   poll_count <- 0
   local_mocked_bindings(
-    get_gcs_file_updated = function(campaign_id, filename) {
+    get_gcs_file_updated = function(campaign_id, filename, ...) {
       poll_count <<- poll_count + 1
       if (poll_count <= 1) NULL else "2024-01-01T01:00:00Z"
     },
@@ -504,7 +524,7 @@ test_that("results propagates the trigger error before polling starts", {
   stub_gcs_base()
   poll_called <- FALSE
   local_mocked_bindings(
-    get_gcs_file_updated = function(campaign_id, filename) {
+    get_gcs_file_updated = function(campaign_id, filename, ...) {
       poll_called <<- TRUE
       "2024-01-01T00:00:00Z"
     },
@@ -528,7 +548,7 @@ test_that("results times out when GCS never updates", {
   stub_gcs_base()
 
   local_mocked_bindings(
-    get_gcs_file_updated = function(campaign_id, filename) "2024-01-01T00:00:00Z",
+    get_gcs_file_updated = function(campaign_id, filename, ...) "2024-01-01T00:00:00Z",
     s160_api_request = function(method, path, body = NULL, ...) {
       list(status = "processing")
     }
@@ -574,20 +594,20 @@ test_that("results errors on invalid poll_interval", {
 
 # --- s160_api_campaign_results: per-connection bucket -------------------------
 
-test_that("results targets the connection's bucket for poll and read", {
+test_that("results targets the connection's environment for poll and read", {
   stub_gcs_base()
   conn <- new.env(parent = emptyenv())
   conn$jwt <- "jwt"
   conn$base_url <- "https://staging-api.survey160.com"
   conn$userid <- "analytics"
   conn$auth_time <- Sys.time()
-  conn$bucket <- "campaign_results_staging"
+  conn$env <- "staging"
 
   seen <- new_capture()
   poll_count <- 0
   local_mocked_bindings(
-    get_gcs_file_updated = function(campaign_id, filename, bucket = NULL) {
-      seen$poll_bucket <- bucket
+    get_gcs_file_updated = function(campaign_id, filename, env = NULL) {
+      seen$poll_env <- env
       poll_count <<- poll_count + 1
       if (poll_count <= 1) "t0" else "t1"
     },
@@ -596,8 +616,8 @@ test_that("results targets the connection's bucket for poll and read", {
       seen$req_conn <- conn
       list(status = "processing")
     },
-    s160_gcs_campaign_results_read = function(campaign_id, ..., bucket = NULL) {
-      seen$read_bucket <- bucket
+    s160_gcs_campaign_results_read = function(campaign_id, ..., env = NULL) {
+      seen$read_env <- env
       data.frame(campaignid = 744)
     }
   )
@@ -606,8 +626,8 @@ test_that("results targets the connection's bucket for poll and read", {
     s160_api_campaign_results(744, timeout = 10, poll_interval = 0.1, conn = conn)
   )
   expect_equal(df$campaignid, 744)
-  expect_equal(seen$poll_bucket, "campaign_results_staging")
-  expect_equal(seen$read_bucket, "campaign_results_staging")
+  expect_equal(seen$poll_env, "staging")
+  expect_equal(seen$read_env, "staging")
   expect_equal(seen$req_userid, "analytics")
   # The trigger must route through THIS connection (its base_url decides which
   # environment the export fires against), not the default one.
@@ -625,7 +645,7 @@ test_that("get_gcs_file_updated returns timestamp for matching file", {
     stringsAsFactors = FALSE
   ))
 
-  result <- survey160r:::get_gcs_file_updated("1980", "1980_raw_data_download.csv")
+  result <- survey160r:::get_gcs_file_updated("1980", "1980_raw_data_download.csv", "prod")
   expect_equal(result, "2024-06-15T10:00:00Z")
 })
 
@@ -635,7 +655,7 @@ test_that("get_gcs_file_updated returns NULL when file not found", {
     name = character(0), updated = character(0),
     stringsAsFactors = FALSE
   ))
-  expect_null(survey160r:::get_gcs_file_updated("1980", "1980_raw_data_download.csv"))
+  expect_null(survey160r:::get_gcs_file_updated("1980", "1980_raw_data_download.csv", "prod"))
 })
 
 test_that("get_gcs_file_updated returns NULL when target file not in list", {
@@ -645,7 +665,7 @@ test_that("get_gcs_file_updated returns NULL when target file not in list", {
     updated = "2024-06-15T10:00:00Z",
     stringsAsFactors = FALSE
   ))
-  expect_null(survey160r:::get_gcs_file_updated("1980", "1980_raw_data_download.csv"))
+  expect_null(survey160r:::get_gcs_file_updated("1980", "1980_raw_data_download.csv", "prod"))
 })
 
 test_that("get_gcs_file_updated surfaces a persistent GCS listing failure (R5)", {
@@ -660,12 +680,12 @@ test_that("get_gcs_file_updated surfaces a persistent GCS listing failure (R5)",
   )
 
   expect_error(
-    survey160r:::get_gcs_file_updated("1980", "1980_raw_data_download.csv"),
+    survey160r:::get_gcs_file_updated("1980", "1980_raw_data_download.csv", "prod"),
     "Failed to list campaign export files.*connection failed"
   )
 })
 
-test_that("get_gcs_file_updated lists the given bucket when provided", {
+test_that("get_gcs_file_updated lists the campaign bucket for the env", {
   seen <- new_capture()
   local_mocked_bindings(
     gcs_list_objects = function(prefix = NULL, ...) {
@@ -675,7 +695,7 @@ test_that("get_gcs_file_updated lists the given bucket when provided", {
     }
   )
   result <- survey160r:::get_gcs_file_updated(
-    "744", "744_raw_data_download.csv", bucket = "campaign_results_staging"
+    "744", "744_raw_data_download.csv", "staging"
   )
   expect_equal(result, "2024-06-15T10:00:00Z")
   expect_equal(seen$bucket, "campaign_results_staging")

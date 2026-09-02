@@ -34,7 +34,7 @@ test_that("a missing object (gcs 'File not found') gives a clear not-found messa
 
   expect_error(
     suppressMessages(s160_gcs_campaign_results_read(9999)),
-    "file not found.*test_bucket"
+    "file not found.*campaign_results"
   )
 })
 
@@ -49,7 +49,7 @@ test_that("an http_404 error also maps to a clear not-found message", {
 
   expect_error(
     suppressMessages(s160_gcs_campaign_results_read(9999)),
-    "file not found.*test_bucket"
+    "file not found.*campaign_results"
   )
 })
 
@@ -119,7 +119,7 @@ test_that("hash = TRUE stamps sha256 + canonical gs:// provenance", {
   res <- suppressMessages(s160_gcs_campaign_results_read(1980, hash = TRUE))
   expect_true(grepl("^sha256:", attr(res, "source_csv_hash")))
   expect_equal(attr(res, "source_csv_path"),
-               "gs://test_bucket/1980/1980_raw_data_download.csv")
+               "gs://campaign_results/1980/1980_raw_data_download.csv")
 })
 
 test_that("hash = FALSE (default) returns a plain frame, no provenance attrs", {

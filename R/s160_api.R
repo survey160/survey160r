@@ -246,8 +246,8 @@ s160_api_request <- function(method, path, body = NULL, conn = NULL) {
 #'     calls with no \code{conn} use it. \code{s160_api_auth(); df <-
 #'     s160_api_campaign_results(744)}.
 #'   \item \strong{Both environments at once}: capture each connection and pass
-#'     it as \code{conn =}. \code{prod <- s160_api_auth("prod"); stg <-
-#'     s160_api_auth("staging")}, then \code{s160_api_campaign_results(744, conn
+#'     it as \code{conn =}. \code{prod <- s160_api_auth(env = "prod"); stg <-
+#'     s160_api_auth(env = "staging")}, then \code{s160_api_campaign_results(744, conn
 #'     = stg)}. Each connection is independent, so prod and staging can be held
 #'     live in the same session -- e.g. to compare a campaign across both.
 #' }
@@ -262,7 +262,9 @@ s160_api_request <- function(method, path, body = NULL, conn = NULL) {
 #' reuses the credentials stored on the connection, so a staging connection held
 #' alongside prod keeps refreshing against staging rather than the default.
 #'
-#' @param env Environment name: \code{"prod"} (default) or \code{"staging"}.
+#' @param env Environment name: \code{"prod"} (default) or \code{"staging"}
+#'   (there is no \code{"dev"} API environment). Pass it by name
+#'   (\code{env = "staging"}); a positional value is deprecated.
 #' @return A connection object (an environment) to pass as \code{conn}, returned
 #'   invisibly. As a side effect, the package's default connection is updated to
 #'   this one so conn-less calls use the most recent authentication.
@@ -274,26 +276,39 @@ s160_api_request <- function(method, path, body = NULL, conn = NULL) {
 #'
 #' # Both environments at once -- capture each, pass conn =:
 #' s160_gcs_init()  # one GCS auth covers all buckets
-#' prod <- s160_api_auth("prod")
-#' stg  <- s160_api_auth("staging")
+#' prod <- s160_api_auth(env = "prod")
+#' stg  <- s160_api_auth(env = "staging")
 #' df_prod <- s160_api_campaign_results(744, conn = prod)
 #' df_stg  <- s160_api_campaign_results(744, conn = stg)
 #' }
 #' @importFrom httr GET POST add_headers content_type_json content http_error http_status
 #' @export
-s160_api_auth <- function(env = c("prod", "staging")) {
+s160_api_auth <- function(env = c("prod", "staging", "dev")) {
   env <- match.arg(env)
+  # Nudge callers to name the environment: `env =` is self-documenting and the
+  # sole selector. sys.call() preserves how it was written; a named arg keeps its
+  # name, a positional value does not.
+  cl <- sys.call()
+  nms <- names(cl)
+  if (length(cl) >= 2L && (is.null(nms) || !nzchar(nms[[2L]]))) {
+    warning("Passing the environment positionally to s160_api_auth() is ",
+            "deprecated; name it: s160_api_auth(env = \"...\").", call. = FALSE)
+  }
   cfg <- list(
     prod = list(
-      url = "https://api.survey160.com", bucket = "campaign_results",
+      url = "https://api.survey160.com",
       key_candidates = c("S160_PROD_API_KEY", "S160_API_KEY"),
       key_prompt = "S160_PROD_API_KEY"
     ),
     staging = list(
-      url = "https://staging-api.survey160.com", bucket = "campaign_results_staging",
+      url = "https://staging-api.survey160.com",
       key_candidates = "S160_STAGING_API_KEY", key_prompt = "S160_STAGING_API_KEY"
     )
   )[[env]]
+  if (is.null(cfg)) {
+    stop_s160(sprintf("no %s API environment (available: prod, staging).", env),
+              fn = "s160_api_auth")
+  }
 
   userid <- get_credential(
     "S160_API_USERID",
@@ -306,7 +321,7 @@ s160_api_auth <- function(env = c("prod", "staging")) {
   # the most recent authentication.
   conn <- new.env(parent = emptyenv())
   conn$env <- env
-  conn$bucket <- cfg$bucket
+  conn$bucket <- resolve_dataset("campaign_results", env)$bucket
   api_do_auth(conn, cfg$url, userid, api_key)
   # Class the handle so it prints as an opaque connection (masking the key)
   # rather than a bare <environment>. The mirrored default stays unclassed.
@@ -355,9 +370,15 @@ print.s160_api_conn <- function(x, ...) {
 #' df <- s160_api_campaign_results(1980)
 #' df <- s160_api_campaign_results(1980, filter_open = TRUE, timeout = 600)
 #'
+#' # Target a non-prod environment: authenticate against it, pass the
+#' # connection. This is the usual way an analyst switches environment -- the
+#' # connection carries the env, and results are read from its bucket.
+#' stg <- s160_api_auth(env = "staging")
+#' df  <- s160_api_campaign_results(1980, conn = stg)
+#'
 #' # Compare the same campaign across two environments concurrently:
-#' prod <- s160_api_auth("prod")
-#' stg  <- s160_api_auth("staging")
+#' prod <- s160_api_auth(env = "prod")
+#' stg  <- s160_api_auth(env = "staging")
 #' df_prod <- s160_api_campaign_results(744, conn = prod)
 #' df_stg  <- s160_api_campaign_results(744, conn = stg)
 #' }
@@ -379,18 +400,9 @@ s160_api_campaign_results <- function(campaign_id, filter_open = FALSE,
   export_filename <- paste0(campaign_id, "_raw_data_download.csv")
 
   # The export trigger, the completion poll, and the read all target this
-  # connection's GCS bucket, which s160_api_auth() pairs with the environment.
-  # `bucket` is only NULL for a connection not built by s160_api_auth() (a
-  # hand-constructed env, or a test seed); that path defaults to
-  # "campaign_results" inside get_gcs_file_updated() (or a deprecated session
-  # global).
-  bucket <- conn$bucket
+  # connection's GCS bucket, resolved from the connection's environment.
   poll_updated <- function() {
-    if (is.null(bucket)) {
-      get_gcs_file_updated(campaign_id, export_filename)
-    } else {
-      get_gcs_file_updated(campaign_id, export_filename, bucket = bucket)
-    }
+    get_gcs_file_updated(campaign_id, export_filename, env = conn$env)
   }
 
   # Step 1: Get baseline GCS timestamp
@@ -416,7 +428,7 @@ s160_api_campaign_results <- function(campaign_id, filter_open = FALSE,
           (is.null(baseline_updated) || current_updated != baseline_updated)) {
       message("Export complete.")
       return(s160_gcs_campaign_results_read(campaign_id, destdir = destdir, # nolint object_usage_linter
-                                            bucket = bucket, ...))
+                                            env = conn$env, ...))
     }
 
     interval <- min(interval * 2, poll_interval)
@@ -533,13 +545,12 @@ s160_api_campaign_get <- function(campaign_id, conn = NULL) {
 
 # --- Internal helpers ---------------------------------------------------------
 
-# Get the GCS `updated` timestamp for a specific export file.
-# Returns NULL if the file does not exist. `bucket` defaults to NULL, which
-# lists against the global bucket (set by s160_gcs_init); a connection with a
-# paired bucket passes it explicitly so the poll targets the same environment
-# as the export it triggered.
-get_gcs_file_updated <- function(campaign_id, filename, bucket = NULL) {
-  bucket <- resolve_bucket(bucket, default = "campaign_results")
+# Get the GCS `updated` timestamp for a specific export file, in the campaign
+# bucket for `env` (resolved from the dataset registry) so the poll targets the
+# same environment as the export it triggered.
+get_gcs_file_updated <- function(campaign_id, filename, env) {
+  bucket <- resolve_dataset("campaign_results", env,
+                            fn = "s160_api_campaign_results")$bucket
   prefix <- paste0(campaign_id, "/")
   # A genuinely-absent file yields an EMPTY listing (a valid 200), handled by the
   # nrow/match checks below -- so we do NOT swallow errors to NULL here. A real

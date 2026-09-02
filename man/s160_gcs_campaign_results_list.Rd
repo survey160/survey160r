@@ -4,12 +4,17 @@
 \alias{s160_gcs_campaign_results_list}
 \title{List all campaign IDs in the current bucket}
 \usage{
-s160_gcs_campaign_results_list(bucket = NULL)
+s160_gcs_campaign_results_list(
+  env = c("prod", "staging", "dev"),
+  bucket = NULL
+)
 }
 \arguments{
-\item{bucket}{Source GCS bucket. \code{NULL} (default) uses
-\code{"campaign_results"} (or a session default from a deprecated
-\code{s160_gcs_init(bucket = ...)}).}
+\item{env}{Environment: \code{"prod"} (default) or \code{"staging"}. There is
+no dev campaign-results tier.}
+
+\item{bucket}{\strong{Deprecated.} Select data with \code{env =} instead; a
+supplied bucket is honored with a warning for back-compat.}
 }
 \value{
 Character vector of campaign IDs, sorted.

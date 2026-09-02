@@ -17,7 +17,7 @@
 #
 # Where the prefix lives: a check written directly in an exported function's
 # body carries that function's `fn`. A REUSED validator called by several
-# exported functions -- validate_campaign_id(), resolve_bucket(),
+# exported functions -- validate_campaign_id(), resolve_dataset(),
 # check_gcs_ready()/check_api_ready(), api_do_auth(), get_credential(), and the
 # private .disposition_* input validators -- raises BARE: its message states a
 # self-describing invariant (e.g. "`campaign_id` must be a single value") and a

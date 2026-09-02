@@ -4,10 +4,12 @@
 \alias{s160_api_auth}
 \title{Authenticate to a Survey160 environment and return a connection}
 \usage{
-s160_api_auth(env = c("prod", "staging"))
+s160_api_auth(env = c("prod", "staging", "dev"))
 }
 \arguments{
-\item{env}{Environment name: \code{"prod"} (default) or \code{"staging"}.}
+\item{env}{Environment name: \code{"prod"} (default) or \code{"staging"}
+(there is no \code{"dev"} API environment). Pass it by name
+(\code{env = "staging"}); a positional value is deprecated.}
 }
 \value{
 A connection object (an environment) to pass as \code{conn}, returned
@@ -30,8 +32,8 @@ behaviour from the same call:
     calls with no \code{conn} use it. \code{s160_api_auth(); df <-
     s160_api_campaign_results(744)}.
   \item \strong{Both environments at once}: capture each connection and pass
-    it as \code{conn =}. \code{prod <- s160_api_auth("prod"); stg <-
-    s160_api_auth("staging")}, then \code{s160_api_campaign_results(744, conn
+    it as \code{conn =}. \code{prod <- s160_api_auth(env = "prod"); stg <-
+    s160_api_auth(env = "staging")}, then \code{s160_api_campaign_results(744, conn
     = stg)}. Each connection is independent, so prod and staging can be held
     live in the same session -- e.g. to compare a campaign across both.
 }
@@ -54,8 +56,8 @@ df <- s160_api_campaign_results(744)
 
 # Both environments at once -- capture each, pass conn =:
 s160_gcs_init()  # one GCS auth covers all buckets
-prod <- s160_api_auth("prod")
-stg  <- s160_api_auth("staging")
+prod <- s160_api_auth(env = "prod")
+stg  <- s160_api_auth(env = "staging")
 df_prod <- s160_api_campaign_results(744, conn = prod)
 df_stg  <- s160_api_campaign_results(744, conn = stg)
 }
