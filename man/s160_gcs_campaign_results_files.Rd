@@ -9,8 +9,9 @@ s160_gcs_campaign_results_files(campaign_id, bucket = NULL)
 \arguments{
 \item{campaign_id}{Campaign ID (numeric or character). Must be a single value.}
 
-\item{bucket}{Source GCS bucket. \code{NULL} (default) falls back to the
-global bucket set by \code{s160_gcs_init()}.}
+\item{bucket}{Source GCS bucket. \code{NULL} (default) uses
+\code{"campaign_results"} (or a session default from a deprecated
+\code{s160_gcs_init(bucket = ...)}).}
 }
 \value{
 Character vector of file names (without the campaign_id prefix).
@@ -21,7 +22,7 @@ Returns \code{character(0)} with a message if the campaign has no files.
 }
 \examples{
 \dontrun{
-s160_gcs_init(bucket = "campaign_results")
+s160_gcs_init()
 s160_gcs_campaign_results_files(1980)
 }
 }

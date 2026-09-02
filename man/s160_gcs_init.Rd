@@ -2,19 +2,21 @@
 % Please edit documentation in R/s160_gcs.R
 \name{s160_gcs_init}
 \alias{s160_gcs_init}
-\title{Initialize GCS connection}
+\title{Authenticate to Google Cloud Storage}
 \usage{
-s160_gcs_init(bucket)
+s160_gcs_init(bucket = NULL)
 }
 \arguments{
-\item{bucket}{GCS bucket name (e.g. \code{"campaign_results"}).}
+\item{bucket}{\strong{Deprecated.} Formerly set a session-global default
+bucket. It is now optional and, if supplied, is only kept as a back-compat
+session default (with a warning). Pass \code{bucket =} to an individual
+reader instead when you need a non-default bucket.}
 }
 \value{
-Invisible NULL. Sets global bucket as side effect.
+Invisible \code{NULL}.
 }
 \description{
-Authenticates to GCS using the Survey160 Desktop OAuth client and sets
-the global bucket.
+Authenticates to GCS using the Survey160 Desktop OAuth client.
 }
 \details{
 On first run, prompts for the client secret (get it from your team lead) and saves
@@ -23,11 +25,12 @@ opens a browser for Google sign-in on first use; the OAuth token is
 cached in a platform-dependent directory (run
 \code{gargle::gargle_oauth_sitrep()} to locate it).
 
-The authenticated Google account needs Storage Object Viewer permission
-on the target bucket.
+Authentication is account-level: one call covers every bucket the account can
+read. Reader functions resolve their own bucket (defaulting to prod), so you
+no longer pass a bucket here.
 }
 \examples{
 \dontrun{
-s160_gcs_init(bucket = "campaign_results")
+s160_gcs_init()
 }
 }

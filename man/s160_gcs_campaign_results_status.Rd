@@ -9,8 +9,9 @@ s160_gcs_campaign_results_status(campaign_id, bucket = NULL)
 \arguments{
 \item{campaign_id}{Campaign ID (numeric or character).}
 
-\item{bucket}{Source GCS bucket. \code{NULL} (default) falls back to the
-global bucket set by \code{s160_gcs_init()}.}
+\item{bucket}{Source GCS bucket. \code{NULL} (default) uses
+\code{"campaign_results"} (or a session default from a deprecated
+\code{s160_gcs_init(bucket = ...)}).}
 }
 \value{
 Named list with \code{name}, \code{updated}, and \code{size},
@@ -22,7 +23,7 @@ triggering a new export. Requires GCS auth (\code{s160_gcs_init}).
 }
 \examples{
 \dontrun{
-s160_gcs_init(bucket = "campaign_results")
+s160_gcs_init()
 s160_gcs_campaign_results_status(1980)
 }
 }

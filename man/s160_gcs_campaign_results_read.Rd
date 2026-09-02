@@ -25,8 +25,9 @@ Must not contain path separators.}
 (default), a temporary file is used and cleaned up automatically. Use
 \code{"."} for the current directory.}
 
-\item{bucket}{Source GCS bucket. \code{NULL} (default) falls back to the
-global bucket set by \code{s160_gcs_init()}.}
+\item{bucket}{Source GCS bucket. \code{NULL} (default) uses
+\code{"campaign_results"} (or a session default from a deprecated
+\code{s160_gcs_init(bucket = ...)}).}
 
 \item{columns}{Optional character vector of (dot-form) column names to keep,
 e.g. from \code{latency_input_columns()}. When set, only those columns are
@@ -60,7 +61,7 @@ GCS path: \code{gs://<bucket>/<campaign_id>/<filename>}
 }
 \examples{
 \dontrun{
-s160_gcs_init(bucket = "campaign_results")
+s160_gcs_init()
 df <- s160_gcs_campaign_results_read(1980)
 df <- s160_gcs_campaign_results_read(1980, destdir = ".")
 df <- s160_gcs_campaign_results_read(1980, destdir = "~/data")

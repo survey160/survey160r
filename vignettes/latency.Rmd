@@ -21,7 +21,7 @@ Read the campaign's results, then run the report:
 
 ```{r}
 library(survey160r)
-s160_gcs_init("campaign_results")            # one browser sign-in, cached
+s160_gcs_init()            # one browser sign-in, cached
 data   <- s160_gcs_campaign_results_read(1234, hash = TRUE)  # or s160_read_csv("path/to/1234.csv")
 result <- latency_run(1234, data, field_timezone = "America/New_York")
 ```

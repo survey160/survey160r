@@ -21,7 +21,7 @@ Pull the dataset once (cached), then annotate your sample in place:
 
 ```{r}
 library(survey160r)
-s160_gcs_init("s160_disposition_prod")   # one browser sign-in, cached
+s160_gcs_init()   # one browser sign-in, cached
 dataset <- disposition_pull()            # ~140 MB first pull, then cached
 
 my_sample <- data.frame(phone = c("2015550101", "2015550102"))   # your phone sample

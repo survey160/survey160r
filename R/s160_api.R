@@ -273,7 +273,7 @@ s160_api_request <- function(method, path, body = NULL, conn = NULL) {
 #' df <- s160_api_campaign_results(744)
 #'
 #' # Both environments at once -- capture each, pass conn =:
-#' s160_gcs_init(bucket = "campaign_results")  # one GCS auth covers all buckets
+#' s160_gcs_init()  # one GCS auth covers all buckets
 #' prod <- s160_api_auth("prod")
 #' stg  <- s160_api_auth("staging")
 #' df_prod <- s160_api_campaign_results(744, conn = prod)
@@ -350,7 +350,7 @@ print.s160_api_conn <- function(x, ...) {
 #' @return A data frame with one row per survey response.
 #' @examples
 #' \dontrun{
-#' s160_gcs_init(bucket = "campaign_results")
+#' s160_gcs_init()
 #' s160_api_auth()
 #' df <- s160_api_campaign_results(1980)
 #' df <- s160_api_campaign_results(1980, filter_open = TRUE, timeout = 600)
@@ -381,8 +381,9 @@ s160_api_campaign_results <- function(campaign_id, filter_open = FALSE,
   # The export trigger, the completion poll, and the read all target this
   # connection's GCS bucket, which s160_api_auth() pairs with the environment.
   # `bucket` is only NULL for a connection not built by s160_api_auth() (a
-  # hand-constructed env, or a test seed); that path falls back to the global
-  # bucket set by s160_gcs_init().
+  # hand-constructed env, or a test seed); that path defaults to
+  # "campaign_results" inside get_gcs_file_updated() (or a deprecated session
+  # global).
   bucket <- conn$bucket
   poll_updated <- function() {
     if (is.null(bucket)) {
@@ -538,20 +539,16 @@ s160_api_campaign_get <- function(campaign_id, conn = NULL) {
 # paired bucket passes it explicitly so the poll targets the same environment
 # as the export it triggered.
 get_gcs_file_updated <- function(campaign_id, filename, bucket = NULL) {
+  bucket <- resolve_bucket(bucket, default = "campaign_results")
   prefix <- paste0(campaign_id, "/")
   # A genuinely-absent file yields an EMPTY listing (a valid 200), handled by the
   # nrow/match checks below -- so we do NOT swallow errors to NULL here. A real
   # failure (auth/permission/bucket, e.g. a forgotten s160_gcs_init()) is
   # persistent; masking it as "file not there yet" made the export poll spin
   # until a misleading timeout. Surface it via gcs_list_or_stop instead.
-  objects <- if (is.null(bucket)) {
-    gcs_list_or_stop("list campaign export files",
-                     fn = "s160_api_campaign_results", prefix = prefix)
-  } else {
-    gcs_list_or_stop("list campaign export files",
-                     fn = "s160_api_campaign_results", prefix = prefix,
-                     bucket = bucket)
-  }
+  objects <- gcs_list_or_stop("list campaign export files",
+                              fn = "s160_api_campaign_results", prefix = prefix,
+                              bucket = bucket)
 
   if (is.null(objects) || nrow(objects) == 0) return(NULL)
 

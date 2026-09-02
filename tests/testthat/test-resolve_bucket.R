@@ -28,6 +28,22 @@ test_that("falls back to the global bucket when arg is NULL", {
   expect_equal(survey160r:::resolve_bucket(NULL), "global_bucket")
 })
 
+test_that("uses the caller `default` when arg NULL and no global is set", {
+  local_mocked_bindings(gcs_get_global_bucket = function() "")
+  expect_equal(
+    survey160r:::resolve_bucket(NULL, default = "campaign_results"),
+    "campaign_results"
+  )
+})
+
+test_that("the global bucket wins over the caller `default`", {
+  local_mocked_bindings(gcs_get_global_bucket = function() "global_bucket")
+  expect_equal(
+    survey160r:::resolve_bucket(NULL, default = "campaign_results"),
+    "global_bucket"
+  )
+})
+
 test_that("errors with a clear message when neither arg nor global is set", {
   local_mocked_bindings(
     gcs_get_global_bucket = function() stop("not initialized")

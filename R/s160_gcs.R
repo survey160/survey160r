@@ -10,36 +10,42 @@
 # Tokens are cached between sessions so the browser prompt only appears on
 # first use or when the token expires.
 #
-# Bucket is passed as a required parameter to s160_gcs_init().
+# s160_gcs_init() authenticates only; readers resolve their own bucket
+# (defaulting to "campaign_results").
 
 # --- Internal helpers --------------------------------------------------------
 
-# Stop with a clear message if GCS is not initialized
+# TRUE when a GCS OAuth token is available (i.e. gcs_auth() has run this
+# session). Wrapped so tests can mock it without reaching into googleAuthR.
+.gcs_has_token <- function() {
+  googleAuthR::gar_has_token()
+}
+
+# Stop with a clear message if GCS has not been authenticated.
 check_gcs_ready <- function() {
-  bucket <- tryCatch(gcs_get_global_bucket(), error = function(e) NULL)
-  if (is.null(bucket) || bucket == "") {
+  if (!.gcs_has_token()) {
     stop_not_initialized("GCS", "s160_gcs_init")
   }
 }
 
-# Resolve an explicit `bucket` arg, falling back to the global set by
-# s160_gcs_init(). Returns a non-empty string; errors with a clear message
-# when neither is available. Used by every reader so callers can either
-# (a) call s160_gcs_init() once and let functions default, or (b) pass an
-# explicit `bucket =` and skip the global state entirely.
-resolve_bucket <- function(bucket = NULL) {
+# Resolve the bucket for a reader, in priority order: an explicit `bucket` arg,
+# then the session global set by a (deprecated) s160_gcs_init(bucket = ...), then
+# the caller-supplied `default`. Errors only when none is available. Returns a
+# non-empty string.
+resolve_bucket <- function(bucket = NULL, default = NULL) {
   if (!is.null(bucket)) {
     check_nonempty_string(bucket, "bucket")
     return(bucket)
   }
   resolved <- tryCatch(gcs_get_global_bucket(), error = function(e) NULL)
-  if (is.null(resolved) || resolved == "") {
-    stop(paste(
-      "No GCS bucket available. Pass `bucket = \"...\"` explicitly, or",
-      "call s160_gcs_init() to set a default for the session."
-    ), call. = FALSE)
+  if (!is.null(resolved) && nzchar(resolved)) {
+    return(resolved)
   }
-  resolved
+  if (!is.null(default)) {
+    return(default)
+  }
+  stop("No GCS bucket available. Pass `bucket = \"...\"` to the reader.",
+       call. = FALSE)
 }
 
 # Run a gcs_list_objects() call, converting any failure into a uniform
@@ -296,10 +302,9 @@ fast_read_csv <- function(path, columns = NULL, encoding = "UTF-8",
 
 # --- Exported functions ------------------------------------------------------
 
-#' Initialize GCS connection
+#' Authenticate to Google Cloud Storage
 #'
-#' Authenticates to GCS using the Survey160 Desktop OAuth client and sets
-#' the global bucket.
+#' Authenticates to GCS using the Survey160 Desktop OAuth client.
 #'
 #' On first run, prompts for the client secret (get it from your team lead) and saves
 #' it to \code{~/.Renviron}. Subsequent runs read it automatically. Also
@@ -307,26 +312,31 @@ fast_read_csv <- function(path, columns = NULL, encoding = "UTF-8",
 #' cached in a platform-dependent directory (run
 #' \code{gargle::gargle_oauth_sitrep()} to locate it).
 #'
-#' The authenticated Google account needs Storage Object Viewer permission
-#' on the target bucket.
+#' Authentication is account-level: one call covers every bucket the account can
+#' read. Reader functions resolve their own bucket (defaulting to prod), so you
+#' no longer pass a bucket here.
 #'
-#' @param bucket GCS bucket name (e.g. \code{"campaign_results"}).
-#' @return Invisible NULL. Sets global bucket as side effect.
+#' @param bucket \strong{Deprecated.} Formerly set a session-global default
+#'   bucket. It is now optional and, if supplied, is only kept as a back-compat
+#'   session default (with a warning). Pass \code{bucket =} to an individual
+#'   reader instead when you need a non-default bucket.
+#' @return Invisible \code{NULL}.
 #' @examples
 #' \dontrun{
-#' s160_gcs_init(bucket = "campaign_results")
+#' s160_gcs_init()
 #' }
 #' @importFrom googleCloudStorageR gcs_auth gcs_global_bucket
 #' @export
-s160_gcs_init <- function(bucket) {
-  # Validate bucket
-  if (missing(bucket)) {
-    stop_s160(
-      "`bucket` is required. Example: s160_gcs_init(bucket = \"campaign_results\")",
-      fn = "s160_gcs_init"
+s160_gcs_init <- function(bucket = NULL) {
+  if (!is.null(bucket)) {
+    check_nonempty_string(bucket, "bucket", fn = "s160_gcs_init")
+    warning(
+      "`bucket` is deprecated and will be removed in a future release. ",
+      "s160_gcs_init() now only authenticates; readers default to prod. ",
+      "Pass `bucket =` to a reader for a non-default bucket.",
+      call. = FALSE
     )
   }
-  check_nonempty_string(bucket, "bucket", fn = "s160_gcs_init")
 
   # Client ID from bundled JSON (public, not a secret)
   client_json <- system.file("oauth-client.json", package = "survey160r")
@@ -346,7 +356,7 @@ s160_gcs_init <- function(bucket) {
       stop_s160(
         paste0(
           "S160_GCS_CLIENT_SECRET not found in .Renviron.\n",
-          "Run s160_gcs_init(bucket = \"campaign_results\") interactively to set it up, ",
+          "Run s160_gcs_init() interactively to set it up, ",
           "or add S160_GCS_CLIENT_SECRET manually to ~/.Renviron."
         ),
         fn = "s160_gcs_init"
@@ -365,8 +375,14 @@ s160_gcs_init <- function(bucket) {
   gcs_auth(email = TRUE)
   message("Authenticated via browser OAuth")
 
-  gcs_global_bucket(bucket)
-  message(sprintf("GCS ready. Bucket: %s", bucket))
+  # Deprecated: honor an explicit bucket as the session default so existing
+  # global-bucket flows keep working during the deprecation window.
+  if (!is.null(bucket)) {
+    gcs_global_bucket(bucket)
+    message(sprintf("GCS ready. Bucket: %s", bucket))
+  } else {
+    message("GCS ready.")
+  }
   invisible(NULL)
 }
 
@@ -385,8 +401,9 @@ s160_gcs_init <- function(bucket) {
 #' @param destdir Directory to save the downloaded file. When \code{NULL}
 #'   (default), a temporary file is used and cleaned up automatically. Use
 #'   \code{"."} for the current directory.
-#' @param bucket Source GCS bucket. \code{NULL} (default) falls back to the
-#'   global bucket set by \code{s160_gcs_init()}.
+#' @param bucket Source GCS bucket. \code{NULL} (default) uses
+#'   \code{"campaign_results"} (or a session default from a deprecated
+#'   \code{s160_gcs_init(bucket = ...)}).
 #' @param columns Optional character vector of (dot-form) column names to keep,
 #'   e.g. from \code{latency_input_columns()}. When set, only those columns are
 #'   parsed (via \code{data.table::fread}'s column projection), cutting read
@@ -406,7 +423,7 @@ s160_gcs_init <- function(bucket) {
 #'   \code{source_csv_path} attributes.
 #' @examples
 #' \dontrun{
-#' s160_gcs_init(bucket = "campaign_results")
+#' s160_gcs_init()
 #' df <- s160_gcs_campaign_results_read(1980)
 #' df <- s160_gcs_campaign_results_read(1980, destdir = ".")
 #' df <- s160_gcs_campaign_results_read(1980, destdir = "~/data")
@@ -418,7 +435,7 @@ s160_gcs_campaign_results_read <- function(campaign_id, filename = NULL,
                                            destdir = NULL, bucket = NULL,
                                            columns = NULL, hash = FALSE, ...) {
   campaign_id <- validate_campaign_id(campaign_id)
-  bucket <- resolve_bucket(bucket)
+  bucket <- resolve_bucket(bucket, default = "campaign_results")
   if (!is.logical(hash) || length(hash) != 1L || is.na(hash)) {
     stop_s160("`hash` must be a single TRUE or FALSE.",
               fn = "s160_gcs_campaign_results_read")
@@ -485,19 +502,20 @@ s160_gcs_campaign_results_read <- function(campaign_id, filename = NULL,
 #' Returns \code{character(0)} with a message if the campaign has no files.
 #'
 #' @param campaign_id Campaign ID (numeric or character). Must be a single value.
-#' @param bucket Source GCS bucket. \code{NULL} (default) falls back to the
-#'   global bucket set by \code{s160_gcs_init()}.
+#' @param bucket Source GCS bucket. \code{NULL} (default) uses
+#'   \code{"campaign_results"} (or a session default from a deprecated
+#'   \code{s160_gcs_init(bucket = ...)}).
 #' @return Character vector of file names (without the campaign_id prefix).
 #' @examples
 #' \dontrun{
-#' s160_gcs_init(bucket = "campaign_results")
+#' s160_gcs_init()
 #' s160_gcs_campaign_results_files(1980)
 #' }
 #' @importFrom googleCloudStorageR gcs_list_objects
 #' @export
 s160_gcs_campaign_results_files <- function(campaign_id, bucket = NULL) {
   campaign_id <- validate_campaign_id(campaign_id)
-  bucket <- resolve_bucket(bucket)
+  bucket <- resolve_bucket(bucket, default = "campaign_results")
 
   prefix <- paste0(campaign_id, "/")
   objects <- gcs_list_or_stop(
@@ -521,17 +539,18 @@ s160_gcs_campaign_results_files <- function(campaign_id, bucket = NULL) {
 #' in the results bucket. Objects at the bucket root (not inside a folder) are
 #' excluded.
 #'
-#' @param bucket Source GCS bucket. \code{NULL} (default) falls back to the
-#'   global bucket set by \code{s160_gcs_init()}.
+#' @param bucket Source GCS bucket. \code{NULL} (default) uses
+#'   \code{"campaign_results"} (or a session default from a deprecated
+#'   \code{s160_gcs_init(bucket = ...)}).
 #' @return Character vector of campaign IDs, sorted.
 #' @examples
 #' \dontrun{
-#' s160_gcs_init(bucket = "campaign_results")
+#' s160_gcs_init()
 #' s160_gcs_campaign_results_list()
 #' }
 #' @export
 s160_gcs_campaign_results_list <- function(bucket = NULL) {
-  bucket <- resolve_bucket(bucket)
+  bucket <- resolve_bucket(bucket, default = "campaign_results")
   objects <- gcs_list_or_stop(
     "list campaigns",
     fn = "s160_gcs_campaign_results_list",
@@ -633,20 +652,21 @@ s160_csv_header <- function(path, encoding = "UTF-8") {
 #' triggering a new export. Requires GCS auth (\code{s160_gcs_init}).
 #'
 #' @param campaign_id Campaign ID (numeric or character).
-#' @param bucket Source GCS bucket. \code{NULL} (default) falls back to the
-#'   global bucket set by \code{s160_gcs_init()}.
+#' @param bucket Source GCS bucket. \code{NULL} (default) uses
+#'   \code{"campaign_results"} (or a session default from a deprecated
+#'   \code{s160_gcs_init(bucket = ...)}).
 #' @return Named list with \code{name}, \code{updated}, and \code{size},
 #'   or \code{NULL} if no export file exists.
 #' @examples
 #' \dontrun{
-#' s160_gcs_init(bucket = "campaign_results")
+#' s160_gcs_init()
 #' s160_gcs_campaign_results_status(1980)
 #' }
 #' @importFrom googleCloudStorageR gcs_list_objects
 #' @export
 s160_gcs_campaign_results_status <- function(campaign_id, bucket = NULL) {
   campaign_id <- validate_campaign_id(campaign_id)
-  bucket <- resolve_bucket(bucket)
+  bucket <- resolve_bucket(bucket, default = "campaign_results")
 
   export_filename <- paste0(campaign_id, "_raw_data_download.csv")
   prefix <- paste0(campaign_id, "/")

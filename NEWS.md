@@ -1,5 +1,16 @@
 # survey160r (development version)
 
+## Deprecations
+
+* **`s160_gcs_init()` no longer needs a `bucket`.** Authentication is
+  account-level, so a single `s160_gcs_init()` covers every bucket the account
+  can read. Reader functions now resolve their own bucket, defaulting to prod
+  (`"campaign_results"` for campaign exports; `s160_disposition_<env>` for the
+  disposition and opt-out pulls). Passing `bucket =` still works but now warns
+  and will be removed in a future release; pass `bucket =` to an individual
+  reader when you need a non-default bucket. Readiness is now checked by whether
+  you have authenticated, not by whether a global bucket was set.
+
 ## Features
 
 * **Download the opt-out list: `opt_out_pull()`.** Fetches the opt-out Parquet

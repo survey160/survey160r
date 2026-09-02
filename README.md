@@ -55,7 +55,7 @@ The `s160_gcs_campaign_results_*` functions below are the general-purpose reader
 
 ```r
 library(survey160r)
-s160_gcs_init(bucket = "campaign_results")   # browser sign-in on first run, then cached
+s160_gcs_init()   # browser sign-in on first run, then cached
 
 campaigns   <- s160_gcs_campaign_results_list()             # available campaign ids
 campaign_id <- campaigns[1]
@@ -102,7 +102,7 @@ Screen a phone sample against every recipient Survey160 has contacted, dropping 
 
 ```r
 library(survey160r)
-s160_gcs_init(bucket = "s160_disposition_prod")   # one-time browser sign-in (cached)
+s160_gcs_init()   # one-time browser sign-in (cached)
 
 my_sample <- data.frame(phone = c("2015550101", "2015550102"))  # your list; extra columns are kept
 dataset   <- disposition_pull()                     # downloads ~140 MB the first time, then cached
@@ -119,7 +119,7 @@ Screen a phone sample against the opt-out list, flagging numbers that have opted
 
 ```r
 library(survey160r)
-s160_gcs_init(bucket = "s160_disposition_prod")   # one-time browser sign-in (cached)
+s160_gcs_init()   # one-time browser sign-in (cached)
 
 my_sample <- data.frame(phone = c("2015550101", "2015550102"))  # your list; extra columns are kept
 optout    <- opt_out_pull()                       # small download, then cached
@@ -197,7 +197,7 @@ Common symptoms and fixes:
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| `GCS not initialized. Run s160_gcs_init() first.` | A GCS, disposition, or opt-out reader was called before authenticating | Run `s160_gcs_init(bucket = ...)` first |
+| `GCS not initialized. Run s160_gcs_init() first.` | A GCS, disposition, or opt-out reader was called before authenticating | Run `s160_gcs_init()` first |
 | A **403** after a successful Google sign-in | Your account lacks Storage Object Viewer on that bucket | Ask a sysadmin to add you to `gcp-campaign-readers` for the bucket (see [First-time setup](#first-time-setup)) |
 | `could not find function "disposition_pull"` | R-universe has not rebuilt the latest release yet | Install from GitHub (`pak::pkg_install("survey160/survey160r")`), then restart R |
 | `disposition_pull()` returns data you know is out of date | It reused a cached copy | Re-download with `disposition_pull(refresh = TRUE)` |

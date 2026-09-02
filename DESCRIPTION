@@ -1,6 +1,6 @@
 Package: survey160r
 Title: R Client for Survey160 Data
-Version: 0.39.0
+Version: 0.40.0
 Authors@R: c(
     person("Lennon", "Shimokawa", email = "lshimokawa@survey160.com", role = c("aut", "cre"))
     )
@@ -17,6 +17,7 @@ Depends:
     R (>= 4.1)
 Imports:
     googleCloudStorageR (>= 0.7.0),
+    googleAuthR,
     httr,
     jsonlite,
     lubridate,
