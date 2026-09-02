@@ -263,7 +263,8 @@ s160_api_request <- function(method, path, body = NULL, conn = NULL) {
 #' alongside prod keeps refreshing against staging rather than the default.
 #'
 #' @param env Environment name: \code{"prod"} (default) or \code{"staging"}
-#'   (there is no \code{"dev"} API environment).
+#'   (there is no \code{"dev"} API environment). Pass it by name
+#'   (\code{env = "staging"}); a positional value is deprecated.
 #' @return A connection object (an environment) to pass as \code{conn}, returned
 #'   invisibly. As a side effect, the package's default connection is updated to
 #'   this one so conn-less calls use the most recent authentication.
@@ -284,6 +285,15 @@ s160_api_request <- function(method, path, body = NULL, conn = NULL) {
 #' @export
 s160_api_auth <- function(env = c("prod", "staging", "dev")) {
   env <- match.arg(env)
+  # Nudge callers to name the environment: `env =` is self-documenting and the
+  # sole selector. sys.call() preserves how it was written; a named arg keeps its
+  # name, a positional value does not.
+  cl <- sys.call()
+  nms <- names(cl)
+  if (length(cl) >= 2L && (is.null(nms) || !nzchar(nms[[2L]]))) {
+    warning("Passing the environment positionally to s160_api_auth() is ",
+            "deprecated; name it: s160_api_auth(env = \"...\").", call. = FALSE)
+  }
   cfg <- list(
     prod = list(
       url = "https://api.survey160.com",

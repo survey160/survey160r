@@ -48,11 +48,11 @@ test_that("auth errors when no prod key var is set in non-interactive mode", {
   withr::local_envvar(S160_API_USERID = "svc", S160_PROD_API_KEY = NA,
                       S160_API_KEY = NA)
   local_mocked_bindings(interactive = function() FALSE, .package = "base")
-  expect_error(s160_api_auth("prod"), "S160_PROD_API_KEY not set")
+  expect_error(s160_api_auth(env = "prod"), "S160_PROD_API_KEY not set")
 })
 
 test_that("auth rejects an unknown environment", {
-  expect_error(s160_api_auth("banana"), "should be one of")
+  expect_error(s160_api_auth(env = "banana"), "should be one of")
 })
 
 test_that("auth errors on unexpected response format", {
@@ -119,7 +119,7 @@ test_that("env name resolves url + bucket atomically; prod prefers S160_PROD_API
   local_mocked_bindings(api_do_auth = fake_do_auth_capture(seen))
   .defer_api_env_reset()
 
-  conn <- suppressMessages(s160_api_auth("prod"))
+  conn <- suppressMessages(s160_api_auth(env = "prod"))
   expect_equal(seen$base_url, "https://api.survey160.com")
   expect_equal(seen$api_key, "prod-key")           # not the legacy fallback
   expect_equal(conn$bucket, "campaign_results")
@@ -133,7 +133,7 @@ test_that("prod falls back to legacy S160_API_KEY when S160_PROD_API_KEY unset",
   local_mocked_bindings(api_do_auth = fake_do_auth_capture(seen))
   .defer_api_env_reset()
 
-  suppressMessages(s160_api_auth("prod"))
+  suppressMessages(s160_api_auth(env = "prod"))
   expect_equal(seen$api_key, "legacy-key")
 })
 
@@ -143,7 +143,7 @@ test_that("staging resolves its own url, bucket, and key var", {
   local_mocked_bindings(api_do_auth = fake_do_auth_capture(seen))
   .defer_api_env_reset()
 
-  conn <- suppressMessages(s160_api_auth("staging"))
+  conn <- suppressMessages(s160_api_auth(env = "staging"))
   expect_equal(seen$base_url, "https://staging-api.survey160.com")
   expect_equal(seen$api_key, "stg-key")
   expect_equal(conn$bucket, "campaign_results_staging")
@@ -151,7 +151,23 @@ test_that("staging resolves its own url, bucket, and key var", {
 })
 
 test_that("s160_api_auth errors on the dev environment (API has none)", {
-  expect_error(s160_api_auth("dev"), "no dev API environment")
+  expect_error(s160_api_auth(env = "dev"), "no dev API environment")
+})
+
+test_that("s160_api_auth deprecates passing the environment positionally", {
+  withr::local_envvar(S160_API_USERID = "svc", S160_PROD_API_KEY = "pk")
+  local_mocked_bindings(api_do_auth = function(conn, base_url, userid, api_key) {
+    conn$jwt <- "jwt"
+    conn$auth_time <- Sys.time()
+  })
+  .defer_api_env_reset()
+
+  expect_warning(
+    suppressMessages(s160_api_auth("prod")),
+    "positionally.*deprecated"
+  )
+  # Named passing (the fixed form) is silent.
+  expect_silent(suppressMessages(s160_api_auth(env = "prod")))
 })
 
 test_that("prod and staging connections are independent; default tracks latest", {
@@ -166,8 +182,8 @@ test_that("prod and staging connections are independent; default tracks latest",
   })
   .defer_api_env_reset()
 
-  prod <- suppressMessages(s160_api_auth("prod"))
-  stg  <- suppressMessages(s160_api_auth("staging"))
+  prod <- suppressMessages(s160_api_auth(env = "prod"))
+  stg  <- suppressMessages(s160_api_auth(env = "staging"))
 
   expect_false(identical(prod, stg))
   expect_equal(prod$base_url, "https://api.survey160.com")
@@ -186,7 +202,7 @@ test_that("a connection prints as an opaque handle, masking the key", {
   local_mocked_bindings(api_do_auth = fake_do_auth_capture(new_capture()))
   .defer_api_env_reset()
 
-  conn <- suppressMessages(s160_api_auth("prod"))
+  conn <- suppressMessages(s160_api_auth(env = "prod"))
   expect_s3_class(conn, "s160_api_conn")
 
   out <- capture.output(print(conn))
