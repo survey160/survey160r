@@ -361,9 +361,10 @@ fast_read_csv <- function(path, columns = NULL, encoding = "UTF-8",
 #' no longer pass a bucket here.
 #'
 #' @param bucket \strong{Deprecated.} Formerly set a session-global default
-#'   bucket. It is now optional and, if supplied, is only kept as a back-compat
-#'   session default (with a warning). Pass \code{bucket =} to an individual
-#'   reader instead when you need a non-default bucket.
+#'   bucket. Superseded by per-reader \code{env =}: select an environment with
+#'   \code{env =} on the reader (readers default to prod). If supplied here it is
+#'   still accepted for back-compatibility (with a warning) but should not be
+#'   used in new code.
 #' @return Invisible \code{NULL}.
 #' @examples
 #' \dontrun{
