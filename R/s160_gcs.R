@@ -79,8 +79,14 @@ resolve_dataset <- function(dataset, env, fn = NULL) {
 .locate <- function(dataset, env, bucket, fn) {
   if (!is.null(bucket)) {
     check_nonempty_string(bucket, "bucket", fn = fn)
-    warning("`bucket` is deprecated and will be removed in a future release. ",
-            "Select data with `env =` instead.", call. = FALSE)
+    lifecycle::deprecate_warn(
+      when = "0.41.0",
+      what = paste0(fn, "(bucket)"),
+      details = c(
+        "Drop `bucket =` to use prod (the default).",
+        i = "To use another environment, pass `env =` instead."
+      )
+    )
     return(list(bucket = bucket, object = .DATASET_OBJECTS[[dataset]]))
   }
   resolve_dataset(dataset, env, fn = fn)
@@ -355,9 +361,10 @@ fast_read_csv <- function(path, columns = NULL, encoding = "UTF-8",
 #' no longer pass a bucket here.
 #'
 #' @param bucket \strong{Deprecated.} Formerly set a session-global default
-#'   bucket. It is now optional and, if supplied, is only kept as a back-compat
-#'   session default (with a warning). Pass \code{bucket =} to an individual
-#'   reader instead when you need a non-default bucket.
+#'   bucket. Superseded by per-reader \code{env =}: select an environment with
+#'   \code{env =} on the reader (readers default to prod). If supplied here it is
+#'   still accepted for back-compatibility (with a warning) but should not be
+#'   used in new code.
 #' @return Invisible \code{NULL}.
 #' @examples
 #' \dontrun{
@@ -368,11 +375,13 @@ fast_read_csv <- function(path, columns = NULL, encoding = "UTF-8",
 s160_gcs_init <- function(bucket = NULL) {
   if (!is.null(bucket)) {
     check_nonempty_string(bucket, "bucket", fn = "s160_gcs_init")
-    warning(
-      "`bucket` is deprecated and will be removed in a future release. ",
-      "s160_gcs_init() now only authenticates; readers default to prod. ",
-      "Pass `bucket =` to a reader for a non-default bucket.",
-      call. = FALSE
+    lifecycle::deprecate_warn(
+      when = "0.40.0",
+      what = "s160_gcs_init(bucket)",
+      details = c(
+        "s160_gcs_init() now only authenticates; readers default to prod.",
+        i = "Select another environment with `env =` on the reader, not a bucket."
+      )
     )
   }
 

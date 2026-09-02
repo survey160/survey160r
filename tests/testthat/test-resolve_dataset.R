@@ -40,11 +40,14 @@ test_that(".locate resolves from (dataset, env) when no bucket is given", {
 })
 
 test_that(".locate honors a deprecated explicit bucket with a warning", {
-  expect_warning(
+  w <- capture_warnings(
     loc <- survey160r:::.locate("disposition", "prod", "my_bucket",
-                                "disposition_pull"),
-    "deprecated"
+                                "disposition_pull")
   )
+  expect_match(w, "deprecated")
+  # Guidance points at the prod default + `env =`, not at another bucket.
+  expect_match(w, "prod")
+  expect_match(w, "env =")
   expect_equal(loc$bucket, "my_bucket")
   expect_equal(loc$object, "disposition_by_phone/disposition_all.parquet")
 })
