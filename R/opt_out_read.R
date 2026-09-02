@@ -159,7 +159,7 @@ opt_out_screen <- function(sample, dataset, phone_col = "phone") {
 #'   \code{\link{s160_gcs_init}}
 #' @examples
 #' \dontrun{
-#' s160_gcs_init(bucket = "s160_disposition_prod")   # one-time browser OAuth
+#' s160_gcs_init()   # one-time browser OAuth
 #' cleaned <- opt_out_screen(my_sample, opt_out_pull())
 #' }
 #' @export

@@ -167,9 +167,9 @@ test_that("a non-404 error gives a download-failed error", {
 
 test_that("a download without an initialized GCS session errors clearly", {
   # No stub_gcs_base(): the real check_gcs_ready() runs. Force "not ready" by
-  # reporting an empty global bucket, and prove the readiness error fires
-  # before any download is attempted.
-  testthat::local_mocked_bindings(gcs_get_global_bucket = function() "")
+  # reporting no auth token, and prove the readiness error fires before any
+  # download is attempted.
+  testthat::local_mocked_bindings(.gcs_has_token = function() FALSE)
   testthat::local_mocked_bindings(
     download_with_verify = function(...) stop("readiness check should have stopped us"))
   expect_error(

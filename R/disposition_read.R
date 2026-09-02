@@ -516,7 +516,7 @@ disposition_screen <- function(sample, dataset, phone_col = "phone",
 #'   \code{\link{opt_out_pull}}, \code{\link{s160_gcs_init}}
 #' @examples
 #' \dontrun{
-#' s160_gcs_init(bucket = "s160_disposition_prod")   # one-time browser OAuth
+#' s160_gcs_init()   # one-time browser OAuth
 #' dataset <- disposition_pull()                      # download (cached)
 #' disposition_screen(my_sample, dataset)
 #' }

@@ -7,8 +7,9 @@
 s160_gcs_campaign_results_list(bucket = NULL)
 }
 \arguments{
-\item{bucket}{Source GCS bucket. \code{NULL} (default) falls back to the
-global bucket set by \code{s160_gcs_init()}.}
+\item{bucket}{Source GCS bucket. \code{NULL} (default) uses
+\code{"campaign_results"} (or a session default from a deprecated
+\code{s160_gcs_init(bucket = ...)}).}
 }
 \value{
 Character vector of campaign IDs, sorted.
@@ -20,7 +21,7 @@ excluded.
 }
 \examples{
 \dontrun{
-s160_gcs_init(bucket = "campaign_results")
+s160_gcs_init()
 s160_gcs_campaign_results_list()
 }
 }

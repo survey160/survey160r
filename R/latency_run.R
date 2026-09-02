@@ -65,7 +65,7 @@
 #' @examples
 #' \dontrun{
 #' # GCS source -- pair with s160_gcs_campaign_results_read(hash = TRUE).
-#' s160_gcs_init(bucket = "campaign_results")
+#' s160_gcs_init()
 #' data   <- s160_gcs_campaign_results_read(1980, hash = TRUE)
 #' result <- latency_run(1980, data, field_timezone = "America/New_York")
 #' result$meta$source_csv_hash

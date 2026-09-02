@@ -53,7 +53,7 @@ session errors with \dQuote{GCS not initialized. Run s160_gcs_init() first.}
 }
 \examples{
 \dontrun{
-s160_gcs_init(bucket = "s160_disposition_prod")   # one-time browser OAuth
+s160_gcs_init()   # one-time browser OAuth
 dataset <- disposition_pull()                      # download (cached)
 disposition_screen(my_sample, dataset)
 }

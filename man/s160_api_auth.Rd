@@ -53,7 +53,7 @@ s160_api_auth()                     # defaults to prod
 df <- s160_api_campaign_results(744)
 
 # Both environments at once -- capture each, pass conn =:
-s160_gcs_init(bucket = "campaign_results")  # one GCS auth covers all buckets
+s160_gcs_init()  # one GCS auth covers all buckets
 prod <- s160_api_auth("prod")
 stg  <- s160_api_auth("staging")
 df_prod <- s160_api_campaign_results(744, conn = prod)
