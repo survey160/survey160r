@@ -84,8 +84,8 @@ df <- s160_api_campaign_results(campaign_id, destdir = ".")       # keep the CSV
 Capture the connection to keep prod and staging live in one session -- e.g. to A/B compare the same campaign; each carries its own paired bucket:
 
 ```r
-prod <- s160_api_auth("prod")
-stg  <- s160_api_auth("staging")
+prod <- s160_api_auth(env = "prod")
+stg  <- s160_api_auth(env = "staging")
 df_prod <- s160_api_campaign_results(campaign_id, conn = prod)
 df_stg  <- s160_api_campaign_results(campaign_id, conn = stg)
 ```

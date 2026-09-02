@@ -246,8 +246,8 @@ s160_api_request <- function(method, path, body = NULL, conn = NULL) {
 #'     calls with no \code{conn} use it. \code{s160_api_auth(); df <-
 #'     s160_api_campaign_results(744)}.
 #'   \item \strong{Both environments at once}: capture each connection and pass
-#'     it as \code{conn =}. \code{prod <- s160_api_auth("prod"); stg <-
-#'     s160_api_auth("staging")}, then \code{s160_api_campaign_results(744, conn
+#'     it as \code{conn =}. \code{prod <- s160_api_auth(env = "prod"); stg <-
+#'     s160_api_auth(env = "staging")}, then \code{s160_api_campaign_results(744, conn
 #'     = stg)}. Each connection is independent, so prod and staging can be held
 #'     live in the same session -- e.g. to compare a campaign across both.
 #' }
@@ -275,8 +275,8 @@ s160_api_request <- function(method, path, body = NULL, conn = NULL) {
 #'
 #' # Both environments at once -- capture each, pass conn =:
 #' s160_gcs_init()  # one GCS auth covers all buckets
-#' prod <- s160_api_auth("prod")
-#' stg  <- s160_api_auth("staging")
+#' prod <- s160_api_auth(env = "prod")
+#' stg  <- s160_api_auth(env = "staging")
 #' df_prod <- s160_api_campaign_results(744, conn = prod)
 #' df_stg  <- s160_api_campaign_results(744, conn = stg)
 #' }
@@ -363,12 +363,12 @@ print.s160_api_conn <- function(x, ...) {
 #' # Target a non-prod environment: authenticate against it, pass the
 #' # connection. This is the usual way an analyst switches environment -- the
 #' # connection carries the env, and results are read from its bucket.
-#' stg <- s160_api_auth("staging")
+#' stg <- s160_api_auth(env = "staging")
 #' df  <- s160_api_campaign_results(1980, conn = stg)
 #'
 #' # Compare the same campaign across two environments concurrently:
-#' prod <- s160_api_auth("prod")
-#' stg  <- s160_api_auth("staging")
+#' prod <- s160_api_auth(env = "prod")
+#' stg  <- s160_api_auth(env = "staging")
 #' df_prod <- s160_api_campaign_results(744, conn = prod)
 #' df_stg  <- s160_api_campaign_results(744, conn = stg)
 #' }
