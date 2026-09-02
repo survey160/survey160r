@@ -1,6 +1,9 @@
 test_that("authenticates with no bucket and sets no global (new style)", {
   captured <- new_capture()
   withr::local_envvar(S160_GCS_CLIENT_SECRET = "fake-secret")
+  withr::local_options(
+    googleAuthR.client_id = NULL, googleAuthR.client_secret = NULL
+  )
   local_mocked_bindings(
     gcs_auth = function(...) {
       captured$authed <- TRUE
@@ -16,6 +19,9 @@ test_that("authenticates with no bucket and sets no global (new style)", {
 test_that("deprecated `bucket` warns and still sets the session global", {
   captured <- new_capture()
   withr::local_envvar(S160_GCS_CLIENT_SECRET = "fake-secret")
+  withr::local_options(
+    googleAuthR.client_id = NULL, googleAuthR.client_secret = NULL
+  )
   local_mocked_bindings(
     gcs_auth = function(...) NULL,
     gcs_global_bucket = function(b) captured$bucket <- b
@@ -48,6 +54,9 @@ test_that("errors when oauth-client.json is not found", {
 
 test_that("interactive flow calls prompt_and_save_secret when secret is missing", {
   withr::local_envvar(S160_GCS_CLIENT_SECRET = "")
+  withr::local_options(
+    googleAuthR.client_id = NULL, googleAuthR.client_secret = NULL
+  )
   # covr's instrumentation runs in a non-interactive subprocess and the
   # local_mocked_bindings rebind of base::interactive doesn't take effect there;
   # mockery::stub patches the symbol directly in the SUT and works under covr.
