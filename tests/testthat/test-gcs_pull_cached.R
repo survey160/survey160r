@@ -36,9 +36,9 @@ mock_download <- function(capture = NULL, fail = NULL, not_found = FALSE,
 # builder (no call to .gcs_pull_cached), so tests do
 # `do.call(.gcs_pull_cached, gpc_args(...))` -- `.gcs_pull_cached` then resolves
 # in the test frame, picking up whatever mockery::stub() rebound it to.
-gpc_args <- function(dest = NULL, bucket = NULL, refresh = FALSE,
-                     progress = FALSE, env = "prod") {
-  list(fn = "disposition_pull", env = env, dest = dest, bucket = bucket,
+gpc_args <- function(dest = NULL, bucket = "s160_disposition_prod",
+                     refresh = FALSE, progress = FALSE) {
+  list(fn = "disposition_pull", dest = dest, bucket = bucket,
        refresh = refresh, progress = progress,
        object_name = "disposition_by_phone/disposition_all.parquet",
        cache_suffix = ".parquet", noun = "disposition projection")
@@ -66,25 +66,6 @@ test_that("default pulls into the user cache and returns the path", {
   expect_equal(cap$object_name, "disposition_by_phone/disposition_all.parquet")
   expect_equal(cap$bucket, "s160_disposition_prod")
   expect_true(file.exists(p))
-})
-
-test_that("env = 'dev' selects the dev bucket", {
-  stub_gcs_base()
-  cap <- new.env(parent = emptyenv())
-  mockery::stub(.gcs_pull_cached, "download_with_verify", mock_download(cap))
-  suppressMessages(do.call(.gcs_pull_cached,
-                           gpc_args(env = "dev", dest = withr::local_tempdir())))
-  expect_equal(cap$bucket, "s160_disposition_dev")
-})
-
-test_that("explicit bucket overrides the env default", {
-  stub_gcs_base()
-  cap <- new.env(parent = emptyenv())
-  mockery::stub(.gcs_pull_cached, "download_with_verify", mock_download(cap))
-  suppressMessages(do.call(.gcs_pull_cached,
-                           gpc_args(bucket = "custom_bucket",
-                                    dest = withr::local_tempdir())))
-  expect_equal(cap$bucket, "custom_bucket")
 })
 
 test_that("dest directory saves the default-named file inside it", {

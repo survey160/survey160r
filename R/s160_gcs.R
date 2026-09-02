@@ -28,24 +28,62 @@ check_gcs_ready <- function() {
   }
 }
 
-# Resolve the bucket for a reader, in priority order: an explicit `bucket` arg,
-# then the session global set by a (deprecated) s160_gcs_init(bucket = ...), then
-# the caller-supplied `default`. Errors only when none is available. Returns a
-# non-empty string.
-resolve_bucket <- function(bucket = NULL, default = NULL) {
+# --- Dataset registry: the ONE place physical GCS bucket names live ----------
+# Clients select data by logical (dataset, environment); resolve_dataset() maps
+# that to a physical bucket + object. A later change can move this map
+# server-side so infra can reorganize buckets without a client release.
+
+# The single environment enum exposed across the client surface. Each dataset /
+# endpoint supports a subset; resolve_dataset() errors clearly on a missing tier.
+.ENVIRONMENTS <- c("prod", "staging", "dev")
+
+# dataset id -> (env -> physical bucket). A dataset that lacks an env tier simply
+# omits it (resolve_dataset() then errors, listing what is available).
+.DATASET_BUCKETS <- list(
+  campaign_results = list(prod = "campaign_results",
+                          staging = "campaign_results_staging"),
+  disposition = list(prod = "s160_disposition_prod",
+                     dev = "s160_disposition_dev"),
+  opt_out = list(prod = "s160_disposition_prod",
+                 dev = "s160_disposition_dev")
+)
+
+# dataset id -> object path within the bucket (env-independent). NULL for a
+# dataset whose object is per-campaign (campaign_results), built by the caller
+# from the campaign id + filename.
+.DATASET_OBJECTS <- list(
+  campaign_results = NULL,
+  disposition = "disposition_by_phone/disposition_all.parquet",
+  opt_out = "global_opt_out/global_opt_out.parquet"
+)
+
+# Resolve a logical (dataset, env) to its physical GCS location, as
+# list(bucket=, object=). Errors clearly when the dataset has no such env tier.
+resolve_dataset <- function(dataset, env, fn = NULL) {
+  buckets <- .DATASET_BUCKETS[[dataset]]
+  if (is.null(buckets)) {
+    stop_s160(sprintf("unknown dataset: %s", dataset), fn = fn)
+  }
+  bucket <- buckets[[env]]
+  if (is.null(bucket)) {
+    stop_s160(sprintf("`%s` has no %s tier (available: %s).",
+                      dataset, env, paste(names(buckets), collapse = ", ")),
+              fn = fn)
+  }
+  list(bucket = bucket, object = .DATASET_OBJECTS[[dataset]])
+}
+
+# Resolve a reader's GCS location from (dataset, env). An explicit `bucket` is
+# DEPRECATED: it warns and is honored for back-compat -- readers should select
+# data with `env =`. Returns list(bucket=, object=).
+.locate <- function(dataset, env, bucket, fn) {
   if (!is.null(bucket)) {
-    check_nonempty_string(bucket, "bucket")
-    return(bucket)
+    check_nonempty_string(bucket, "bucket", fn = fn)
+    warning("`bucket` is deprecated and will be removed in a future release. ",
+            "Select data with `env =` instead.", call. = FALSE)
+    return(list(bucket = bucket, object = .DATASET_OBJECTS[[dataset]]))
   }
-  resolved <- tryCatch(gcs_get_global_bucket(), error = function(e) NULL)
-  if (!is.null(resolved) && nzchar(resolved)) {
-    return(resolved)
-  }
-  if (!is.null(default)) {
-    return(default)
-  }
-  stop("No GCS bucket available. Pass `bucket = \"...\"` to the reader.",
-       call. = FALSE)
+  resolve_dataset(dataset, env, fn = fn)
 }
 
 # Run a gcs_list_objects() call, converting any failure into a uniform
@@ -401,9 +439,10 @@ s160_gcs_init <- function(bucket = NULL) {
 #' @param destdir Directory to save the downloaded file. When \code{NULL}
 #'   (default), a temporary file is used and cleaned up automatically. Use
 #'   \code{"."} for the current directory.
-#' @param bucket Source GCS bucket. \code{NULL} (default) uses
-#'   \code{"campaign_results"} (or a session default from a deprecated
-#'   \code{s160_gcs_init(bucket = ...)}).
+#' @param env Environment: \code{"prod"} (default) or \code{"staging"}. There is
+#'   no dev campaign-results tier.
+#' @param bucket \strong{Deprecated.} Select data with \code{env =} instead; a
+#'   supplied bucket is honored with a warning for back-compat.
 #' @param columns Optional character vector of (dot-form) column names to keep,
 #'   e.g. from \code{latency_input_columns()}. When set, only those columns are
 #'   parsed (via \code{data.table::fread}'s column projection), cutting read
@@ -429,13 +468,17 @@ s160_gcs_init <- function(bucket = NULL) {
 #' df <- s160_gcs_campaign_results_read(1980, destdir = "~/data")
 #' df <- s160_gcs_campaign_results_read(1980, hash = TRUE)   # + provenance attrs
 #' }
-#' @importFrom googleCloudStorageR gcs_get_object gcs_get_global_bucket
+#' @importFrom googleCloudStorageR gcs_get_object
 #' @export
 s160_gcs_campaign_results_read <- function(campaign_id, filename = NULL,
-                                           destdir = NULL, bucket = NULL,
-                                           columns = NULL, hash = FALSE, ...) {
+                                           destdir = NULL,
+                                           env = c("prod", "staging", "dev"),
+                                           bucket = NULL, columns = NULL,
+                                           hash = FALSE, ...) {
   campaign_id <- validate_campaign_id(campaign_id)
-  bucket <- resolve_bucket(bucket, default = "campaign_results")
+  env <- match.arg(env)
+  bucket <- .locate("campaign_results", env, bucket,
+                    "s160_gcs_campaign_results_read")$bucket
   if (!is.logical(hash) || length(hash) != 1L || is.na(hash)) {
     stop_s160("`hash` must be a single TRUE or FALSE.",
               fn = "s160_gcs_campaign_results_read")
@@ -502,9 +545,10 @@ s160_gcs_campaign_results_read <- function(campaign_id, filename = NULL,
 #' Returns \code{character(0)} with a message if the campaign has no files.
 #'
 #' @param campaign_id Campaign ID (numeric or character). Must be a single value.
-#' @param bucket Source GCS bucket. \code{NULL} (default) uses
-#'   \code{"campaign_results"} (or a session default from a deprecated
-#'   \code{s160_gcs_init(bucket = ...)}).
+#' @param env Environment: \code{"prod"} (default) or \code{"staging"}. There is
+#'   no dev campaign-results tier.
+#' @param bucket \strong{Deprecated.} Select data with \code{env =} instead; a
+#'   supplied bucket is honored with a warning for back-compat.
 #' @return Character vector of file names (without the campaign_id prefix).
 #' @examples
 #' \dontrun{
@@ -513,9 +557,13 @@ s160_gcs_campaign_results_read <- function(campaign_id, filename = NULL,
 #' }
 #' @importFrom googleCloudStorageR gcs_list_objects
 #' @export
-s160_gcs_campaign_results_files <- function(campaign_id, bucket = NULL) {
+s160_gcs_campaign_results_files <- function(campaign_id,
+                                            env = c("prod", "staging", "dev"),
+                                            bucket = NULL) {
   campaign_id <- validate_campaign_id(campaign_id)
-  bucket <- resolve_bucket(bucket, default = "campaign_results")
+  env <- match.arg(env)
+  bucket <- .locate("campaign_results", env, bucket,
+                    "s160_gcs_campaign_results_files")$bucket
 
   prefix <- paste0(campaign_id, "/")
   objects <- gcs_list_or_stop(
@@ -539,9 +587,10 @@ s160_gcs_campaign_results_files <- function(campaign_id, bucket = NULL) {
 #' in the results bucket. Objects at the bucket root (not inside a folder) are
 #' excluded.
 #'
-#' @param bucket Source GCS bucket. \code{NULL} (default) uses
-#'   \code{"campaign_results"} (or a session default from a deprecated
-#'   \code{s160_gcs_init(bucket = ...)}).
+#' @param env Environment: \code{"prod"} (default) or \code{"staging"}. There is
+#'   no dev campaign-results tier.
+#' @param bucket \strong{Deprecated.} Select data with \code{env =} instead; a
+#'   supplied bucket is honored with a warning for back-compat.
 #' @return Character vector of campaign IDs, sorted.
 #' @examples
 #' \dontrun{
@@ -549,8 +598,11 @@ s160_gcs_campaign_results_files <- function(campaign_id, bucket = NULL) {
 #' s160_gcs_campaign_results_list()
 #' }
 #' @export
-s160_gcs_campaign_results_list <- function(bucket = NULL) {
-  bucket <- resolve_bucket(bucket, default = "campaign_results")
+s160_gcs_campaign_results_list <- function(env = c("prod", "staging", "dev"),
+                                           bucket = NULL) {
+  env <- match.arg(env)
+  bucket <- .locate("campaign_results", env, bucket,
+                    "s160_gcs_campaign_results_list")$bucket
   objects <- gcs_list_or_stop(
     "list campaigns",
     fn = "s160_gcs_campaign_results_list",
@@ -652,9 +704,10 @@ s160_csv_header <- function(path, encoding = "UTF-8") {
 #' triggering a new export. Requires GCS auth (\code{s160_gcs_init}).
 #'
 #' @param campaign_id Campaign ID (numeric or character).
-#' @param bucket Source GCS bucket. \code{NULL} (default) uses
-#'   \code{"campaign_results"} (or a session default from a deprecated
-#'   \code{s160_gcs_init(bucket = ...)}).
+#' @param env Environment: \code{"prod"} (default) or \code{"staging"}. There is
+#'   no dev campaign-results tier.
+#' @param bucket \strong{Deprecated.} Select data with \code{env =} instead; a
+#'   supplied bucket is honored with a warning for back-compat.
 #' @return Named list with \code{name}, \code{updated}, and \code{size},
 #'   or \code{NULL} if no export file exists.
 #' @examples
@@ -664,9 +717,13 @@ s160_csv_header <- function(path, encoding = "UTF-8") {
 #' }
 #' @importFrom googleCloudStorageR gcs_list_objects
 #' @export
-s160_gcs_campaign_results_status <- function(campaign_id, bucket = NULL) {
+s160_gcs_campaign_results_status <- function(campaign_id,
+                                             env = c("prod", "staging", "dev"),
+                                             bucket = NULL) {
   campaign_id <- validate_campaign_id(campaign_id)
-  bucket <- resolve_bucket(bucket, default = "campaign_results")
+  env <- match.arg(env)
+  bucket <- .locate("campaign_results", env, bucket,
+                    "s160_gcs_campaign_results_status")$bucket
 
   export_filename <- paste0(campaign_id, "_raw_data_download.csv")
   prefix <- paste0(campaign_id, "/")
@@ -705,18 +762,16 @@ s160_gcs_campaign_results_status <- function(campaign_id, bucket = NULL) {
 }
 
 # Shared cached GCS pull behind disposition_pull() and opt_out_pull(): resolve
-# the bucket and cache/dest path, serve a cache hit without auth, else download
-# to a temp file and atomically move it into place so a failed or partial
-# download never poisons the cache. `env` is match.arg'd by the caller.
-# Callers differ in `object_name` (fetched object), `cache_suffix` (default
+# the cache/dest path, serve a cache hit without auth, else download to a temp
+# file and atomically move it into place so a failed or partial download never
+# poisons the cache. The caller passes a concrete `bucket` + `object_name`
+# (resolved from the dataset registry). Callers differ in `cache_suffix` (default
 # cache file <bucket><cache_suffix>, so two artifacts in one bucket never
 # collide), `noun` (name in messages and errors), and `fn` (for classed errors).
-.gcs_pull_cached <- function(fn, env, dest, bucket, refresh, progress,
+.gcs_pull_cached <- function(fn, dest, bucket, refresh, progress,
                              object_name, cache_suffix, noun) {
   .require_single_logical(refresh, "refresh", fn)
   .require_single_logical(progress, "progress", fn)
-  if (is.null(bucket)) bucket <- sprintf("s160_disposition_%s", env)
-  bucket <- resolve_bucket(bucket)
   default_name <- paste0(bucket, cache_suffix)
 
   if (is.null(dest)) {

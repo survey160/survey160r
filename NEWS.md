@@ -2,6 +2,16 @@
 
 ## Deprecations
 
+* **`bucket =` is deprecated on the GCS readers and pulls; select data with
+  `env =`.** `s160_gcs_campaign_results_*()` gain an `env` argument
+  (`"prod"`/`"staging"`), and `disposition_pull()` / `opt_out_pull()` accept the
+  unified `env` enum. A single internal registry now maps `(dataset, env)` to a
+  physical bucket, so callers never name a GCS bucket and a bucket reorg is a
+  registry change rather than an API change. `s160_api_auth()` sources its
+  campaign bucket from that same registry. Passing `bucket =` still works but
+  warns; an env a dataset lacks (e.g. `disposition_pull(env = "staging")`)
+  raises a clear "no <env> tier" error.
+
 * **`s160_gcs_init()` no longer needs a `bucket`.** Authentication is
   account-level, so a single `s160_gcs_init()` covers every bucket the account
   can read. Reader functions now resolve their own bucket, defaulting to prod

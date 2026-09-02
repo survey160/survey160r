@@ -136,17 +136,15 @@ opt_out_screen <- function(sample, dataset, phone_col = "phone") {
 #' the two \code{*_pull()} helpers fetch different objects from one bucket, into
 #' distinct cache files.
 #'
-#' @param env Environment for the source bucket: \code{"prod"} (default) or
-#'   \code{"dev"} (the \code{s160_disposition_<env>} buckets). There is no
-#'   staging tier, so the values differ from \code{\link{s160_api_auth}}'s
-#'   \code{prod}/\code{staging} by design.
+#' @param env Environment: \code{"prod"} (default) or \code{"dev"}. There is no
+#'   staging opt-out tier; passing \code{env = "staging"} errors clearly.
 #' @param dest Where to save. \code{NULL} (default) caches under
 #'   \code{tools::R_user_dir("survey160r", "cache")}. A directory saves the
 #'   default filename (\code{<bucket>.global_opt_out.parquet}) inside it; any
 #'   other single string is treated as the exact output path (its parent is
 #'   created).
-#' @param bucket Source GCS bucket. \code{NULL} (default) derives it from
-#'   \code{env}; pass a bucket name to override.
+#' @param bucket \strong{Deprecated.} Select data with \code{env =} instead; a
+#'   supplied bucket is honored with a warning for back-compat.
 #' @param refresh When \code{FALSE} (default), reuse an existing local copy;
 #'   \code{TRUE} always re-downloads (the list is republished on every sync, so
 #'   refresh to pick up a newer one).
@@ -163,13 +161,14 @@ opt_out_screen <- function(sample, dataset, phone_col = "phone") {
 #' cleaned <- opt_out_screen(my_sample, opt_out_pull())
 #' }
 #' @export
-opt_out_pull <- function(env = c("prod", "dev"), dest = NULL,
+opt_out_pull <- function(env = c("prod", "staging", "dev"), dest = NULL,
                          bucket = NULL, refresh = FALSE,
                          progress = interactive()) {
   env <- match.arg(env)
+  loc <- .locate("opt_out", env, bucket, "opt_out_pull")
   .gcs_pull_cached(
-    fn = "opt_out_pull", env = env, dest = dest, bucket = bucket,
+    fn = "opt_out_pull", dest = dest, bucket = loc$bucket,
     refresh = refresh, progress = progress,
-    object_name = "global_opt_out/global_opt_out.parquet",
+    object_name = loc$object,
     cache_suffix = ".global_opt_out.parquet", noun = "opt-out list")
 }

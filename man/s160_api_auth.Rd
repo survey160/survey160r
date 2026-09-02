@@ -4,10 +4,11 @@
 \alias{s160_api_auth}
 \title{Authenticate to a Survey160 environment and return a connection}
 \usage{
-s160_api_auth(env = c("prod", "staging"))
+s160_api_auth(env = c("prod", "staging", "dev"))
 }
 \arguments{
-\item{env}{Environment name: \code{"prod"} (default) or \code{"staging"}.}
+\item{env}{Environment name: \code{"prod"} (default) or \code{"staging"}
+(there is no \code{"dev"} API environment).}
 }
 \value{
 A connection object (an environment) to pass as \code{conn}, returned

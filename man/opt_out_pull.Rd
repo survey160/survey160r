@@ -5,7 +5,7 @@
 \title{Download the opt-out list from Cloud Storage}
 \usage{
 opt_out_pull(
-  env = c("prod", "dev"),
+  env = c("prod", "staging", "dev"),
   dest = NULL,
   bucket = NULL,
   refresh = FALSE,
@@ -13,10 +13,8 @@ opt_out_pull(
 )
 }
 \arguments{
-\item{env}{Environment for the source bucket: \code{"prod"} (default) or
-\code{"dev"} (the \code{s160_disposition_<env>} buckets). There is no
-staging tier, so the values differ from \code{\link{s160_api_auth}}'s
-\code{prod}/\code{staging} by design.}
+\item{env}{Environment: \code{"prod"} (default) or \code{"dev"}. There is no
+staging opt-out tier; passing \code{env = "staging"} errors clearly.}
 
 \item{dest}{Where to save. \code{NULL} (default) caches under
 \code{tools::R_user_dir("survey160r", "cache")}. A directory saves the
@@ -24,8 +22,8 @@ default filename (\code{<bucket>.global_opt_out.parquet}) inside it; any
 other single string is treated as the exact output path (its parent is
 created).}
 
-\item{bucket}{Source GCS bucket. \code{NULL} (default) derives it from
-\code{env}; pass a bucket name to override.}
+\item{bucket}{\strong{Deprecated.} Select data with \code{env =} instead; a
+supplied bucket is honored with a warning for back-compat.}
 
 \item{refresh}{When \code{FALSE} (default), reuse an existing local copy;
 \code{TRUE} always re-downloads (the list is republished on every sync, so

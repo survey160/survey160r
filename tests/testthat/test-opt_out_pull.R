@@ -1,19 +1,16 @@
-# opt_out_pull(): a thin wrapper over .gcs_pull_cached(). The pull machinery is
-# exercised once in test-gcs_pull_cached.R; here we assert this wrapper resolves
-# `env` and forwards the opt-out object, cache suffix, and noun -- and that the
-# opt-out and disposition caches do not collide in their shared bucket.
+# opt_out_pull(): a thin wrapper. Mirrors test-disposition_pull.R plus the
+# cross-family cache-collision guard (opt-out shares the disposition bucket).
 
-test_that("opt_out_pull forwards the list params and resolves env", {
+test_that("opt_out_pull resolves env to the opt-out bucket + object", {
   cap <- new.env(parent = emptyenv())
   testthat::local_mocked_bindings(.gcs_pull_cached = function(...) {
     cap$args <- list(...)
     "PATH"
   })
-
   expect_equal(opt_out_pull(env = "dev"), "PATH")
   a <- cap$args
   expect_equal(a$fn, "opt_out_pull")
-  expect_equal(a$env, "dev")                                   # match.arg resolved
+  expect_equal(a$bucket, "s160_disposition_dev")
   expect_equal(a$object_name, "global_opt_out/global_opt_out.parquet")
   expect_equal(a$cache_suffix, ".global_opt_out.parquet")
   expect_equal(a$noun, "opt-out list")
@@ -25,19 +22,29 @@ test_that("opt_out_pull defaults env to prod and threads its args", {
     cap$args <- list(...)
     "P"
   })
-  opt_out_pull(dest = "/tmp/x", bucket = "b", refresh = TRUE, progress = TRUE)
+  opt_out_pull(dest = "/tmp/x", refresh = TRUE, progress = TRUE)
   a <- cap$args
-  expect_equal(a$env, "prod")
+  expect_equal(a$bucket, "s160_disposition_prod")
   expect_equal(a$dest, "/tmp/x")
-  expect_equal(a$bucket, "b")
   expect_true(a$refresh)
   expect_true(a$progress)
 })
 
+test_that("opt_out_pull's deprecated `bucket=` warns and is honored", {
+  cap <- new.env(parent = emptyenv())
+  testthat::local_mocked_bindings(.gcs_pull_cached = function(...) {
+    cap$args <- list(...)
+    "P"
+  })
+  expect_warning(opt_out_pull(bucket = "b"), "deprecated")
+  expect_equal(cap$args$bucket, "b")
+})
+
+test_that("opt_out_pull errors on an env tier that does not exist", {
+  expect_error(opt_out_pull(env = "staging"), "no staging tier")
+})
+
 test_that("opt-out and disposition caches do not collide in a shared bucket", {
-  # Both share the s160_disposition_<env> bucket; the cache_suffix keeps their
-  # default cache files distinct. End-to-end (real .gcs_pull_cached, mocked
-  # download) so the two wrappers' filenames are checked against each other.
   stub_gcs_base()
   d <- withr::local_tempdir()
   testthat::local_mocked_bindings(

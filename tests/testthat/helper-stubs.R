@@ -36,7 +36,6 @@ stub_gcs_base <- function(env = parent.frame()) {
   testthat::local_mocked_bindings(
     check_gcs_ready = function() NULL,
     validate_campaign_id = function(id) as.character(id),
-    gcs_get_global_bucket = function() "test_bucket",
     .env = env
   )
 }
