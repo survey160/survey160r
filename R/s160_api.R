@@ -295,7 +295,8 @@ s160_api_auth <- function(env = c("prod", "staging", "dev")) {
     # passing is discouraged. Throttled so a script does not spam the warning.
     rlang::warn(
       c("Passing the environment positionally to s160_api_auth() is deprecated.",
-        i = "Name it: s160_api_auth(env = \"...\")."),
+        i = "Use s160_api_auth() for prod.",
+        i = "Use s160_api_auth(env = \"staging\") for staging."),
       .frequency = "regularly",
       .frequency_id = "s160_api_auth_positional_env"
     )

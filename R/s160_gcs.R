@@ -82,7 +82,10 @@ resolve_dataset <- function(dataset, env, fn = NULL) {
     lifecycle::deprecate_warn(
       when = "0.41.0",
       what = paste0(fn, "(bucket)"),
-      details = "Select data with `env =` instead."
+      details = c(
+        "Drop `bucket =` to use prod (the default).",
+        i = "To use another environment, pass `env =` instead."
+      )
     )
     return(list(bucket = bucket, object = .DATASET_OBJECTS[[dataset]]))
   }
@@ -376,7 +379,7 @@ s160_gcs_init <- function(bucket = NULL) {
       what = "s160_gcs_init(bucket)",
       details = c(
         "s160_gcs_init() now only authenticates; readers default to prod.",
-        i = "Pass `bucket =` to a reader for a non-default bucket."
+        i = "Select another environment with `env =` on the reader, not a bucket."
       )
     )
   }

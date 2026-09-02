@@ -162,10 +162,11 @@ test_that("s160_api_auth deprecates passing the environment positionally", {
   })
   .defer_api_env_reset()
 
-  expect_warning(
-    suppressMessages(s160_api_auth("prod")),
-    "positionally.*deprecated"
-  )
+  w <- capture_warnings(suppressMessages(s160_api_auth("prod")))
+  expect_match(w, "positionally.*deprecated")
+  # The suggestion names the concrete analyst calls, not an abstract env = "...".
+  expect_match(w, "s160_api_auth\\(\\) for prod")
+  expect_match(w, 's160_api_auth\\(env = "staging"\\) for staging')
   # Named passing (the fixed form) is silent.
   expect_silent(suppressMessages(s160_api_auth(env = "prod")))
 })
