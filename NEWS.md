@@ -12,6 +12,14 @@
   warns; an env a dataset lacks (e.g. `disposition_pull(env = "staging")`)
   raises a clear "no <env> tier" error.
 
+* **Deprecation warnings now route through `lifecycle`.** The `bucket =`
+  warnings (on the campaign readers, the pulls, and `s160_gcs_init()`) use
+  `lifecycle::deprecate_warn()`, so each message names the version the argument
+  was deprecated in and is shown at most once every 8 hours rather than on every
+  call (no more warning spam in a loop). The positional-`env` nudge on
+  `s160_api_auth()` is throttled the same way via `rlang`. The deprecated forms
+  still work exactly as before; only the warning cadence and wording change.
+
 * **Passing the environment positionally to `s160_api_auth()` is deprecated;
   name it (`s160_api_auth(env = "staging")`).** The environment is the sole
   selector, so naming it keeps call sites self-documenting. `s160_api_auth("prod")`

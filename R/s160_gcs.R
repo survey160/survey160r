@@ -79,8 +79,11 @@ resolve_dataset <- function(dataset, env, fn = NULL) {
 .locate <- function(dataset, env, bucket, fn) {
   if (!is.null(bucket)) {
     check_nonempty_string(bucket, "bucket", fn = fn)
-    warning("`bucket` is deprecated and will be removed in a future release. ",
-            "Select data with `env =` instead.", call. = FALSE)
+    lifecycle::deprecate_warn(
+      when = "0.41.0",
+      what = paste0(fn, "(bucket)"),
+      details = "Select data with `env =` instead."
+    )
     return(list(bucket = bucket, object = .DATASET_OBJECTS[[dataset]]))
   }
   resolve_dataset(dataset, env, fn = fn)
@@ -368,11 +371,13 @@ fast_read_csv <- function(path, columns = NULL, encoding = "UTF-8",
 s160_gcs_init <- function(bucket = NULL) {
   if (!is.null(bucket)) {
     check_nonempty_string(bucket, "bucket", fn = "s160_gcs_init")
-    warning(
-      "`bucket` is deprecated and will be removed in a future release. ",
-      "s160_gcs_init() now only authenticates; readers default to prod. ",
-      "Pass `bucket =` to a reader for a non-default bucket.",
-      call. = FALSE
+    lifecycle::deprecate_warn(
+      when = "0.40.0",
+      what = "s160_gcs_init(bucket)",
+      details = c(
+        "s160_gcs_init() now only authenticates; readers default to prod.",
+        i = "Pass `bucket =` to a reader for a non-default bucket."
+      )
     )
   }
 
