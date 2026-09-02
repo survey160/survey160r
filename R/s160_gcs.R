@@ -346,6 +346,39 @@ fast_read_csv <- function(path, columns = NULL, encoding = "UTF-8",
 
 # --- Exported functions ------------------------------------------------------
 
+#' List the Survey160 datasets and their environments
+#'
+#' Lists the datasets survey160r can read and the environments each is available
+#' in -- the values you pass as \code{env =} to the campaign readers, the
+#' \code{disposition_pull()} / \code{opt_out_pull()} pulls, and
+#' \code{s160_api_auth()}. Use it to discover the valid \code{(dataset, env)}
+#' combinations instead of guessing and hitting a "no <env> tier" error.
+#'
+#' The physical storage location is intentionally not exposed: select data by
+#' \code{env} and survey160r resolves the bucket internally, so a bucket reorg
+#' never changes what you call.
+#'
+#' @return A data frame with one row per available \code{(dataset, env)} tier:
+#'   \describe{
+#'     \item{\code{dataset}}{Logical dataset name: \code{"campaign_results"}
+#'       (the campaign readers and \code{s160_api_*}), \code{"disposition"}
+#'       (\code{disposition_pull()}), or \code{"opt_out"}
+#'       (\code{opt_out_pull()}).}
+#'     \item{\code{env}}{An environment the dataset is available in:
+#'       \code{"prod"}, \code{"staging"}, or \code{"dev"}.}
+#'   }
+#' @examples
+#' s160_datasets()
+#' @export
+s160_datasets <- function() {
+  envs <- lapply(.DATASET_BUCKETS, names)
+  data.frame(
+    dataset = rep(names(.DATASET_BUCKETS), lengths(envs)),
+    env = unlist(envs, use.names = FALSE),
+    stringsAsFactors = FALSE
+  )
+}
+
 #' Authenticate to Google Cloud Storage
 #'
 #' Authenticates to GCS using the Survey160 Desktop OAuth client.

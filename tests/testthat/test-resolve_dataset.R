@@ -58,3 +58,31 @@ test_that(".locate rejects an invalid explicit bucket", {
     "non-empty string"
   )
 })
+
+# --- s160_datasets (public view of the registry) ------------------------------
+
+test_that("s160_datasets lists every registry tier as (dataset, env)", {
+  d <- s160_datasets()
+
+  expect_s3_class(d, "data.frame")
+  expect_named(d, c("dataset", "env"))
+  expect_type(d$dataset, "character")
+  expect_type(d$env, "character")
+  expect_false("bucket" %in% names(d))  # physical location stays hidden
+
+  expect_equal(
+    paste(d$dataset, d$env),
+    c("campaign_results prod", "campaign_results staging",
+      "disposition prod", "disposition dev",
+      "opt_out prod", "opt_out dev")
+  )
+  expect_equal(rownames(d), as.character(seq_len(nrow(d))))
+})
+
+test_that("every tier s160_datasets advertises actually resolves", {
+  d <- s160_datasets()
+  for (i in seq_len(nrow(d))) {
+    loc <- survey160r:::resolve_dataset(d$dataset[[i]], d$env[[i]])
+    expect_true(nzchar(loc$bucket))
+  }
+})

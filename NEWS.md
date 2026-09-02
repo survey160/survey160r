@@ -36,6 +36,13 @@
 
 ## Features
 
+* **Discover datasets and environments: `s160_datasets()`.** Returns a data
+  frame of every dataset survey160r can read and the environments each is
+  available in -- the values to pass as `env =`. It reads the internal registry,
+  so there is no `(dataset, env)` guesswork or "no <env> tier" surprise, and the
+  physical bucket stays hidden. When the registry later moves server-side this
+  is the call that fetches the manifest.
+
 * **Download the opt-out list: `opt_out_pull()`.** Fetches the opt-out Parquet
   from the environment's `s160_disposition_<env>` bucket to a local cache and
   returns the path, ready to hand straight to `opt_out_screen()`. Parallel to
