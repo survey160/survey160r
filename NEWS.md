@@ -15,8 +15,8 @@
 * **Deprecation warnings now route through `lifecycle`.** The `bucket =`
   warnings (on the campaign readers, the pulls, and `s160_gcs_init()`) use
   `lifecycle::deprecate_warn()`, so each message names the version the argument
-  was deprecated in and is shown at most once every 8 hours rather than on every
-  call (no more warning spam in a loop). The positional-`env` nudge on
+  was deprecated in and is shown once per session per call site rather than on
+  every call (no more warning spam in a loop). The positional-`env` nudge on
   `s160_api_auth()` is throttled the same way via `rlang`. The deprecated forms
   still work exactly as before; only the warning cadence and wording change.
 

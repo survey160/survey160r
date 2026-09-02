@@ -292,12 +292,13 @@ s160_api_auth <- function(env = c("prod", "staging", "dev")) {
   nms <- names(cl)
   if (length(cl) >= 2L && (is.null(nms) || !nzchar(nms[[2L]]))) {
     # Not a lifecycle arg-deprecation: `env` is required, only positional
-    # passing is discouraged. Throttled so a script does not spam the warning.
+    # passing is discouraged. `once` per session matches lifecycle's default
+    # cadence for the bucket warnings, so a script does not spam this.
     rlang::warn(
       c("Passing the environment positionally to s160_api_auth() is deprecated.",
         i = "Use s160_api_auth() for prod.",
         i = "Use s160_api_auth(env = \"staging\") for staging."),
-      .frequency = "regularly",
+      .frequency = "once",
       .frequency_id = "s160_api_auth_positional_env"
     )
   }
