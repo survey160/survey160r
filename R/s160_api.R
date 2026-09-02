@@ -273,6 +273,12 @@ s160_api_request <- function(method, path, body = NULL, conn = NULL) {
 #' s160_api_auth()                     # defaults to prod
 #' df <- s160_api_campaign_results(744)
 #'
+#' # A different environment -- authenticate against it, pass the connection.
+#' # This is the usual way an analyst targets a non-prod environment: the
+#' # connection carries the env, and the results are read from its bucket.
+#' stg <- s160_api_auth("staging")
+#' df  <- s160_api_campaign_results(744, conn = stg)
+#'
 #' # Both environments at once -- capture each, pass conn =:
 #' s160_gcs_init()  # one GCS auth covers all buckets
 #' prod <- s160_api_auth("prod")
