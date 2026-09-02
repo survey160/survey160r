@@ -381,8 +381,9 @@ s160_api_campaign_results <- function(campaign_id, filter_open = FALSE,
   # The export trigger, the completion poll, and the read all target this
   # connection's GCS bucket, which s160_api_auth() pairs with the environment.
   # `bucket` is only NULL for a connection not built by s160_api_auth() (a
-  # hand-constructed env, or a test seed); that path falls back to the global
-  # bucket set by s160_gcs_init().
+  # hand-constructed env, or a test seed); that path defaults to
+  # "campaign_results" inside get_gcs_file_updated() (or a deprecated session
+  # global).
   bucket <- conn$bucket
   poll_updated <- function() {
     if (is.null(bucket)) {

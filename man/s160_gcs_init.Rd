@@ -2,7 +2,7 @@
 % Please edit documentation in R/s160_gcs.R
 \name{s160_gcs_init}
 \alias{s160_gcs_init}
-\title{Initialize GCS connection}
+\title{Authenticate to Google Cloud Storage}
 \usage{
 s160_gcs_init(bucket = NULL)
 }

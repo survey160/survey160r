@@ -45,7 +45,7 @@ the environment's disposition bucket to a local file and returns the path --
 ready to hand to \code{\link{opt_out_screen}}. Downloaded once and reused from
 the local cache on later calls (pass \code{refresh = TRUE} to force a fresh
 download). Parallels \code{\link{disposition_pull}} and reaches GCS the same
-way: authenticate first with \code{\link{s160_gcs_init}} (any bucket) so the
+way: authenticate first with \code{\link{s160_gcs_init}}() so the
 session's GCS credentials are set. A download without an initialized session
 errors with \dQuote{GCS not initialized. Run s160_gcs_init() first.} (a cache
 hit is served without needing auth).

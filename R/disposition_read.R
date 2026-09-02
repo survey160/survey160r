@@ -488,7 +488,7 @@ disposition_screen <- function(sample, dataset, phone_col = "phone",
 #' \code{\link{disposition_summary}} / \code{\link{disposition_screen}}. Downloaded
 #' once and reused from the local cache on later calls (pass \code{refresh = TRUE}
 #' to force a fresh download). This is the one \code{disposition_*} function that
-#' reaches GCS: authenticate first with \code{\link{s160_gcs_init}} (any bucket)
+#' reaches GCS: authenticate first with \code{\link{s160_gcs_init}}()
 #' so the session's GCS credentials are set. A download without an initialized
 #' session errors with \dQuote{GCS not initialized. Run s160_gcs_init() first.}
 #' (a cache hit is served without needing auth).

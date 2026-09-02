@@ -302,7 +302,7 @@ fast_read_csv <- function(path, columns = NULL, encoding = "UTF-8",
 
 # --- Exported functions ------------------------------------------------------
 
-#' Initialize GCS connection
+#' Authenticate to Google Cloud Storage
 #'
 #' Authenticates to GCS using the Survey160 Desktop OAuth client.
 #'
