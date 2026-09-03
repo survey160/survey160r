@@ -143,3 +143,18 @@ test_that("get_config rejects a config whose envs don't match the enum", {
   expect_error(survey160r:::s160_config(refresh = TRUE),
                "do not match the exposed env choices")
 })
+
+test_that("get_config rejects an unsupported schema_version", {
+  withr::defer(survey160r:::s160_config(refresh = TRUE))  # restore real config
+  local_mocked_bindings(load_bundled_config = function() {
+    list(schema_version = 999L,
+         environments = list(prod = list(), staging = list(), dev = list()))
+  })
+  expect_error(survey160r:::s160_config(refresh = TRUE), "schema_version")
+})
+
+test_that("load_bundled_config errors when config.json is missing", {
+  load_cfg <- survey160r:::load_bundled_config
+  mockery::stub(load_cfg, "system.file", "")   # simulate a missing shipped file
+  expect_error(load_cfg(), "not found")
+})

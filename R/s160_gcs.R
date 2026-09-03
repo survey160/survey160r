@@ -41,12 +41,18 @@ check_gcs_ready <- function() {
 # environments match this set so the enum and the config cannot silently drift.
 .ENV_CHOICES <- c("prod", "staging", "dev")
 
+# The config schema version this survey160r understands.
+.CONFIG_SCHEMA_VERSION <- 1L
+
 # Parsed config, memoized for the session. Cleared by s160_config(refresh=TRUE).
 .config_cache <- new.env(parent = emptyenv())
 
 # Load the config shipped with the package.
 load_bundled_config <- function() {
   path <- system.file("config.json", package = "survey160r")
+  if (!nzchar(path)) {
+    stop_s160("bundled config.json not found; is survey160r installed correctly?")
+  }
   jsonlite::fromJSON(path, simplifyVector = FALSE)
 }
 
@@ -55,6 +61,11 @@ load_bundled_config <- function() {
 get_config <- function() {
   if (is.null(.config_cache$value)) {
     cfg <- load_bundled_config()
+    if (!isTRUE(cfg$schema_version == .CONFIG_SCHEMA_VERSION)) {
+      stop_s160(sprintf(
+        "unsupported config schema_version; this survey160r expects %s.",
+        .CONFIG_SCHEMA_VERSION))
+    }
     if (!setequal(names(cfg$environments), .ENV_CHOICES)) {
       stop_s160(sprintf(
         "config environments (%s) do not match the exposed env choices (%s).",
@@ -66,26 +77,30 @@ get_config <- function() {
   .config_cache$value
 }
 
-# The object path for a dataset (env-independent in practice): read from its
-# first tier. NULL when the object is per-campaign (campaign_results), built by
-# the caller from the campaign id + filename.
+# The env tiers that define `dataset`, as a named list (env -> {bucket, object})
+# in config env order. The one place resolve_dataset() and dataset_object() ask
+# "which envs have this dataset".
+dataset_tiers <- function(dataset) {
+  entries <- lapply(get_config()$environments, function(e) e$datasets[[dataset]])
+  Filter(Negate(is.null), entries)
+}
+
+# The object path for a dataset. Assumes it is identical across envs (true today)
+# and returns the first tier's; NULL when the object is per-campaign
+# (campaign_results), built by the caller from the campaign id + filename.
 dataset_object <- function(dataset) {
-  for (e in get_config()$environments) {
-    ds <- e$datasets[[dataset]]
-    if (!is.null(ds)) return(ds$object)
-  }
-  NULL
+  tiers <- dataset_tiers(dataset)
+  if (length(tiers)) tiers[[1L]]$object else NULL
 }
 
 # Resolve a logical (dataset, env) to its physical GCS location, as
 # list(bucket=, object=). Errors clearly when the dataset has no such env tier.
 resolve_dataset <- function(dataset, env, fn = NULL) {
-  environments <- get_config()$environments
-  tiers <- Filter(function(e) !is.null(e$datasets[[dataset]]), environments)
+  tiers <- dataset_tiers(dataset)
   if (length(tiers) == 0L) {
     stop_s160(sprintf("unknown dataset: %s", dataset), fn = fn)
   }
-  ds <- environments[[env]]$datasets[[dataset]]
+  ds <- tiers[[env]]
   if (is.null(ds)) {
     avail <- names(tiers)
     # disposition/opt_out have no staging tier: staging sends fold into prod.
