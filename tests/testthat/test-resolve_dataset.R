@@ -95,9 +95,10 @@ test_that("s160_config returns the bundled environment config", {
   expect_true(cfg$schema_version == 1)
   expect_setequal(names(cfg$environments), c("prod", "staging", "dev"))
   expect_equal(cfg$environments$prod$api_url, "https://api.survey160.com")
-  expect_equal(cfg$environments$prod$datasets$campaign_results$bucket,
-               "campaign_results")
   expect_null(cfg$environments$dev$api_url)  # no dev API endpoint
+  expect_setequal(names(cfg$datasets),
+                  c("campaign_results", "disposition", "opt_out"))
+  expect_equal(cfg$datasets$campaign_results$prod$bucket, "campaign_results")
 })
 
 test_that("s160_config(refresh = TRUE) reloads the cached config", {

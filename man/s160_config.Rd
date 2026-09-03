@@ -10,9 +10,9 @@ s160_config(refresh = FALSE)
 \item{refresh}{If \code{TRUE}, drop the cached config and reload it.}
 }
 \value{
-A nested list with \code{schema_version} and \code{environments},
-  where each environment carries an optional \code{api_url} and a
-  \code{datasets} map of \code{dataset -> list(bucket, object)}.
+A nested list with \code{schema_version}, \code{environments} (each
+  with an optional \code{api_url}), and \code{datasets}
+  (\code{dataset -> env -> list(bucket, object)}).
 }
 \description{
 Returns the configuration survey160r uses to reach Survey160's backends: the

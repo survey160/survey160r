@@ -54,26 +54,22 @@ get_config <- function() {
   .config_cache$value
 }
 
-# The object path for a dataset (env-independent in practice): the first env
-# tier that defines it. NULL when the object is per-campaign (campaign_results),
-# built by the caller from the campaign id + filename.
+# The object path for a dataset (env-independent in practice): read from its
+# first tier. NULL when the object is per-campaign (campaign_results), built by
+# the caller from the campaign id + filename.
 dataset_object <- function(dataset) {
-  for (e in get_config()$environments) {
-    ds <- e$datasets[[dataset]]
-    if (!is.null(ds)) return(ds$object)
-  }
-  NULL
+  tiers <- get_config()$datasets[[dataset]]
+  if (is.null(tiers)) NULL else tiers[[1L]]$object
 }
 
 # Resolve a logical (dataset, env) to its physical GCS location, as
 # list(bucket=, object=). Errors clearly when the dataset has no such env tier.
 resolve_dataset <- function(dataset, env, fn = NULL) {
-  envs <- get_config()$environments
-  tiers <- Filter(function(e) !is.null(e$datasets[[dataset]]), envs)
-  if (length(tiers) == 0L) {
+  tiers <- get_config()$datasets[[dataset]]
+  if (is.null(tiers)) {
     stop_s160(sprintf("unknown dataset: %s", dataset), fn = fn)
   }
-  ds <- envs[[env]]$datasets[[dataset]]
+  ds <- tiers[[env]]
   if (is.null(ds)) {
     stop_s160(sprintf("`%s` has no %s tier (available: %s).",
                       dataset, env, paste(names(tiers), collapse = ", ")),
@@ -367,9 +363,9 @@ fast_read_csv <- function(path, columns = NULL, encoding = "UTF-8",
 #' (and, in a later release, re-fetches an updated copy from Survey160).
 #'
 #' @param refresh If \code{TRUE}, drop the cached config and reload it.
-#' @return A nested list with \code{schema_version} and \code{environments},
-#'   where each environment carries an optional \code{api_url} and a
-#'   \code{datasets} map of \code{dataset -> list(bucket, object)}.
+#' @return A nested list with \code{schema_version}, \code{environments} (each
+#'   with an optional \code{api_url}), and \code{datasets}
+#'   (\code{dataset -> env -> list(bucket, object)}).
 #' @seealso \code{\link{s160_datasets}()} for a tidy \code{(dataset, env)} table.
 #' @examples
 #' config <- s160_config()
@@ -408,16 +404,11 @@ s160_config <- function(refresh = FALSE) {
 #' s160_datasets()
 #' @export
 s160_datasets <- function() {
-  environments <- get_config()$environments
-  envs <- names(environments)
-  per_env <- lapply(envs, function(e) {
-    ds <- names(environments[[e]]$datasets)
-    if (length(ds)) data.frame(dataset = ds, env = e, stringsAsFactors = FALSE)
+  datasets <- get_config()$datasets
+  per_ds <- lapply(names(datasets), function(d) {
+    data.frame(dataset = d, env = names(datasets[[d]]), stringsAsFactors = FALSE)
   })
-  out <- do.call(rbind, per_env)
-  ds_order <- unique(out$dataset)
-  out <- out[order(match(out$dataset, ds_order), match(out$env, envs)), ,
-             drop = FALSE]
+  out <- do.call(rbind, per_ds)
   rownames(out) <- NULL
   out
 }
