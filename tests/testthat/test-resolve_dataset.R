@@ -86,3 +86,29 @@ test_that("every tier s160_datasets advertises actually resolves", {
     expect_true(nzchar(loc$bucket))
   }
 })
+
+# --- s160_config / get_config (the bundled config seam) -----------------------
+
+test_that("s160_config returns the bundled environment config", {
+  cfg <- s160_config()
+  expect_type(cfg, "list")
+  expect_true(cfg$schema_version == 1)
+  expect_setequal(names(cfg$environments), c("prod", "staging", "dev"))
+  expect_equal(cfg$environments$prod$api_url, "https://api.survey160.com")
+  expect_equal(cfg$environments$prod$datasets$campaign_results$bucket,
+               "campaign_results")
+  expect_null(cfg$environments$dev$api_url)  # no dev API endpoint
+})
+
+test_that("s160_config(refresh = TRUE) reloads the cached config", {
+  before <- s160_config()
+  after <- s160_config(refresh = TRUE)
+  expect_equal(before, after)
+})
+
+test_that("dataset_object returns the object path, or NULL", {
+  expect_equal(survey160r:::dataset_object("disposition"),
+               "disposition_by_phone/disposition_all.parquet")
+  expect_null(survey160r:::dataset_object("campaign_results"))  # per-campaign
+  expect_null(survey160r:::dataset_object("nope"))              # unknown dataset
+})

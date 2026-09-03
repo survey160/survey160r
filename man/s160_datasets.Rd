@@ -32,3 +32,6 @@ never changes what you call.
 \examples{
 s160_datasets()
 }
+\seealso{
+\code{\link{s160_config}()} for the full nested configuration.
+}

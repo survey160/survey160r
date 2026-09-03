@@ -36,12 +36,16 @@
 
 ## Features
 
-* **Discover datasets and environments: `s160_datasets()`.** Returns a data
-  frame of every dataset survey160r can read and the environments each is
-  available in -- the values to pass as `env =`. It reads the internal registry,
-  so there is no `(dataset, env)` guesswork or "no <env> tier" surprise, and the
-  physical bucket stays hidden. When the registry later moves server-side this
-  is the call that fetches the manifest.
+* **One bundled config for datasets and environments: `s160_config()` /
+  `s160_datasets()`.** survey160r now reads a single bundled config
+  (`inst/config.json`) mapping each environment to its API base URL and its
+  datasets' GCS locations -- the one place physical bucket names and URLs live.
+  `s160_config()` returns the full nested config; `s160_datasets()` gives a tidy
+  `(dataset, env)` table of what is available (the values to pass as `env =`),
+  with the physical bucket kept hidden. Both `s160_api_auth()` and the GCS
+  readers resolve through this config, so a bucket reorg is a config edit rather
+  than scattered code changes. A later release can refresh the config from a
+  Survey160 endpoint, falling back to the bundled copy.
 
 * **Download the opt-out list: `opt_out_pull()`.** Fetches the opt-out Parquet
   from the environment's `s160_disposition_<env>` bucket to a local cache and

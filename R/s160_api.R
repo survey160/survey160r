@@ -302,19 +302,20 @@ s160_api_auth <- function(env = c("prod", "staging", "dev")) {
       .frequency_id = "s160_api_auth_positional_env"
     )
   }
-  cfg <- list(
-    prod = list(
-      url = "https://api.survey160.com",
-      key_candidates = c("S160_PROD_API_KEY", "S160_API_KEY"),
-      key_prompt = "S160_PROD_API_KEY"
-    ),
-    staging = list(
-      url = "https://staging-api.survey160.com",
-      key_candidates = "S160_STAGING_API_KEY", key_prompt = "S160_STAGING_API_KEY"
-    )
+  # The API base URL is backend config (from s160_config()); the key env-var
+  # names are a client-side convention, so they stay here.
+  keys <- list(
+    prod = list(key_candidates = c("S160_PROD_API_KEY", "S160_API_KEY"),
+                key_prompt = "S160_PROD_API_KEY"),
+    staging = list(key_candidates = "S160_STAGING_API_KEY",
+                   key_prompt = "S160_STAGING_API_KEY")
   )[[env]]
-  if (is.null(cfg)) {
-    stop_s160(sprintf("no %s API environment (available: prod, staging).", env),
+  environments <- get_config()$environments
+  api_url <- environments[[env]]$api_url
+  if (is.null(api_url) || is.null(keys)) {
+    have <- names(Filter(function(e) !is.null(e$api_url), environments))
+    stop_s160(sprintf("no %s API environment (available: %s).",
+                      env, paste(have, collapse = ", ")),
               fn = "s160_api_auth")
   }
 
@@ -322,7 +323,7 @@ s160_api_auth <- function(env = c("prod", "staging", "dev")) {
     "S160_API_USERID",
     "Enter your Survey160 API user ID (ask your team lead)."
   )
-  api_key <- resolve_env_api_key(cfg$key_candidates, cfg$key_prompt)
+  api_key <- resolve_env_api_key(keys$key_candidates, keys$key_prompt)
 
   # Build an independent connection so prod and staging can coexist in one
   # session, then mirror it into the package default so conn-less calls track
@@ -330,7 +331,7 @@ s160_api_auth <- function(env = c("prod", "staging", "dev")) {
   conn <- new.env(parent = emptyenv())
   conn$env <- env
   conn$bucket <- resolve_dataset("campaign_results", env)$bucket
-  api_do_auth(conn, cfg$url, userid, api_key)
+  api_do_auth(conn, api_url, userid, api_key)
   # Class the handle so it prints as an opaque connection (masking the key)
   # rather than a bare <environment>. The mirrored default stays unclassed.
   class(conn) <- c("s160_api_conn", "environment")

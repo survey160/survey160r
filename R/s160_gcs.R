@@ -28,49 +28,58 @@ check_gcs_ready <- function() {
   }
 }
 
-# --- Dataset registry: the ONE place physical GCS bucket names live ----------
+# --- Dataset registry: bundled config, single source of physical names -------
 # Clients select data by logical (dataset, environment); resolve_dataset() maps
-# that to a physical bucket + object. A later change can move this map
-# server-side so infra can reorganize buckets without a client release.
+# that to a physical bucket + object. The map lives in a bundled config
+# (inst/config.json) -- the ONE place physical GCS bucket names and API URLs
+# live -- so a bucket reorg is a config edit, not scattered code changes. A
+# later change can fetch a fresher config from a backend endpoint and fall back
+# to the bundled copy; get_config() is the seam for that.
 
-# The single environment enum exposed across the client surface. Each dataset /
-# endpoint supports a subset; resolve_dataset() errors clearly on a missing tier.
-.ENVIRONMENTS <- c("prod", "staging", "dev")
+# Parsed config, memoized for the session. Cleared by s160_config(refresh=TRUE).
+.config_cache <- new.env(parent = emptyenv())
 
-# dataset id -> (env -> physical bucket). A dataset that lacks an env tier simply
-# omits it (resolve_dataset() then errors, listing what is available).
-.DATASET_BUCKETS <- list(
-  campaign_results = list(prod = "campaign_results",
-                          staging = "campaign_results_staging"),
-  disposition = list(prod = "s160_disposition_prod",
-                     dev = "s160_disposition_dev"),
-  opt_out = list(prod = "s160_disposition_prod",
-                 dev = "s160_disposition_dev")
-)
+# Load the config shipped with the package.
+load_bundled_config <- function() {
+  path <- system.file("config.json", package = "survey160r")
+  jsonlite::fromJSON(path, simplifyVector = FALSE)
+}
 
-# dataset id -> object path within the bucket (env-independent). NULL for a
-# dataset whose object is per-campaign (campaign_results), built by the caller
-# from the campaign id + filename.
-.DATASET_OBJECTS <- list(
-  campaign_results = NULL,
-  disposition = "disposition_by_phone/disposition_all.parquet",
-  opt_out = "global_opt_out/global_opt_out.parquet"
-)
+# The active config (bundled today; a backend fetch can layer in here later),
+# memoized so the per-call readers do not re-parse on every resolve.
+get_config <- function() {
+  if (is.null(.config_cache$value)) {
+    .config_cache$value <- load_bundled_config()
+  }
+  .config_cache$value
+}
+
+# The object path for a dataset (env-independent in practice): the first env
+# tier that defines it. NULL when the object is per-campaign (campaign_results),
+# built by the caller from the campaign id + filename.
+dataset_object <- function(dataset) {
+  for (e in get_config()$environments) {
+    ds <- e$datasets[[dataset]]
+    if (!is.null(ds)) return(ds$object)
+  }
+  NULL
+}
 
 # Resolve a logical (dataset, env) to its physical GCS location, as
 # list(bucket=, object=). Errors clearly when the dataset has no such env tier.
 resolve_dataset <- function(dataset, env, fn = NULL) {
-  buckets <- .DATASET_BUCKETS[[dataset]]
-  if (is.null(buckets)) {
+  envs <- get_config()$environments
+  tiers <- Filter(function(e) !is.null(e$datasets[[dataset]]), envs)
+  if (length(tiers) == 0L) {
     stop_s160(sprintf("unknown dataset: %s", dataset), fn = fn)
   }
-  bucket <- buckets[[env]]
-  if (is.null(bucket)) {
+  ds <- envs[[env]]$datasets[[dataset]]
+  if (is.null(ds)) {
     stop_s160(sprintf("`%s` has no %s tier (available: %s).",
-                      dataset, env, paste(names(buckets), collapse = ", ")),
+                      dataset, env, paste(names(tiers), collapse = ", ")),
               fn = fn)
   }
-  list(bucket = bucket, object = .DATASET_OBJECTS[[dataset]])
+  list(bucket = ds$bucket, object = ds$object)
 }
 
 # Resolve a reader's GCS location from (dataset, env). An explicit `bucket` is
@@ -87,7 +96,7 @@ resolve_dataset <- function(dataset, env, fn = NULL) {
         i = "To use another environment, pass `env =` instead."
       )
     )
-    return(list(bucket = bucket, object = .DATASET_OBJECTS[[dataset]]))
+    return(list(bucket = bucket, object = dataset_object(dataset)))
   }
   resolve_dataset(dataset, env, fn = fn)
 }
@@ -346,6 +355,33 @@ fast_read_csv <- function(path, columns = NULL, encoding = "UTF-8",
 
 # --- Exported functions ------------------------------------------------------
 
+#' The Survey160 environment configuration
+#'
+#' Returns the configuration survey160r uses to reach Survey160's backends: the
+#' environments, each one's API base URL, and the datasets (with their GCS
+#' locations) it carries. This is the single source of truth behind
+#' \code{s160_api_auth()} and the GCS readers. You rarely need it directly, but
+#' it is handy for inspecting or scripting against what is available.
+#'
+#' The config is bundled with the package; \code{refresh = TRUE} reloads it
+#' (and, in a later release, re-fetches an updated copy from Survey160).
+#'
+#' @param refresh If \code{TRUE}, drop the cached config and reload it.
+#' @return A nested list with \code{schema_version} and \code{environments},
+#'   where each environment carries an optional \code{api_url} and a
+#'   \code{datasets} map of \code{dataset -> list(bucket, object)}.
+#' @seealso \code{\link{s160_datasets}()} for a tidy \code{(dataset, env)} table.
+#' @examples
+#' config <- s160_config()
+#' names(config$environments)
+#' @export
+s160_config <- function(refresh = FALSE) {
+  if (isTRUE(refresh)) {
+    .config_cache$value <- NULL
+  }
+  get_config()
+}
+
 #' List the Survey160 datasets and their environments
 #'
 #' Lists the datasets survey160r can read and the environments each is available
@@ -367,16 +403,23 @@ fast_read_csv <- function(path, columns = NULL, encoding = "UTF-8",
 #'     \item{\code{env}}{An environment the dataset is available in:
 #'       \code{"prod"}, \code{"staging"}, or \code{"dev"}.}
 #'   }
+#' @seealso \code{\link{s160_config}()} for the full nested configuration.
 #' @examples
 #' s160_datasets()
 #' @export
 s160_datasets <- function() {
-  envs <- lapply(.DATASET_BUCKETS, names)
-  data.frame(
-    dataset = rep(names(.DATASET_BUCKETS), lengths(envs)),
-    env = unlist(envs, use.names = FALSE),
-    stringsAsFactors = FALSE
-  )
+  environments <- get_config()$environments
+  envs <- names(environments)
+  per_env <- lapply(envs, function(e) {
+    ds <- names(environments[[e]]$datasets)
+    if (length(ds)) data.frame(dataset = ds, env = e, stringsAsFactors = FALSE)
+  })
+  out <- do.call(rbind, per_env)
+  ds_order <- unique(out$dataset)
+  out <- out[order(match(out$dataset, ds_order), match(out$env, envs)), ,
+             drop = FALSE]
+  rownames(out) <- NULL
+  out
 }
 
 #' Authenticate to Google Cloud Storage
