@@ -8,7 +8,7 @@ s160_gcs_campaign_results_read(
   campaign_id,
   filename = NULL,
   destdir = NULL,
-  env = c("prod", "staging", "dev"),
+  env = .ENV_CHOICES,
   bucket = NULL,
   columns = NULL,
   hash = FALSE,

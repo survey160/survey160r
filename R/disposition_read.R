@@ -518,7 +518,7 @@ disposition_screen <- function(sample, dataset, phone_col = "phone",
 #' disposition_screen(my_sample, dataset)
 #' }
 #' @export
-disposition_pull <- function(env = c("prod", "staging", "dev"), dest = NULL,
+disposition_pull <- function(env = .ENV_CHOICES, dest = NULL,
                              bucket = NULL, refresh = FALSE,
                              progress = interactive()) {
   env <- match.arg(env)

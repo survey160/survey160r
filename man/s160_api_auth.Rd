@@ -4,7 +4,7 @@
 \alias{s160_api_auth}
 \title{Authenticate to a Survey160 environment and return a connection}
 \usage{
-s160_api_auth(env = c("prod", "staging", "dev"))
+s160_api_auth(env = .ENV_CHOICES)
 }
 \arguments{
 \item{env}{Environment name: \code{"prod"} (default), \code{"staging"}, or

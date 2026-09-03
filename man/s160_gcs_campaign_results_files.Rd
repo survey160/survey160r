@@ -4,11 +4,7 @@
 \alias{s160_gcs_campaign_results_files}
 \title{List files in a campaign's GCS folder}
 \usage{
-s160_gcs_campaign_results_files(
-  campaign_id,
-  env = c("prod", "staging", "dev"),
-  bucket = NULL
-)
+s160_gcs_campaign_results_files(campaign_id, env = .ENV_CHOICES, bucket = NULL)
 }
 \arguments{
 \item{campaign_id}{Campaign ID (numeric or character). Must be a single value.}

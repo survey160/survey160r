@@ -161,7 +161,7 @@ opt_out_screen <- function(sample, dataset, phone_col = "phone") {
 #' cleaned <- opt_out_screen(my_sample, opt_out_pull())
 #' }
 #' @export
-opt_out_pull <- function(env = c("prod", "staging", "dev"), dest = NULL,
+opt_out_pull <- function(env = .ENV_CHOICES, dest = NULL,
                          bucket = NULL, refresh = FALSE,
                          progress = interactive()) {
   env <- match.arg(env)

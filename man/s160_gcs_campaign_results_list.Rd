@@ -4,10 +4,7 @@
 \alias{s160_gcs_campaign_results_list}
 \title{List all campaign IDs in the current bucket}
 \usage{
-s160_gcs_campaign_results_list(
-  env = c("prod", "staging", "dev"),
-  bucket = NULL
-)
+s160_gcs_campaign_results_list(env = .ENV_CHOICES, bucket = NULL)
 }
 \arguments{
 \item{env}{Environment: \code{"prod"} (default) or \code{"staging"}. There is

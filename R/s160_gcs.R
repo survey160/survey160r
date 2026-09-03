@@ -36,6 +36,11 @@ check_gcs_ready <- function() {
 # later change can fetch a fresher config from a backend endpoint and fall back
 # to the bundled copy; get_config() is the seam for that.
 
+# The environment choices the client exposes, defined once and used as the
+# `env` default across the surface. get_config() asserts the config's
+# environments match this set so the enum and the config cannot silently drift.
+.ENV_CHOICES <- c("prod", "staging", "dev")
+
 # Parsed config, memoized for the session. Cleared by s160_config(refresh=TRUE).
 .config_cache <- new.env(parent = emptyenv())
 
@@ -49,7 +54,14 @@ load_bundled_config <- function() {
 # memoized so the per-call readers do not re-parse on every resolve.
 get_config <- function() {
   if (is.null(.config_cache$value)) {
-    .config_cache$value <- load_bundled_config()
+    cfg <- load_bundled_config()
+    if (!setequal(names(cfg$environments), .ENV_CHOICES)) {
+      stop_s160(sprintf(
+        "config environments (%s) do not match the exposed env choices (%s).",
+        paste(names(cfg$environments), collapse = ", "),
+        paste(.ENV_CHOICES, collapse = ", ")))
+    }
+    .config_cache$value <- cfg
   }
   .config_cache$value
 }
@@ -75,8 +87,15 @@ resolve_dataset <- function(dataset, env, fn = NULL) {
   }
   ds <- environments[[env]]$datasets[[dataset]]
   if (is.null(ds)) {
-    stop_s160(sprintf("`%s` has no %s tier (available: %s).",
-                      dataset, env, paste(names(tiers), collapse = ", ")),
+    avail <- names(tiers)
+    # disposition/opt_out have no staging tier: staging sends fold into prod.
+    hint <- if (identical(env, "staging") && "prod" %in% avail) {
+      " Staging sends are aggregated into prod; read it with `env = \"prod\"`."
+    } else {
+      ""
+    }
+    stop_s160(sprintf("`%s` has no %s tier (available: %s).%s",
+                      dataset, env, paste(avail, collapse = ", "), hint),
               fn = fn)
   }
   list(bucket = ds$bucket, object = ds$object)
@@ -557,7 +576,7 @@ s160_gcs_init <- function(bucket = NULL) {
 #' @export
 s160_gcs_campaign_results_read <- function(campaign_id, filename = NULL,
                                            destdir = NULL,
-                                           env = c("prod", "staging", "dev"),
+                                           env = .ENV_CHOICES,
                                            bucket = NULL, columns = NULL,
                                            hash = FALSE, ...) {
   campaign_id <- validate_campaign_id(campaign_id)
@@ -643,7 +662,7 @@ s160_gcs_campaign_results_read <- function(campaign_id, filename = NULL,
 #' @importFrom googleCloudStorageR gcs_list_objects
 #' @export
 s160_gcs_campaign_results_files <- function(campaign_id,
-                                            env = c("prod", "staging", "dev"),
+                                            env = .ENV_CHOICES,
                                             bucket = NULL) {
   campaign_id <- validate_campaign_id(campaign_id)
   env <- match.arg(env)
@@ -683,7 +702,7 @@ s160_gcs_campaign_results_files <- function(campaign_id,
 #' s160_gcs_campaign_results_list()
 #' }
 #' @export
-s160_gcs_campaign_results_list <- function(env = c("prod", "staging", "dev"),
+s160_gcs_campaign_results_list <- function(env = .ENV_CHOICES,
                                            bucket = NULL) {
   env <- match.arg(env)
   bucket <- .locate("campaign_results", env, bucket,
@@ -803,7 +822,7 @@ s160_csv_header <- function(path, encoding = "UTF-8") {
 #' @importFrom googleCloudStorageR gcs_list_objects
 #' @export
 s160_gcs_campaign_results_status <- function(campaign_id,
-                                             env = c("prod", "staging", "dev"),
+                                             env = .ENV_CHOICES,
                                              bucket = NULL) {
   campaign_id <- validate_campaign_id(campaign_id)
   env <- match.arg(env)

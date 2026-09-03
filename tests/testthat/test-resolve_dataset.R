@@ -22,12 +22,29 @@ test_that("resolve_dataset returns the physical bucket + object per tier", {
                "campaign_results_dev")
 })
 
-test_that("resolve_dataset errors clearly on a missing env tier", {
+test_that("resolve_dataset errors on a missing tier, hinting prod for staging", {
   # disposition/opt_out have no staging tier (staging sends fold into prod).
-  expect_error(survey160r:::resolve_dataset("disposition", "staging"),
-               "disposition.*no staging tier.*prod, dev")
-  expect_error(survey160r:::resolve_dataset("opt_out", "staging"),
-               "opt_out.*no staging tier.*prod, dev")
+  for (ds in c("disposition", "opt_out")) {
+    msg <- tryCatch(survey160r:::resolve_dataset(ds, "staging"),
+                    error = function(e) conditionMessage(e))
+    expect_match(msg, sprintf("%s.*no staging tier.*prod, dev", ds))
+    expect_match(msg, "aggregated into prod")   # the staging -> prod hint
+  }
+})
+
+test_that("resolve_dataset's staging hint fires only for a missing staging tier", {
+  # A non-staging missing tier gets the plain error, no aggregation hint.
+  local_mocked_bindings(get_config = function() {
+    list(environments = list(
+      prod = list(datasets = list(x = list(bucket = "b"))),
+      staging = list(datasets = list()),
+      dev = list(datasets = list())
+    ))
+  })
+  msg <- tryCatch(survey160r:::resolve_dataset("x", "dev"),
+                  error = function(e) conditionMessage(e))
+  expect_match(msg, "x.*no dev tier.*prod")
+  expect_false(grepl("aggregated into prod", msg))
 })
 
 test_that("resolve_dataset errors on an unknown dataset", {
@@ -116,4 +133,13 @@ test_that("dataset_object returns the object path, or NULL", {
                "disposition_by_phone/disposition_all.parquet")
   expect_null(survey160r:::dataset_object("campaign_results"))  # per-campaign
   expect_null(survey160r:::dataset_object("nope"))              # unknown dataset
+})
+
+test_that("get_config rejects a config whose envs don't match the enum", {
+  withr::defer(survey160r:::s160_config(refresh = TRUE))  # restore real config
+  local_mocked_bindings(load_bundled_config = function() {
+    list(schema_version = 1L, environments = list(prod = list(), qa = list()))
+  })
+  expect_error(survey160r:::s160_config(refresh = TRUE),
+               "do not match the exposed env choices")
 })

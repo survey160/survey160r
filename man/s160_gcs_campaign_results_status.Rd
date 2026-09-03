@@ -6,7 +6,7 @@
 \usage{
 s160_gcs_campaign_results_status(
   campaign_id,
-  env = c("prod", "staging", "dev"),
+  env = .ENV_CHOICES,
   bucket = NULL
 )
 }

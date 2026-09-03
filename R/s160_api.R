@@ -284,7 +284,7 @@ s160_api_request <- function(method, path, body = NULL, conn = NULL) {
 #' }
 #' @importFrom httr GET POST add_headers content_type_json content http_error http_status
 #' @export
-s160_api_auth <- function(env = c("prod", "staging", "dev")) {
+s160_api_auth <- function(env = .ENV_CHOICES) {
   env <- match.arg(env)
   # Nudge callers to name the environment: `env =` is self-documenting and the
   # sole selector. sys.call() preserves how it was written; a named arg keeps its
