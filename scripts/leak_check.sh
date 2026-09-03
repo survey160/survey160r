@@ -17,9 +17,16 @@ case "$mode" in
     payload="$(git diff --cached --unified=0 | sed -n 's/^+//p' | grep -v '^++' || true)"
     ;;
   --range)
-    base="${2:?--range needs BASE HEAD}"
-    head="${3:?--range needs BASE HEAD}"
-    payload="$(git diff --unified=0 "$base...$head" | sed -n 's/^+//p' | grep -v '^++' || true)"
+    base="${2-}"
+    head="${3:?--range needs [BASE] HEAD}"
+    if [ -n "$base" ]; then
+      # Additions from every commit in base..head, not the net diff -- catches a
+      # secret added in one commit and removed in a later one within the range.
+      payload="$(git log -p --unified=0 --no-color "$base..$head" -- . | sed -n 's/^+//p' | grep -v '^++' || true)"
+    else
+      # New ref with no shared base: everything head introduces beyond any remote.
+      payload="$(git log -p --unified=0 --no-color "$head" --not --remotes -- . | sed -n 's/^+//p' | grep -v '^++' || true)"
+    fi
     ;;
   --tree)
     :

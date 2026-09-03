@@ -20,12 +20,19 @@ cat > "$hooks_dir/pre-push" <<'EOF'
 #!/bin/sh
 # survey160r pre-push -- installed by scripts/install-hooks.sh
 cd "$(git rev-parse --show-toplevel)" || exit 1
-base="$(git merge-base HEAD origin/main 2>/dev/null || true)"
-if [ -n "$base" ]; then
-  scripts/leak_check.sh --range "$base" HEAD || exit 1
-else
-  scripts/leak_check.sh --tree || exit 1
-fi
+# Scan each ref being pushed (stdin: <local ref> <local sha> <remote ref> <remote sha>),
+# not just HEAD, so another branch or tag can't slip content past the guard.
+status=0
+while read -r local_ref local_sha remote_ref remote_sha; do
+  case "$local_sha" in *[!0]*) : ;; *) continue ;; esac   # skip ref deletions
+  if expr "$remote_sha" : '00*$' >/dev/null 2>&1; then
+    base="$(git merge-base "$local_sha" origin/main 2>/dev/null || true)"
+  else
+    base="$remote_sha"
+  fi
+  scripts/leak_check.sh --range "$base" "$local_sha" || status=1
+done
+[ "$status" -eq 0 ] || exit 1
 make check && make coverage
 EOF
 
