@@ -60,7 +60,7 @@ Your original phone column and every other column of the sample are returned unt
 - **`NA` is not "contactable".** A blank or unparseable phone screens to `opted_out = NA`, not `FALSE` -- the list cannot speak to a number it cannot read. Keep those rows (the `%in% TRUE` idiom does) and fix the phones.
 - **The complete list, not contacted-only.** Unlike the disposition dataset (recipients Survey160 has contacted), the opt-out list covers every opted-out number, whether or not it has been in a campaign -- so screen against it even for a fresh, never-fielded sample.
 - **Stale cache.** The list is re-published on every sync; `opt_out_pull(refresh = TRUE)` forces a fresh download.
-- **`env`.** `opt_out_pull()`'s `env` is `"prod"` (default) or `"dev"` -- the bucket has no staging tier, so this differs from `s160_api_auth()`'s `"prod"` / `"staging"`.
+- **`env`.** `opt_out_pull()` reads `"prod"` (default) or `"dev"` -- there is no `staging` tier (staging sends fold into the prod bucket), so `env = "staging"` errors; use `env = "prod"` for staging data. Run `s160_datasets()` to see every dataset's environments.
 
 ## See also
 

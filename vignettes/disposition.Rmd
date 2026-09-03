@@ -84,7 +84,7 @@ In your own code, read once and reuse: `records <- disposition_records(dataset)`
 - **Text-to-web (external) campaigns** have no completion callback, so `completed` is `NA` and never a false positive.
 - **`date_closed_on` and `error` are `NA` in the beta**, so the `date_from` / `date_to` filters return no rows.
 - **Stale cache.** The dataset is re-published periodically; `disposition_pull(refresh = TRUE)` forces a fresh download.
-- **`env`.** `disposition_pull()`'s `env` is `"prod"` (default) or `"dev"` -- the disposition buckets have no staging tier, so this differs from `s160_api_auth()`'s `"prod"` / `"staging"`.
+- **`env`.** `disposition_pull()` reads `"prod"` (default) or `"dev"` -- there is no `staging` tier (staging sends fold into the prod bucket), so `env = "staging"` errors; use `env = "prod"` for staging data. Run `s160_datasets()` to see every dataset's environments.
 
 ## See also
 
