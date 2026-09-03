@@ -122,10 +122,12 @@ test_that("s160_config returns the bundled environment config", {
                "campaign_results")
 })
 
-test_that("s160_config(refresh = TRUE) reloads the cached config", {
-  before <- s160_config()
-  after <- s160_config(refresh = TRUE)
-  expect_equal(before, after)
+test_that("s160_config(refresh = TRUE) drops the cache and reloads", {
+  s160_config()  # ensure the cache is populated
+  cache <- survey160r:::.config_cache          # same env, mutate in place
+  cache$value <- list(schema_version = "sentinel")
+  expect_equal(s160_config()$schema_version, "sentinel")       # cache is honored
+  expect_true(s160_config(refresh = TRUE)$schema_version == 1)  # reloaded fresh
 })
 
 test_that("dataset_object returns the object path, or NULL", {

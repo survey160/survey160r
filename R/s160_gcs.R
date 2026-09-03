@@ -63,12 +63,12 @@ get_config <- function() {
     cfg <- load_bundled_config()
     if (!isTRUE(cfg$schema_version == .CONFIG_SCHEMA_VERSION)) {
       stop_s160(sprintf(
-        "unsupported config schema_version; this survey160r expects %s.",
+        "config: unsupported schema_version; this survey160r expects %s.",
         .CONFIG_SCHEMA_VERSION))
     }
     if (!setequal(names(cfg$environments), .ENV_CHOICES)) {
       stop_s160(sprintf(
-        "config environments (%s) do not match the exposed env choices (%s).",
+        "config: environments (%s) do not match the exposed env choices (%s).",
         paste(names(cfg$environments), collapse = ", "),
         paste(.ENV_CHOICES, collapse = ", ")))
     }
@@ -558,8 +558,8 @@ s160_gcs_init <- function(bucket = NULL) {
 #' @param destdir Directory to save the downloaded file. When \code{NULL}
 #'   (default), a temporary file is used and cleaned up automatically. Use
 #'   \code{"."} for the current directory.
-#' @param env Environment: \code{"prod"} (default) or \code{"staging"}. There is
-#'   no dev campaign-results tier.
+#' @param env Environment: \code{"prod"} (default), \code{"staging"}, or
+#'   \code{"dev"}.
 #' @param bucket \strong{Deprecated.} Select data with \code{env =} instead; a
 #'   supplied bucket is honored with a warning for back-compat.
 #' @param columns Optional character vector of (dot-form) column names to keep,
@@ -664,8 +664,8 @@ s160_gcs_campaign_results_read <- function(campaign_id, filename = NULL,
 #' Returns \code{character(0)} with a message if the campaign has no files.
 #'
 #' @param campaign_id Campaign ID (numeric or character). Must be a single value.
-#' @param env Environment: \code{"prod"} (default) or \code{"staging"}. There is
-#'   no dev campaign-results tier.
+#' @param env Environment: \code{"prod"} (default), \code{"staging"}, or
+#'   \code{"dev"}.
 #' @param bucket \strong{Deprecated.} Select data with \code{env =} instead; a
 #'   supplied bucket is honored with a warning for back-compat.
 #' @return Character vector of file names (without the campaign_id prefix).
@@ -706,8 +706,8 @@ s160_gcs_campaign_results_files <- function(campaign_id,
 #' in the results bucket. Objects at the bucket root (not inside a folder) are
 #' excluded.
 #'
-#' @param env Environment: \code{"prod"} (default) or \code{"staging"}. There is
-#'   no dev campaign-results tier.
+#' @param env Environment: \code{"prod"} (default), \code{"staging"}, or
+#'   \code{"dev"}.
 #' @param bucket \strong{Deprecated.} Select data with \code{env =} instead; a
 #'   supplied bucket is honored with a warning for back-compat.
 #' @return Character vector of campaign IDs, sorted.
@@ -823,8 +823,8 @@ s160_csv_header <- function(path, encoding = "UTF-8") {
 #' triggering a new export. Requires GCS auth (\code{s160_gcs_init}).
 #'
 #' @param campaign_id Campaign ID (numeric or character).
-#' @param env Environment: \code{"prod"} (default) or \code{"staging"}. There is
-#'   no dev campaign-results tier.
+#' @param env Environment: \code{"prod"} (default), \code{"staging"}, or
+#'   \code{"dev"}.
 #' @param bucket \strong{Deprecated.} Select data with \code{env =} instead; a
 #'   supplied bucket is honored with a warning for back-compat.
 #' @return Named list with \code{name}, \code{updated}, and \code{size},

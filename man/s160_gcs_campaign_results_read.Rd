@@ -26,8 +26,8 @@ Must not contain path separators.}
 (default), a temporary file is used and cleaned up automatically. Use
 \code{"."} for the current directory.}
 
-\item{env}{Environment: \code{"prod"} (default) or \code{"staging"}. There is
-no dev campaign-results tier.}
+\item{env}{Environment: \code{"prod"} (default), \code{"staging"}, or
+\code{"dev"}.}
 
 \item{bucket}{\strong{Deprecated.} Select data with \code{env =} instead; a
 supplied bucket is honored with a warning for back-compat.}
