@@ -18,13 +18,16 @@ test_that("resolve_dataset returns the physical bucket + object per tier", {
   expect_null(c_prod$object)
   expect_equal(survey160r:::resolve_dataset("campaign_results", "staging")$bucket,
                "campaign_results_staging")
+  expect_equal(survey160r:::resolve_dataset("campaign_results", "dev")$bucket,
+               "campaign_results_dev")
 })
 
 test_that("resolve_dataset errors clearly on a missing env tier", {
+  # disposition/opt_out have no staging tier (staging sends fold into prod).
   expect_error(survey160r:::resolve_dataset("disposition", "staging"),
                "disposition.*no staging tier.*prod, dev")
-  expect_error(survey160r:::resolve_dataset("campaign_results", "dev"),
-               "campaign_results.*no dev tier.*prod, staging")
+  expect_error(survey160r:::resolve_dataset("opt_out", "staging"),
+               "opt_out.*no staging tier.*prod, dev")
 })
 
 test_that("resolve_dataset errors on an unknown dataset", {
@@ -72,7 +75,7 @@ test_that("s160_datasets lists every registry tier as (dataset, env)", {
 
   expect_equal(
     paste(d$dataset, d$env),
-    c("campaign_results prod", "campaign_results staging",
+    c("campaign_results prod", "campaign_results staging", "campaign_results dev",
       "disposition prod", "disposition dev",
       "opt_out prod", "opt_out dev")
   )
@@ -95,10 +98,11 @@ test_that("s160_config returns the bundled environment config", {
   expect_true(cfg$schema_version == 1)
   expect_setequal(names(cfg$environments), c("prod", "staging", "dev"))
   expect_equal(cfg$environments$prod$api_url, "https://api.survey160.com")
-  expect_null(cfg$environments$dev$api_url)  # no dev API endpoint
-  expect_setequal(names(cfg$datasets),
+  expect_equal(cfg$environments$dev$api_url, "https://dev-api.survey160.com")
+  expect_setequal(names(cfg$environments$prod$datasets),
                   c("campaign_results", "disposition", "opt_out"))
-  expect_equal(cfg$datasets$campaign_results$prod$bucket, "campaign_results")
+  expect_equal(cfg$environments$prod$datasets$campaign_results$bucket,
+               "campaign_results")
 })
 
 test_that("s160_config(refresh = TRUE) reloads the cached config", {

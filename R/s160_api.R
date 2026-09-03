@@ -262,8 +262,9 @@ s160_api_request <- function(method, path, body = NULL, conn = NULL) {
 #' reuses the credentials stored on the connection, so a staging connection held
 #' alongside prod keeps refreshing against staging rather than the default.
 #'
-#' @param env Environment name: \code{"prod"} (default) or \code{"staging"}
-#'   (there is no \code{"dev"} API environment). Pass it by name
+#' @param env Environment name: \code{"prod"} (default), \code{"staging"}, or
+#'   \code{"dev"}. Each reads its API key from \code{S160_<ENV>_API_KEY} (prod
+#'   also accepts the legacy \code{S160_API_KEY}). Pass it by name
 #'   (\code{env = "staging"}); a positional value is deprecated.
 #' @return A connection object (an environment) to pass as \code{conn}, returned
 #'   invisibly. As a side effect, the package's default connection is updated to
@@ -302,17 +303,18 @@ s160_api_auth <- function(env = c("prod", "staging", "dev")) {
       .frequency_id = "s160_api_auth_positional_env"
     )
   }
-  # The API base URL is backend config (from s160_config()); the key env-var
-  # names are a client-side convention, so they stay here.
-  keys <- list(
-    prod = list(key_candidates = c("S160_PROD_API_KEY", "S160_API_KEY"),
-                key_prompt = "S160_PROD_API_KEY"),
-    staging = list(key_candidates = "S160_STAGING_API_KEY",
-                   key_prompt = "S160_STAGING_API_KEY")
-  )[[env]]
+  # The API base URL is backend config (from s160_config()). The key env-var
+  # follows a uniform pattern, so derive it from `env`; only prod keeps the
+  # legacy S160_API_KEY fallback. The secret itself never lives in the config.
+  key_var <- sprintf("S160_%s_API_KEY", toupper(env))
+  key_candidates <- if (identical(env, "prod")) {
+    c(key_var, "S160_API_KEY")
+  } else {
+    key_var
+  }
   environments <- get_config()$environments
   api_url <- environments[[env]]$api_url
-  if (is.null(api_url) || is.null(keys)) {
+  if (is.null(api_url)) {
     have <- names(Filter(function(e) !is.null(e$api_url), environments))
     stop_s160(sprintf("no %s API environment (available: %s).",
                       env, paste(have, collapse = ", ")),
@@ -323,7 +325,7 @@ s160_api_auth <- function(env = c("prod", "staging", "dev")) {
     "S160_API_USERID",
     "Enter your Survey160 API user ID (ask your team lead)."
   )
-  api_key <- resolve_env_api_key(keys$key_candidates, keys$key_prompt)
+  api_key <- resolve_env_api_key(key_candidates, key_var)
 
   # Build an independent connection so prod and staging can coexist in one
   # session, then mirror it into the package default so conn-less calls track

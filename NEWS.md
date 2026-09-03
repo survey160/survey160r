@@ -47,6 +47,13 @@
   than scattered code changes. A later release can refresh the config from a
   Survey160 endpoint, falling back to the bundled copy.
 
+* **`s160_api_auth()` now supports `env = "dev"`.** All three environments
+  (prod, staging, dev) are configured, each reading its key from
+  `S160_<ENV>_API_KEY` (prod also accepts the legacy `S160_API_KEY`); the key
+  variable is derived from the environment, never stored in the config. Note
+  disposition/opt-out have no `staging` tier -- staging sends fold into prod, so
+  read them with `env = "prod"`.
+
 * **Download the opt-out list: `opt_out_pull()`.** Fetches the opt-out Parquet
   from the environment's `s160_disposition_<env>` bucket to a local cache and
   returns the path, ready to hand straight to `opt_out_screen()`. Parallel to
