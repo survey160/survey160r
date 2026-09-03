@@ -4,14 +4,11 @@
 \alias{s160_gcs_campaign_results_list}
 \title{List all campaign IDs in the current bucket}
 \usage{
-s160_gcs_campaign_results_list(
-  env = c("prod", "staging", "dev"),
-  bucket = NULL
-)
+s160_gcs_campaign_results_list(env = .ENV_CHOICES, bucket = NULL)
 }
 \arguments{
-\item{env}{Environment: \code{"prod"} (default) or \code{"staging"}. There is
-no dev campaign-results tier.}
+\item{env}{Environment: \code{"prod"} (default), \code{"staging"}, or
+\code{"dev"}.}
 
 \item{bucket}{\strong{Deprecated.} Select data with \code{env =} instead; a
 supplied bucket is honored with a warning for back-compat.}

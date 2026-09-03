@@ -4,17 +4,13 @@
 \alias{s160_gcs_campaign_results_files}
 \title{List files in a campaign's GCS folder}
 \usage{
-s160_gcs_campaign_results_files(
-  campaign_id,
-  env = c("prod", "staging", "dev"),
-  bucket = NULL
-)
+s160_gcs_campaign_results_files(campaign_id, env = .ENV_CHOICES, bucket = NULL)
 }
 \arguments{
 \item{campaign_id}{Campaign ID (numeric or character). Must be a single value.}
 
-\item{env}{Environment: \code{"prod"} (default) or \code{"staging"}. There is
-no dev campaign-results tier.}
+\item{env}{Environment: \code{"prod"} (default), \code{"staging"}, or
+\code{"dev"}.}
 
 \item{bucket}{\strong{Deprecated.} Select data with \code{env =} instead; a
 supplied bucket is honored with a warning for back-compat.}

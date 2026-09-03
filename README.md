@@ -68,9 +68,11 @@ status$updated
 status$size
 ```
 
+Every `s160_gcs_campaign_results_*` reader takes `env = "prod"` (default), `"staging"`, or `"dev"`; `s160_datasets()` lists which environments each dataset is available in.
+
 ### Trigger a fresh export via the API
 
-When you need data newer than the last GCS export, the API triggers a fresh export, polls until it's ready, and downloads it in one step. `s160_api_auth(env)` authenticates to `"prod"` (default) or `"staging"` and returns a *connection* that pairs the API URL, bucket, and key so they can't be mismatched; on first run it prompts for any missing credentials and saves them to `~/.Renviron`.
+When you need data newer than the last GCS export, the API triggers a fresh export, polls until it's ready, and downloads it in one step. `s160_api_auth(env)` authenticates to `"prod"` (default), `"staging"`, or `"dev"` and returns a *connection* that pairs the API URL, bucket, and key so they can't be mismatched; on first run it prompts for any missing credentials and saves them to `~/.Renviron`. Run `s160_datasets()` to see which environments each dataset is available in.
 
 ```r
 s160_api_auth()                                  # defaults to prod; prompts on first run
@@ -167,9 +169,10 @@ errors after authenticating.
 Credentials live in `~/.Renviron` and are read per environment:
 
 1. **User ID** -- `S160_API_USERID` (shared across environments).
-2. **API key** -- a per-environment variable: `S160_PROD_API_KEY` for
-   prod (falling back to the legacy `S160_API_KEY` if unset), and
-   `S160_STAGING_API_KEY` for staging.
+2. **API key** -- a per-environment variable, `S160_<ENV>_API_KEY`:
+   `S160_PROD_API_KEY` for prod (falling back to the legacy `S160_API_KEY`
+   if unset), `S160_STAGING_API_KEY` for staging, and `S160_DEV_API_KEY`
+   for dev.
 
 Any missing value is prompted on the first `s160_api_auth(env)` call for
 that environment and saved to `~/.Renviron`, so you won't be asked

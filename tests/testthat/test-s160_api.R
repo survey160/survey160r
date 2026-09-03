@@ -150,8 +150,30 @@ test_that("staging resolves its own url, bucket, and key var", {
   expect_equal(conn$env, "staging")
 })
 
-test_that("s160_api_auth errors on the dev environment (API has none)", {
-  expect_error(s160_api_auth(env = "dev"), "no dev API environment")
+test_that("dev resolves its own url, bucket, and derived key var", {
+  withr::local_envvar(S160_API_USERID = "svc", S160_DEV_API_KEY = "dev-key")
+  seen <- new_capture()
+  local_mocked_bindings(api_do_auth = fake_do_auth_capture(seen))
+  .defer_api_env_reset()
+
+  conn <- suppressMessages(s160_api_auth(env = "dev"))
+  expect_equal(seen$base_url, "https://dev-api.survey160.com")
+  expect_equal(seen$api_key, "dev-key")            # from S160_DEV_API_KEY
+  expect_equal(conn$bucket, "campaign_results_dev")
+  expect_equal(conn$env, "dev")
+})
+
+test_that("s160_api_auth errors when the config has no api_url for the env", {
+  # Defensive guard: an env in the enum but absent an api_url in the config.
+  local_mocked_bindings(get_config = function() {
+    list(environments = list(
+      prod = list(api_url = "https://api.survey160.com"),
+      staging = list(api_url = "https://staging-api.survey160.com"),
+      dev = list()
+    ))
+  })
+  expect_error(s160_api_auth(env = "dev"),
+               "no dev API environment.*prod, staging")
 })
 
 test_that("s160_api_auth deprecates passing the environment positionally", {

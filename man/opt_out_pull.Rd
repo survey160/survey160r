@@ -5,7 +5,7 @@
 \title{Download the opt-out list from Cloud Storage}
 \usage{
 opt_out_pull(
-  env = c("prod", "staging", "dev"),
+  env = .ENV_CHOICES,
   dest = NULL,
   bucket = NULL,
   refresh = FALSE,

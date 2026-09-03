@@ -4,11 +4,12 @@
 \alias{s160_api_auth}
 \title{Authenticate to a Survey160 environment and return a connection}
 \usage{
-s160_api_auth(env = c("prod", "staging", "dev"))
+s160_api_auth(env = .ENV_CHOICES)
 }
 \arguments{
-\item{env}{Environment name: \code{"prod"} (default) or \code{"staging"}
-(there is no \code{"dev"} API environment). Pass it by name
+\item{env}{Environment name: \code{"prod"} (default), \code{"staging"}, or
+\code{"dev"}. Each reads its API key from \code{S160_<ENV>_API_KEY} (prod
+also accepts the legacy \code{S160_API_KEY}). Pass it by name
 (\code{env = "staging"}); a positional value is deprecated.}
 }
 \value{

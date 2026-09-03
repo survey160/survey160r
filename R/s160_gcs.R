@@ -28,49 +28,92 @@ check_gcs_ready <- function() {
   }
 }
 
-# --- Dataset registry: the ONE place physical GCS bucket names live ----------
+# --- Dataset registry: bundled config, single source of physical names -------
 # Clients select data by logical (dataset, environment); resolve_dataset() maps
-# that to a physical bucket + object. A later change can move this map
-# server-side so infra can reorganize buckets without a client release.
+# that to a physical bucket + object. The map lives in a bundled config
+# (inst/config.json) -- the ONE place physical GCS bucket names and API URLs
+# live -- so a bucket reorg is a config edit, not scattered code changes. A
+# later change can fetch a fresher config from a backend endpoint and fall back
+# to the bundled copy; get_config() is the seam for that.
 
-# The single environment enum exposed across the client surface. Each dataset /
-# endpoint supports a subset; resolve_dataset() errors clearly on a missing tier.
-.ENVIRONMENTS <- c("prod", "staging", "dev")
+# The environment choices the client exposes, defined once and used as the
+# `env` default across the surface. get_config() asserts the config's
+# environments match this set so the enum and the config cannot silently drift.
+.ENV_CHOICES <- c("prod", "staging", "dev")
 
-# dataset id -> (env -> physical bucket). A dataset that lacks an env tier simply
-# omits it (resolve_dataset() then errors, listing what is available).
-.DATASET_BUCKETS <- list(
-  campaign_results = list(prod = "campaign_results",
-                          staging = "campaign_results_staging"),
-  disposition = list(prod = "s160_disposition_prod",
-                     dev = "s160_disposition_dev"),
-  opt_out = list(prod = "s160_disposition_prod",
-                 dev = "s160_disposition_dev")
-)
+# The config schema version this survey160r understands.
+.CONFIG_SCHEMA_VERSION <- 1L
 
-# dataset id -> object path within the bucket (env-independent). NULL for a
-# dataset whose object is per-campaign (campaign_results), built by the caller
-# from the campaign id + filename.
-.DATASET_OBJECTS <- list(
-  campaign_results = NULL,
-  disposition = "disposition_by_phone/disposition_all.parquet",
-  opt_out = "global_opt_out/global_opt_out.parquet"
-)
+# Parsed config, memoized for the session. Cleared by s160_config(refresh=TRUE).
+.config_cache <- new.env(parent = emptyenv())
+
+# Load the config shipped with the package.
+load_bundled_config <- function() {
+  path <- system.file("config.json", package = "survey160r")
+  if (!nzchar(path)) {
+    stop_s160("bundled config.json not found; is survey160r installed correctly?")
+  }
+  jsonlite::fromJSON(path, simplifyVector = FALSE)
+}
+
+# The active config (bundled today; a backend fetch can layer in here later),
+# memoized so the per-call readers do not re-parse on every resolve.
+get_config <- function() {
+  if (is.null(.config_cache$value)) {
+    cfg <- load_bundled_config()
+    if (!isTRUE(cfg$schema_version == .CONFIG_SCHEMA_VERSION)) {
+      stop_s160(sprintf(
+        "config: unsupported schema_version; this survey160r expects %s.",
+        .CONFIG_SCHEMA_VERSION))
+    }
+    if (!setequal(names(cfg$environments), .ENV_CHOICES)) {
+      stop_s160(sprintf(
+        "config: environments (%s) do not match the exposed env choices (%s).",
+        paste(names(cfg$environments), collapse = ", "),
+        paste(.ENV_CHOICES, collapse = ", ")))
+    }
+    .config_cache$value <- cfg
+  }
+  .config_cache$value
+}
+
+# The env tiers that define `dataset`, as a named list (env -> {bucket, object})
+# in config env order. The one place resolve_dataset() and dataset_object() ask
+# "which envs have this dataset".
+dataset_tiers <- function(dataset) {
+  entries <- lapply(get_config()$environments, function(e) e$datasets[[dataset]])
+  Filter(Negate(is.null), entries)
+}
+
+# The object path for a dataset. Assumes it is identical across envs (true today)
+# and returns the first tier's; NULL when the object is per-campaign
+# (campaign_results), built by the caller from the campaign id + filename.
+dataset_object <- function(dataset) {
+  tiers <- dataset_tiers(dataset)
+  if (length(tiers)) tiers[[1L]]$object else NULL
+}
 
 # Resolve a logical (dataset, env) to its physical GCS location, as
 # list(bucket=, object=). Errors clearly when the dataset has no such env tier.
 resolve_dataset <- function(dataset, env, fn = NULL) {
-  buckets <- .DATASET_BUCKETS[[dataset]]
-  if (is.null(buckets)) {
+  tiers <- dataset_tiers(dataset)
+  if (length(tiers) == 0L) {
     stop_s160(sprintf("unknown dataset: %s", dataset), fn = fn)
   }
-  bucket <- buckets[[env]]
-  if (is.null(bucket)) {
-    stop_s160(sprintf("`%s` has no %s tier (available: %s).",
-                      dataset, env, paste(names(buckets), collapse = ", ")),
+  ds <- tiers[[env]]
+  if (is.null(ds)) {
+    avail <- names(tiers)
+    # disposition/opt_out have no staging tier: staging sends fold into prod.
+    hint <- if (identical(env, "staging") && "prod" %in% avail) {
+      " Staging sends are aggregated into prod; read it with `env = \"prod\"`."
+    } else {
+      ""
+    }
+    stop_s160(sprintf("`%s` has no %s tier (available: %s).%s",
+                      dataset, env, paste(avail, collapse = ", "), hint),
               fn = fn)
   }
-  list(bucket = bucket, object = .DATASET_OBJECTS[[dataset]])
+  list(bucket = ds$bucket, object = ds$object)
 }
 
 # Resolve a reader's GCS location from (dataset, env). An explicit `bucket` is
@@ -87,7 +130,7 @@ resolve_dataset <- function(dataset, env, fn = NULL) {
         i = "To use another environment, pass `env =` instead."
       )
     )
-    return(list(bucket = bucket, object = .DATASET_OBJECTS[[dataset]]))
+    return(list(bucket = bucket, object = dataset_object(dataset)))
   }
   resolve_dataset(dataset, env, fn = fn)
 }
@@ -346,6 +389,73 @@ fast_read_csv <- function(path, columns = NULL, encoding = "UTF-8",
 
 # --- Exported functions ------------------------------------------------------
 
+#' The Survey160 environment configuration
+#'
+#' Returns the configuration survey160r uses to reach Survey160's backends: the
+#' environments, each one's API base URL, and the datasets (with their GCS
+#' locations) it carries. This is the single source of truth behind
+#' \code{s160_api_auth()} and the GCS readers. You rarely need it directly, but
+#' it is handy for inspecting or scripting against what is available.
+#'
+#' The config is bundled with the package; \code{refresh = TRUE} reloads it
+#' (and, in a later release, re-fetches an updated copy from Survey160).
+#'
+#' @param refresh If \code{TRUE}, drop the cached config and reload it.
+#' @return A nested list with \code{schema_version} and \code{environments};
+#'   each environment carries an optional \code{api_url} and a \code{datasets}
+#'   map of \code{dataset -> list(bucket, object)}.
+#' @seealso \code{\link{s160_datasets}()} for a tidy \code{(dataset, env)} table.
+#' @examples
+#' config <- s160_config()
+#' names(config$environments)
+#' @export
+s160_config <- function(refresh = FALSE) {
+  if (isTRUE(refresh)) {
+    .config_cache$value <- NULL
+  }
+  get_config()
+}
+
+#' List the Survey160 datasets and their environments
+#'
+#' Lists the datasets survey160r can read and the environments each is available
+#' in -- the values you pass as \code{env =} to the campaign readers, the
+#' \code{disposition_pull()} / \code{opt_out_pull()} pulls, and
+#' \code{s160_api_auth()}. Use it to discover the valid \code{(dataset, env)}
+#' combinations instead of guessing and hitting a "no <env> tier" error.
+#'
+#' The physical storage location is intentionally not exposed: select data by
+#' \code{env} and survey160r resolves the bucket internally, so a bucket reorg
+#' never changes what you call.
+#'
+#' @return A data frame with one row per available \code{(dataset, env)} tier:
+#'   \describe{
+#'     \item{\code{dataset}}{Logical dataset name: \code{"campaign_results"}
+#'       (the campaign readers and \code{s160_api_*}), \code{"disposition"}
+#'       (\code{disposition_pull()}), or \code{"opt_out"}
+#'       (\code{opt_out_pull()}).}
+#'     \item{\code{env}}{An environment the dataset is available in:
+#'       \code{"prod"}, \code{"staging"}, or \code{"dev"}.}
+#'   }
+#' @seealso \code{\link{s160_config}()} for the full nested configuration.
+#' @examples
+#' s160_datasets()
+#' @export
+s160_datasets <- function() {
+  environments <- get_config()$environments
+  envs <- names(environments)
+  per_env <- lapply(envs, function(e) {
+    ds <- names(environments[[e]]$datasets)
+    if (length(ds)) data.frame(dataset = ds, env = e, stringsAsFactors = FALSE)
+  })
+  out <- do.call(rbind, per_env)
+  ds_order <- unique(out$dataset)
+  out <- out[order(match(out$dataset, ds_order), match(out$env, envs)), ,
+             drop = FALSE]
+  rownames(out) <- NULL
+  out
+}
+
 #' Authenticate to Google Cloud Storage
 #'
 #' Authenticates to GCS using the Survey160 Desktop OAuth client.
@@ -448,8 +558,8 @@ s160_gcs_init <- function(bucket = NULL) {
 #' @param destdir Directory to save the downloaded file. When \code{NULL}
 #'   (default), a temporary file is used and cleaned up automatically. Use
 #'   \code{"."} for the current directory.
-#' @param env Environment: \code{"prod"} (default) or \code{"staging"}. There is
-#'   no dev campaign-results tier.
+#' @param env Environment: \code{"prod"} (default), \code{"staging"}, or
+#'   \code{"dev"}.
 #' @param bucket \strong{Deprecated.} Select data with \code{env =} instead; a
 #'   supplied bucket is honored with a warning for back-compat.
 #' @param columns Optional character vector of (dot-form) column names to keep,
@@ -481,7 +591,7 @@ s160_gcs_init <- function(bucket = NULL) {
 #' @export
 s160_gcs_campaign_results_read <- function(campaign_id, filename = NULL,
                                            destdir = NULL,
-                                           env = c("prod", "staging", "dev"),
+                                           env = .ENV_CHOICES,
                                            bucket = NULL, columns = NULL,
                                            hash = FALSE, ...) {
   campaign_id <- validate_campaign_id(campaign_id)
@@ -554,8 +664,8 @@ s160_gcs_campaign_results_read <- function(campaign_id, filename = NULL,
 #' Returns \code{character(0)} with a message if the campaign has no files.
 #'
 #' @param campaign_id Campaign ID (numeric or character). Must be a single value.
-#' @param env Environment: \code{"prod"} (default) or \code{"staging"}. There is
-#'   no dev campaign-results tier.
+#' @param env Environment: \code{"prod"} (default), \code{"staging"}, or
+#'   \code{"dev"}.
 #' @param bucket \strong{Deprecated.} Select data with \code{env =} instead; a
 #'   supplied bucket is honored with a warning for back-compat.
 #' @return Character vector of file names (without the campaign_id prefix).
@@ -567,7 +677,7 @@ s160_gcs_campaign_results_read <- function(campaign_id, filename = NULL,
 #' @importFrom googleCloudStorageR gcs_list_objects
 #' @export
 s160_gcs_campaign_results_files <- function(campaign_id,
-                                            env = c("prod", "staging", "dev"),
+                                            env = .ENV_CHOICES,
                                             bucket = NULL) {
   campaign_id <- validate_campaign_id(campaign_id)
   env <- match.arg(env)
@@ -596,8 +706,8 @@ s160_gcs_campaign_results_files <- function(campaign_id,
 #' in the results bucket. Objects at the bucket root (not inside a folder) are
 #' excluded.
 #'
-#' @param env Environment: \code{"prod"} (default) or \code{"staging"}. There is
-#'   no dev campaign-results tier.
+#' @param env Environment: \code{"prod"} (default), \code{"staging"}, or
+#'   \code{"dev"}.
 #' @param bucket \strong{Deprecated.} Select data with \code{env =} instead; a
 #'   supplied bucket is honored with a warning for back-compat.
 #' @return Character vector of campaign IDs, sorted.
@@ -607,7 +717,7 @@ s160_gcs_campaign_results_files <- function(campaign_id,
 #' s160_gcs_campaign_results_list()
 #' }
 #' @export
-s160_gcs_campaign_results_list <- function(env = c("prod", "staging", "dev"),
+s160_gcs_campaign_results_list <- function(env = .ENV_CHOICES,
                                            bucket = NULL) {
   env <- match.arg(env)
   bucket <- .locate("campaign_results", env, bucket,
@@ -713,8 +823,8 @@ s160_csv_header <- function(path, encoding = "UTF-8") {
 #' triggering a new export. Requires GCS auth (\code{s160_gcs_init}).
 #'
 #' @param campaign_id Campaign ID (numeric or character).
-#' @param env Environment: \code{"prod"} (default) or \code{"staging"}. There is
-#'   no dev campaign-results tier.
+#' @param env Environment: \code{"prod"} (default), \code{"staging"}, or
+#'   \code{"dev"}.
 #' @param bucket \strong{Deprecated.} Select data with \code{env =} instead; a
 #'   supplied bucket is honored with a warning for back-compat.
 #' @return Named list with \code{name}, \code{updated}, and \code{size},
@@ -727,7 +837,7 @@ s160_csv_header <- function(path, encoding = "UTF-8") {
 #' @importFrom googleCloudStorageR gcs_list_objects
 #' @export
 s160_gcs_campaign_results_status <- function(campaign_id,
-                                             env = c("prod", "staging", "dev"),
+                                             env = .ENV_CHOICES,
                                              bucket = NULL) {
   campaign_id <- validate_campaign_id(campaign_id)
   env <- match.arg(env)

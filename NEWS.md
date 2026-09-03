@@ -36,6 +36,24 @@
 
 ## Features
 
+* **One bundled config for datasets and environments: `s160_config()` /
+  `s160_datasets()`.** survey160r now reads a single bundled config
+  (`inst/config.json`) mapping each environment to its API base URL and its
+  datasets' GCS locations -- the one place physical bucket names and URLs live.
+  `s160_config()` returns the full nested config; `s160_datasets()` gives a tidy
+  `(dataset, env)` table of what is available (the values to pass as `env =`),
+  with the physical bucket kept hidden. Both `s160_api_auth()` and the GCS
+  readers resolve through this config, so a bucket reorg is a config edit rather
+  than scattered code changes. A later release can refresh the config from a
+  Survey160 endpoint, falling back to the bundled copy.
+
+* **`s160_api_auth()` now supports `env = "dev"`.** All three environments
+  (prod, staging, dev) are configured, each reading its key from
+  `S160_<ENV>_API_KEY` (prod also accepts the legacy `S160_API_KEY`); the key
+  variable is derived from the environment, never stored in the config. Note
+  disposition/opt-out have no `staging` tier -- staging sends fold into prod, so
+  read them with `env = "prod"`.
+
 * **Download the opt-out list: `opt_out_pull()`.** Fetches the opt-out Parquet
   from the environment's `s160_disposition_<env>` bucket to a local cache and
   returns the path, ready to hand straight to `opt_out_screen()`. Parallel to
