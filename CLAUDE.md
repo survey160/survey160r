@@ -45,6 +45,11 @@ Secondary conventions:
 - **Spell names out**; avoid abbreviations (`disposition`, not `disp`/`dispo`; name helpers to match their column, e.g. `opted_in`, not `optin`).
 - **`lintr::object_length_linter` caps names at 30 characters** -- keep helper names under it.
 
+## Public repo & release model
+
+- **This repository is PUBLIC.** Never commit internal Jira keys (`SUR-####`), client names, or secrets. `scripts/leak_check.sh` guards this: the local pre-commit and pre-push hooks scan the diff for internal refs and secret literals, and also check a git-ignored, machine-local `.claude/leak-denylist.txt` (client names). Install the hooks once per clone with `scripts/install-hooks.sh` — they run alongside the lint/check/coverage gates. The pre-push hook is the real guard here (it stops a leak before it ever reaches the public remote), so keep it installed.
+- **Distribution is R-universe, which auto-rebuilds `main` on every commit, so a merge to `main` is an immediate public release.** `main` must always be releasable, and the PR-merge is the release gate (see `RELEASING.md`). Work on feature branches only; never push to `main`.
+
 ## Workflow
 
 - Releases are documented in `RELEASING.md`. Distribution is R-universe (auto-rebuild from `main`); tags are historical anchors only.
