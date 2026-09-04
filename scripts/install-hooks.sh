@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Install survey160r's local git hooks (shared across worktrees; run once per clone).
 #   pre-commit: leak_check --staged + make lint
-#   pre-push:   leak_check on each pushed ref + make check && make coverage
+#   pre-push:   leak_check on each pushed ref (fast; CI enforces lint/check/coverage)
 # Existing non-survey160r hooks are backed up to <hook>.bak, never clobbered.
 set -euo pipefail
 
@@ -67,9 +67,8 @@ else
   echo "pre-push: scripts/leak_check.sh missing or not executable -- refusing to push" >&2
   exit 1
 fi
-if [ -f Makefile ]; then
-  make check && make coverage || exit 1
-fi
+# Quality gates (lint, R CMD check, 100% coverage) run in CI, not here: keeping
+# the must-not-bypass leak scan fast removes any incentive to `git push --no-verify`.
 EOF
 
 # Ensure the machine-local denylist template exists (git-ignored, never committed).
