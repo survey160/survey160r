@@ -32,6 +32,11 @@ install_hook pre-commit <<'EOF'
 cd "$(git rev-parse --show-toplevel)" || exit 1
 if [ -x scripts/leak_check.sh ]; then
   scripts/leak_check.sh --staged || exit 1
+else
+  # Fail closed: a missing/non-executable guard must block the commit, never
+  # silently skip -- otherwise dropping the +x bit bypasses the leak check.
+  echo "pre-commit: scripts/leak_check.sh missing or not executable -- refusing to commit" >&2
+  exit 1
 fi
 if [ -f Makefile ]; then
   make lint || exit 1
@@ -56,6 +61,11 @@ if [ -x scripts/leak_check.sh ]; then
     scripts/leak_check.sh --range "$base" "$local_sha" || status=1
   done
   [ "$status" -eq 0 ] || exit 1
+else
+  # Fail closed: a missing/non-executable guard must block the push, never
+  # silently skip -- otherwise dropping the +x bit bypasses the leak check.
+  echo "pre-push: scripts/leak_check.sh missing or not executable -- refusing to push" >&2
+  exit 1
 fi
 if [ -f Makefile ]; then
   make check && make coverage || exit 1
