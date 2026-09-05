@@ -46,7 +46,7 @@ question_timestamps <- function(data, question, field = "scriptDate") {
       fn = "question_timestamps"
     )
   }
-  parse_campaign_timestamps(data[[col]])
+  .column_timestamps(data, col)
 }
 
 #' Per-question reached-count funnel for a campaign export

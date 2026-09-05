@@ -45,14 +45,8 @@
 # recipient's timestamp; it preserves POSIXct/UTC (all inputs are UTC, matching
 # parse_campaign_timestamps). `field` is "scriptDate" (send) or "batchDate" (reply).
 .question_timestamp <- function(data, openers, field) {
-  n <- nrow(data)
   ts_list <- lapply(openers, function(q) {
-    col <- sprintf("id.%s.%s", q, field)
-    if (col %in% names(data)) {
-      parse_campaign_timestamps(data[[col]])
-    } else {
-      rep(as.POSIXct(NA, tz = "UTC"), n)
-    }
+    .column_timestamps(data, sprintf("id.%s.%s", q, field))
   })
   do.call(dplyr::coalesce, ts_list)
 }
