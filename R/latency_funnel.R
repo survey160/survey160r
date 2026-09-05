@@ -95,12 +95,13 @@ latency_funnel <- function(consolidated, grain = c("day", "hour")) {
     return(empty_funnel(consolidated, out_cols))
   }
 
-  # Collapse the (segment x threshold) fan-out. The anchors are identical
-  # across it, so pinning the first rung of each ladder leaves exactly one row
-  # per bucket -- no summing, so the anchor values pass through untouched.
-  keep <- rows$threshold_min == min(rows$threshold_min, na.rm = TRUE) &
-    rows$segment_index == min(rows$segment_index, na.rm = TRUE)
-  out <- rows[keep, out_cols, drop = FALSE]
+  # Collapse the (segment x threshold) fan-out to one row per bucket. The
+  # anchors are identical across that fan-out, so de-duplicating on the bucket
+  # key keeps a single representative -- without assuming which threshold or
+  # segment values the frame carries (the anchors pass through un-summed).
+  bucket_key <- c("campaign_id", "date", if (grain == "hour") "hour_local")
+  rows <- rows[!duplicated(rows[, bucket_key, drop = FALSE]), , drop = FALSE]
+  out <- rows[, out_cols, drop = FALSE]
 
   order_cols <- c("campaign_id", "date", if (grain == "hour") "hour_local")
   out <- out[do.call(order, out[order_cols]), , drop = FALSE]
