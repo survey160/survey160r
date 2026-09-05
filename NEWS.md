@@ -36,6 +36,26 @@
 
 ## Features
 
+* **`s160_gcs_init(adc = TRUE)` authenticates headlessly.** With `adc = TRUE`,
+  `s160_gcs_init()` uses Application Default Credentials (`gcloud auth
+  application-default login` or a service-account environment) instead of the
+  browser OAuth flow -- no client secret, no browser -- for reports, CI, and
+  scheduled jobs. Default (`adc = FALSE`) is unchanged. Errors clearly when no
+  ADC are available.
+
+* **`parse_campaign_timestamps()` is now exported.** The parser for the
+  export's timestamp encoding (`"2026-01-26 17:30:16.853688Z"` -> `POSIXct`
+  UTC) that the pipeline uses internally is now public, so report authors can
+  decode an export column without re-implementing the format. (Renamed from the
+  internal `parse_s160_timestamps_chr`.)
+
+* **New `question_*` accessors for per-question analysis.**
+  `question_timestamps(df, question, field)` resolves and parses an export's
+  `id.<question>.<field>` column to `POSIXct` (UTC).
+  `question_funnel(df, questions)` returns the per-question reached-count funnel
+  (one row per question: `n_reached`, `pct_reached`) -- the per-question
+  companion to `latency_funnel()`'s send/opt-in/complete anchors.
+
 * **`latency_funnel()` reduces a `consolidated` table to the funnel counts
   safely.** The `consolidated` frame from `latency_run()` / `latency_report()`
   denormalises the funnel anchors (`n_sent` / `n_engaged` / `n_opted_in` /

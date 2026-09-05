@@ -72,11 +72,34 @@ A hand-built data frame works too; `result$meta` provenance is then `NA`, which 
 
 `result$meta` carries `algorithm_version`, `schema_version`, `config_hash`, `run_at_utc`, `source_csv_hash`, and `source_csv_path`. See `?latency_run` for the full argument list.
 
+## Reduce to the funnel
+
+`consolidated` is denormalised -- the funnel anchors repeat across every segment and threshold row, and the frame carries both hour rows and a day rollup -- so summing a column over it multi-counts. `latency_funnel()` does the one correct reduction:
+
+```{r}
+latency_funnel(result$consolidated)                  # one row per (campaign, date)
+latency_funnel(result$consolidated, grain = "hour")  # one row per (campaign, date, hour)
+```
+
+Each row carries `n_sent`, `n_engaged`, `n_opted_in`, and `n_completed`; summing an anchor across the `"hour"` result equals the matching `"day"` value.
+
+## Per-question reached funnel
+
+For the "records reaching each question" view -- which stage sheds respondents -- pass the flow in order to `question_funnel()`. It reads the export directly, not the report:
+
+```{r}
+question_funnel(data, c("intro", "q1", "q2", "close"))
+#>   question question_index n_reached pct_reached
+```
+
+It returns one row per question with `n_reached` and `pct_reached` (share of the first stage). Underneath, `question_timestamps(data, "close")` reads and parses one question's timestamp column, and `parse_campaign_timestamps()` decodes the export's timestamp strings directly -- both operate on the raw export data frame.
+
 ## Notes
 
 - `latency_run()` composes `latency_build_config()` + `latency_report()`; reach for the pieces only when you need to inspect or override the config.
 - `respondent_id_column` defaults to `NULL` -- `userid` is the agent login, not a per-respondent id.
+- For a non-interactive run (a scheduled job or a report), authenticate with `s160_gcs_init(adc = TRUE)` -- Application Default Credentials, no browser.
 
 ## See also
 
-`?latency_run`, `?latency_report`, `?latency_build_config`, `?latency_validate_config`. For disposition screening, `vignette("disposition")`.
+`?latency_run`, `?latency_report`, `?latency_funnel`, `?question_funnel`, `?question_timestamps`, `?parse_campaign_timestamps`, `?latency_build_config`, `?latency_validate_config`. For disposition screening, `vignette("disposition")`.
