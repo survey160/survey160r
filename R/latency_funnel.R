@@ -33,11 +33,14 @@
 #'   \code{data.table} or tibble is accepted and coerced).
 #' @param grain One of \code{"day"} (default) or \code{"hour"}. \code{"day"}
 #'   reads the day-rollup rows (\code{hour_local = NA}) and returns one row per
-#'   \code{(campaign_id, date)}. \code{"hour"} reads the per-hour rows and
+#'   \code{(campaign_id, date)} -- use it for daily funnel counts; there is no
+#'   need to sum the hourly result. \code{"hour"} reads the per-hour rows and
 #'   returns one row per \code{(campaign_id, date, hour_local)} for a
-#'   time-of-day view. The two grains are never mixed (that would double-count);
-#'   summing an anchor across the \code{"hour"} result equals the matching
-#'   \code{"day"} value.
+#'   time-of-day view. The two grains are never mixed (that would double-count).
+#'   Because every funnel anchor is send-anchored (a recipient with no parseable
+#'   send is excluded from all four counts, so none land in an unknown-hour
+#'   bucket), summing an anchor across the \code{"hour"} result equals the
+#'   matching \code{"day"} value.
 #' @return A data frame with \code{campaign_id}, \code{date},
 #'   \code{hour_local} (only when \code{grain = "hour"}), and the funnel anchors
 #'   \code{n_sent}, \code{n_engaged}, \code{n_opted_in}, \code{n_completed},

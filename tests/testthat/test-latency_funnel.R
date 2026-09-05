@@ -46,6 +46,29 @@ test_that("hour anchors sum to the day anchors (no grain double-count)", {
   }
 })
 
+test_that("hour == day holds even when a send timestamp is unparseable", {
+  # r2 replied and opted in, but its send timestamp is blanked. Anchors are
+  # send-anchored, so r2 is excluded from every count and nothing lands in an
+  # unknown-hour bucket -- the hour grain must still sum to the day grain
+  # (guards the documented invariant against the NA-hour edge a reviewer flagged).
+  con <- latency_report(
+    load_synthetic_data(mutate = function(d) {
+      d$id.intro.scriptDate[d$userid == "r2"] <- ""
+      d
+    }),
+    synthetic_config()
+  )$consolidated
+  fd <- latency_funnel(con, grain = "day")
+  fh <- latency_funnel(con, grain = "hour")
+
+  # r2 dropped from every anchor (baseline was 4 / 3 / 3 / 3).
+  expect_equal(fd$n_sent, 3L)
+  expect_equal(fd$n_opted_in, 2L)
+  for (a in c("n_sent", "n_engaged", "n_opted_in", "n_completed")) {
+    expect_equal(sum(fh[[a]]), fd[[a]], info = a)
+  }
+})
+
 test_that("it collapses the denormalised fan-out instead of summing it", {
   con <- .funnel_con()
   # The raw frame repeats each anchor across (3 segments x 4 thresholds x 2
