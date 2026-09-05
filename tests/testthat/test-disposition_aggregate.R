@@ -234,7 +234,7 @@ test_that("an unparseable population expression still errors", {
 
 test_that("engaged is null-safe when the batchDate (reply) column is absent", {
   # engaged now keys on id.intro.batchDate (the inbound reply); with no batchDate
-  # column at all, .disposition_timestamp returns all-NA -> nobody engaged.
+  # column at all, .column_timestamps returns all-NA -> nobody engaged.
   d <- disp_frame(
     phone = c("+15551201", "+15551202"),
     id.intro.scriptDate = c(TS, TS),
