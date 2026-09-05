@@ -36,6 +36,18 @@
 
 ## Features
 
+* **`latency_funnel()` reduces a `consolidated` table to the funnel counts
+  safely.** The `consolidated` frame from `latency_run()` / `latency_report()`
+  denormalises the funnel anchors (`n_sent` / `n_engaged` / `n_opted_in` /
+  `n_completed`) across every `(segment, threshold_min)` row of a bucket and
+  carries two grains at once (per-hour rows plus a `hour_local = NA` day
+  rollup), so summing an anchor column over the raw frame multi-counts.
+  `latency_funnel(consolidated, grain = "day")` returns one row per
+  `(campaign_id, date)`; `grain = "hour"` returns one row per hour. Both
+  collapse the `segment x threshold` fan-out and read a single grain, so the
+  anchors are correct and `sum()`-ming across the `"hour"` result matches the
+  `"day"` value. Consumers no longer hand-roll this reduction.
+
 * **One bundled config for datasets and environments: `s160_config()` /
   `s160_datasets()`.** survey160r now reads a single bundled config
   (`inst/config.json`) mapping each environment to its API base URL and its
