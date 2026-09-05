@@ -7,8 +7,8 @@
 parse_campaign_timestamps(x)
 }
 \arguments{
-\item{x}{A character vector of export timestamp strings (a \code{POSIXct}
-input is coerced through \code{as.character()} first).}
+\item{x}{A character vector of export timestamp strings. A \code{POSIXct}
+input is returned in UTC with its instant preserved (not re-parsed).}
 }
 \value{
 A \code{POSIXct} vector in UTC, the same length as \code{x}.

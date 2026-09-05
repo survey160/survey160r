@@ -46,15 +46,7 @@ question_timestamps <- function(data, question, field = "scriptDate") {
       fn = "question_timestamps"
     )
   }
-  values <- data[[col]]
-  # An already-parsed POSIXct column round-trips losslessly; re-parsing it
-  # through as.character() would shift a non-UTC instant, so pass it through
-  # (in UTC display; the underlying instant is unchanged).
-  if (inherits(values, "POSIXct")) {
-    attr(values, "tzone") <- "UTC"
-    return(values)
-  }
-  parse_campaign_timestamps(values)
+  parse_campaign_timestamps(data[[col]])
 }
 
 #' Per-question reached-count funnel for a campaign export

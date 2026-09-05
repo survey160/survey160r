@@ -458,7 +458,9 @@ s160_datasets <- function() {
 
 #' Authenticate to Google Cloud Storage
 #'
-#' Authenticates to GCS using the Survey160 Desktop OAuth client.
+#' Authenticates the session to GCS. By default this uses the Survey160 Desktop
+#' OAuth client (browser sign-in); pass \code{adc = TRUE} for non-interactive
+#' Application Default Credentials instead (see below).
 #'
 #' On first run, prompts for the client secret (get it from your team lead) and saves
 #' it to \code{~/.Renviron}. Subsequent runs read it automatically. Also

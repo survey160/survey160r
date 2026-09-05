@@ -107,7 +107,12 @@ test_that("adc = TRUE surfaces the guided error when ADC lookup throws", {
   expect_error(s160_gcs_init(adc = TRUE), "Application Default Credentials")
 })
 
-test_that("adc must be a single, non-NA logical", {
+test_that("adc validation happens before any authentication", {
+  # Both auth paths must be untouched when adc is invalid: validation first.
+  local_mocked_bindings(
+    credentials_app_default = function(...) stop("must not authenticate"),
+    gcs_auth = function(...) stop("must not authenticate")
+  )
   expect_error(s160_gcs_init(adc = "yes"), "single TRUE or FALSE")
   expect_error(s160_gcs_init(adc = NA), "single TRUE or FALSE")
   expect_error(s160_gcs_init(adc = c(TRUE, FALSE)), "single TRUE or FALSE")

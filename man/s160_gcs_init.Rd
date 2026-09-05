@@ -21,7 +21,9 @@ Survey160 browser OAuth client.}
 Invisible \code{NULL}.
 }
 \description{
-Authenticates to GCS using the Survey160 Desktop OAuth client.
+Authenticates the session to GCS. By default this uses the Survey160 Desktop
+OAuth client (browser sign-in); pass \code{adc = TRUE} for non-interactive
+Application Default Credentials instead (see below).
 }
 \details{
 On first run, prompts for the client secret (get it from your team lead) and saves

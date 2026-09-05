@@ -39,13 +39,18 @@
 #' diagnostics) and the config validators; exported so report authors can
 #' decode an export column directly.
 #'
-#' @param x A character vector of export timestamp strings (a \code{POSIXct}
-#'   input is coerced through \code{as.character()} first).
+#' @param x A character vector of export timestamp strings. A \code{POSIXct}
+#'   input is returned in UTC with its instant preserved (not re-parsed).
 #' @return A \code{POSIXct} vector in UTC, the same length as \code{x}.
 #' @examples
 #' parse_campaign_timestamps(c("2026-01-26 17:30:16.853688Z", "", NA))
 #' @export
 parse_campaign_timestamps <- function(x) {
+  # An already-parsed POSIXct is returned in UTC with its instant preserved;
+  # deriving it via as.character() would shift a non-UTC value.
+  if (inherits(x, "POSIXct")) {
+    return(lubridate::with_tz(x, "UTC"))
+  }
   suppressWarnings(lubridate::parse_date_time(
     .strip_z(as.character(x)),
     orders = .timestamp_orders,
