@@ -470,19 +470,34 @@ s160_datasets <- function() {
 #' read. Reader functions resolve their own bucket (defaulting to prod), so you
 #' no longer pass a bucket here.
 #'
+#' For headless runs (reports, CI, scheduled jobs) pass \code{adc = TRUE} to
+#' authenticate with Application Default Credentials instead of the browser
+#' flow: no client secret and no browser, using the credentials from
+#' \code{gcloud auth application-default login} or a service-account
+#' environment. It requests the \code{cloud-platform} scope and errors clearly
+#' if no ADC are available.
+#'
 #' @param bucket \strong{Deprecated.} Formerly set a session-global default
 #'   bucket. Superseded by per-reader \code{env =}: select an environment with
 #'   \code{env =} on the reader (readers default to prod). If supplied here it is
 #'   still accepted for back-compatibility (with a warning) but should not be
 #'   used in new code.
+#' @param adc Logical (default \code{FALSE}). When \code{TRUE}, authenticate
+#'   non-interactively with Application Default Credentials rather than the
+#'   Survey160 browser OAuth client.
 #' @return Invisible \code{NULL}.
 #' @examples
 #' \dontrun{
-#' s160_gcs_init()
+#' s160_gcs_init()             # interactive browser OAuth
+#' s160_gcs_init(adc = TRUE)   # headless, via Application Default Credentials
 #' }
 #' @importFrom googleCloudStorageR gcs_auth gcs_global_bucket
+#' @importFrom gargle credentials_app_default
 #' @export
-s160_gcs_init <- function(bucket = NULL) {
+s160_gcs_init <- function(bucket = NULL, adc = FALSE) {
+  if (!is.logical(adc) || length(adc) != 1L || is.na(adc)) {
+    stop_s160("`adc` must be a single TRUE or FALSE.", fn = "s160_gcs_init")
+  }
   if (!is.null(bucket)) {
     check_nonempty_string(bucket, "bucket", fn = "s160_gcs_init")
     lifecycle::deprecate_warn(
@@ -493,6 +508,29 @@ s160_gcs_init <- function(bucket = NULL) {
         i = "Select another environment with `env =` on the reader, not a bucket."
       )
     )
+  }
+
+  if (adc) {
+    # Non-interactive: authenticate with Application Default Credentials
+    # (`gcloud auth application-default login`, or a service-account
+    # environment). No browser and no client secret -- for headless runs
+    # (reports, CI). Requires the cloud-platform scope for GCS reads.
+    token <- credentials_app_default(
+      scopes = "https://www.googleapis.com/auth/cloud-platform"
+    )
+    if (is.null(token)) {
+      stop_s160(
+        paste0(
+          "Application Default Credentials not found. Run ",
+          "`gcloud auth application-default login`, or call s160_gcs_init() ",
+          "interactively for browser OAuth."
+        ),
+        fn = "s160_gcs_init"
+      )
+    }
+    gcs_auth(token = token)
+    message("Authenticated via Application Default Credentials")
+    return(finish_gcs_init(bucket))
   }
 
   # Client ID from bundled JSON (public, not a secret)
@@ -532,8 +570,13 @@ s160_gcs_init <- function(bucket = NULL) {
   gcs_auth(email = TRUE)
   message("Authenticated via browser OAuth")
 
-  # Deprecated: honor an explicit bucket as the session default so existing
-  # global-bucket flows keep working during the deprecation window.
+  finish_gcs_init(bucket)
+}
+
+# Session-default bucket handling + readiness message, shared by the ADC and
+# interactive auth paths. Honors a (deprecated) explicit bucket as the session
+# global so existing global-bucket flows keep working during deprecation.
+finish_gcs_init <- function(bucket) {
   if (!is.null(bucket)) {
     gcs_global_bucket(bucket)
     message(sprintf("GCS ready. Bucket: %s", bucket))

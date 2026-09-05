@@ -306,8 +306,8 @@ validate_flow_order <- function(config, data) {
   for (i in seq_len(length(questions) - 1)) {
     prior <- sprintf("id.%s.batchDate", questions[i])
     nxt <- sprintf("id.%s.scriptDate", questions[i + 1])
-    bp <- parse_s160_timestamps_chr(data[[prior]])
-    sn <- parse_s160_timestamps_chr(data[[nxt]])
+    bp <- parse_campaign_timestamps(data[[prior]])
+    sn <- parse_campaign_timestamps(data[[nxt]])
     valid <- !is.na(bp) & !is.na(sn)
     if (!any(valid)) next
     cmp_total <- cmp_total + sum(valid)

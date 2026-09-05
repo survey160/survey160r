@@ -187,7 +187,7 @@ build_ineligible_frame <- function(data, config) {
 
   inelig_col <- "id.ineligible.scriptDate"
   if (!inelig_col %in% names(data)) return(empty_ineligible_frame())
-  inelig_ts <- parse_s160_timestamps_chr(data[[inelig_col]])
+  inelig_ts <- parse_campaign_timestamps(data[[inelig_col]])
   # Anchor on the OPENING question set's reply (coalesced), not a hardcoded
   # id.intro.batchDate, so a bilingual campaign's routed cohort is bucketed.
   intro_batch <- .question_timestamp(data, .opening_questions(questions), "batchDate")
@@ -201,7 +201,7 @@ build_ineligible_frame <- function(data, config) {
   for (q in questions) {
     col <- sprintf("id.%s.scriptDate", q)
     if (col %in% names(data) && !inherits(data[[col]], "POSIXct")) {
-      data[[col]] <- parse_s160_timestamps_chr(data[[col]])
+      data[[col]] <- parse_campaign_timestamps(data[[col]])
     }
   }
   last_idx <- last_reached_question_index(data, questions)

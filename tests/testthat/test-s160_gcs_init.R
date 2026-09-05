@@ -70,3 +70,37 @@ test_that("interactive flow calls prompt_and_save_secret when secret is missing"
   suppressMessages(s160_gcs_init())
   expect_equal(getOption("googleAuthR.client_secret"), "prompted-secret")
 })
+
+test_that("adc = TRUE authenticates via Application Default Credentials", {
+  captured <- new_capture()
+  local_mocked_bindings(
+    credentials_app_default = function(scopes = NULL) {
+      captured$scopes <- scopes
+      list(token = "fake-adc-token")
+    },
+    gcs_auth = function(...) {
+      captured$authed <- TRUE
+      captured$args <- list(...)
+    },
+    gcs_global_bucket = function(b) captured$bucket <- b
+  )
+  expect_no_warning(suppressMessages(s160_gcs_init(adc = TRUE)))
+  expect_true(captured$authed)
+  expect_true("token" %in% names(captured$args))   # authed with a token, not email
+  expect_match(captured$scopes, "cloud-platform")
+  expect_null(captured$bucket)
+})
+
+test_that("adc = TRUE errors when no ADC are available", {
+  local_mocked_bindings(
+    credentials_app_default = function(scopes = NULL) NULL,
+    gcs_auth = function(...) stop("gcs_auth must not be called without a token")
+  )
+  expect_error(s160_gcs_init(adc = TRUE), "Application Default Credentials")
+})
+
+test_that("adc must be a single, non-NA logical", {
+  expect_error(s160_gcs_init(adc = "yes"), "single TRUE or FALSE")
+  expect_error(s160_gcs_init(adc = NA), "single TRUE or FALSE")
+  expect_error(s160_gcs_init(adc = c(TRUE, FALSE)), "single TRUE or FALSE")
+})

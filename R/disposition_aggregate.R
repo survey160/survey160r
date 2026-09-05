@@ -28,7 +28,7 @@
 # 0/NA flag rather than an error.
 .disposition_timestamp <- function(data, col) {
   if (col %in% names(data)) {
-    parse_s160_timestamps_chr(data[[col]])
+    parse_campaign_timestamps(data[[col]])
   } else {
     rep(as.POSIXct(NA), nrow(data))
   }

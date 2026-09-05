@@ -22,15 +22,32 @@
   out
 }
 
-# Parse a character vector of Survey160 CSV timestamp strings to POSIXct (UTC).
-# Strips a trailing 'Z' first, then tries `.timestamp_orders` in turn. Blank
-# and NA inputs return NA; unparseable non-blank inputs also return NA --
-# callers that want a parse-failure mask should compare `nzchar(strip_z(...))`
-# against `is.na(result)`. Used by parse_timestamps() (per-column with
-# diagnostics) and the config validators (one-shot parsing, no diagnostics).
-parse_s160_timestamps_chr <- function(chr) {
+#' Parse Survey160 campaign-export timestamps
+#'
+#' Parses the timestamp strings found in a Survey160 campaign export (e.g.
+#' \code{id.intro.scriptDate}) to \code{POSIXct} in UTC. The export encodes
+#' timestamps as \code{"2026-01-26 17:30:16.853688Z"} (UTC, microseconds,
+#' trailing \code{Z}); this strips the trailing \code{Z} and parses the
+#' date-time. It is a pure decoder of that specific format, not a general
+#' timestamp parser.
+#'
+#' Blank and \code{NA} inputs return \code{NA}; non-blank inputs that do not
+#' match the export format also return \code{NA} (no error, no warning), so a
+#' parse-failure mask is \code{!is.na(raw) & nzchar(raw) & is.na(result)}.
+#'
+#' Used internally by the latency pipeline (per-column parsing with
+#' diagnostics) and the config validators; exported so report authors can
+#' decode an export column directly.
+#'
+#' @param x A character vector of export timestamp strings (a \code{POSIXct}
+#'   input is coerced through \code{as.character()} first).
+#' @return A \code{POSIXct} vector in UTC, the same length as \code{x}.
+#' @examples
+#' parse_campaign_timestamps(c("2026-01-26 17:30:16.853688Z", "", NA))
+#' @export
+parse_campaign_timestamps <- function(x) {
   suppressWarnings(lubridate::parse_date_time(
-    .strip_z(as.character(chr)),
+    .strip_z(as.character(x)),
     orders = .timestamp_orders,
     tz = "UTC",
     quiet = TRUE
@@ -78,7 +95,7 @@ parse_timestamps <- function(data, cols) {
     nonblank <- !is.na(raw_chr) & nzchar(raw_chr)
     parsed <- rep(as.POSIXct(NA), length(raw_chr))
     if (any(nonblank)) {
-      parsed[nonblank] <- parse_s160_timestamps_chr(raw_chr[nonblank])
+      parsed[nonblank] <- parse_campaign_timestamps(raw_chr[nonblank])
     }
     col_fail <- nonblank & is.na(parsed)
     failures[[col]] <- sum(col_fail)

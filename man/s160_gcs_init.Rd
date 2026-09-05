@@ -4,7 +4,7 @@
 \alias{s160_gcs_init}
 \title{Authenticate to Google Cloud Storage}
 \usage{
-s160_gcs_init(bucket = NULL)
+s160_gcs_init(bucket = NULL, adc = FALSE)
 }
 \arguments{
 \item{bucket}{\strong{Deprecated.} Formerly set a session-global default
@@ -12,6 +12,10 @@ bucket. Superseded by per-reader \code{env =}: select an environment with
 \code{env =} on the reader (readers default to prod). If supplied here it is
 still accepted for back-compatibility (with a warning) but should not be
 used in new code.}
+
+\item{adc}{Logical (default \code{FALSE}). When \code{TRUE}, authenticate
+non-interactively with Application Default Credentials rather than the
+Survey160 browser OAuth client.}
 }
 \value{
 Invisible \code{NULL}.
@@ -29,9 +33,17 @@ cached in a platform-dependent directory (run
 Authentication is account-level: one call covers every bucket the account can
 read. Reader functions resolve their own bucket (defaulting to prod), so you
 no longer pass a bucket here.
+
+For headless runs (reports, CI, scheduled jobs) pass \code{adc = TRUE} to
+authenticate with Application Default Credentials instead of the browser
+flow: no client secret and no browser, using the credentials from
+\code{gcloud auth application-default login} or a service-account
+environment. It requests the \code{cloud-platform} scope and errors clearly
+if no ADC are available.
 }
 \examples{
 \dontrun{
-s160_gcs_init()
+s160_gcs_init()             # interactive browser OAuth
+s160_gcs_init(adc = TRUE)   # headless, via Application Default Credentials
 }
 }

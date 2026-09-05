@@ -43,13 +43,13 @@
 # id.<q>.<field> column null-safely (absent -> all-NA, length nrow) and coalesce
 # across the set. Each recipient hit exactly one opener, so coalesce yields that
 # recipient's timestamp; it preserves POSIXct/UTC (all inputs are UTC, matching
-# parse_s160_timestamps_chr). `field` is "scriptDate" (send) or "batchDate" (reply).
+# parse_campaign_timestamps). `field` is "scriptDate" (send) or "batchDate" (reply).
 .question_timestamp <- function(data, openers, field) {
   n <- nrow(data)
   ts_list <- lapply(openers, function(q) {
     col <- sprintf("id.%s.%s", q, field)
     if (col %in% names(data)) {
-      parse_s160_timestamps_chr(data[[col]])
+      parse_campaign_timestamps(data[[col]])
     } else {
       rep(as.POSIXct(NA, tz = "UTC"), n)
     }
