@@ -4,10 +4,10 @@
 \alias{question_timestamps}
 \title{Read a question's timestamps from a campaign export}
 \usage{
-question_timestamps(df, question, field = "scriptDate")
+question_timestamps(data, question, field = "scriptDate")
 }
 \arguments{
-\item{df}{A campaign export data frame (e.g. from
+\item{data}{A campaign export data frame (e.g. from
 \code{\link{s160_gcs_campaign_results_read}} or
 \code{\link{s160_read_csv}}).}
 
@@ -18,20 +18,25 @@ question_timestamps(df, question, field = "scriptDate")
 outbound send, the default) or \code{"batchDate"} (the inbound reply).}
 }
 \value{
-A \code{POSIXct} vector in UTC, one element per row of \code{df}.
+A \code{POSIXct} vector in UTC, one element per row of \code{data}.
 }
 \description{
 Resolves the \code{id.<question>.<field>} column of a Survey160 campaign
 export and parses it to \code{POSIXct} (UTC) via
 \code{\link{parse_campaign_timestamps}}. A robust replacement for hand-built
-\code{df[[paste0("id.", q, ".", field)]]} access in report/analysis code.
+\code{data[[paste0("id.", q, ".", field)]]} access in report/analysis code.
+}
+\details{
+A column that is already \code{POSIXct} (e.g. a pre-parsed export) is returned
+as-is in UTC, without a lossy re-parse (parsing a non-UTC \code{POSIXct}
+through \code{as.character()} would shift the instant).
 }
 \examples{
-df <- data.frame(
+data <- data.frame(
   id.close.scriptDate = c("2026-01-26 21:02:00Z", NA),
   check.names = FALSE
 )
-question_timestamps(df, "close")
+question_timestamps(data, "close")
 }
 \seealso{
 \code{\link{question_funnel}} for the per-question reached-count

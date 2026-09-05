@@ -99,6 +99,14 @@ test_that("adc = TRUE errors when no ADC are available", {
   expect_error(s160_gcs_init(adc = TRUE), "Application Default Credentials")
 })
 
+test_that("adc = TRUE surfaces the guided error when ADC lookup throws", {
+  local_mocked_bindings(
+    credentials_app_default = function(scopes = NULL) stop("malformed ADC file"),
+    gcs_auth = function(...) stop("gcs_auth must not be called without a token")
+  )
+  expect_error(s160_gcs_init(adc = TRUE), "Application Default Credentials")
+})
+
 test_that("adc must be a single, non-NA logical", {
   expect_error(s160_gcs_init(adc = "yes"), "single TRUE or FALSE")
   expect_error(s160_gcs_init(adc = NA), "single TRUE or FALSE")

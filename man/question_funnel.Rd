@@ -4,10 +4,10 @@
 \alias{question_funnel}
 \title{Per-question reached-count funnel for a campaign export}
 \usage{
-question_funnel(df, questions, field = "scriptDate")
+question_funnel(data, questions, field = "scriptDate")
 }
 \arguments{
-\item{df}{A campaign export data frame.}
+\item{data}{A campaign export data frame.}
 
 \item{questions}{Ordered character vector of question stems forming the
 funnel, e.g. \code{c("adrecall", "favorability", "transparent",
@@ -23,26 +23,28 @@ A data frame with one row per question, in the order given:
   0-100; \code{NA} when the head count is zero).
 }
 \description{
-For each question in \code{questions} (in flow order), counts the records
-that reached it -- those with a parseable \code{field} timestamp for the
-question (i.e. were shown it). Returns one row per question with the reached
-count and its share of the funnel head. This is the per-question companion
-to \code{\link{latency_funnel}} (which returns the send / opt-in / complete
-anchors): use it for the "records reaching each stage" view that
+For each question in \code{questions} (in the given order), counts the
+records that reached it -- those with a parseable \code{field} timestamp for
+the question (i.e. were shown it). Returns one row per question with the
+reached count and its share of the funnel head. This is the per-question
+companion to \code{\link{latency_funnel}} (which returns the send / opt-in /
+complete anchors): use it for the "records reaching each stage" view that
 \code{latency_funnel} does not provide.
 }
 \details{
-Reached is a monotone non-increasing count down the flow. The first entry of
-\code{questions} is the funnel head, and \code{pct_reached} is each stage's
-percentage of that head (so the head is 100).
+The first entry of \code{questions} is the funnel head, and
+\code{pct_reached} is each stage's percentage of that head (so the head is
+100). For a well-formed flow reached is non-increasing down the questions;
+counts are computed independently per question, so they reflect the data
+as-is and are not forced to be monotone.
 }
 \examples{
-df <- data.frame(
+data <- data.frame(
   id.adrecall.scriptDate = c("2026-01-26 21:01:00Z", "2026-01-26 21:05:00Z"),
   id.close.scriptDate    = c("2026-01-26 21:02:00Z", NA),
   check.names = FALSE
 )
-question_funnel(df, c("adrecall", "close"))
+question_funnel(data, c("adrecall", "close"))
 }
 \seealso{
 \code{\link{latency_funnel}} for the send/opt-in/complete anchors.

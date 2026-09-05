@@ -495,9 +495,7 @@ s160_datasets <- function() {
 #' @importFrom gargle credentials_app_default
 #' @export
 s160_gcs_init <- function(bucket = NULL, adc = FALSE) {
-  if (!is.logical(adc) || length(adc) != 1L || is.na(adc)) {
-    stop_s160("`adc` must be a single TRUE or FALSE.", fn = "s160_gcs_init")
-  }
+  .require_single_logical(adc, "adc", "s160_gcs_init")
   if (!is.null(bucket)) {
     check_nonempty_string(bucket, "bucket", fn = "s160_gcs_init")
     lifecycle::deprecate_warn(
@@ -515,8 +513,14 @@ s160_gcs_init <- function(bucket = NULL, adc = FALSE) {
     # (`gcloud auth application-default login`, or a service-account
     # environment). No browser and no client secret -- for headless runs
     # (reports, CI). Requires the cloud-platform scope for GCS reads.
-    token <- credentials_app_default(
-      scopes = "https://www.googleapis.com/auth/cloud-platform"
+    # credentials_app_default() returns NULL when no ADC are found, but can
+    # also throw on malformed credentials -- treat both as "not available" and
+    # surface the same guided error.
+    token <- tryCatch(
+      credentials_app_default(
+        scopes = "https://www.googleapis.com/auth/cloud-platform"
+      ),
+      error = function(e) NULL
     )
     if (is.null(token)) {
       stop_s160(

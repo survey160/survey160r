@@ -42,6 +42,15 @@ test_that("question_timestamps errors on a missing column", {
                "id\\.nope\\.scriptDate` not found")
 })
 
+test_that("question_timestamps passes a POSIXct column through in UTC (no shift)", {
+  inst <- as.POSIXct("2026-01-26 21:00:00", tz = "America/New_York")
+  d <- data.frame(id.x.scriptDate = inst, check.names = FALSE)
+  ts <- question_timestamps(d, "x")
+  expect_s3_class(ts, "POSIXct")
+  expect_equal(attr(ts, "tzone"), "UTC")
+  expect_equal(as.numeric(ts), as.numeric(inst))   # same instant, not re-parsed
+})
+
 test_that("question_funnel returns reached counts, index, and pct of head", {
   f <- question_funnel(.mk_export(), c("intro", "q1", "close"))
   expect_identical(names(f),
