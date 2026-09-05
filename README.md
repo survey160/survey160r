@@ -96,7 +96,7 @@ A conn-less call uses the most recent `s160_api_auth()`.
 
 ## Latency analysis
 
-Compute a per-campaign recipient-latency report from a raw campaign CSV, returned as an in-memory R object -- `latency_run()` (the one-campaign runner) or the pure `latency_report()`. Full walkthrough -- inputs, result schema, config, and validation -- in the **[latency guide](vignettes/latency.Rmd)** (`vignette("latency")` once installed).
+Compute a per-campaign recipient-latency report from a raw campaign CSV, returned as an in-memory R object -- `latency_run()` (the one-campaign runner) or the pure `latency_report()`. Reduce the report to the funnel counts with `latency_funnel()`, or get the per-question reached funnel straight from the export with `question_funnel()`. Full walkthrough -- inputs, result schema, config, validation, and the funnel views -- in the **[latency guide](vignettes/latency.Rmd)** (`vignette("latency")` once installed).
 
 ## Disposition screening
 

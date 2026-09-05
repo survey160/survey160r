@@ -19,16 +19,29 @@ reference:
   - s160_api_auth
   - s160_api_campaign_results
   - s160_api_campaign_get
+  - s160_config
+  - s160_datasets
 - title: Latency analysis
-  desc: Per-campaign recipient-latency reports from a raw campaign CSV.
+  desc: >
+    Per-campaign recipient-latency reports from a raw campaign CSV, and a safe
+    funnel reduction of the result.
   contents:
   - latency_run
   - latency_report
+  - latency_funnel
   - latency_build_config
   - latency_validate_config
   - latency_config_hash
   - latency_discover_questions
   - latency_input_columns
+- title: Campaign export helpers
+  desc: >
+    Work directly with a raw campaign export data frame -- decode its timestamp
+    columns and view the per-question reached funnel.
+  contents:
+  - parse_campaign_timestamps
+  - question_timestamps
+  - question_funnel
 - title: Disposition screening
   desc: >
     Screen a phone sample against the disposition dataset -- which numbers have
