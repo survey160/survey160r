@@ -59,6 +59,20 @@ parse_campaign_timestamps <- function(x) {
   ))
 }
 
+# Resolve one export column name to parsed UTC timestamps, null-safe: an absent
+# column yields an all-NA POSIXct of the right length. The shared core behind
+# question_timestamps() (its strict, validated wrapper), .question_timestamp()
+# (which coalesces a set of opener columns), and the disposition
+# ineligible/refusal resolvers -- all three encode the same id.<q>.<field>
+# resolve-and-parse.
+.column_timestamps <- function(data, col) {
+  if (col %in% names(data)) {
+    parse_campaign_timestamps(data[[col]])
+  } else {
+    rep(as.POSIXct(NA, tz = "UTC"), nrow(data))
+  }
+}
+
 # Replace empty strings with NA on character columns. Mirrors the legacy
 # `na_if(., "")` step so downstream parsers see NA, not "".
 na_if_blank <- function(data) {

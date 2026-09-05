@@ -22,18 +22,6 @@
 # SAME shared helpers and keys `texted` on the send (scriptDate) with `engaged`
 # gated on it, so the two views measure the same name-agnostic funnel.
 
-# Parse a timestamp column to POSIXct, tolerating an absent column (returns an
-# all-NA vector of length nrow(data)). Mirrors build_summary_frame()'s
-# null-safe reads so a minimal export missing an optional column yields a clean
-# 0/NA flag rather than an error.
-.disposition_timestamp <- function(data, col) {
-  if (col %in% names(data)) {
-    parse_campaign_timestamps(data[[col]])
-  } else {
-    rep(as.POSIXct(NA), nrow(data))
-  }
-}
-
 # Default opt-in population for a disposition run: the opener set's accepted
 # answer is "Yes". Delegates to the shared .opener_population() so consent is
 # defined exactly as the latency view defines n_opted_in; .dot_form_headers()
@@ -79,8 +67,8 @@
 # terminated: any hard stop -- screened out (ineligible) or refused. Either
 # terminal-state scriptDate being non-NA marks the row terminated.
 .mask_terminated <- function(data) {
-  inelig <- !is.na(.disposition_timestamp(data, "id.ineligible.scriptDate"))
-  refusal <- !is.na(.disposition_timestamp(data, "id.refusal.scriptDate"))
+  inelig <- !is.na(.column_timestamps(data, "id.ineligible.scriptDate"))
+  refusal <- !is.na(.column_timestamps(data, "id.refusal.scriptDate"))
   inelig | refusal
 }
 

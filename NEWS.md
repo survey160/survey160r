@@ -510,6 +510,13 @@
 
 ## Internal
 
+* **The export-timestamp-column resolvers share one core (no behavior change).**
+  `question_timestamps()`, the opener resolver `.question_timestamp()`, and the
+  disposition ineligible/refusal reads now go through a single null-safe
+  `.column_timestamps()` (resolve `id.<q>.<field>`, parse via
+  `parse_campaign_timestamps()`, all-NA when the column is absent), replacing the
+  three copies of that logic.
+
 * **Refactored the disposition readers (no behavior change).**
   `.disposition_filter()` now builds one combined keep-mask and subsets the frame
   once instead of allocating an intermediate copy per predicate;
