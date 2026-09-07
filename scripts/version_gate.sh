@@ -17,8 +17,8 @@ if [ -z "$base_version" ]; then
   exit 0
 fi
 
-code_changed="$(git diff --name-only "$base...$head" -- R/ man/ src/ | head -1)"
-news_changed="$(git diff --name-only "$base...$head" -- NEWS.md | head -1)"
+code_changed="$(git diff --name-only "$base...$head" -- R/ man/ src/ | sed -n '1p')"
+news_changed="$(git diff --name-only "$base...$head" -- NEWS.md | sed -n '1p')"
 
 if [ -n "$code_changed" ] && [ "$base_version" = "$head_version" ]; then
   echo "version_gate: R/man/src changed but DESCRIPTION Version was not bumped (still $base_version). Bump it." >&2
