@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Install survey160r's local git hooks (shared across worktrees; run once per clone).
 #   pre-commit: leak_check --staged + make lint
-#   pre-push:   leak_check on each pushed ref (fast; CI enforces lint/check/coverage)
+#   pre-push:   leak_check + version_gate on each pushed ref (fast; CI enforces lint/check/coverage)
 # Existing non-survey160r hooks are backed up to <hook>.bak, never clobbered.
 set -euo pipefail
 
@@ -59,6 +59,9 @@ if [ -x scripts/leak_check.sh ]; then
       base="$remote_sha"
     fi
     scripts/leak_check.sh --range "$base" "$local_sha" || status=1
+    if [ -n "$base" ] && [ -x scripts/version_gate.sh ]; then
+      scripts/version_gate.sh "$base" "$local_sha" || status=1
+    fi
   done
   [ "$status" -eq 0 ] || exit 1
 else
