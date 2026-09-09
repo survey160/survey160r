@@ -20,7 +20,7 @@
 
 # Columns the summary reads (the Parquet read is projected to just these).
 .DISPOSITION_READ_COLS <- c("phone", "campaign_id", "engaged", "opted_in", "completed",
-                   "web_complete", "terminated", "date_closed_on")
+                   "web_complete", "terminated", "disposition_date")
 
 # The derived disposition categories, in funnel order (least -> most advanced).
 # `never_contacted` is only produced for screened phones absent from the data.
@@ -34,11 +34,11 @@
 
 # The stored disposition schema, in canonical order -- what
 # disposition_records() returns. `sent`/`mode`/`error` come from disposition_run();
-# `loi`/`topic`/`date_closed_on` are added by downstream enrichment, so an
+# `loi`/`topic`/`disposition_date` are added by downstream enrichment, so an
 # un-enriched projection lacks those three and records() returns just the subset present.
 .DISPOSITION_RECORD_COLS <- c("phone", "campaign_id", "sent", "engaged",
                       "opted_in", "completed", "web_complete", "terminated",
-                      "error", "loi", "topic", "mode", "date_closed_on")
+                      "error", "loi", "topic", "mode", "disposition_date")
 
 # Phone matching uses the shared .normalize_phone (aaa_utils.R) so a sample
 # matches the disposition and opt-out datasets identically.
@@ -93,7 +93,7 @@
 }
 
 # Normalize phone and apply the row-scope filters (requested phones, campaigns,
-# date_closed_on range). Pure; `data` already has .DISPOSITION_READ_COLS, and
+# disposition_date range). Pure; `data` already has .DISPOSITION_READ_COLS, and
 # `date_from`/`date_to` are already coerced to Date (or NULL) by the caller.
 # One combined keep-mask, subset once -- avoids the intermediate frame copies a
 # filter-per-predicate chain allocates.
@@ -106,29 +106,29 @@
   if (!is.null(campaign_ids)) {
     keep <- keep & as.character(data$campaign_id) %in% as.character(campaign_ids)
   }
-  # Beta heads-up: a date bound against an all-NA date_closed_on (the current beta
+  # Beta heads-up: a date bound against an all-NA disposition_date (the current beta
   # never populates it) silently drops every row -- warn rather than return empty.
   if ((!is.null(date_from) || !is.null(date_to)) &&
-        nrow(data) > 0L && all(is.na(data$date_closed_on))) {
-    warning("`date_from`/`date_to` filter on `date_closed_on`, which is NA for ",
+        nrow(data) > 0L && all(is.na(data$disposition_date))) {
+    warning("`date_from`/`date_to` filter on `disposition_date`, which is NA for ",
             "every row here (the current beta does not populate it); the filter ",
             "returns no rows.", call. = FALSE)
   }
   if (!is.null(date_from)) {
-    keep <- keep & !is.na(data$date_closed_on) & data$date_closed_on >= date_from
+    keep <- keep & !is.na(data$disposition_date) & data$disposition_date >= date_from
   }
   if (!is.null(date_to)) {
-    keep <- keep & !is.na(data$date_closed_on) & data$date_closed_on <= date_to
+    keep <- keep & !is.na(data$disposition_date) & data$disposition_date <= date_to
   }
   data[keep, , drop = FALSE]
 }
 
 # Collapse the (phone, campaign) rows to one row per phone. Rows are ordered so
-# the latest campaign (max date_closed_on, NA last; tie -> max campaign_id) is
+# the latest campaign (max disposition_date, NA last; tie -> max campaign_id) is
 # first per phone, so latest_disposition is a plain first-of-group pick.
 .disposition_collapse <- function(d) {
   d$.category <- .disposition_derive_category(d)
-  date_key <- as.numeric(d$date_closed_on)
+  date_key <- as.numeric(d$disposition_date)
   date_key[is.na(date_key)] <- -Inf
   d <- d[order(d$phone, -date_key, -as.numeric(d$campaign_id)), , drop = FALSE]
   first <- !duplicated(d$phone)
@@ -178,8 +178,8 @@
 # The requested set is intersected with the file's actual columns before the
 # read: nanoparquet errors if a `col_select` names a column the file lacks, so
 # requesting the full summary set from a column-short projection (e.g. an
-# un-enriched frame with no `date_closed_on`) would crash here -- before the
-# rollup's own clean missing-required-column / optional-`date_closed_on` guards
+# un-enriched frame with no `disposition_date`) would crash here -- before the
+# rollup's own clean missing-required-column / optional-`disposition_date` guards
 # could run. Intersecting keeps the read projected (a real win on the 29M-row
 # file) while letting those guards produce the clean S160 error or the
 # optional-column handling; reading the schema first is a cheap footer-only read.
@@ -204,22 +204,22 @@
 .disposition_rollup <- function(data, phones = NULL, campaign_ids = NULL,
                                 statuses = NULL, date_from = NULL, date_to = NULL,
                                 page = NULL, page_size = NULL, fn) {
-  # date_closed_on is optional -- it only orders each phone's latest campaign and
+  # disposition_date is optional -- it only orders each phone's latest campaign and
   # backs the date filters -- so an un-enriched disposition_records() frame that
   # omits it still summarizes (mirroring disposition_records(), which tolerates
   # its absence too). The funnel-flag columns are always required.
-  missing_cols <- setdiff(setdiff(.DISPOSITION_READ_COLS, "date_closed_on"),
+  missing_cols <- setdiff(setdiff(.DISPOSITION_READ_COLS, "disposition_date"),
                           names(data))
   if (length(missing_cols) > 0L) {
     stop_s160(sprintf("input is missing required column(s): %s",
                       paste(missing_cols, collapse = ", ")),
               fn = fn)
   }
-  if (!"date_closed_on" %in% names(data)) {
+  if (!"disposition_date" %in% names(data)) {
     if (!is.null(date_from) || !is.null(date_to)) {
-      stop_s160("input has no `date_closed_on` column to filter on.", fn = fn)
+      stop_s160("input has no `disposition_date` column to filter on.", fn = fn)
     }
-    data$date_closed_on <- rep(as.Date(NA), nrow(data))
+    data$disposition_date <- rep(as.Date(NA), nrow(data))
   }
   if (!is.null(statuses)) {
     bad <- setdiff(as.character(statuses), .DISPOSITION_CATEGORIES)
@@ -268,10 +268,10 @@
 #'   read with \pkg{nanoparquet}, projected to the summary columns; a frame must
 #'   carry \code{phone}, \code{campaign_id}, \code{engaged}, \code{opted_in},
 #'   \code{completed}, \code{web_complete}, and \code{terminated}.
-#'   \code{date_closed_on} is optional -- it orders each phone's latest campaign
+#'   \code{disposition_date} is optional -- it orders each phone's latest campaign
 #'   and backs the \code{date_from}/\code{date_to} filters; an un-enriched
 #'   \code{\link{disposition_records}} frame that omits it still summarizes
-#'   (close dates treated as unknown), but a date bound then errors.
+#'   (disposition dates treated as unknown), but a date bound then errors.
 #' @param phones Optional character vector of phone numbers to screen. When
 #'   supplied, \strong{every} input number is returned -- never-contacted ones
 #'   with \code{ever_contacted = FALSE} and
@@ -285,8 +285,8 @@
 #'   \code{opted_in}, \code{terminated}, \code{completed}, \code{web_complete});
 #'   keep only phones whose \code{latest_disposition} is one of them.
 #' @param date_from,date_to Optional \code{Date}/date-string bounds on
-#'   \code{date_closed_on}. In the beta \code{date_closed_on} is \code{NA}, so a
-#'   date bound drops rows with an unknown close date.
+#'   \code{disposition_date}. In the beta \code{disposition_date} is \code{NA}, so a
+#'   date bound drops rows with an unknown disposition date.
 #' @param page,page_size Optional 1-based pagination over the per-phone result.
 #' @return A data frame, one row per phone: \code{phone}, \code{ever_contacted},
 #'   \code{n_campaigns}, \code{ever_engaged}, \code{ever_opted_in},
@@ -304,7 +304,7 @@
 #'   completed = c(1L, 0L, 0L),
 #'   web_complete = c(0L, 0L, 0L),
 #'   terminated = c(0L, 1L, 0L),
-#'   date_closed_on = as.Date(c("2026-01-10", "2026-01-20", "2026-01-15")),
+#'   disposition_date = as.Date(c("2026-01-10", "2026-01-20", "2026-01-15")),
 #'   stringsAsFactors = FALSE
 #' )
 #' disposition_summary(records, phones = c("5551234567", "5550000000"))
@@ -339,7 +339,7 @@ disposition_summary <- function(x, phones = NULL, campaign_ids = NULL,
 #' disposition schema: \code{phone}, \code{campaign_id}, \code{sent},
 #' \code{engaged}, \code{opted_in}, \code{completed}, \code{web_complete},
 #' \code{terminated}, \code{error}, \code{loi}, \code{topic}, \code{mode},
-#' \code{date_closed_on}. This is the level directly beneath
+#' \code{disposition_date}. This is the level directly beneath
 #' \code{\link{disposition_summary}}: where \code{summary} rolls every phone up to a
 #' single screening row, \code{records} hands back the raw per-campaign rows --
 #' for inspection, export, or a custom rollup.
@@ -347,9 +347,9 @@ disposition_summary <- function(x, phones = NULL, campaign_ids = NULL,
 #' Only the canonical columns \emph{present in the file} are returned, in the
 #' order above. A projection written straight from \code{\link{disposition_run}}
 #' carries the ten computed columns -- including \code{error}, the carrier
-#' delivery-error code -- but not \code{loi} / \code{topic} / \code{date_closed_on};
+#' delivery-error code -- but not \code{loi} / \code{topic} / \code{disposition_date};
 #' the enriched projection carries all thirteen. In the current beta
-#' \code{date_closed_on} is \code{NA} for every row; \code{error} is populated
+#' \code{disposition_date} is \code{NA} for every row; \code{error} is populated
 #' from the export (\code{NA} when the export carries no usable error code -- a
 #' clean send, or a legacy/minimal export lacking the column). The
 #' whole projection is read into memory and filtered
@@ -371,10 +371,10 @@ disposition_summary <- function(x, phones = NULL, campaign_ids = NULL,
 #'   10-digit ones). \code{NULL} (default) returns every row.
 #' @param campaign_ids Optional vector; keep only rows for these campaigns.
 #' @param date_from,date_to Optional \code{Date}/date-string bounds on
-#'   \code{date_closed_on}. A row with an \code{NA} close date is dropped by any
-#'   bound -- and in the current beta \code{date_closed_on} is \code{NA} for every
+#'   \code{disposition_date}. A row with an \code{NA} disposition date is dropped by any
+#'   bound -- and in the current beta \code{disposition_date} is \code{NA} for every
 #'   row, so any bound returns no rows. Supplying a bound when the projection has
-#'   no \code{date_closed_on} column at all is an error.
+#'   no \code{disposition_date} column at all is an error.
 #' @param page,page_size Optional 1-based pagination over the
 #'   \code{(phone, campaign_id)}-ordered rows.
 #' @return A data frame, one row per \code{(phone, campaign_id)}, with the
@@ -403,8 +403,8 @@ disposition_records <- function(dataset, phones = NULL, campaign_ids = NULL,
               fn = "disposition_records")
   }
   if ((!is.null(date_from) || !is.null(date_to)) &&
-        !"date_closed_on" %in% names(raw)) {
-    stop_s160("`dataset` has no `date_closed_on` column to filter on.",
+        !"disposition_date" %in% names(raw)) {
+    stop_s160("`dataset` has no `disposition_date` column to filter on.",
               fn = "disposition_records")
   }
 

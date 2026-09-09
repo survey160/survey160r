@@ -173,6 +173,17 @@
 
 ## Breaking changes
 
+* **Disposition `date_closed_on` column renamed to `disposition_date`.** On the
+  disposition readers (`disposition_records()` / `disposition_summary()` /
+  `disposition_screen()`) and the stored projection schema, the date column is
+  now `disposition_date`, and the `date_from` / `date_to` bounds filter it. The
+  old name asserted a campaign-close date; the value is a per-row disposition
+  date (one row per `(phone, campaign_id)`), so the name now matches what the
+  readers do with it -- ordering each phone's latest campaign and backing the
+  date filters. The column is still `NA` in the beta, so this is a name change
+  with no data impact; the downstream writer/schema are updated in lockstep. The
+  `date_from` / `date_to` argument names are unchanged.
+
 * **Latency summary count columns renamed to the canonical funnel vocabulary.**
   On the `latency_report()` / `latency_run()` consolidated output, `n_texted` is
   now `n_sent` and `n_consented` is now `n_opted_in` (`n_engaged`, `n_completed`,

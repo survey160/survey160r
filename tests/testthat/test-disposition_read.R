@@ -10,9 +10,9 @@
 .disposition_base <- function() {
   write_disposition_parquet(rbind(
     .disposition_row("2015550101", 2339, engaged = 1, opted_in = 1, completed = 1,
-            date_closed_on = "2026-03-01"),
-    .disposition_row("2015550101", 2354, engaged = 1, date_closed_on = "2026-04-01"),
-    .disposition_row("2015550102", 2339, terminated = 1, date_closed_on = "2026-03-01")
+            disposition_date = "2026-03-01"),
+    .disposition_row("2015550101", 2354, engaged = 1, disposition_date = "2026-04-01"),
+    .disposition_row("2015550102", 2339, terminated = 1, disposition_date = "2026-03-01")
   ))
 }
 
@@ -89,7 +89,7 @@ test_that("a date bound on empty data does not warn (nothing to drop)", {
 })
 
 test_that("each date bound must be a single valid date", {
-  d <- .disposition_row("2015550101", 2339, engaged = 1, date_closed_on = "2026-03-01")
+  d <- .disposition_row("2015550101", 2339, engaged = 1, disposition_date = "2026-03-01")
   expect_error(disposition_summary(d, date_from = c("2026-01-01", "2026-02-01")),
                "single valid date")
   expect_error(disposition_summary(d, date_to = "not-a-date"), "single valid date")
@@ -153,8 +153,8 @@ test_that("input validation on the x argument", {
 test_that("disposition_summary accepts an in-memory frame and validates input", {
   d <- rbind(
     .disposition_row("2015550101", 2339, engaged = 1, opted_in = 1, completed = 1,
-            date_closed_on = "2026-03-01"),
-    .disposition_row("2015550101", 2354, engaged = 1, date_closed_on = "2026-04-01"))
+            disposition_date = "2026-03-01"),
+    .disposition_row("2015550101", 2354, engaged = 1, disposition_date = "2026-04-01"))
   res <- disposition_summary(d, phones = c("2015550101", "2015559999"))
   expect_setequal(res$phone, c("2015550101", "2015559999"))
   expect_true(res[res$phone == "2015550101", "ever_completed"])
@@ -164,18 +164,18 @@ test_that("disposition_summary accepts an in-memory frame and validates input", 
                "missing required column")
 })
 
-test_that("disposition_summary tolerates a frame without date_closed_on", {
+test_that("disposition_summary tolerates a frame without disposition_date", {
   d <- rbind(
     .disposition_row("2015550101", 2339, engaged = 1, opted_in = 1, completed = 1,
-            date_closed_on = "2026-03-01"),
-    .disposition_row("2015550101", 2354, engaged = 1, date_closed_on = "2026-04-01"))
-  bare <- d[, setdiff(names(d), "date_closed_on"), drop = FALSE]  # un-enriched shape
+            disposition_date = "2026-03-01"),
+    .disposition_row("2015550101", 2354, engaged = 1, disposition_date = "2026-04-01"))
+  bare <- d[, setdiff(names(d), "disposition_date"), drop = FALSE]  # un-enriched shape
   res <- disposition_summary(bare, phones = "2015550101")
   expect_true(res$ever_completed)          # summarizes with close dates unknown
   expect_equal(res$n_campaigns, 2L)
-  # but a date bound with no date_closed_on column is a clear error
+  # but a date bound with no disposition_date column is a clear error
   expect_error(disposition_summary(bare, date_from = "2026-01-01"),
-               "date_closed_on")
+               "disposition_date")
 })
 
 # --- disposition_screen --------------------------------------------------
@@ -227,15 +227,15 @@ test_that("disposition_screen appends exactly what disposition_summary computes"
 
 # --- review regressions + documented behaviors ----------------------------
 
-test_that("summary reads a column-short projection path (no date_closed_on)", {
+test_that("summary reads a column-short projection path (no disposition_date)", {
   # Regression (finding #1): .disposition_read_parquet() used to col_select the
   # full read set unconditionally, so a path to an un-enriched projection (no
-  # date_closed_on) crashed with a raw nanoparquet "Column ... does not exist"
+  # disposition_date) crashed with a raw nanoparquet "Column ... does not exist"
   # before the rollup's optional-date guard could run. It now intersects
   # col_select with the file schema and summarizes cleanly.
   row <- .disposition_row("2015550101", 2339, engaged = 1, opted_in = 1,
                           completed = 1)
-  p <- write_disposition_parquet(row[, setdiff(names(row), "date_closed_on")])
+  p <- write_disposition_parquet(row[, setdiff(names(row), "disposition_date")])
   res <- disposition_summary(p, phones = "2015550101")
   expect_true(res$ever_completed)
   expect_equal(res$n_campaigns, 1L)
@@ -245,7 +245,7 @@ test_that("summary reads a column-short projection path (no date_closed_on)", {
 })
 
 test_that("a required column missing from a projection path errors cleanly", {
-  # The intersect drops only the OPTIONAL date_closed_on; a genuinely required
+  # The intersect drops only the OPTIONAL disposition_date; a genuinely required
   # funnel column absent from the file still reaches the rollup's clean guard.
   row <- .disposition_row("2015550101", 2339, engaged = 1)
   p <- write_disposition_parquet(row[, setdiff(names(row), "opted_in")])
@@ -278,13 +278,13 @@ test_that("terminated + completed resolves to completed (funnel order)", {
 
 test_that("a partially-dated dataset relabels a contacted-but-undated phone", {
   # Documented (finding #5): the "returns no rows" warning fires only when EVERY
-  # date_closed_on is NA. With a mix, a date bound silently drops the NA-dated
+  # disposition_date is NA. With a mix, a date bound silently drops the NA-dated
   # (but genuinely contacted) phone, which then screens back as never_contacted
   # -- and no warning fires because the dataset is not all-NA. Beta-latent:
   # today's projection is all-NA, so the mixed case does not yet occur in prod.
   p <- write_disposition_parquet(rbind(
     .disposition_row("2015550101", 2339, engaged = 1,
-                     date_closed_on = "2026-03-01"),           # dated
+                     disposition_date = "2026-03-01"),           # dated
     .disposition_row("2015550102", 2340, engaged = 1)))        # NA date
   expect_no_warning(
     res <- disposition_summary(p, phones = c("2015550101", "2015550102"),

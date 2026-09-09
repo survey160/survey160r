@@ -25,10 +25,10 @@ digit-normalized (a leading US \code{1} is dropped so 11-digit numbers match
 \item{campaign_ids}{Optional vector; keep only rows for these campaigns.}
 
 \item{date_from, date_to}{Optional \code{Date}/date-string bounds on
-\code{date_closed_on}. A row with an \code{NA} close date is dropped by any
-bound -- and in the current beta \code{date_closed_on} is \code{NA} for every
+\code{disposition_date}. A row with an \code{NA} disposition date is dropped by any
+bound -- and in the current beta \code{disposition_date} is \code{NA} for every
 row, so any bound returns no rows. Supplying a bound when the projection has
-no \code{date_closed_on} column at all is an error.}
+no \code{disposition_date} column at all is an error.}
 
 \item{page, page_size}{Optional 1-based pagination over the
 \code{(phone, campaign_id)}-ordered rows.}
@@ -44,7 +44,7 @@ stored} -- one row per \code{(phone, campaign_id)}, carrying the full
 disposition schema: \code{phone}, \code{campaign_id}, \code{sent},
 \code{engaged}, \code{opted_in}, \code{completed}, \code{web_complete},
 \code{terminated}, \code{error}, \code{loi}, \code{topic}, \code{mode},
-\code{date_closed_on}. This is the level directly beneath
+\code{disposition_date}. This is the level directly beneath
 \code{\link{disposition_summary}}: where \code{summary} rolls every phone up to a
 single screening row, \code{records} hands back the raw per-campaign rows --
 for inspection, export, or a custom rollup.
@@ -53,9 +53,9 @@ for inspection, export, or a custom rollup.
 Only the canonical columns \emph{present in the file} are returned, in the
 order above. A projection written straight from \code{\link{disposition_run}}
 carries the ten computed columns -- including \code{error}, the carrier
-delivery-error code -- but not \code{loi} / \code{topic} / \code{date_closed_on};
+delivery-error code -- but not \code{loi} / \code{topic} / \code{disposition_date};
 the enriched projection carries all thirteen. In the current beta
-\code{date_closed_on} is \code{NA} for every row; \code{error} is populated
+\code{disposition_date} is \code{NA} for every row; \code{error} is populated
 from the export (\code{NA} when the export carries no usable error code -- a
 clean send, or a legacy/minimal export lacking the column). The
 whole projection is read into memory and filtered
