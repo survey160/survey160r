@@ -22,10 +22,10 @@ disposition data frame (from \code{\link{disposition_records}}). A path is
 read with \pkg{nanoparquet}, projected to the summary columns; a frame must
 carry \code{phone}, \code{campaign_id}, \code{engaged}, \code{opted_in},
 \code{completed}, \code{web_complete}, and \code{terminated}.
-\code{date_closed_on} is optional -- it orders each phone's latest campaign
+\code{disposition_date} is optional -- it orders each phone's latest campaign
 and backs the \code{date_from}/\code{date_to} filters; an un-enriched
 \code{\link{disposition_records}} frame that omits it still summarizes
-(close dates treated as unknown), but a date bound then errors.}
+(disposition dates treated as unknown), but a date bound then errors.}
 
 \item{phones}{Optional character vector of phone numbers to screen. When
 supplied, \strong{every} input number is returned -- never-contacted ones
@@ -43,8 +43,8 @@ campaigns before summarizing.}
 keep only phones whose \code{latest_disposition} is one of them.}
 
 \item{date_from, date_to}{Optional \code{Date}/date-string bounds on
-\code{date_closed_on}. In the beta \code{date_closed_on} is \code{NA}, so a
-date bound drops rows with an unknown close date.}
+\code{disposition_date}. In the beta \code{disposition_date} is \code{NA}, so a
+date bound drops rows with an unknown disposition date.}
 
 \item{page, page_size}{Optional 1-based pagination over the per-phone result.}
 }
@@ -74,7 +74,7 @@ records <- data.frame(
   completed = c(1L, 0L, 0L),
   web_complete = c(0L, 0L, 0L),
   terminated = c(0L, 1L, 0L),
-  date_closed_on = as.Date(c("2026-01-10", "2026-01-20", "2026-01-15")),
+  disposition_date = as.Date(c("2026-01-10", "2026-01-20", "2026-01-15")),
   stringsAsFactors = FALSE
 )
 disposition_summary(records, phones = c("5551234567", "5550000000"))

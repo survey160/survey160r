@@ -9,18 +9,18 @@
 .record_base <- function() {
   write_disposition_parquet(rbind(
     .record_row("2015550102", 2339, terminated = 1, mode = "sms", loi = 9,
-                topic = "Policy", date_closed_on = "2026-03-01"),
+                topic = "Policy", disposition_date = "2026-03-01"),
     .record_row("2015550101", 2354, engaged = 1, loi = 11, topic = "Brand",
-                date_closed_on = "2026-04-01"),
+                disposition_date = "2026-04-01"),
     .record_row("2015550101", 2339, engaged = 1, opted_in = 1, completed = 1,
                 web_complete = 1, loi = 12, topic = "Brand",
-                date_closed_on = "2026-03-01")
+                disposition_date = "2026-03-01")
   ))
 }
 
 .RECORD_COLS <- c("phone", "campaign_id", "sent", "engaged", "opted_in",
                   "completed", "web_complete", "terminated", "error", "loi",
-                  "topic", "mode", "date_closed_on")
+                  "topic", "mode", "disposition_date")
 
 test_that("returns raw rows, one per (phone, campaign), full schema, ordered", {
   res <- disposition_records(.record_base())
@@ -50,7 +50,7 @@ test_that("campaign_ids filter scopes the rows", {
   expect_equal(nrow(res), 2L)                      # 0101@2339 + 0102@2339
 })
 
-test_that("date bounds filter on date_closed_on; NA close dates drop", {
+test_that("date bounds filter on disposition_date; NA close dates drop", {
   res <- disposition_records(.record_base(), date_from = "2026-04-01")
   expect_equal(res$phone, "2015550101")
   expect_equal(res$campaign_id, 2354L)
@@ -65,16 +65,16 @@ test_that("date bounds filter on date_closed_on; NA close dates drop", {
   expect_equal(nrow(res), 0L)
 })
 
-test_that("a date bound with no date_closed_on column errors", {
+test_that("a date bound with no disposition_date column errors", {
   bare_cols <- c("phone", "campaign_id", "sent", "engaged", "opted_in",
                  "completed", "web_complete", "terminated", "mode")
   p <- write_disposition_parquet(.record_row("2015550101", 2339, engaged = 1)[, bare_cols])
-  expect_error(disposition_records(p, date_from = "2026-01-01"), "date_closed_on")
-  expect_error(disposition_records(p, date_to = "2026-01-01"), "date_closed_on")
+  expect_error(disposition_records(p, date_from = "2026-01-01"), "disposition_date")
+  expect_error(disposition_records(p, date_to = "2026-01-01"), "disposition_date")
 })
 
 test_that("a minimal projection returns only the columns present", {
-  # A file missing the enrichment columns (loi/topic/date_closed_on) -- and, for a
+  # A file missing the enrichment columns (loi/topic/disposition_date) -- and, for a
   # pre-0.36 producer, `error` too -- reads back as just the columns it carries.
   # disposition_run() now emits `error`, so a current un-enriched projection is ten
   # columns; this bare fixture omits it to exercise the reader's subset tolerance.
@@ -88,10 +88,10 @@ test_that("a minimal projection returns only the columns present", {
 
 test_that("output is canonical order; extra (provenance) columns are dropped", {
   row <- .record_row("2015550101", 2339, engaged = 1, loi = 12, topic = "Brand",
-                     error = "DELIVERY_FAILED", date_closed_on = "2026-03-01")
+                     error = "DELIVERY_FAILED", disposition_date = "2026-03-01")
   row$source_csv_hash <- "abc123"                        # extra column
   row <- row[, c("mode", "source_csv_hash", "campaign_id", "phone", "loi",
-                 "topic", "date_closed_on", "sent", "engaged", "opted_in",
+                 "topic", "disposition_date", "sent", "engaged", "opted_in",
                  "completed", "web_complete", "terminated", "error")]  # scrambled
   res <- disposition_records(write_disposition_parquet(row))
   expect_named(res, .RECORD_COLS)                        # canonical order restored
