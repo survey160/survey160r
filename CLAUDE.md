@@ -21,7 +21,7 @@ R client for Survey160 data. Reads campaign results from Google Cloud Storage, t
 - **Lint clean**: `lintr::lint_package()` must return zero issues.
 - **100% test coverage**: `covr::package_coverage()` must be 100%. Use `# nocov` markers sparingly and only for interactive-only branches.
 - **R CMD check** runs with `error-on: warning`. No warnings allowed.
-- **Version bump rule (gated in CI)**:
+- **Version bump rule (gated in CI and by the pre-push hook)**:
   - Any change in `R/`, `man/`, or `src/` requires a `Version:` bump in `DESCRIPTION`.
   - Any `Version:` bump requires a matching `NEWS.md` edit.
 - **NEWS.md** keeps a `# survey160r (development version)` header at the top between releases as the scratch area for incoming PRs.
@@ -47,7 +47,7 @@ Secondary conventions:
 
 ## Public repo & release model
 
-- **This repository is PUBLIC.** Never commit internal Jira keys (`SUR-####`), client names, or secrets. `scripts/leak_check.sh` guards this: the local pre-commit and pre-push hooks scan the diff for internal refs and secret literals, and also check a git-ignored, machine-local `.claude/leak-denylist.txt` (client names). Install the hooks once per clone with `scripts/install-hooks.sh`: pre-commit runs the leak scan plus `make lint`, and pre-push runs only the leak scan -- kept fast (lint, `R CMD check`, and 100% coverage are enforced in CI, not the hook) so there is no reason to `--no-verify` past it. The pre-push leak scan is the primary guard (it stops a leak before it reaches the public remote); by design it is local and `--no-verify`-bypassable, so keep it installed and do not bypass it on this repo.
+- **This repository is PUBLIC.** Never commit internal Jira keys (`SUR-####`), client names, or secrets. `scripts/leak_check.sh` guards this: the local pre-commit and pre-push hooks scan the diff for internal refs and secret literals, and also check a git-ignored, machine-local `.claude/leak-denylist.txt` (client names). Install the hooks once per clone with `scripts/install-hooks.sh`: pre-commit runs the leak scan plus `make lint`, and pre-push runs the leak scan plus a fast version/NEWS gate (`scripts/version_gate.sh`) -- both kept fast (lint, `R CMD check`, and 100% coverage stay in CI, not the hook) so there is no reason to `--no-verify` past it. The pre-push leak scan is the primary guard (it stops a leak before it reaches the public remote); by design it is local and `--no-verify`-bypassable, so keep it installed and do not bypass it on this repo.
 - **Distribution is R-universe, which auto-rebuilds `main` on every commit, so a merge to `main` is an immediate public release.** `main` must always be releasable, and the PR-merge is the release gate (see `RELEASING.md`). Work on feature branches only; never push to `main`.
 
 ## Workflow
