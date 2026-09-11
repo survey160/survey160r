@@ -99,6 +99,30 @@
   ec
 }
 
+# disposition_date: the per-respondent disposition day -- the CSV analogue of the
+# DB producer's `lastsms::date`. Each script step's send timestamp lives in an
+# `id.<step>.scriptDate` column, so the ROW-WISE MAX over every scriptDate is the
+# phone's LAST outbound message (its terminal activity), and it is bucketed to the
+# field timezone exactly as the latency view buckets a send
+# (`as.Date(format(send, tz))`) and the DB path buckets lastsms
+# (`lastsms AT TIME ZONE 'UTC' AT TIME ZONE tz`). parse_campaign_timestamps
+# returns UTC, so `format(..., tz)` performs the naive-UTC -> field-tz shift. A row
+# with no send timestamp -- or an input projected down to columns that carry no
+# scriptDate -- yields NA (the historical CSV-only campaigns keep NA where no send
+# time survives). Pure.
+.disposition_dates <- function(data, field_timezone) {
+  cols <- grep("^id\\..+\\.scriptDate$", names(data), value = TRUE)
+  if (length(cols) == 0L) {
+    return(rep(as.Date(NA), nrow(data)))
+  }
+  # numeric UTC epoch seconds per scriptDate column; pmax(na.rm) is the NA-safe
+  # row-wise max (all-NA row -> NA, not -Inf), reduced across the columns.
+  secs <- lapply(cols, function(col) as.numeric(parse_campaign_timestamps(data[[col]])))
+  mx <- Reduce(function(a, b) pmax(a, b, na.rm = TRUE), secs)
+  as.Date(format(as.POSIXct(mx, origin = "1970-01-01", tz = "UTC"),
+                 tz = field_timezone))
+}
+
 # Empty (0-row) disposition frame with the pinned column set + types. Lets
 # callers handle a campaign whose export has no rows without special-casing.
 empty_disposition_frame <- function() {
@@ -113,6 +137,7 @@ empty_disposition_frame <- function() {
     terminated = integer(0),
     mode = character(0),
     error = character(0),
+    disposition_date = as.Date(character(0)),
     stringsAsFactors = FALSE
   )
 }
@@ -193,7 +218,13 @@ disposition_input_columns <- function(available = NULL, population = NULL) {
     "id.refusal.scriptDate"
   )
   if (!is.null(available)) {
-    cols <- c(cols, grep(.report_support_patterns, available, value = TRUE))
+    cols <- c(
+      cols,
+      grep(.report_support_patterns, available, value = TRUE),
+      # every script-step send timestamp, so disposition_run() can take the
+      # row-wise max(scriptDate) for `disposition_date` (not just the opener /
+      # closer / terminal sends already listed above).
+      grep("^id\\..+\\.scriptDate$", available, value = TRUE))
   }
   unique(cols)
 }
@@ -204,7 +235,8 @@ disposition_input_columns <- function(available = NULL, population = NULL) {
 #' carrying the per-respondent disposition frame in \code{consolidated} (one row
 #' per contacted phone, with 0/1 funnel flags \code{sent}, \code{engaged},
 #' \code{opted_in}, \code{completed}, \code{web_complete}, \code{terminated}, the
-#' campaign's \code{mode}, and the raw carrier delivery-error code \code{error})
+#' campaign's \code{mode}, the raw carrier delivery-error code \code{error}, and
+#' the \code{disposition_date} (the last-send day, \code{max(scriptDate)}))
 #' plus source provenance in \code{meta}. Pure
 #' function, no I/O -- pair with \code{s160_gcs_campaign_results_read(hash = TRUE)} for the GCS source.
 #' Persisting the frame (any enrichment, provenance, and Parquet output) is
@@ -243,14 +275,24 @@ disposition_input_columns <- function(available = NULL, population = NULL) {
 #' @param contacted_only A single logical. When \code{TRUE} (default), return
 #'   only contacted records (rows where \code{sent == 1}). When \code{FALSE},
 #'   return one row per input respondent.
+#' @param field_timezone IANA timezone (a name in \code{OlsonNames()}; default
+#'   \code{"America/New_York"}) the \code{disposition_date} is bucketed to; an
+#'   unknown zone is rejected rather than silently mis-bucketed. Each
+#'   \code{id.<step>.scriptDate}
+#'   send timestamp is stored naive-UTC; the row-wise max is converted to this
+#'   zone before its calendar date is taken -- matching the latency view's
+#'   send-date bucketing and the live DB producer's \code{lastsms::date}.
 #' @return A list mirroring \code{latency_run()}'s shape: \code{consolidated} (a
 #'   data frame, one row per (contacted) respondent, with columns \code{phone}
 #'   (character), \code{campaign_id} (integer), the 0/1 integer flags
 #'   \code{sent}, \code{engaged}, \code{opted_in}, \code{completed},
 #'   \code{web_complete}, \code{terminated} -- \code{completed} is \code{NA} under
-#'   \code{t2w_external} -- \code{mode} (character), and \code{error} (character;
+#'   \code{t2w_external} -- \code{mode} (character), \code{error} (character;
 #'   the raw carrier delivery-error code, \code{NA} when the export carries no
-#'   usable error code); under the default \code{sent} is \code{1} for every row) and
+#'   usable error code), and \code{disposition_date} (a \code{Date}: the row-wise
+#'   max \code{id.<step>.scriptDate} bucketed to \code{field_timezone} -- the last
+#'   outbound send -- or \code{NA} when no send time survives); under the default
+#'   \code{sent} is \code{1} for every row) and
 #'   \code{meta} (the source
 #'   \code{source_csv_hash} / \code{source_csv_path}, or \code{NA}). A zero-row
 #'   input, or a campaign where nobody was contacted, yields a zero-row
@@ -263,7 +305,8 @@ disposition_input_columns <- function(available = NULL, population = NULL) {
 #' }
 #' @export
 disposition_run <- function(campaign_id, data, population = NULL,
-                            contacted_only = TRUE) {
+                            contacted_only = TRUE,
+                            field_timezone = "America/New_York") {
   check_data_frame(data, "data", fn = "disposition_run")
   if (!"phone" %in% names(data)) {
     stop_s160("`data` must contain a `phone` column.", fn = "disposition_run")
@@ -277,6 +320,19 @@ disposition_run <- function(campaign_id, data, population = NULL,
         is.na(contacted_only)) {
     stop_s160("`contacted_only` must be a single TRUE or FALSE.",
               fn = "disposition_run")
+  }
+  if (!is.character(field_timezone) || length(field_timezone) != 1L ||
+        is.na(field_timezone) || !nzchar(field_timezone)) {
+    stop_s160("`field_timezone` must be a single non-empty string.",
+              fn = "disposition_run")
+  }
+  # An unknown zone is silently ignored by `format(..., tz =)` on some platforms
+  # (falling back to UTC / local), which would assign a wrong disposition_date --
+  # so reject anything not in the IANA database rather than bucket dates wrong.
+  if (!field_timezone %in% OlsonNames()) {
+    stop_s160(sprintf(
+      "`field_timezone` (\"%s\") is not a known IANA timezone (see OlsonNames()).",
+      field_timezone), fn = "disposition_run")
   }
   if (nrow(data) == 0L) {
     return(list(consolidated = empty_disposition_frame(),
@@ -314,6 +370,7 @@ disposition_run <- function(campaign_id, data, population = NULL,
     terminated = as.integer(.mask_terminated(data)),
     mode = rep(survey_mode, length(phone)),
     error = .disposition_error(data),
+    disposition_date = .disposition_dates(data, field_timezone),
     stringsAsFactors = FALSE
   )
 

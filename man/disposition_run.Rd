@@ -4,7 +4,13 @@
 \alias{disposition_run}
 \title{Build the per-respondent disposition frame for one campaign}
 \usage{
-disposition_run(campaign_id, data, population = NULL, contacted_only = TRUE)
+disposition_run(
+  campaign_id,
+  data,
+  population = NULL,
+  contacted_only = TRUE,
+  field_timezone = "America/New_York"
+)
 }
 \arguments{
 \item{campaign_id}{Campaign id (numeric or character). Stamped on every row
@@ -23,6 +29,14 @@ the same opener set, so the two views agree for a non-\code{intro} campaign.}
 \item{contacted_only}{A single logical. When \code{TRUE} (default), return
 only contacted records (rows where \code{sent == 1}). When \code{FALSE},
 return one row per input respondent.}
+
+\item{field_timezone}{IANA timezone (a name in \code{OlsonNames()}; default
+\code{"America/New_York"}) the \code{disposition_date} is bucketed to; an
+unknown zone is rejected rather than silently mis-bucketed. Each
+\code{id.<step>.scriptDate}
+send timestamp is stored naive-UTC; the row-wise max is converted to this
+zone before its calendar date is taken -- matching the latency view's
+send-date bucketing and the live DB producer's \code{lastsms::date}.}
 }
 \value{
 A list mirroring \code{latency_run()}'s shape: \code{consolidated} (a
@@ -30,9 +44,12 @@ A list mirroring \code{latency_run()}'s shape: \code{consolidated} (a
   (character), \code{campaign_id} (integer), the 0/1 integer flags
   \code{sent}, \code{engaged}, \code{opted_in}, \code{completed},
   \code{web_complete}, \code{terminated} -- \code{completed} is \code{NA} under
-  \code{t2w_external} -- \code{mode} (character), and \code{error} (character;
+  \code{t2w_external} -- \code{mode} (character), \code{error} (character;
   the raw carrier delivery-error code, \code{NA} when the export carries no
-  usable error code); under the default \code{sent} is \code{1} for every row) and
+  usable error code), and \code{disposition_date} (a \code{Date}: the row-wise
+  max \code{id.<step>.scriptDate} bucketed to \code{field_timezone} -- the last
+  outbound send -- or \code{NA} when no send time survives); under the default
+  \code{sent} is \code{1} for every row) and
   \code{meta} (the source
   \code{source_csv_hash} / \code{source_csv_path}, or \code{NA}). A zero-row
   input, or a campaign where nobody was contacted, yields a zero-row
@@ -43,7 +60,8 @@ Turns an in-memory campaign results CSV (one row per respondent) into a list
 carrying the per-respondent disposition frame in \code{consolidated} (one row
 per contacted phone, with 0/1 funnel flags \code{sent}, \code{engaged},
 \code{opted_in}, \code{completed}, \code{web_complete}, \code{terminated}, the
-campaign's \code{mode}, and the raw carrier delivery-error code \code{error})
+campaign's \code{mode}, the raw carrier delivery-error code \code{error}, and
+the \code{disposition_date} (the last-send day, \code{max(scriptDate)}))
 plus source provenance in \code{meta}. Pure
 function, no I/O -- pair with \code{s160_gcs_campaign_results_read(hash = TRUE)} for the GCS source.
 Persisting the frame (any enrichment, provenance, and Parquet output) is

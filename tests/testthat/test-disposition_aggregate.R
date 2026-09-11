@@ -28,7 +28,8 @@ test_that("sms campaign: per-respondent flags and mode", {
   res <- disposition_run(1234, d, contacted_only = FALSE)$consolidated
 
   expect_named(res, c("phone", "campaign_id", "sent", "engaged", "opted_in",
-                      "completed", "web_complete", "terminated", "mode", "error"))
+                      "completed", "web_complete", "terminated", "mode", "error",
+                      "disposition_date"))
   expect_equal(res$phone, c("+15550101", "+15550102", "+15550103"))
   expect_true(is.integer(res$campaign_id))
   expect_equal(res$campaign_id, rep(1234L, 3L))
@@ -192,7 +193,8 @@ test_that("zero-row input returns the empty disposition frame", {
   res <- disposition_run(1234, d)$consolidated
   expect_equal(nrow(res), 0L)
   expect_named(res, c("phone", "campaign_id", "sent", "engaged", "opted_in",
-                      "completed", "web_complete", "terminated", "mode", "error"))
+                      "completed", "web_complete", "terminated", "mode", "error",
+                      "disposition_date"))
   expect_true(is.integer(res$sent))
   expect_true(is.character(res$phone))
   expect_true(is.character(res$error))   # empty-frame error type matches the live path
@@ -357,7 +359,8 @@ test_that("contacted_only with no contacted rows yields a typed zero-row frame",
   res <- disposition_run(1234, d)$consolidated
   expect_equal(nrow(res), 0L)
   expect_named(res, c("phone", "campaign_id", "sent", "engaged", "opted_in",
-                      "completed", "web_complete", "terminated", "mode", "error"))
+                      "completed", "web_complete", "terminated", "mode", "error",
+                      "disposition_date"))
   expect_true(is.integer(res$sent))
   expect_true(is.character(res$phone))
   expect_true(is.character(res$error))   # empty-frame error type matches the live path
@@ -638,4 +641,92 @@ test_that("dedup guard is raw-phone: a mixed-format collision is not caught", {
   res <- disposition_run(2339, d)$consolidated
   expect_equal(nrow(res), 2L)                  # raw guard passed -> two rows
   expect_setequal(res$phone, c("15551234567", "5551234567"))
+})
+
+# ---- disposition_date: max(scriptDate) bucketed to the field timezone --------
+
+test_that("disposition_date is the row-wise max(scriptDate) bucketed to field_timezone", {
+  d <- disp_frame(
+    phone = c("+15550101", "+15550102"),
+    id.intro.scriptDate = c("2026-01-26 15:00:00.000000Z", "2026-01-26 15:00:00.000000Z"),
+    id.intro.finalText  = c("Yes", "Yes"),
+    id.q2.scriptDate    = c("2026-01-27 18:00:00.000000Z", ""),   # a later send for r1
+    id.close.scriptDate = c("2026-01-28 12:00:00.000000Z", "")    # r1's latest send
+  )
+  res <- disposition_run(1234, d, contacted_only = FALSE)$consolidated
+  expect_s3_class(res$disposition_date, "Date")
+  # r1: max = close 2026-01-28 12:00 UTC -> NY (EST) 07:00 -> 2026-01-28
+  # r2: only intro 2026-01-26 15:00 UTC -> NY 10:00 -> 2026-01-26
+  expect_equal(as.character(res$disposition_date), c("2026-01-28", "2026-01-26"))
+})
+
+test_that("disposition_date buckets across the local date boundary per field_timezone", {
+  d <- disp_frame(
+    phone = "+15550201",
+    id.intro.scriptDate = "2026-01-26 02:00:00.000000Z",   # 02:00 UTC
+    id.intro.finalText  = "Yes"
+  )
+  # America/New_York (EST, UTC-5): 2026-01-25 21:00 -> previous day; UTC keeps 26th
+  expect_equal(as.character(disposition_run(1, d)$consolidated$disposition_date),
+               "2026-01-25")
+  expect_equal(as.character(
+    disposition_run(1, d, field_timezone = "UTC")$consolidated$disposition_date),
+    "2026-01-26")
+})
+
+test_that("disposition_date is NA when the row has no send timestamp", {
+  d <- disp_frame(
+    phone = c("+15550301", "+15550302"),
+    id.intro.scriptDate = c("2026-01-26 15:00:00.000000Z", ""),   # r2 never texted
+    id.intro.finalText  = c("Yes", "Yes")
+  )
+  res <- disposition_run(1, d, contacted_only = FALSE)$consolidated
+  expect_equal(as.character(res$disposition_date), c("2026-01-26", NA))
+})
+
+test_that("disposition_date is NA (Date) when the input carries no scriptDate column", {
+  # a projection that dropped every scriptDate: only phone + finalText survive
+  res <- disposition_run(1, disp_frame(phone = "+15550401", id.intro.finalText = "Yes"),
+                         contacted_only = FALSE)$consolidated
+  expect_s3_class(res$disposition_date, "Date")
+  expect_true(is.na(res$disposition_date))
+})
+
+test_that("empty disposition frame carries a Date disposition_date column", {
+  res <- disposition_run(1, disp_frame(phone = character(0)))$consolidated
+  expect_equal(nrow(res), 0L)
+  expect_true("disposition_date" %in% names(res))
+  expect_s3_class(res$disposition_date, "Date")
+})
+
+test_that("disposition_run rejects a bad field_timezone", {
+  d <- disp_frame(phone = "+15550501", id.intro.scriptDate = TS, id.intro.finalText = "Yes")
+  expect_error(disposition_run(1, d, field_timezone = ""), "field_timezone")
+  expect_error(disposition_run(1, d, field_timezone = c("a", "b")), "field_timezone")
+  expect_error(disposition_run(1, d, field_timezone = NA_character_), "field_timezone")
+  # a non-empty string that is not an IANA zone (would silently mis-bucket dates)
+  expect_error(disposition_run(1, d, field_timezone = "Mars/Olympus"), "IANA")
+})
+
+test_that("disposition_input_columns retains every scriptDate for the max", {
+  header <- c("phone", "id.intro.scriptDate", "id.intro.batchDate", "id.intro.finalText",
+              "id.q2.scriptDate", "id.close.scriptDate")
+  cols <- disposition_input_columns(header)
+  expect_true(all(c("id.intro.scriptDate", "id.q2.scriptDate", "id.close.scriptDate")
+                  %in% cols))
+})
+
+test_that("disposition_date is NA when a row's every scriptDate is absent (multi-column pmax)", {
+  # >=2 scriptDate columns present, but this row was sent none of them: the
+  # pmax(na.rm) reduction over an all-NA row must yield NA, not an epoch-floor
+  # date. (Single-column inputs skip pmax; this asserts the reduced path.)
+  d <- disp_frame(
+    phone = c("+15550901", "+15550902"),
+    id.intro.scriptDate = c("2026-01-26 15:00:00.000000Z", ""),   # r2 never texted
+    id.intro.finalText  = c("Yes", "Yes"),
+    id.q2.scriptDate    = c("2026-01-27 18:00:00.000000Z", ""),   # r2: absent
+    id.close.scriptDate = c("2026-01-28 12:00:00.000000Z", "")    # r2: absent
+  )
+  res <- disposition_run(1, d, contacted_only = FALSE)$consolidated
+  expect_equal(as.character(res$disposition_date), c("2026-01-28", NA))
 })

@@ -1,5 +1,19 @@
 # survey160r (development version)
 
+## New features
+
+* **`disposition_run()` now derives `disposition_date`.** The per-respondent
+  frame gains a `disposition_date` column: the row-wise maximum of every
+  `id.<step>.scriptDate` send timestamp (the phone's last outbound message),
+  bucketed to a calendar day in the new `field_timezone` argument (default
+  `"America/New_York"`, matching the latency view's send-date bucketing; an
+  unknown zone is rejected rather than silently mis-bucketed). It is
+  `NA` when no send time survives. `disposition_input_columns()` now retains every
+  `scriptDate` column so the max is computed over the full flow, not just the
+  opener/closer/terminal sends. Previously the column was left for the consumer to
+  fill (`NA` from a CSV source); a disposition read no longer needs a separate date
+  source to order each phone's latest campaign.
+
 ## Deprecations
 
 * **`bucket =` is deprecated on the GCS readers and pulls; select data with
