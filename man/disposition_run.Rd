@@ -20,11 +20,19 @@ as an integer.}
 respondent). Must contain a \code{phone} column.}
 
 \item{population}{Optional population-filter expression defining
-\code{opted_in}. \code{NULL} (default) uses the opening question set's accepted
-answer -- \code{id.intro.finalText == "Yes"} for a normal campaign, a
-disjunction over the intro-family openers for a routed one -- resolved per
-campaign from the data. The latency view resolves \code{n_opted_in} from
-the same opener set, so the two views agree for a non-\code{intro} campaign.}
+\code{opted_in}. \code{NULL} (default) is routing-based: a recipient opted in
+when the opener routed them FORWARD -- i.e. they reached a continuation step
+(any non-opener, non-terminal \code{scriptDate}: a survey-body question or
+the close family). This is language- and phrasing-agnostic (it reads no
+answer text), so a Spanish or non-\dQuote{Yes} opt-in still counts, where the
+legacy \code{id.intro.finalText == "Yes"} match silently read 0. Pass an
+explicit filter to decide \code{opted_in} by a specific answer instead. A
+completion is also treated as an opt-in (\code{opted_in} is OR-ed with
+\code{completed}), so \code{opted_in >= completed} in every mode -- this
+matters for \code{t2w} campaigns whose web link sits in the intro, where a
+web completion is the only opt-in evidence. The latency view resolves
+\code{n_opted_in} from the same routing signal and the same fold, so the two
+views agree.}
 
 \item{contacted_only}{A single logical. When \code{TRUE} (default), return
 only contacted records (rows where \code{sent == 1}). When \code{FALSE},

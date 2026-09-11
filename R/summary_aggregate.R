@@ -91,7 +91,8 @@ build_summary_frame <- function(data, config, survey_mode = "sms") {
   # (the coalesced opener scriptDate) is retained to bucket the summary by send
   # date/hour; the masks are summed into the n_sent / n_engaged / n_opted_in /
   # n_completed counts at the summarise() below (schema-version 6).
-  masks <- .funnel_masks(data, openers, config$filters$population)
+  masks <- .funnel_masks(data, openers, config$flow$questions,
+                         config$filters$population)
   send <- masks$send
   sent <- masks$sent
   engaged <- masks$engaged
@@ -119,6 +120,14 @@ build_summary_frame <- function(data, config, survey_mode = "sms") {
   } else {
     .reached_close(data, config$flow$questions) & sent
   }
+  # A completion IS an opt-in: fold it into opted_in so the funnel stays monotone
+  # (completed <= opted_in) in every mode. For sms this is a no-op (reaching the
+  # close is already a continuation step). For t2w it recovers the web-completers
+  # whose link sat in the intro, so no downstream close scriptDate ever fired --
+  # their only opt-in evidence is the off-channel web completion. `completed` is
+  # already gated on `sent`, so opted_in stays gated too. KEEP IN SYNC with
+  # disposition_run() (disposition_aggregate.R), which folds it identically.
+  opted_in <- opted_in | completed
 
   campaign_id <- as.integer(data[[campaign_col]])
   # Bucket by intro.scriptDate (the send) in field timezone -- the

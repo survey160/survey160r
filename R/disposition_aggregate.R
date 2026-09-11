@@ -22,20 +22,12 @@
 # SAME shared helpers and keys `texted` on the send (scriptDate) with `engaged`
 # gated on it, so the two views measure the same name-agnostic funnel.
 
-# Default opt-in population for a disposition run: the opener set's accepted
-# answer is "Yes". Delegates to the shared .opener_population() so consent is
-# defined exactly as the latency view defines n_opted_in; .dot_form_headers()
-# normalizes a raw bracket-form header so a routed campaign keeps every branch.
-.disposition_default_population <- function(x) {
-  available <- if (is.data.frame(x)) names(x) else as.character(x)
-  .opener_population(.discover_openers(x), .dot_form_headers(available))
-}
-
-# sent (contacted), engaged (replied & sent), and opted_in (population &
-# sent) are the shared per-recipient funnel masks -- .funnel_masks() (opener.R)
-# computes them identically for the latency summary, so the two views measure the
-# same funnel. disposition_run() calls .funnel_masks() once (below) rather than a
-# per-flag mask here.
+# sent (contacted), engaged (replied & sent), and opted_in (reached a
+# continuation step & sent -- or an explicit population filter & sent) are the
+# shared per-recipient funnel masks -- .funnel_masks() (opener.R) computes them
+# identically for the latency summary, so the two views measure the same funnel.
+# disposition_run() calls .funnel_masks() once (below) rather than a per-flag
+# mask here.
 
 # web_complete: the raw web_complete callback == 1. Null-safe (absent -> FALSE).
 .mask_web_complete <- function(data) {
@@ -174,10 +166,11 @@ empty_disposition_frame <- function() {
 #'   names present in the file (e.g. from \code{s160_csv_header()}). When
 #'   supplied, the close-message Text columns are retained. Strongly recommended.
 #' @param population Optional population-filter expression defining
-#'   \code{opted_in}. \code{NULL} (default) uses the opening question set's accepted
-#'   answer -- \code{id.intro.finalText == "Yes"} for a normal campaign, a
-#'   disjunction over the intro-family openers for a routed one (opener set
-#'   discovered from \code{available}). Its columns are added so a custom
+#'   \code{opted_in}. \code{NULL} (default) is routing-based opt-in -- the
+#'   recipient reached a continuation step (any non-opener, non-terminal
+#'   \code{scriptDate}), which is language- and phrasing-agnostic and reads no
+#'   answer text. A caller may instead pass an explicit filter (e.g.
+#'   \code{id.intro.finalText == "Yes"}); its columns are added so a custom
 #'   population's inputs are not projected away.
 #' @return A character vector of unique dot-form column names, including
 #'   \code{phone}. Pass it as \code{columns =} to \code{s160_read_csv()} /
@@ -199,18 +192,23 @@ disposition_input_columns <- function(available = NULL, population = NULL) {
   # projection preserves column order, and for a single non-intro opener the mask
   # reads flow order from that order -- a later question (e.g. close) must not
   # precede the opener and shadow it. With `available` NULL the set degrades to
-  # {"intro"} (the default set) and the population default matches the historical
-  # id.intro.finalText.
-  openers <- .discover_openers(available)
-  closers <- .closing_questions(latency_discover_questions(available))
-  population <- population %||% .disposition_default_population(available)
+  # {"intro"} (the default set); the routing-based opt-in then keys on the close
+  # family (the continuation fallback), so no finalText column is read.
+  qs <- latency_discover_questions(available)
+  openers <- .opening_questions(qs)
+  closers <- .closing_questions(qs)
+  # Default opt-in is routing-based (reached a continuation step): its scriptDate
+  # columns are the continuation + close family already required below, so only a
+  # caller-supplied `population` filter contributes extra columns.
+  pop_cols <- if (is.null(population)) character(0) else all.vars(parse(text = population))
   # `.report_support_patterns` is the close-message Text pattern shared with
   # latency_input_columns(); detect_survey_mode() greps the same columns.
   cols <- c(
     "phone",
     sprintf("id.%s.scriptDate", openers),
     sprintf("id.%s.batchDate", openers),
-    all.vars(parse(text = population)),
+    sprintf("id.%s.scriptDate", .continuation_questions(qs)),
+    pop_cols,
     "web_complete",
     "error_code",                           # raw carrier delivery-error code (-> `error`)
     sprintf("id.%s.scriptDate", closers),   # close family (close / close_sp / ...)
@@ -267,11 +265,19 @@ disposition_input_columns <- function(available = NULL, population = NULL) {
 #' @param data In-memory campaign results CSV as a data frame (one row per
 #'   respondent). Must contain a \code{phone} column.
 #' @param population Optional population-filter expression defining
-#'   \code{opted_in}. \code{NULL} (default) uses the opening question set's accepted
-#'   answer -- \code{id.intro.finalText == "Yes"} for a normal campaign, a
-#'   disjunction over the intro-family openers for a routed one -- resolved per
-#'   campaign from the data. The latency view resolves \code{n_opted_in} from
-#'   the same opener set, so the two views agree for a non-\code{intro} campaign.
+#'   \code{opted_in}. \code{NULL} (default) is routing-based: a recipient opted in
+#'   when the opener routed them FORWARD -- i.e. they reached a continuation step
+#'   (any non-opener, non-terminal \code{scriptDate}: a survey-body question or
+#'   the close family). This is language- and phrasing-agnostic (it reads no
+#'   answer text), so a Spanish or non-\dQuote{Yes} opt-in still counts, where the
+#'   legacy \code{id.intro.finalText == "Yes"} match silently read 0. Pass an
+#'   explicit filter to decide \code{opted_in} by a specific answer instead. A
+#'   completion is also treated as an opt-in (\code{opted_in} is OR-ed with
+#'   \code{completed}), so \code{opted_in >= completed} in every mode -- this
+#'   matters for \code{t2w} campaigns whose web link sits in the intro, where a
+#'   web completion is the only opt-in evidence. The latency view resolves
+#'   \code{n_opted_in} from the same routing signal and the same fold, so the two
+#'   views agree.
 #' @param contacted_only A single logical. When \code{TRUE} (default), return
 #'   only contacted records (rows where \code{sent == 1}). When \code{FALSE},
 #'   return one row per input respondent.
@@ -351,10 +357,20 @@ disposition_run <- function(campaign_id, data, population = NULL,
       as.character(campaign_id), n_dup, dup_idx), fn = "disposition_run")
   }
 
-  population <- population %||% .disposition_default_population(data)
   survey_mode <- detect_survey_mode(data)
-  masks <- .funnel_masks(data, .discover_openers(data), population)
+  questions <- latency_discover_questions(data)
+  # `population` NULL (the default) -> .funnel_masks derives opt-in from routing
+  # (reached a continuation step); a caller-supplied filter overrides it.
+  masks <- .funnel_masks(data, .opening_questions(questions), questions, population)
   sent <- masks$sent
+  completed <- .mask_completed(data, survey_mode, sent)
+  # A completion IS an opt-in: fold it into opted_in so the funnel stays monotone
+  # (completed <= opted_in) in every mode. For sms this is a no-op (the close is a
+  # continuation step); for t2w it recovers web-completers whose link sat in the
+  # intro (no downstream close scriptDate). t2w_external completed is NA (%in% is
+  # NA-safe), and `completed` is already gated on `sent`. KEEP IN SYNC with
+  # build_summary_frame() (summary_aggregate.R), which folds it identically.
+  opted_in <- masks$opted_in | (completed %in% TRUE)
 
   # Output columns use the canonical funnel vocabulary (sent / engaged /
   # opted_in / completed), matching the latency signals and .funnel_masks().
@@ -364,8 +380,8 @@ disposition_run <- function(campaign_id, data, population = NULL,
     campaign_id = rep(as.integer(as.character(campaign_id)), length(phone)),
     sent = as.integer(sent),
     engaged = as.integer(masks$engaged),
-    opted_in = as.integer(masks$opted_in),
-    completed = as.integer(.mask_completed(data, survey_mode, sent)),
+    opted_in = as.integer(opted_in),
+    completed = as.integer(completed),
     web_complete = as.integer(.mask_web_complete(data)),
     terminated = as.integer(.mask_terminated(data)),
     mode = rep(survey_mode, length(phone)),

@@ -36,14 +36,18 @@ test_that("latency_run propagates NA provenance for un-stamped sources", {
 })
 
 test_that("latency_run surfaces validate_config failures on a malformed CSV", {
-  # Strip the population-filter column so validate_columns_present aborts.
+  # Strip a required reply column so validate_columns_present aborts. batchDate is
+  # required for every non-terminal question but is NOT part of question discovery
+  # (which keys on scriptDate), so its absence leaves the flow intact and trips the
+  # validator -- exercising that latency_run surfaces the failure rather than
+  # swallowing it.
   data <- load_synthetic_data(mutate = function(d) {
-    d$id.intro.finalText <- NULL
+    d$id.intro.batchDate <- NULL
     d
   })
   expect_error(
     latency_run(campaign_id = 1, data = data),
-    "id\\.intro\\.finalText"
+    "id\\.intro\\.batchDate"
   )
 })
 

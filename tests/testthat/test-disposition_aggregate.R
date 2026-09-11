@@ -101,6 +101,7 @@ test_that("t2w_external campaign: completed is NA for every row", {
     phone = c("+15550301", "+15550302"),
     id.intro.scriptDate = c(TS, TS),
     id.intro.finalText = c("Yes", "Yes"),
+    id.close.scriptDate = c(TS, TS),      # close step ran -> routed forward (opted in)
     # Two distinct personalized close URLs, no web_complete -> t2w_external.
     id.close.scriptText = c("go https://s.example/a", "go https://s.example/b")
   )
@@ -109,7 +110,25 @@ test_that("t2w_external campaign: completed is NA for every row", {
   expect_true(all(res$mode == "t2w_external"))
   expect_true(all(is.na(res$completed)))
   expect_equal(res$sent, c(1L, 1L))
-  expect_equal(res$opted_in, c(1L, 1L))
+  expect_equal(res$opted_in, c(1L, 1L))   # both reached the close (the T2W link step)
+})
+
+test_that("a t2w web completion counts as opt-in without a close scriptDate", {
+  # Real prod case (t2w campaigns whose web link sits in the intro): the recipient
+  # completes on the web with NO downstream close step firing, so routing sees no
+  # continuation. The completion is the only opt-in evidence -- a completion IS an
+  # opt-in, so opted_in must be >= completed (funnel monotonicity). r1 completed on
+  # web (no close), r2 got the link but did not complete, r3 was never texted.
+  d <- disp_frame(
+    phone = c("+15558001", "+15558002", "+15558003"),
+    id.intro.scriptDate = c(TS, TS, ""),   # r3 never texted
+    web_complete        = c("1", "0", "1") # a 1 present -> mode t2w; r3 wc=1 but unsent
+  )
+  res <- disposition_run(1234, d, contacted_only = FALSE)$consolidated
+  expect_true(all(res$mode == "t2w"))
+  expect_equal(res$completed, c(1L, 0L, 0L))   # r3 wc=1 but sent=0
+  expect_equal(res$opted_in,  c(1L, 0L, 0L))   # r1 completed -> opted in (no close)
+  expect_true(all(res$completed <= res$opted_in))  # funnel monotone
 })
 
 test_that("terminated flags ineligible OR refusal", {
@@ -136,7 +155,10 @@ test_that("custom population expression drives opted_in", {
 
 test_that("optional columns absent: masks are null-safe (no error)", {
   # Only the minimum: phone + campaignid + intro script/text. No batchDate (reply),
-  # web_complete, close, ineligible, or refusal columns at all.
+  # web_complete, close, ineligible, or refusal columns at all. With no
+  # continuation step present at all, the routing-based opt-in has nothing to key
+  # on -> 0 (conservative); the real read path always retains the close family, so
+  # this degraded input is only reachable by hand. The point here is null-safety.
   d <- disp_frame(
     phone = c("+15550601", "+15550602"),
     id.intro.scriptDate = c(TS, ""),
@@ -146,7 +168,7 @@ test_that("optional columns absent: masks are null-safe (no error)", {
   expect_true(all(res$mode == "sms"))
   expect_equal(res$sent,      c(1L, 0L))
   expect_equal(res$engaged,      c(0L, 0L))  # no batchDate (reply) column
-  expect_equal(res$opted_in,       c(1L, 0L))
+  expect_equal(res$opted_in,       c(0L, 0L))  # no continuation column -> null-safe 0
   expect_equal(res$completed,     c(0L, 0L))  # no close column
   expect_equal(res$web_complete, c(0L, 0L))
   expect_equal(res$terminated,   c(0L, 0L))
@@ -200,9 +222,10 @@ test_that("zero-row input returns the empty disposition frame", {
   expect_true(is.character(res$error))   # empty-frame error type matches the live path
 })
 
-test_that("opted_in is null-safe when the population column is absent", {
-  # No id.intro.finalText at all -> default population can't be evaluated;
-  # opted_in degrades to 0 like the other masks rather than erroring.
+test_that("opted_in is null-safe when no continuation step is present", {
+  # Only an opener send, no continuation column (no close / body) and no custom
+  # population -> the routing-based opt-in has nothing to key on and degrades to 0
+  # like the other masks, rather than erroring.
   d <- disp_frame(
     phone = c("+15551001", "+15551002"),
     id.intro.scriptDate = c(TS, TS)
@@ -210,6 +233,18 @@ test_that("opted_in is null-safe when the population column is absent", {
   res <- disposition_run(1234, d)$consolidated
   expect_equal(res$opted_in, c(0L, 0L))
   expect_equal(res$sent, c(1L, 1L))
+})
+
+test_that("a custom population referencing an absent column is null-safe (all 0)", {
+  # A caller-supplied population that names a genuinely-absent data column yields
+  # all-FALSE rather than an eval error (the .population_mask absent-column guard).
+  d <- disp_frame(
+    phone = c("+15551601", "+15551602"),
+    id.intro.scriptDate = c(TS, TS),
+    id.intro.finalText = c("Yes", "No")
+  )
+  res <- disposition_run(1234, d, population = "absent_flag == 1")$consolidated
+  expect_equal(res$opted_in, c(0L, 0L))
 })
 
 test_that("opted_in handles a base symbol in the population expression", {
@@ -407,11 +442,13 @@ test_that("duplicate phone is rejected even when a duplicate is never-attempted"
 
 test_that("disposition_input_columns: default set is exactly the read columns", {
   cols <- disposition_input_columns()
+  # No id.intro.finalText: the default opt-in is routing-based (reached a
+  # continuation step -> id.close.scriptDate here), so no finalText is read.
   expect_setequal(cols, c("phone", "id.intro.scriptDate", "id.intro.batchDate",
                           "web_complete", "error_code", "id.close.scriptDate",
-                          "id.ineligible.scriptDate", "id.refusal.scriptDate",
-                          "id.intro.finalText"))
+                          "id.ineligible.scriptDate", "id.refusal.scriptDate"))
   expect_false("campaignid" %in% cols)           # stamped from the argument
+  expect_false("id.intro.finalText" %in% cols)   # routing opt-in never reads it
 })
 
 test_that("disposition_input_columns: retains close-message Text cols from `available`", {
@@ -518,14 +555,16 @@ test_that("non-intro opener (FIRSTNET) is measured, not silently dropped", {
 
 test_that("intro_latinos opener is detected (opener name varies)", {
   # Real prod case: campaign 2420's opener is "intro_latinos", not "intro".
+  # r1 consented -> routed forward to the close; r2 did not.
   d <- disp_frame(
     phone = c("+15559101", "+15559102"),
     id.intro_latinos.scriptDate = c(TS, TS),
-    id.intro_latinos.finalText  = c("Yes", "No")
+    id.intro_latinos.finalText  = c("Yes", "No"),
+    id.close.scriptDate         = c(TS, "")
   )
   res <- disposition_run(1234, d)$consolidated
   expect_equal(res$sent, c(1L, 1L))
-  expect_equal(res$opted_in,  c(1L, 0L))
+  expect_equal(res$opted_in,  c(1L, 0L))   # r1 reached close, r2 did not
 })
 
 test_that("mixed campaign counts BOTH opener branches (intro + intro_sp)", {
@@ -539,12 +578,13 @@ test_that("mixed campaign counts BOTH opener branches (intro + intro_sp)", {
     id.intro.finalText     = c("Yes", ""),
     id.intro_sp.scriptDate = c("", TS),
     id.intro_sp.batchDate  = c("", TS),
-    id.intro_sp.finalText  = c("", "Yes")
+    id.intro_sp.finalText  = c("", "Yes"),
+    id.close.scriptDate    = c(TS, TS)      # both consented -> routed to close
   )
   res <- disposition_run(1234, d, contacted_only = FALSE)$consolidated
   expect_equal(res$sent, c(1L, 1L))     # both branches contacted
   expect_equal(res$engaged, c(1L, 1L))     # both replied
-  expect_equal(res$opted_in,  c(1L, 1L))     # each said Yes on its own opener
+  expect_equal(res$opted_in,  c(1L, 1L))     # each routed forward on its own branch
 })
 
 test_that("3-way routed campaign counts every intro-family branch", {
@@ -556,34 +596,36 @@ test_that("3-way routed campaign counts every intro-family branch", {
     id.intro_hispanic.scriptDate = c("", "", TS),
     id.intro.finalText           = c("Yes", "", ""),
     id.intro_black.finalText     = c("", "No", ""),
-    id.intro_hispanic.finalText  = c("", "", "Yes")
+    id.intro_hispanic.finalText  = c("", "", "Yes"),
+    id.close.scriptDate          = c(TS, "", TS)   # r1, r3 routed forward; r2 refused
   )
   res <- disposition_run(1234, d, contacted_only = FALSE)$consolidated
   expect_equal(res$sent, c(1L, 1L, 1L))
-  expect_equal(res$opted_in,  c(1L, 0L, 1L))  # r2 answered No on intro_black
+  expect_equal(res$opted_in,  c(1L, 0L, 1L))  # r2 (No on intro_black) never reached close
 })
 
-test_that("mixed opted_in ignores an absent opener finalText column (null-safe)", {
-  # Only the intro branch has a finalText column; intro_sp recipients still count
-  # as contacted but the default population uses only the present branch, without
-  # erroring on the missing id.intro_sp.finalText.
+test_that("mixed opted_in is decided by routing, not by a finalText column", {
+  # A branch with no finalText column at all: routing-based opt-in never reads
+  # finalText, so its absence is a non-issue (the whole point of the fix). r1 was
+  # routed forward to the close (opted in); the intro_sp recipient r2 was not.
   d <- disp_frame(
     phone = c("+15559501", "+15559502"),
     id.intro.scriptDate    = c(TS, ""),
     id.intro.finalText     = c("Yes", ""),
-    id.intro_sp.scriptDate = c("", TS)        # sent, but no finalText column
+    id.intro_sp.scriptDate = c("", TS),       # sent, but no finalText column
+    id.close.scriptDate    = c(TS, "")        # only r1 reached the close
   )
   res <- disposition_run(1234, d, contacted_only = FALSE)$consolidated
   expect_equal(res$sent, c(1L, 1L))    # both contacted
-  expect_equal(res$opted_in,  c(1L, 0L))    # only the present-branch consent counts
+  expect_equal(res$opted_in,  c(1L, 0L))    # r1 reached close; r2 did not (no finalText read)
 })
 
 test_that("disposition_input_columns discovers a non-intro opener from `available`", {
   header <- c("phone", "id.FIRSTNET.scriptDate", "id.FIRSTNET.batchDate",
               "id.FIRSTNET.finalText", "id.close.scriptDate", "userid")
   cols <- disposition_input_columns(available = header)
-  expect_true(all(c("id.FIRSTNET.scriptDate", "id.FIRSTNET.batchDate",
-                    "id.FIRSTNET.finalText") %in% cols))
+  expect_true(all(c("id.FIRSTNET.scriptDate", "id.FIRSTNET.batchDate") %in% cols))
+  expect_false("id.FIRSTNET.finalText" %in% cols)  # routing opt-in reads no finalText
   # The opener columns lead, so a reordered projection keeps the opener before a
   # later question (close) -- otherwise latency_discover_questions() would pick
   # close as the "first" question and the masks would key off the wrong column.

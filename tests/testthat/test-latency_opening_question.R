@@ -36,19 +36,24 @@ test_that(".opening_questions honours the intro-family word boundary", {
   expect_equal(.opening_questions(c("Intro", "close")), "Intro")
 })
 
-test_that(".opener_population builds a present-only disjunction (intro == default)", {
-  expect_equal(.opener_population("intro", "id.intro.finalText"),
-               .default_population)                          # pure intro == default
+test_that(".continuation_questions is the survey body + close, minus terminals", {
+  # opt-in is routing-based: reaching any continuation step (a non-opener,
+  # non-terminal question) means the opener routed the recipient forward. The
+  # intro-family openers and the terminal branches (refus / inelig / opt-out) are
+  # excluded; the survey body and the close family remain.
   expect_equal(
-    .opener_population(c("intro", "intro_sp"),
-                      c("id.intro.finalText", "id.intro_sp.finalText")),
-    'id.intro.finalText == "Yes" | id.intro_sp.finalText == "Yes"'
+    .continuation_questions(c("intro", "intro_sp", "q1", "refused", "close")),
+    c("q1", "close")
   )
-  # an absent branch is dropped; if none present, keep one (null-safe zero)
-  expect_equal(.opener_population(c("intro", "intro_sp"), "id.intro.finalText"),
-               'id.intro.finalText == "Yes"')
-  expect_equal(.opener_population("FIRSTNET", character(0)),
-               'id.FIRSTNET.finalText == "Yes"')
+  # a T2W / short flow whose opener routes straight to close has no body -> the
+  # close family is the continuation, so the mask is never empty.
+  expect_equal(.continuation_questions(c("intro", "close")), "close")
+  expect_equal(.continuation_questions(c("intro", "close", "close_sp")),
+               c("close", "close_sp"))
+  # ineligible / opt-out are terminal, not continuation (a hard stop, not consent)
+  expect_false(any(c("ineligible", "optout") %in%
+                     .continuation_questions(c("intro", "ineligible", "optout",
+                                               "q1", "close"))))
 })
 
 test_that(".question_timestamp coalesces across the set, null-safe on absent cols", {
@@ -72,12 +77,14 @@ test_that("FIRSTNET campaign: config validates and summary counts (no crash)", {
   )
   config <- latency_build_config(1L, d, field_timezone = "America/New_York")
   expect_equal(config$flow$questions[[1L]], "FIRSTNET")
-  expect_equal(config$filters$population, 'id.FIRSTNET.finalText == "Yes"')
+  expect_null(config$filters$population)   # opt-in is routing-based, not a filter
   expect_silent(latency_validate_config(config, d))     # previously hard-errored
   res <- build_summary_frame(d, config, survey_mode = "sms")
   expect_equal(sum(res$n_sent), 2L)
   expect_equal(sum(res$n_engaged), 1L)
-  expect_equal(sum(res$n_opted_in), 1L)   # r2 "No"; r3 "Yes" but not texted
+  # opt-in = reached the continuation (id.close). r1 reached close -> opted; r2
+  # never reached close; r3 not texted. (Same count as the old finalText match.)
+  expect_equal(sum(res$n_opted_in), 1L)
   expect_equal(sum(res$n_completed), 1L)
 })
 
@@ -97,6 +104,23 @@ test_that("bilingual campaign: summary counts BOTH opener branches", {
   expect_equal(sum(res$n_sent), 2L)      # both branches (was 1 pre-fix)
   expect_equal(sum(res$n_engaged), 2L)
   expect_equal(sum(res$n_opted_in), 2L)   # each said Yes on its own opener
+})
+
+test_that("t2w web completion counts as n_opted_in without a close (monotone funnel)", {
+  # t2w campaign whose web link sits in the intro: the completer has no downstream
+  # close scriptDate, so routing sees no continuation -- but a completion is an
+  # opt-in, so n_opted_in must be >= n_completed. r1 web-completed (no close), r2
+  # got the intro but did not complete.
+  d <- op_frame(
+    id.intro.scriptDate = c(TS, TS),
+    id.close.scriptDate = c("", ""),    # close column exists but never fired
+    web_complete        = c("1", "0")   # a 1 present -> mode t2w
+  )
+  config <- latency_build_config(1L, d, field_timezone = "America/New_York")
+  res <- build_summary_frame(d, config, survey_mode = "t2w")
+  expect_equal(sum(res$n_completed), 1L)
+  expect_equal(sum(res$n_opted_in), 1L)                 # completion folded into opt-in
+  expect_gte(sum(res$n_opted_in), sum(res$n_completed)) # funnel monotone
 })
 
 test_that("a recipient on BOTH opener branches is counted once (OR, not sum)", {
@@ -120,34 +144,31 @@ test_that("a recipient on BOTH opener branches is counted once (OR, not sum)", {
   expect_equal(sum(res$n_opted_in), 1L)
 })
 
-test_that("latency_build_config accepts a character header (bilingual population)", {
+test_that("latency_build_config accepts a character header (bilingual questions)", {
   # latency_build_config, like latency_discover_questions, accepts a raw header
-  # vector (names() is NULL there) -- the population must still cover every
-  # present opener branch, not just the first.
+  # vector (names() is NULL there) -- it must still discover every present opener
+  # branch, not just the first, so the routing-based opt-in keys on both.
   header <- c("campaignid", "id.intro.scriptDate", "id.intro.batchDate",
               "id.intro.finalText", "id.intro_sp.scriptDate",
               "id.intro_sp.batchDate", "id.intro_sp.finalText",
               "id.close.scriptDate")
   config <- latency_build_config(1L, header, field_timezone = "America/New_York")
   expect_equal(config$flow$questions, c("intro", "intro_sp", "close"))
-  expect_equal(config$filters$population,
-               'id.intro.finalText == "Yes" | id.intro_sp.finalText == "Yes"')
+  expect_null(config$filters$population)   # opt-in is routing-based, not a filter
 })
 
 test_that("latency_build_config normalizes a raw bracket-form header", {
   # latency_discover_questions() also accepts raw on-disk headers
   # (id[<q>]field, before the readers make.names-munge them to dot-form). A raw
-  # bilingual header must still cover BOTH opener branches -- previously it
-  # collapsed to the first opener because .opener_population matched only
-  # dot-form finalText names against the raw bracket-form header.
+  # bilingual header must still discover BOTH opener branches (dot-form question
+  # names), so both feed the opener set and the funnel masks.
   header <- c("campaignid", "id[intro]scriptDate", "id[intro]batchDate",
               "id[intro]finalText", "id[intro_sp]scriptDate",
               "id[intro_sp]batchDate", "id[intro_sp]finalText",
               "id[close]scriptDate")
   config <- latency_build_config(1L, header, field_timezone = "America/New_York")
   expect_equal(config$flow$questions, c("intro", "intro_sp", "close"))
-  expect_equal(config$filters$population,
-               'id.intro.finalText == "Yes" | id.intro_sp.finalText == "Yes"')
+  expect_null(config$filters$population)   # opt-in is routing-based, not a filter
 })
 
 test_that("build_ineligible_frame anchors on the opener set (bilingual)", {

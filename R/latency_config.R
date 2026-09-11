@@ -15,8 +15,6 @@
 # Terminal flow states that must not appear in `questions`.
 .terminal_states <- c("refusal", "ineligible")
 
-# Default filter expression matches legacy scripts.
-.default_population <- "id.intro.finalText == \"Yes\""
 
 #' Discover the question flow from CSV column names
 #'
@@ -95,22 +93,18 @@ latency_build_config <- function(campaign_id, data,
       paste(head(questions, 5L), collapse = ", ")
     ), fn = "latency_build_config")
   }
-  # Population (opt-in/consent) keys on the opening question SET, not a hardcoded
-  # "intro", so a non-intro (FIRSTNET) / bilingual campaign is measured. Pure
-  # intro -> identical to `.default_population`. `data` may be a data frame or a
-  # character header vector (same as latency_discover_questions), so resolve the
-  # available columns accordingly -- names() is NULL for a character header.
-  available <- if (is.data.frame(data)) names(data) else as.character(data)
-  available <- .dot_form_headers(available)
-  population <- .opener_population(.opening_questions(questions), available)
-
+  # Opt-in / consent is routing-based by default (the funnel masks derive it from
+  # reaching a continuation step -- phrasing- and language-agnostic), so no
+  # population filter is generated: `filters.population = NULL`. A config author
+  # may still set a custom consent filter (e.g. a specific finalText value), which
+  # then overrides the routing default.
   list(
     project_id = as.integer(project_id %||% campaign_id),
     campaign_id = as.integer(campaign_id),
     field_timezone = field_timezone,
     flow = list(questions = questions),
     filters = list(
-      population = population,
+      population = NULL,
       campaign_id_column = "campaignid",
       respondent_id_column = respondent_id_column,
       date_filter = date_filter
