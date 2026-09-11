@@ -221,25 +221,33 @@
 }
 
 # I/O: validate the path, read the projection, then (when `columns` is given)
-# subset to those columns in R. `columns` = the summary read set by default;
-# `NULL` (disposition_records()) keeps every stored column.
+# subset to those columns. `columns` = the summary read set by default; `NULL`
+# (disposition_records()) keeps every stored column.
 #
-# The read is deliberately NOT projected via nanoparquet's `col_select`:
-# nanoparquet 0.5.1 MISREADS NA integer values under `col_select` -- it returns
-# uninitialized memory (0 / 1 / other garbage, nondeterministic across runs)
-# instead of NA, so a projected read of e.g. `completed` (which is NA on
-# t2w_external rows) silently corrupts the funnel counts. A full read decodes NA
-# correctly; we then intersect with the file's actual columns, so a
-# column-short/legacy projection returns only what is present and the rollup's own
-# missing-required-column / optional-`disposition_date` guards still fire.
-# Trade-off: the read is no longer column-projected (a memory cost on the large
-# projection) -- restore col_select once nanoparquet fixes the NA decode.
+# Column-project via nanoparquet's `col_select` ONLY for a writer whose null
+# encoding nanoparquet 0.5.1 decodes correctly under `col_select` -- verified for
+# DuckDB, which writes the production projection (`disposition_all.parquet`). For
+# any other writer read in full and subset in R: nanoparquet 0.5.1 MISREADS NA
+# integers under `col_select` on its OWN writes -- returning uninitialized memory
+# (0 / 1 / garbage, nondeterministic) instead of NA, which silently corrupts a
+# projected read of e.g. `completed` (NA on t2w_external rows). `col_select` is a
+# real memory win on the ~38M-row projection (~3.3 vs ~5.5 GB); the full read is
+# the correctness fallback for fixtures / unknown writers. The intersect keeps a
+# column-short/legacy projection returning only what is present, so the rollup's
+# own missing-column guards still fire. Drop the branch once nanoparquet fixes the
+# NA decode.
 .disposition_read_parquet <- function(dataset, columns = .DISPOSITION_READ_COLS) {
   if (!is.character(dataset) || length(dataset) != 1L || !nzchar(dataset)) {
     stop("`dataset` must be a single Parquet path.", call. = FALSE)
   }
   if (!file.exists(dataset)) {
     stop_not_found("disposition dataset", dataset)
+  }
+  cb <- nanoparquet::read_parquet_info(dataset)$created_by
+  duckdb <- length(cb) == 1L && !is.na(cb) && grepl("duckdb", cb, ignore.case = TRUE)
+  if (duckdb && !is.null(columns)) {
+    cols <- intersect(columns, nanoparquet::read_parquet_schema(dataset)$name)
+    return(as.data.frame(nanoparquet::read_parquet(dataset, col_select = cols)))
   }
   d <- as.data.frame(nanoparquet::read_parquet(dataset))
   if (!is.null(columns)) {

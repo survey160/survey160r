@@ -1,13 +1,16 @@
 # survey160r (development version)
 
-
 ## Bug fixes
 
-* **NA integer values are no longer mis-read.** `disposition_summary()` /
-  `disposition_screen()` read the projection in full and subset in R, rather than
-  via nanoparquet `col_select`, which mis-decodes an NA integer (e.g. `completed`
-  on t2w_external rows) as uninitialized memory -- previously corrupting
-  `n_completed`.
+* **NA integer values are no longer mis-read from nanoparquet-written
+  projections.** nanoparquet 0.5.1 mis-decodes an NA integer (e.g. `completed` on
+  t2w_external rows) under `col_select` -- returning uninitialized memory instead
+  of NA -- which could corrupt `n_completed`. `disposition_summary()` /
+  `disposition_screen()` now `col_select` only DuckDB-written projections (the
+  production writer, verified NA-safe) and read any other writer in full, so the
+  counts are correct regardless of writer while the production read stays
+  column-projected.
+
 ## Breaking changes
 
 * **`disposition_summary()` / `disposition_screen()` report status COUNTS, not

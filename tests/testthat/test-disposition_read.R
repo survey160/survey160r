@@ -117,6 +117,24 @@ test_that("an NA integer (completed on t2w_external) decodes to NA, not garbage"
   expect_equal(res$latest_disposition, "web_complete")
 })
 
+test_that("a DuckDB-written projection takes the fast col_select path", {
+  # created_by = DuckDB -> col_select (DuckDB's null encoding is NA-safe under
+  # nanoparquet col_select, unlike nanoparquet's own writes). The fixtures here
+  # are nanoparquet-written, so mock the writer signature and use an
+  # NA-integer-free frame (col_select reads it correctly either way); this covers
+  # the col_select branch of .disposition_read_parquet.
+  d <- rbind(.disposition_row("2015550101", 1, engaged = 1, completed = 1),
+             .disposition_row("2015550102", 1, terminated = 1))
+  p <- write_disposition_parquet(d)
+  local_mocked_bindings(
+    read_parquet_info = function(...) list(created_by = "DuckDB version v1.5.2"),
+    .package = "nanoparquet")
+  res <- disposition_summary(p)
+  expect_equal(nrow(res), 2L)
+  expect_equal(res[res$phone == "2015550101", "n_completed"], 1L)
+  expect_equal(res[res$phone == "2015550102", "n_terminated"], 1L)
+})
+
 test_that("with all-NA dates, latest and best fall back to the max campaign id", {
   d <- write_disposition_parquet(rbind(
     .disposition_row("1", 10, engaged = 1),      # NA date
