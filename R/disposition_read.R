@@ -27,16 +27,17 @@
 .DISPOSITION_CATEGORIES <- c("never_contacted", "non_response", "engaged", "opted_in",
                     "terminated", "completed", "web_complete")
 
-# Columns of the per-phone summary (also the block appended by _screen()).
-# The disposition-status booleans are cumulative COUNTS (n_*): how many of the
-# phone's campaigns set each flag. first_/last_disposition_date span the phone's
-# dated campaigns; n_error counts campaigns carrying a delivery-error code.
-.DISPOSITION_SUMMARY_COLS <- c("phone", "ever_contacted", "n_campaigns",
+# Columns of the per-phone summary (also the block appended by _screen()), in
+# output order: identity, scope (n_campaigns + the id list), the cumulative status
+# COUNTS (n_*: how many of the phone's campaigns set each flag) + n_error, the
+# latest (most-recent) and best (furthest-reached) disposition each with its
+# campaign, then the first/last disposition_date span. A never-contacted phone is
+# marked by n_campaigns == 0 (was ever_contacted = FALSE, removed).
+.DISPOSITION_SUMMARY_COLS <- c("phone", "n_campaigns", "campaigns",
                       "n_engaged", "n_opted_in", "n_completed", "n_web_complete",
-                      "n_terminated", "n_error", "first_disposition_date",
-                      "last_disposition_date", "latest_disposition",
+                      "n_terminated", "n_error", "latest_disposition",
                       "latest_campaign_id", "best_disposition", "best_campaign_id",
-                      "campaigns")
+                      "first_disposition_date", "last_disposition_date")
 
 # The stored disposition schema, in canonical order -- what
 # disposition_records() returns. `sent`/`mode`/`error` come from disposition_run();
@@ -67,16 +68,18 @@
 .disposition_never_contacted <- function(phones) {
   n <- length(phones)
   data.frame(
-    phone = phones, ever_contacted = rep(FALSE, n), n_campaigns = rep(0L, n),
+    phone = phones,
+    n_campaigns = rep(0L, n),
+    campaigns = rep(NA_character_, n),
     n_engaged = rep(0L, n), n_opted_in = rep(0L, n), n_completed = rep(0L, n),
     n_web_complete = rep(0L, n), n_terminated = rep(0L, n), n_error = rep(0L, n),
-    first_disposition_date = rep(as.Date(NA), n),
-    last_disposition_date = rep(as.Date(NA), n),
     latest_disposition = rep("never_contacted", n),
     latest_campaign_id = rep(NA_character_, n),
     best_disposition = rep("never_contacted", n),
     best_campaign_id = rep(NA_character_, n),
-    campaigns = rep(NA_character_, n), stringsAsFactors = FALSE
+    first_disposition_date = rep(as.Date(NA), n),
+    last_disposition_date = rep(as.Date(NA), n),
+    stringsAsFactors = FALSE
   )
 }
 
@@ -180,22 +183,21 @@
   b <- match(ph, db$phone[best])
   data.frame(
     phone = ph,
-    ever_contacted = TRUE,
     n_campaigns = as.integer(by_phone(d$campaign_id, function(x) length(unique(x)))),
+    campaigns = as.character(
+      by_phone(d$campaign_id, function(x) paste(sort(unique(x)), collapse = ","))),
     n_engaged = as.integer(by_phone(d$engaged, count1)),
     n_opted_in = as.integer(by_phone(d$opted_in, count1)),
     n_completed = as.integer(by_phone(d$completed, count1)),
     n_web_complete = as.integer(by_phone(d$web_complete, count1)),
     n_terminated = as.integer(by_phone(d$terminated, count1)),
     n_error = as.integer(by_phone(has_error, function(x) sum(x, na.rm = TRUE))),
-    first_disposition_date = span(min),
-    last_disposition_date = span(max),
     latest_disposition = d$.category[first],
     latest_campaign_id = as.character(d$campaign_id[first]),
     best_disposition = db$.category[best][b],
     best_campaign_id = as.character(db$campaign_id[best][b]),
-    campaigns = as.character(
-      by_phone(d$campaign_id, function(x) paste(sort(unique(x)), collapse = ","))),
+    first_disposition_date = span(min),
+    last_disposition_date = span(max),
     stringsAsFactors = FALSE
   )
 }
@@ -326,7 +328,7 @@
 #'   (disposition dates treated as unknown), but a date bound then errors.
 #' @param phones Optional character vector of phone numbers to screen. When
 #'   supplied, \strong{every} input number is returned -- never-contacted ones
-#'   with \code{ever_contacted = FALSE} and
+#'   with \code{n_campaigns = 0} and
 #'   \code{latest_disposition = "never_contacted"}. \code{NULL} (default)
 #'   summarizes every phone present. Matched digit-normalized (a leading US
 #'   \code{1} is dropped so 11-digit numbers match 10-digit ones).
@@ -340,23 +342,24 @@
 #'   \code{disposition_date}. A row whose \code{disposition_date} is \code{NA}
 #'   (or a projection that never populated the column) is dropped by any bound.
 #' @param page,page_size Optional 1-based pagination over the per-phone result.
-#' @return A data frame, one row per phone: \code{phone}, \code{ever_contacted},
-#'   \code{n_campaigns}, and the cumulative status counts \code{n_engaged},
-#'   \code{n_opted_in}, \code{n_completed}, \code{n_web_complete},
-#'   \code{n_terminated} -- each \code{0} when the phone never reached that
-#'   status and \code{> 0} the number of the phone's campaigns that did (they
-#'   overlap: a completed campaign is also engaged). Plus \code{n_error} (how
-#'   many campaigns carried a carrier delivery-error code),
+#' @return A data frame, one row per phone, columns in this order:
+#'   \code{phone}; \code{n_campaigns} and \code{campaigns} (how many campaigns,
+#'   and the comma-separated id list); the cumulative status counts
+#'   \code{n_engaged}, \code{n_opted_in}, \code{n_completed},
+#'   \code{n_web_complete}, \code{n_terminated} -- each \code{0} when the phone
+#'   never reached that status and \code{> 0} the number of the phone's campaigns
+#'   that did (they overlap: a completed campaign is also engaged) -- plus
+#'   \code{n_error} (how many campaigns carried a carrier delivery-error code);
+#'   \code{latest_disposition} + \code{latest_campaign_id} (the category of the
+#'   phone's most-recent campaign and that campaign's id); \code{best_disposition}
+#'   + \code{best_campaign_id} (the furthest-reached category across all the
+#'   phone's campaigns -- ranked by the same funnel precedence, so \code{completed}
+#'   / \code{web_complete} rank highest and \code{terminated} above
+#'   \code{opted_in} -- and the campaign that reached it); and
 #'   \code{first_disposition_date} / \code{last_disposition_date} (earliest and
 #'   latest \code{disposition_date} across the phone's campaigns, \code{NA} when
-#'   none is dated), \code{latest_disposition} + \code{latest_campaign_id} (the
-#'   category of the phone's most-recent campaign and that campaign's id),
-#'   \code{best_disposition} + \code{best_campaign_id} (the furthest-reached
-#'   category across all the phone's campaigns -- ranked by the same funnel
-#'   precedence, so \code{completed} / \code{web_complete} rank highest and
-#'   \code{terminated} above \code{opted_in} -- and the campaign that reached it),
-#'   and \code{campaigns} (comma-separated campaign ids). Campaign ids are
-#'   returned as character.
+#'   none is dated). A never-contacted phone has \code{n_campaigns = 0}. Campaign
+#'   ids are returned as character.
 #' @seealso \code{\link{disposition_screen}}, \code{\link{disposition_records}},
 #'   \code{\link{disposition_pull}}
 #' @examples
@@ -498,17 +501,16 @@ disposition_records <- function(dataset, phones = NULL, campaign_ids = NULL,
 #' @param campaign_ids,date_from,date_to Optional scoping of the disposition
 #'   rows considered (see \code{\link{disposition_summary}}). No \code{statuses}
 #'   or pagination here -- every sample row is returned.
-#' @return \code{sample} with the columns \code{ever_contacted},
-#'   \code{n_campaigns}, \code{n_engaged}, \code{n_opted_in}, \code{n_completed},
+#' @return \code{sample} with the \code{\link{disposition_summary}} columns
+#'   appended (see there for their meaning and order): \code{n_campaigns},
+#'   \code{campaigns}, \code{n_engaged}, \code{n_opted_in}, \code{n_completed},
 #'   \code{n_web_complete}, \code{n_terminated}, \code{n_error},
-#'   \code{first_disposition_date}, \code{last_disposition_date},
-#'   \code{latest_disposition}, \code{latest_campaign_id},
-#'   \code{best_disposition}, \code{best_campaign_id}, \code{campaigns} appended
-#'   (the \code{\link{disposition_summary}} columns; see there for their meaning). A
-#'   valid phone that is absent from the rows selected by \code{campaign_ids},
-#'   \code{date_from}, and \code{date_to} (the whole dataset when those are unset)
-#'   gets a \code{never_contacted} row (\code{ever_contacted = FALSE},
-#'   \code{n_campaigns = 0}, the \code{n_*} counts \code{0}, the dates \code{NA},
+#'   \code{latest_disposition}, \code{latest_campaign_id}, \code{best_disposition},
+#'   \code{best_campaign_id}, \code{first_disposition_date},
+#'   \code{last_disposition_date}. A valid phone that is absent from the rows
+#'   selected by \code{campaign_ids}, \code{date_from}, and \code{date_to} (the
+#'   whole dataset when those are unset) gets a \code{never_contacted} row
+#'   (\code{n_campaigns = 0}, the \code{n_*} counts \code{0}, the dates \code{NA},
 #'   \code{latest_disposition = "never_contacted"}, \code{campaigns = NA}); only a
 #'   phone that digit-normalizes to nothing (blank/unparseable) gets an
 #'   all-\code{NA} block.

@@ -29,7 +29,7 @@ and backs the \code{date_from}/\code{date_to} filters; an un-enriched
 
 \item{phones}{Optional character vector of phone numbers to screen. When
 supplied, \strong{every} input number is returned -- never-contacted ones
-with \code{ever_contacted = FALSE} and
+with \code{n_campaigns = 0} and
 \code{latest_disposition = "never_contacted"}. \code{NULL} (default)
 summarizes every phone present. Matched digit-normalized (a leading US
 \code{1} is dropped so 11-digit numbers match 10-digit ones).}
@@ -49,23 +49,24 @@ keep only phones whose \code{latest_disposition} is one of them.}
 \item{page, page_size}{Optional 1-based pagination over the per-phone result.}
 }
 \value{
-A data frame, one row per phone: \code{phone}, \code{ever_contacted},
-  \code{n_campaigns}, and the cumulative status counts \code{n_engaged},
-  \code{n_opted_in}, \code{n_completed}, \code{n_web_complete},
-  \code{n_terminated} -- each \code{0} when the phone never reached that
-  status and \code{> 0} the number of the phone's campaigns that did (they
-  overlap: a completed campaign is also engaged). Plus \code{n_error} (how
-  many campaigns carried a carrier delivery-error code),
+A data frame, one row per phone, columns in this order:
+  \code{phone}; \code{n_campaigns} and \code{campaigns} (how many campaigns,
+  and the comma-separated id list); the cumulative status counts
+  \code{n_engaged}, \code{n_opted_in}, \code{n_completed},
+  \code{n_web_complete}, \code{n_terminated} -- each \code{0} when the phone
+  never reached that status and \code{> 0} the number of the phone's campaigns
+  that did (they overlap: a completed campaign is also engaged) -- plus
+  \code{n_error} (how many campaigns carried a carrier delivery-error code);
+  \code{latest_disposition} + \code{latest_campaign_id} (the category of the
+  phone's most-recent campaign and that campaign's id); \code{best_disposition}
+  + \code{best_campaign_id} (the furthest-reached category across all the
+  phone's campaigns -- ranked by the same funnel precedence, so \code{completed}
+  / \code{web_complete} rank highest and \code{terminated} above
+  \code{opted_in} -- and the campaign that reached it); and
   \code{first_disposition_date} / \code{last_disposition_date} (earliest and
   latest \code{disposition_date} across the phone's campaigns, \code{NA} when
-  none is dated), \code{latest_disposition} + \code{latest_campaign_id} (the
-  category of the phone's most-recent campaign and that campaign's id),
-  \code{best_disposition} + \code{best_campaign_id} (the furthest-reached
-  category across all the phone's campaigns -- ranked by the same funnel
-  precedence, so \code{completed} / \code{web_complete} rank highest and
-  \code{terminated} above \code{opted_in} -- and the campaign that reached it),
-  and \code{campaigns} (comma-separated campaign ids). Campaign ids are
-  returned as character.
+  none is dated). A never-contacted phone has \code{n_campaigns = 0}. Campaign
+  ids are returned as character.
 }
 \description{
 Rolls the disposition data up to \strong{one row per phone} -- each number's

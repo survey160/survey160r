@@ -19,15 +19,13 @@
 test_that("summarizes one row per phone with cross-campaign counts", {
   res <- disposition_summary(.disposition_base())
   expect_equal(nrow(res), 2L)
-  expect_named(res, c("phone", "ever_contacted", "n_campaigns", "n_engaged",
+  expect_named(res, c("phone", "n_campaigns", "campaigns", "n_engaged",
                       "n_opted_in", "n_completed", "n_web_complete",
-                      "n_terminated", "n_error", "first_disposition_date",
-                      "last_disposition_date", "latest_disposition",
+                      "n_terminated", "n_error", "latest_disposition",
                       "latest_campaign_id", "best_disposition", "best_campaign_id",
-                      "campaigns"))
+                      "first_disposition_date", "last_disposition_date"))
   r1 <- res[res$phone == "2015550101", ]
   expect_equal(r1$n_campaigns, 2L)
-  expect_true(r1$ever_contacted)
   expect_equal(r1$n_engaged, 2L)       # cumulative: both 2339 + 2354 engaged
   expect_equal(r1$n_opted_in, 1L)      # only 2339
   expect_equal(r1$n_completed, 1L)     # 2339 (a completed campaign is also engaged)
@@ -108,7 +106,6 @@ test_that("screens a phone list, normalizing formats and flagging never-contacte
     phones = c("+1 (201) 555-0101", "2015559999", "()"))  # 11-digit, absent, junk
   expect_setequal(res$phone, c("2015550101", "2015559999"))  # junk -> dropped
   nc <- res[res$phone == "2015559999", ]
-  expect_false(nc$ever_contacted)
   expect_equal(nc$latest_disposition, "never_contacted")
   expect_equal(nc$n_campaigns, 0L)
   expect_true(is.na(nc$campaigns))
@@ -198,7 +195,7 @@ test_that("empty dataset yields an empty result; screened phones come back never
   expect_equal(nrow(disposition_summary(p0, page = 1)), 0L)  # page on empty -> no error
   res <- disposition_summary(p0, phones = "2015550101")
   expect_equal(res$phone, "2015550101")
-  expect_false(res$ever_contacted)
+  expect_equal(res$n_campaigns, 0L)          # never-contacted marker
 })
 
 test_that("a blank stored phone is dropped, and all-invalid input yields no rows", {
@@ -224,8 +221,8 @@ test_that("disposition_summary accepts an in-memory frame and validates input", 
   res <- disposition_summary(d, phones = c("2015550101", "2015559999"))
   expect_setequal(res$phone, c("2015550101", "2015559999"))
   expect_equal(res[res$phone == "2015550101", "n_completed"], 1L)
-  expect_false(res[res$phone == "2015559999", "ever_contacted"])
   # a never-contacted phone has zero counts, undated first/last, no campaign ids
+  expect_equal(res[res$phone == "2015559999", "n_campaigns"], 0L)
   expect_equal(res[res$phone == "2015559999", "n_engaged"], 0L)
   expect_true(is.na(res[res$phone == "2015559999", "last_disposition_date"]))
   expect_equal(res[res$phone == "2015559999", "best_disposition"], "never_contacted")
@@ -266,7 +263,7 @@ test_that("disposition_screen annotates the sample in place, preserving it", {
                     names(out)))
   expect_equal(out$n_completed[1], 1L)                     # +1/formatted matched
   expect_equal(out$latest_disposition[2], "terminated")
-  expect_false(out$ever_contacted[3])                    # absent -> never_contacted
+  expect_equal(out$n_campaigns[3], 0L)                   # absent -> never_contacted
   expect_equal(out$latest_disposition[3], "never_contacted")
 })
 
@@ -364,6 +361,6 @@ test_that("a partially-dated dataset relabels a contacted-but-undated phone", {
     res <- disposition_summary(p, phones = c("2015550101", "2015550102"),
                                date_from = "2026-01-01"))
   undated <- res[res$phone == "2015550102", ]
-  expect_false(undated$ever_contacted)
+  expect_equal(undated$n_campaigns, 0L)
   expect_equal(undated$latest_disposition, "never_contacted")
 })

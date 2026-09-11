@@ -10,7 +10,14 @@
   overlap, since a completed campaign is also engaged). `ever_completed`'s
   `completed OR web_complete` fold is split into `n_completed` + `n_web_complete`.
   Replace a boolean filter like `ever_completed %in% TRUE` with `n_completed > 0`.
-  `ever_contacted` (the structural contacted flag) is unchanged.
+* **`ever_contacted` is removed** -- it was fully redundant with `n_campaigns`. A
+  never-contacted phone is now marked by `n_campaigns == 0` (a blank/unparseable
+  phone still comes back all-`NA`). Replace `!ever_contacted` with
+  `n_campaigns == 0`, and `ever_contacted %in% TRUE` with `n_campaigns > 0`.
+* **The summary columns are reordered** into a more intuitive flow: identity,
+  scope (`n_campaigns`, `campaigns`), the status counts, the latest and best
+  disposition (each with its campaign id), then the `first`/`last` date span.
+  Read columns by name, not position.
 
 ## New features
 
