@@ -9,7 +9,9 @@
   the phone's campaigns reached each status (`0` = never, `> 0` = the count; they
   overlap, since a completed campaign is also engaged). `ever_completed`'s
   `completed OR web_complete` fold is split into `n_completed` + `n_web_complete`.
-  Replace a boolean filter like `ever_completed %in% TRUE` with `n_completed > 0`.
+  `ever_completed` folded `completed OR web_complete`, so migrate a filter like
+  `ever_completed %in% TRUE` to `(n_completed > 0 | n_web_complete > 0)` -- not
+  `n_completed > 0` alone, which would miss a phone that only web-completed.
 * **`ever_contacted` is removed** -- it was fully redundant with `n_campaigns`. A
   never-contacted phone is now marked by `n_campaigns == 0` (a blank/unparseable
   phone still comes back all-`NA`). Replace `!ever_contacted` with
@@ -27,12 +29,13 @@
   none is dated) and `n_error` (how many of the phone's campaigns carried a
   carrier delivery-error code). The summary now reads the projection's optional
   `error` column; an un-enriched frame without it yields `n_error = 0`.
-* **`best_disposition` + campaign ids on the summary.** Alongside the
-  recency-based `latest_disposition`, the summary now reports `best_disposition`
-  -- the furthest-reached funnel category across all the phone's campaigns (same
-  precedence as `latest`, so `completed` / `web_complete` rank highest) -- and
-  pins the campaign behind each with `latest_campaign_id` / `best_campaign_id`
-  (returned as character). `campaigns` still lists every id.
+* **`best_disposition` + campaign ids on the summary.** `latest_disposition` is
+  selected by recency (the phone's most-recent campaign); the new
+  `best_disposition` is selected by funnel precedence -- the furthest-reached
+  category across all the phone's campaigns (`completed` / `web_complete` rank
+  highest, then `terminated`, `opted_in`, `engaged`, `non_response`). Each pins
+  its campaign with `latest_campaign_id` / `best_campaign_id` (returned as
+  character); `campaigns` still lists every id.
 * **`disposition_run()` now derives `disposition_date`.** The per-respondent
   frame gains a `disposition_date` column: the row-wise maximum of every
   `id.<step>.scriptDate` send timestamp (the phone's last outbound message),

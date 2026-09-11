@@ -43,8 +43,11 @@ campaigns before summarizing.}
 keep only phones whose \code{latest_disposition} is one of them.}
 
 \item{date_from, date_to}{Optional \code{Date}/date-string bounds on
-\code{disposition_date}. A row whose \code{disposition_date} is \code{NA}
-(or a projection that never populated the column) is dropped by any bound.}
+\code{disposition_date}. A row whose \code{disposition_date} is \code{NA} is
+dropped by any bound (an all-\code{NA} column drops every row, with a
+warning). A projection with \strong{no} \code{disposition_date} column is a
+different case: setting a bound then \strong{errors} (see \code{x}); it is
+not a silent drop.}
 
 \item{page, page_size}{Optional 1-based pagination over the per-phone result.}
 }

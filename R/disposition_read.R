@@ -339,8 +339,11 @@
 #'   \code{opted_in}, \code{terminated}, \code{completed}, \code{web_complete});
 #'   keep only phones whose \code{latest_disposition} is one of them.
 #' @param date_from,date_to Optional \code{Date}/date-string bounds on
-#'   \code{disposition_date}. A row whose \code{disposition_date} is \code{NA}
-#'   (or a projection that never populated the column) is dropped by any bound.
+#'   \code{disposition_date}. A row whose \code{disposition_date} is \code{NA} is
+#'   dropped by any bound (an all-\code{NA} column drops every row, with a
+#'   warning). A projection with \strong{no} \code{disposition_date} column is a
+#'   different case: setting a bound then \strong{errors} (see \code{x}); it is
+#'   not a silent drop.
 #' @param page,page_size Optional 1-based pagination over the per-phone result.
 #' @return A data frame, one row per phone, columns in this order:
 #'   \code{phone}; \code{n_campaigns} and \code{campaigns} (how many campaigns,
@@ -413,14 +416,16 @@ disposition_summary <- function(x, phones = NULL, campaign_ids = NULL,
 #' for inspection, export, or a custom rollup.
 #'
 #' Only the canonical columns \emph{present in the file} are returned, in the
-#' order above. A projection written straight from \code{\link{disposition_run}}
-#' carries the ten computed columns -- including \code{error}, the carrier
-#' delivery-error code -- but not \code{loi} / \code{topic} / \code{disposition_date};
-#' the enriched projection carries all thirteen, with \code{disposition_date}
-#' populated (\code{NA} only on an un-enriched frame, or a row with no send).
-#' \code{error} is populated from the export (\code{NA} when the export carries
-#' no usable error code -- a clean send, or a legacy/minimal export lacking the
-#' column). The
+#' order above -- a legacy or minimal projection that lacks a column (e.g.
+#' \code{error}, \code{loi}, \code{topic}, or \code{disposition_date}) omits it,
+#' rather than filling an all-\code{NA} column. A projection written straight from
+#' \code{\link{disposition_run}} carries the funnel flags plus \code{mode},
+#' \code{error} (the carrier delivery-error code), and \code{disposition_date}
+#' (\code{max(scriptDate)}); \code{loi} / \code{topic} are added by the tracker
+#' enrichment, so only the enriched projection carries all thirteen.
+#' \code{disposition_date} is \code{NA} for a row with no send; \code{error} is
+#' \code{NA} when the export carries no usable code (a clean send, or an export
+#' lacking the column). The
 #' whole projection is read into memory and filtered
 #' in R (nanoparquet has no predicate pushdown, like \code{\link{disposition_summary}});
 #' \code{phone} is digit-normalized for matching, and a stored row whose phone is
@@ -521,7 +526,8 @@ disposition_records <- function(dataset, phones = NULL, campaign_ids = NULL,
 #' dataset <- disposition_pull()
 #' cleaned <- disposition_screen(my_sample, dataset, phone_col = "phone")
 #' # drop finished/terminated; blank-phone rows come back all-NA and are kept
-#' subset(cleaned, !((n_completed > 0) %in% TRUE | (n_terminated > 0) %in% TRUE))
+#' subset(cleaned, !((n_completed > 0 | n_web_complete > 0) %in% TRUE |
+#'                     (n_terminated > 0) %in% TRUE))
 #' }
 #' @export
 disposition_screen <- function(sample, dataset, phone_col = "phone",

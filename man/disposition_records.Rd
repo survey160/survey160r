@@ -50,14 +50,16 @@ for inspection, export, or a custom rollup.
 }
 \details{
 Only the canonical columns \emph{present in the file} are returned, in the
-order above. A projection written straight from \code{\link{disposition_run}}
-carries the ten computed columns -- including \code{error}, the carrier
-delivery-error code -- but not \code{loi} / \code{topic} / \code{disposition_date};
-the enriched projection carries all thirteen, with \code{disposition_date}
-populated (\code{NA} only on an un-enriched frame, or a row with no send).
-\code{error} is populated from the export (\code{NA} when the export carries
-no usable error code -- a clean send, or a legacy/minimal export lacking the
-column). The
+order above -- a legacy or minimal projection that lacks a column (e.g.
+\code{error}, \code{loi}, \code{topic}, or \code{disposition_date}) omits it,
+rather than filling an all-\code{NA} column. A projection written straight from
+\code{\link{disposition_run}} carries the funnel flags plus \code{mode},
+\code{error} (the carrier delivery-error code), and \code{disposition_date}
+(\code{max(scriptDate)}); \code{loi} / \code{topic} are added by the tracker
+enrichment, so only the enriched projection carries all thirteen.
+\code{disposition_date} is \code{NA} for a row with no send; \code{error} is
+\code{NA} when the export carries no usable code (a clean send, or an export
+lacking the column). The
 whole projection is read into memory and filtered
 in R (nanoparquet has no predicate pushdown, like \code{\link{disposition_summary}});
 \code{phone} is digit-normalized for matching, and a stored row whose phone is

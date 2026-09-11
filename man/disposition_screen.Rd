@@ -53,7 +53,8 @@ it (dropping the numbers already completed or refused). Mirrors the
 dataset <- disposition_pull()
 cleaned <- disposition_screen(my_sample, dataset, phone_col = "phone")
 # drop finished/terminated; blank-phone rows come back all-NA and are kept
-subset(cleaned, !((n_completed > 0) \%in\% TRUE | (n_terminated > 0) \%in\% TRUE))
+subset(cleaned, !((n_completed > 0 | n_web_complete > 0) \%in\% TRUE |
+                    (n_terminated > 0) \%in\% TRUE))
 }
 }
 \seealso{
