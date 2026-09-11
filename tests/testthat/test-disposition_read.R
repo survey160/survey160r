@@ -89,6 +89,30 @@ test_that("best_disposition is the furthest category reached; latest is recency"
   expect_equal(res$best_campaign_id, "10")
 })
 
+test_that("n_error is read from a projection PATH carrying an error column", {
+  # the inline n_error test above uses an in-memory frame; this exercises the
+  # .disposition_read_parquet error read + schema intersect from a real Parquet.
+  d <- data.frame(phone = c("1", "1"), campaign_id = 1:2,
+    engaged = 1L, opted_in = 0L, completed = 0L, web_complete = 0L,
+    terminated = 0L, error = c("30007", NA),
+    disposition_date = as.Date("2026-01-01"), stringsAsFactors = FALSE)
+  p <- write_disposition_parquet(d)
+  expect_true("error" %in% nanoparquet::read_parquet_schema(p)$name)
+  expect_equal(disposition_summary(p)$n_error, 1L)
+})
+
+test_that("with all-NA dates, latest and best fall back to the max campaign id", {
+  d <- write_disposition_parquet(rbind(
+    .disposition_row("1", 10, engaged = 1),      # NA date
+    .disposition_row("1", 20, opted_in = 1)))    # NA date
+  res <- disposition_summary(d)
+  expect_equal(res$latest_disposition, "opted_in")     # date tie -> max id 20
+  expect_equal(res$latest_campaign_id, "20")
+  expect_equal(res$best_disposition, "opted_in")       # furthest reached
+  expect_equal(res$best_campaign_id, "20")
+  expect_true(is.na(res$first_disposition_date))
+})
+
 test_that("best_disposition tie on category resolves to the latest campaign", {
   # both campaigns terminal at 'engaged'; best picks the later one (then max id),
   # matching latest_disposition's tie-break.
