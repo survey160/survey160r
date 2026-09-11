@@ -30,8 +30,10 @@ the same opener set, so the two views agree for a non-\code{intro} campaign.}
 only contacted records (rows where \code{sent == 1}). When \code{FALSE},
 return one row per input respondent.}
 
-\item{field_timezone}{IANA timezone (default \code{"America/New_York"}) the
-\code{disposition_date} is bucketed to. Each \code{id.<step>.scriptDate}
+\item{field_timezone}{IANA timezone (a name in \code{OlsonNames()}; default
+\code{"America/New_York"}) the \code{disposition_date} is bucketed to; an
+unknown zone is rejected rather than silently mis-bucketed. Each
+\code{id.<step>.scriptDate}
 send timestamp is stored naive-UTC; the row-wise max is converted to this
 zone before its calendar date is taken -- matching the latency view's
 send-date bucketing and the live DB producer's \code{lastsms::date}.}

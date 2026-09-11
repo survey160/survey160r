@@ -6,7 +6,8 @@
   frame gains a `disposition_date` column: the row-wise maximum of every
   `id.<step>.scriptDate` send timestamp (the phone's last outbound message),
   bucketed to a calendar day in the new `field_timezone` argument (default
-  `"America/New_York"`, matching the latency view's send-date bucketing). It is
+  `"America/New_York"`, matching the latency view's send-date bucketing; an
+  unknown zone is rejected rather than silently mis-bucketed). It is
   `NA` when no send time survives. `disposition_input_columns()` now retains every
   `scriptDate` column so the max is computed over the full flow, not just the
   opener/closer/terminal sends. Previously the column was left for the consumer to

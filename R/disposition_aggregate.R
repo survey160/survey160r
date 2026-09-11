@@ -275,8 +275,10 @@ disposition_input_columns <- function(available = NULL, population = NULL) {
 #' @param contacted_only A single logical. When \code{TRUE} (default), return
 #'   only contacted records (rows where \code{sent == 1}). When \code{FALSE},
 #'   return one row per input respondent.
-#' @param field_timezone IANA timezone (default \code{"America/New_York"}) the
-#'   \code{disposition_date} is bucketed to. Each \code{id.<step>.scriptDate}
+#' @param field_timezone IANA timezone (a name in \code{OlsonNames()}; default
+#'   \code{"America/New_York"}) the \code{disposition_date} is bucketed to; an
+#'   unknown zone is rejected rather than silently mis-bucketed. Each
+#'   \code{id.<step>.scriptDate}
 #'   send timestamp is stored naive-UTC; the row-wise max is converted to this
 #'   zone before its calendar date is taken -- matching the latency view's
 #'   send-date bucketing and the live DB producer's \code{lastsms::date}.
@@ -323,6 +325,14 @@ disposition_run <- function(campaign_id, data, population = NULL,
         is.na(field_timezone) || !nzchar(field_timezone)) {
     stop_s160("`field_timezone` must be a single non-empty string.",
               fn = "disposition_run")
+  }
+  # An unknown zone is silently ignored by `format(..., tz =)` on some platforms
+  # (falling back to UTC / local), which would assign a wrong disposition_date --
+  # so reject anything not in the IANA database rather than bucket dates wrong.
+  if (!field_timezone %in% OlsonNames()) {
+    stop_s160(sprintf(
+      "`field_timezone` (\"%s\") is not a known IANA timezone (see OlsonNames()).",
+      field_timezone), fn = "disposition_run")
   }
   if (nrow(data) == 0L) {
     return(list(consolidated = empty_disposition_frame(),

@@ -704,6 +704,8 @@ test_that("disposition_run rejects a bad field_timezone", {
   expect_error(disposition_run(1, d, field_timezone = ""), "field_timezone")
   expect_error(disposition_run(1, d, field_timezone = c("a", "b")), "field_timezone")
   expect_error(disposition_run(1, d, field_timezone = NA_character_), "field_timezone")
+  # a non-empty string that is not an IANA zone (would silently mis-bucket dates)
+  expect_error(disposition_run(1, d, field_timezone = "Mars/Olympus"), "IANA")
 })
 
 test_that("disposition_input_columns retains every scriptDate for the max", {
