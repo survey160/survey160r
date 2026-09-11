@@ -24,6 +24,13 @@ R client for Survey160 data. Reads campaign results from Google Cloud Storage, t
 - **Version bump rule (gated in CI and by the pre-push hook)**:
   - Any change in `R/`, `man/`, or `src/` requires a `Version:` bump in `DESCRIPTION`.
   - Any `Version:` bump requires a matching `NEWS.md` edit.
+  - **Bump ONCE per PR, not per commit.** The gate compares against the PR's fork
+    point from `origin/main` (`git merge-base HEAD origin/main`), so a single bump
+    relative to `main` covers the whole branch no matter how many times you push.
+    Do NOT bump again on a follow-up push to the same PR -- keep the one bump.
+    (Requires the current hook: run `scripts/install-hooks.sh` once to install/refresh
+    it; older hooks compared against the branch's own remote tip and wrongly
+    demanded a bump on every push.)
 - **NEWS.md** keeps a `# survey160r (development version)` header at the top between releases as the scratch area for incoming PRs.
 - **Always `pkgload::load_all()` before running tests** interactively.
 

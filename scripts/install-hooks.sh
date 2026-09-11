@@ -59,8 +59,13 @@ if [ -x scripts/leak_check.sh ]; then
       base="$remote_sha"
     fi
     scripts/leak_check.sh --range "$base" "$local_sha" || status=1
-    if [ -n "$base" ] && [ -x scripts/version_gate.sh ]; then
-      scripts/version_gate.sh "$base" "$local_sha" || status=1
+    # version_gate compares against the PR's fork point from origin/main -- NOT the
+    # branch's own remote tip -- so the DESCRIPTION Version is bumped ONCE per PR
+    # (relative to main), not on every push. (leak_check keeps the incremental
+    # base above; it only needs to scan the newly pushed commits.)
+    if [ -x scripts/version_gate.sh ]; then
+      vbase="$(git merge-base "$local_sha" origin/main 2>/dev/null || true)"
+      [ -n "$vbase" ] && { scripts/version_gate.sh "$vbase" "$local_sha" || status=1; }
     fi
   done
   [ "$status" -eq 0 ] || exit 1
