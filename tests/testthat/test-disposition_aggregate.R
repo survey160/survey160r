@@ -713,3 +713,18 @@ test_that("disposition_input_columns retains every scriptDate for the max", {
   expect_true(all(c("id.intro.scriptDate", "id.q2.scriptDate", "id.close.scriptDate")
                   %in% cols))
 })
+
+test_that("disposition_date is NA when a row's every scriptDate is absent (multi-column pmax)", {
+  # >=2 scriptDate columns present, but this row was sent none of them: the
+  # pmax(na.rm) reduction over an all-NA row must yield NA, not an epoch-floor
+  # date. (Single-column inputs skip pmax; this asserts the reduced path.)
+  d <- disp_frame(
+    phone = c("+15550901", "+15550902"),
+    id.intro.scriptDate = c("2026-01-26 15:00:00.000000Z", ""),   # r2 never texted
+    id.intro.finalText  = c("Yes", "Yes"),
+    id.q2.scriptDate    = c("2026-01-27 18:00:00.000000Z", ""),   # r2: absent
+    id.close.scriptDate = c("2026-01-28 12:00:00.000000Z", "")    # r2: absent
+  )
+  res <- disposition_run(1, d, contacted_only = FALSE)$consolidated
+  expect_equal(as.character(res$disposition_date), c("2026-01-28", NA))
+})
