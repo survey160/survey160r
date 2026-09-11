@@ -25,10 +25,9 @@ digit-normalized (a leading US \code{1} is dropped so 11-digit numbers match
 \item{campaign_ids}{Optional vector; keep only rows for these campaigns.}
 
 \item{date_from, date_to}{Optional \code{Date}/date-string bounds on
-\code{disposition_date}. A row with an \code{NA} disposition date is dropped by any
-bound -- and in the current beta \code{disposition_date} is \code{NA} for every
-row, so any bound returns no rows. Supplying a bound when the projection has
-no \code{disposition_date} column at all is an error.}
+\code{disposition_date}. A row with an \code{NA} disposition date is dropped
+by any bound. Supplying a bound when the projection has no
+\code{disposition_date} column at all is an error.}
 
 \item{page, page_size}{Optional 1-based pagination over the
 \code{(phone, campaign_id)}-ordered rows.}
@@ -54,10 +53,11 @@ Only the canonical columns \emph{present in the file} are returned, in the
 order above. A projection written straight from \code{\link{disposition_run}}
 carries the ten computed columns -- including \code{error}, the carrier
 delivery-error code -- but not \code{loi} / \code{topic} / \code{disposition_date};
-the enriched projection carries all thirteen. In the current beta
-\code{disposition_date} is \code{NA} for every row; \code{error} is populated
-from the export (\code{NA} when the export carries no usable error code -- a
-clean send, or a legacy/minimal export lacking the column). The
+the enriched projection carries all thirteen, with \code{disposition_date}
+populated (\code{NA} only on an un-enriched frame, or a row with no send).
+\code{error} is populated from the export (\code{NA} when the export carries
+no usable error code -- a clean send, or a legacy/minimal export lacking the
+column). The
 whole projection is read into memory and filtered
 in R (nanoparquet has no predicate pushdown, like \code{\link{disposition_summary}});
 \code{phone} is digit-normalized for matching, and a stored row whose phone is

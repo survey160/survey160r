@@ -43,20 +43,27 @@ campaigns before summarizing.}
 keep only phones whose \code{latest_disposition} is one of them.}
 
 \item{date_from, date_to}{Optional \code{Date}/date-string bounds on
-\code{disposition_date}. In the beta \code{disposition_date} is \code{NA}, so a
-date bound drops rows with an unknown disposition date.}
+\code{disposition_date}. A row whose \code{disposition_date} is \code{NA}
+(or a projection that never populated the column) is dropped by any bound.}
 
 \item{page, page_size}{Optional 1-based pagination over the per-phone result.}
 }
 \value{
 A data frame, one row per phone: \code{phone}, \code{ever_contacted},
-  \code{n_campaigns}, \code{ever_engaged}, \code{ever_opted_in},
-  \code{ever_completed}, \code{ever_terminated}, \code{latest_disposition},
-  \code{campaigns} (comma-separated campaign ids).
+  \code{n_campaigns}, and the cumulative status counts \code{n_engaged},
+  \code{n_opted_in}, \code{n_completed}, \code{n_web_complete},
+  \code{n_terminated} -- each \code{0} when the phone never reached that
+  status and \code{> 0} the number of the phone's campaigns that did (they
+  overlap: a completed campaign is also engaged). Plus \code{n_error} (how
+  many campaigns carried a carrier delivery-error code),
+  \code{first_disposition_date} / \code{last_disposition_date} (earliest and
+  latest \code{disposition_date} across the phone's campaigns, \code{NA} when
+  none is dated), \code{latest_disposition}, and \code{campaigns}
+  (comma-separated campaign ids).
 }
 \description{
 Rolls the disposition data up to \strong{one row per phone} -- each number's
-cross-campaign screening flags and latest disposition. Pass either the
+cross-campaign status counts, date span, and latest disposition. Pass either the
 projection \strong{path} (read it, then summarize) or an \strong{in-memory
 frame} already read with \code{\link{disposition_records}} (summarize it
 directly, no I/O), which lets you read once and summarize several phone

@@ -20,7 +20,7 @@
 
 # Columns the summary reads (the Parquet read is projected to just these).
 .DISPOSITION_READ_COLS <- c("phone", "campaign_id", "engaged", "opted_in", "completed",
-                   "web_complete", "terminated", "disposition_date")
+                   "web_complete", "terminated", "error", "disposition_date")
 
 # The derived disposition categories, in funnel order (least -> most advanced).
 # `never_contacted` is only produced for screened phones absent from the data.
@@ -28,9 +28,13 @@
                     "terminated", "completed", "web_complete")
 
 # Columns of the per-phone summary (also the block appended by _screen()).
-.DISPOSITION_SUMMARY_COLS <- c("phone", "ever_contacted", "n_campaigns", "ever_engaged",
-                      "ever_opted_in", "ever_completed", "ever_terminated",
-                      "latest_disposition", "campaigns")
+# The disposition-status booleans are cumulative COUNTS (n_*): how many of the
+# phone's campaigns set each flag. first_/last_disposition_date span the phone's
+# dated campaigns; n_error counts campaigns carrying a delivery-error code.
+.DISPOSITION_SUMMARY_COLS <- c("phone", "ever_contacted", "n_campaigns",
+                      "n_engaged", "n_opted_in", "n_completed", "n_web_complete",
+                      "n_terminated", "n_error", "first_disposition_date",
+                      "last_disposition_date", "latest_disposition", "campaigns")
 
 # The stored disposition schema, in canonical order -- what
 # disposition_records() returns. `sent`/`mode`/`error` come from disposition_run();
@@ -57,13 +61,15 @@
   out
 }
 
-# One all-NA/FALSE summary row per never-contacted phone (screened but absent).
+# One all-zero/NA summary row per never-contacted phone (screened but absent).
 .disposition_never_contacted <- function(phones) {
   n <- length(phones)
   data.frame(
     phone = phones, ever_contacted = rep(FALSE, n), n_campaigns = rep(0L, n),
-    ever_engaged = rep(FALSE, n), ever_opted_in = rep(FALSE, n),
-    ever_completed = rep(FALSE, n), ever_terminated = rep(FALSE, n),
+    n_engaged = rep(0L, n), n_opted_in = rep(0L, n), n_completed = rep(0L, n),
+    n_web_complete = rep(0L, n), n_terminated = rep(0L, n), n_error = rep(0L, n),
+    first_disposition_date = rep(as.Date(NA), n),
+    last_disposition_date = rep(as.Date(NA), n),
     latest_disposition = rep("never_contacted", n),
     campaigns = rep(NA_character_, n), stringsAsFactors = FALSE
   )
@@ -106,13 +112,12 @@
   if (!is.null(campaign_ids)) {
     keep <- keep & as.character(data$campaign_id) %in% as.character(campaign_ids)
   }
-  # Beta heads-up: a date bound against an all-NA disposition_date (the current beta
-  # never populates it) silently drops every row -- warn rather than return empty.
+  # A date bound against an all-NA disposition_date (an un-enriched frame, or one
+  # whose dates are all missing) silently drops every row -- warn, don't return empty.
   if ((!is.null(date_from) || !is.null(date_to)) &&
         nrow(data) > 0L && all(is.na(data$disposition_date))) {
     warning("`date_from`/`date_to` filter on `disposition_date`, which is NA for ",
-            "every row here (the current beta does not populate it); the filter ",
-            "returns no rows.", call. = FALSE)
+            "every row here; the filter returns no rows.", call. = FALSE)
   }
   if (!is.null(date_from)) {
     keep <- keep & !is.na(data$disposition_date) & data$disposition_date >= date_from
@@ -136,16 +141,35 @@
   # Group a per-row vector by phone, apply `f`, and index the result back to the
   # first-of-group phone order (`ph`) so every column lines up row-for-row.
   by_phone <- function(x, f) tapply(x, d$phone, f)[ph]
-  any_true <- function(x) any(x, na.rm = TRUE)
+  # Cumulative status counts: how many of the phone's campaigns set each flag
+  # (0/1/NA; NA counts as not-set). Overlapping -- a completed campaign is also
+  # engaged -- so these are "reached status X", not a partition of n_campaigns.
+  count1 <- function(x) sum(x == 1L, na.rm = TRUE)
+  # A campaign carries a delivery error when `error` holds a non-blank code.
+  has_error <- !is.na(d$error) & nzchar(trimws(as.character(d$error)))
+  # Per-phone min/max disposition_date, NA when the phone has no dated campaign
+  # (an un-enriched projection, or every date missing). tapply on the numeric
+  # day-count keeps the Date class off the grouping; restore it after.
+  dd_num <- as.numeric(d$disposition_date)
+  span <- function(reduce) {
+    v <- tapply(dd_num, d$phone, function(z) {
+      z <- z[!is.na(z)]
+      if (length(z)) reduce(z) else NA_real_
+    })[ph]
+    as.Date(unname(v), origin = "1970-01-01")
+  }
   data.frame(
     phone = ph,
     ever_contacted = TRUE,
     n_campaigns = as.integer(by_phone(d$campaign_id, function(x) length(unique(x)))),
-    ever_engaged = as.logical(by_phone(d$engaged == 1L, any_true)),
-    ever_opted_in = as.logical(by_phone(d$opted_in == 1L, any_true)),
-    ever_completed = as.logical(
-      by_phone((d$completed == 1L) | (d$web_complete == 1L), any_true)),
-    ever_terminated = as.logical(by_phone(d$terminated == 1L, any_true)),
+    n_engaged = as.integer(by_phone(d$engaged, count1)),
+    n_opted_in = as.integer(by_phone(d$opted_in, count1)),
+    n_completed = as.integer(by_phone(d$completed, count1)),
+    n_web_complete = as.integer(by_phone(d$web_complete, count1)),
+    n_terminated = as.integer(by_phone(d$terminated, count1)),
+    n_error = as.integer(by_phone(has_error, function(x) sum(x, na.rm = TRUE))),
+    first_disposition_date = span(min),
+    last_disposition_date = span(max),
     latest_disposition = d$.category[first],
     campaigns = as.character(
       by_phone(d$campaign_id, function(x) paste(sort(unique(x)), collapse = ","))),
@@ -208,7 +232,8 @@
   # backs the date filters -- so an un-enriched disposition_records() frame that
   # omits it still summarizes (mirroring disposition_records(), which tolerates
   # its absence too). The funnel-flag columns are always required.
-  missing_cols <- setdiff(setdiff(.DISPOSITION_READ_COLS, "disposition_date"),
+  missing_cols <- setdiff(setdiff(.DISPOSITION_READ_COLS,
+                                  c("disposition_date", "error")),
                           names(data))
   if (length(missing_cols) > 0L) {
     stop_s160(sprintf("input is missing required column(s): %s",
@@ -220,6 +245,10 @@
       stop_s160("input has no `disposition_date` column to filter on.", fn = fn)
     }
     data$disposition_date <- rep(as.Date(NA), nrow(data))
+  }
+  # `error` is optional too (an un-enriched frame lacks it) -> n_error is 0.
+  if (!"error" %in% names(data)) {
+    data$error <- rep(NA_character_, nrow(data))
   }
   if (!is.null(statuses)) {
     bad <- setdiff(as.character(statuses), .DISPOSITION_CATEGORIES)
@@ -254,7 +283,7 @@
 #' Summarize the disposition dataset for a phone list (one row per phone)
 #'
 #' Rolls the disposition data up to \strong{one row per phone} -- each number's
-#' cross-campaign screening flags and latest disposition. Pass either the
+#' cross-campaign status counts, date span, and latest disposition. Pass either the
 #' projection \strong{path} (read it, then summarize) or an \strong{in-memory
 #' frame} already read with \code{\link{disposition_records}} (summarize it
 #' directly, no I/O), which lets you read once and summarize several phone
@@ -285,13 +314,20 @@
 #'   \code{opted_in}, \code{terminated}, \code{completed}, \code{web_complete});
 #'   keep only phones whose \code{latest_disposition} is one of them.
 #' @param date_from,date_to Optional \code{Date}/date-string bounds on
-#'   \code{disposition_date}. In the beta \code{disposition_date} is \code{NA}, so a
-#'   date bound drops rows with an unknown disposition date.
+#'   \code{disposition_date}. A row whose \code{disposition_date} is \code{NA}
+#'   (or a projection that never populated the column) is dropped by any bound.
 #' @param page,page_size Optional 1-based pagination over the per-phone result.
 #' @return A data frame, one row per phone: \code{phone}, \code{ever_contacted},
-#'   \code{n_campaigns}, \code{ever_engaged}, \code{ever_opted_in},
-#'   \code{ever_completed}, \code{ever_terminated}, \code{latest_disposition},
-#'   \code{campaigns} (comma-separated campaign ids).
+#'   \code{n_campaigns}, and the cumulative status counts \code{n_engaged},
+#'   \code{n_opted_in}, \code{n_completed}, \code{n_web_complete},
+#'   \code{n_terminated} -- each \code{0} when the phone never reached that
+#'   status and \code{> 0} the number of the phone's campaigns that did (they
+#'   overlap: a completed campaign is also engaged). Plus \code{n_error} (how
+#'   many campaigns carried a carrier delivery-error code),
+#'   \code{first_disposition_date} / \code{last_disposition_date} (earliest and
+#'   latest \code{disposition_date} across the phone's campaigns, \code{NA} when
+#'   none is dated), \code{latest_disposition}, and \code{campaigns}
+#'   (comma-separated campaign ids).
 #' @seealso \code{\link{disposition_screen}}, \code{\link{disposition_records}},
 #'   \code{\link{disposition_pull}}
 #' @examples
@@ -348,10 +384,11 @@ disposition_summary <- function(x, phones = NULL, campaign_ids = NULL,
 #' order above. A projection written straight from \code{\link{disposition_run}}
 #' carries the ten computed columns -- including \code{error}, the carrier
 #' delivery-error code -- but not \code{loi} / \code{topic} / \code{disposition_date};
-#' the enriched projection carries all thirteen. In the current beta
-#' \code{disposition_date} is \code{NA} for every row; \code{error} is populated
-#' from the export (\code{NA} when the export carries no usable error code -- a
-#' clean send, or a legacy/minimal export lacking the column). The
+#' the enriched projection carries all thirteen, with \code{disposition_date}
+#' populated (\code{NA} only on an un-enriched frame, or a row with no send).
+#' \code{error} is populated from the export (\code{NA} when the export carries
+#' no usable error code -- a clean send, or a legacy/minimal export lacking the
+#' column). The
 #' whole projection is read into memory and filtered
 #' in R (nanoparquet has no predicate pushdown, like \code{\link{disposition_summary}});
 #' \code{phone} is digit-normalized for matching, and a stored row whose phone is
@@ -371,10 +408,9 @@ disposition_summary <- function(x, phones = NULL, campaign_ids = NULL,
 #'   10-digit ones). \code{NULL} (default) returns every row.
 #' @param campaign_ids Optional vector; keep only rows for these campaigns.
 #' @param date_from,date_to Optional \code{Date}/date-string bounds on
-#'   \code{disposition_date}. A row with an \code{NA} disposition date is dropped by any
-#'   bound -- and in the current beta \code{disposition_date} is \code{NA} for every
-#'   row, so any bound returns no rows. Supplying a bound when the projection has
-#'   no \code{disposition_date} column at all is an error.
+#'   \code{disposition_date}. A row with an \code{NA} disposition date is dropped
+#'   by any bound. Supplying a bound when the projection has no
+#'   \code{disposition_date} column at all is an error.
 #' @param page,page_size Optional 1-based pagination over the
 #'   \code{(phone, campaign_id)}-ordered rows.
 #' @return A data frame, one row per \code{(phone, campaign_id)}, with the
@@ -434,15 +470,18 @@ disposition_records <- function(dataset, phones = NULL, campaign_ids = NULL,
 #'   rows considered (see \code{\link{disposition_summary}}). No \code{statuses}
 #'   or pagination here -- every sample row is returned.
 #' @return \code{sample} with the columns \code{ever_contacted},
-#'   \code{n_campaigns}, \code{ever_engaged}, \code{ever_opted_in},
-#'   \code{ever_completed}, \code{ever_terminated}, \code{latest_disposition},
-#'   \code{campaigns} appended. A valid phone that is absent from the rows
-#'   selected by \code{campaign_ids}, \code{date_from}, and \code{date_to} (the
-#'   whole dataset when those are unset) gets a \code{never_contacted} row
-#'   (\code{ever_contacted = FALSE}, \code{n_campaigns = 0}, the other
-#'   \code{ever_*} flags \code{FALSE}, \code{latest_disposition =
-#'   "never_contacted"}, \code{campaigns = NA}); only a phone that
-#'   digit-normalizes to nothing (blank/unparseable) gets an all-\code{NA} block.
+#'   \code{n_campaigns}, \code{n_engaged}, \code{n_opted_in}, \code{n_completed},
+#'   \code{n_web_complete}, \code{n_terminated}, \code{n_error},
+#'   \code{first_disposition_date}, \code{last_disposition_date},
+#'   \code{latest_disposition}, \code{campaigns} appended (the
+#'   \code{\link{disposition_summary}} columns; see there for their meaning). A
+#'   valid phone that is absent from the rows selected by \code{campaign_ids},
+#'   \code{date_from}, and \code{date_to} (the whole dataset when those are unset)
+#'   gets a \code{never_contacted} row (\code{ever_contacted = FALSE},
+#'   \code{n_campaigns = 0}, the \code{n_*} counts \code{0}, the dates \code{NA},
+#'   \code{latest_disposition = "never_contacted"}, \code{campaigns = NA}); only a
+#'   phone that digit-normalizes to nothing (blank/unparseable) gets an
+#'   all-\code{NA} block.
 #' @seealso \code{\link{disposition_summary}}, \code{\link{disposition_records}},
 #'   \code{\link{opt_out_screen}}
 #' @examples
@@ -450,7 +489,7 @@ disposition_records <- function(dataset, phones = NULL, campaign_ids = NULL,
 #' dataset <- disposition_pull()
 #' cleaned <- disposition_screen(my_sample, dataset, phone_col = "phone")
 #' # drop finished/terminated; blank-phone rows come back all-NA and are kept
-#' subset(cleaned, !(ever_completed %in% TRUE | ever_terminated %in% TRUE))
+#' subset(cleaned, !((n_completed > 0) %in% TRUE | (n_terminated > 0) %in% TRUE))
 #' }
 #' @export
 disposition_screen <- function(sample, dataset, phone_col = "phone",

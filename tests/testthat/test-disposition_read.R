@@ -16,24 +16,59 @@
   ))
 }
 
-test_that("summarizes one row per phone with cross-campaign flags", {
+test_that("summarizes one row per phone with cross-campaign counts", {
   res <- disposition_summary(.disposition_base())
   expect_equal(nrow(res), 2L)
-  expect_named(res, c("phone", "ever_contacted", "n_campaigns", "ever_engaged",
-                      "ever_opted_in", "ever_completed", "ever_terminated",
-                      "latest_disposition", "campaigns"))
+  expect_named(res, c("phone", "ever_contacted", "n_campaigns", "n_engaged",
+                      "n_opted_in", "n_completed", "n_web_complete",
+                      "n_terminated", "n_error", "first_disposition_date",
+                      "last_disposition_date", "latest_disposition", "campaigns"))
   r1 <- res[res$phone == "2015550101", ]
   expect_equal(r1$n_campaigns, 2L)
   expect_true(r1$ever_contacted)
-  expect_true(r1$ever_completed)      # from 2339
-  expect_true(r1$ever_opted_in)
-  expect_false(r1$ever_terminated)
+  expect_equal(r1$n_engaged, 2L)       # cumulative: both 2339 + 2354 engaged
+  expect_equal(r1$n_opted_in, 1L)      # only 2339
+  expect_equal(r1$n_completed, 1L)     # 2339 (a completed campaign is also engaged)
+  expect_equal(r1$n_web_complete, 0L)
+  expect_equal(r1$n_terminated, 0L)
+  expect_equal(r1$n_error, 0L)         # no error column in the fixture -> 0
+  expect_equal(r1$first_disposition_date, as.Date("2026-03-01"))
+  expect_equal(r1$last_disposition_date, as.Date("2026-04-01"))
   expect_equal(r1$campaigns, "2339,2354")
   expect_equal(r1$latest_disposition, "engaged")   # 2354 is later + only engaged
   r2 <- res[res$phone == "2015550102", ]
   expect_equal(r2$latest_disposition, "terminated")
-  expect_true(r2$ever_terminated)
-  expect_false(r2$ever_completed)
+  expect_equal(r2$n_terminated, 1L)
+  expect_equal(r2$n_completed, 0L)
+  expect_equal(r2$first_disposition_date, as.Date("2026-03-01"))
+})
+
+test_that("n_completed and n_web_complete are counted separately", {
+  # ever_completed folded completed OR web_complete; the counts split them so a
+  # manager sees text-complete vs off-channel web-complete distinctly.
+  d <- write_disposition_parquet(rbind(
+    .disposition_row("1", 1, engaged = 1, completed = 1),
+    .disposition_row("1", 2, engaged = 1, web_complete = 1)))
+  res <- disposition_summary(d)
+  expect_equal(res$n_completed, 1L)
+  expect_equal(res$n_web_complete, 1L)
+  expect_equal(res$n_engaged, 2L)          # cumulative: both campaigns engaged
+})
+
+test_that("n_error counts only campaigns carrying a non-blank error code", {
+  # `error` is optional; a campaign "has an error" iff the code is non-NA and
+  # non-blank. Built inline since the shared .disposition_row() carries no error
+  # column (that path -- error absent -> n_error 0 -- is covered by the tests above).
+  d <- data.frame(
+    phone = c("2015550101", "2015550101", "2015550102"),
+    campaign_id = c(1L, 2L, 1L),
+    engaged = 1L, opted_in = 0L, completed = 0L, web_complete = 0L,
+    terminated = 0L, error = c("30007", NA, "  "),   # code / none / blank
+    disposition_date = as.Date(c("2026-01-01", "2026-01-02", "2026-01-03")),
+    stringsAsFactors = FALSE)
+  res <- disposition_summary(d)
+  expect_equal(res[res$phone == "2015550101", "n_error"], 1L)  # only "30007"
+  expect_equal(res[res$phone == "2015550102", "n_error"], 0L)  # blank is not an error
 })
 
 test_that("screens a phone list, normalizing formats and flagging never-contacted", {
@@ -47,7 +82,7 @@ test_that("screens a phone list, normalizing formats and flagging never-contacte
   expect_equal(nc$n_campaigns, 0L)
   expect_true(is.na(nc$campaigns))
   # the +1/formatted number matched the stored 10-digit one
-  expect_true(res[res$phone == "2015550101", "ever_completed"])
+  expect_equal(res[res$phone == "2015550101", "n_completed"], 1L)
 })
 
 test_that("campaign_ids filter scopes the underlying rows before rollup", {
@@ -75,7 +110,7 @@ test_that("date bounds drop rows outside the range (incl. NA close dates)", {
   res2 <- disposition_summary(.disposition_base(), date_to = "2026-03-31")
   expect_setequal(res2$campaigns, c("2339", "2339"))
   # a row with an NA close date is dropped by any date bound; when the whole
-  # dataset is NA close dates (the beta), that drop-everything is warned.
+  # dataset is NA close dates, that drop-everything is warned rather than silent.
   p <- write_disposition_parquet(.disposition_row("2015550103", 2400, engaged = 1))  # NA date
   expect_warning(res <- disposition_summary(p, date_from = "2020-01-01"),
                  "returns no rows")
@@ -114,7 +149,7 @@ test_that("t2w_external completed = NA does not become a false completed", {
     write_disposition_parquet(.disposition_row("2015550101", 1, engaged = 1, opted_in = 1,
                       completed = NA_integer_)))
   expect_equal(res$latest_disposition, "opted_in")
-  expect_false(res$ever_completed)
+  expect_equal(res$n_completed, 0L)          # completed = NA counts as not-set
 })
 
 test_that("pagination slices the phone-ordered result", {
@@ -157,8 +192,11 @@ test_that("disposition_summary accepts an in-memory frame and validates input", 
     .disposition_row("2015550101", 2354, engaged = 1, disposition_date = "2026-04-01"))
   res <- disposition_summary(d, phones = c("2015550101", "2015559999"))
   expect_setequal(res$phone, c("2015550101", "2015559999"))
-  expect_true(res[res$phone == "2015550101", "ever_completed"])
+  expect_equal(res[res$phone == "2015550101", "n_completed"], 1L)
   expect_false(res[res$phone == "2015559999", "ever_contacted"])
+  # a never-contacted phone has zero counts and undated first/last
+  expect_equal(res[res$phone == "2015559999", "n_engaged"], 0L)
+  expect_true(is.na(res[res$phone == "2015559999", "last_disposition_date"]))
   # a frame missing the read columns is caught
   expect_error(disposition_summary(d[, c("phone", "campaign_id")]),
                "missing required column")
@@ -171,8 +209,10 @@ test_that("disposition_summary tolerates a frame without disposition_date", {
     .disposition_row("2015550101", 2354, engaged = 1, disposition_date = "2026-04-01"))
   bare <- d[, setdiff(names(d), "disposition_date"), drop = FALSE]  # un-enriched shape
   res <- disposition_summary(bare, phones = "2015550101")
-  expect_true(res$ever_completed)          # summarizes with close dates unknown
+  expect_equal(res$n_completed, 1L)        # summarizes with close dates unknown
   expect_equal(res$n_campaigns, 2L)
+  expect_true(is.na(res$first_disposition_date))   # no dates -> NA span
+  expect_true(is.na(res$last_disposition_date))
   # but a date bound with no disposition_date column is a clear error
   expect_error(disposition_summary(bare, date_from = "2026-01-01"),
                "disposition_date")
@@ -189,9 +229,9 @@ test_that("disposition_screen annotates the sample in place, preserving it", {
 
   expect_equal(out$phone, sample$phone)          # original formatting kept
   expect_equal(out$region, c("NE", "NE", "SW"))  # original columns preserved
-  expect_true(all(c("ever_completed", "latest_disposition", "campaigns") %in%
+  expect_true(all(c("n_completed", "latest_disposition", "campaigns") %in%
                     names(out)))
-  expect_true(out$ever_completed[1])                       # +1/formatted matched
+  expect_equal(out$n_completed[1], 1L)                     # +1/formatted matched
   expect_equal(out$latest_disposition[2], "terminated")
   expect_false(out$ever_contacted[3])                    # absent -> never_contacted
   expect_equal(out$latest_disposition[3], "never_contacted")
@@ -202,7 +242,7 @@ test_that("disposition_screen validates sample, phone_col, and column clashes", 
   expect_error(disposition_screen(list(), p), "must be a data frame")
   expect_error(disposition_screen(data.frame(x = 1), p),
                "phone column")
-  clash <- data.frame(phone = "2015550101", ever_completed = TRUE,
+  clash <- data.frame(phone = "2015550101", n_completed = 5L,
                       stringsAsFactors = FALSE)
   expect_error(disposition_screen(clash, p), "already has")
 })
@@ -237,11 +277,11 @@ test_that("summary reads a column-short projection path (no disposition_date)", 
                           completed = 1)
   p <- write_disposition_parquet(row[, setdiff(names(row), "disposition_date")])
   res <- disposition_summary(p, phones = "2015550101")
-  expect_true(res$ever_completed)
+  expect_equal(res$n_completed, 1L)
   expect_equal(res$n_campaigns, 1L)
   # disposition_screen() reads through the same path -- also unbroken now.
   out <- disposition_screen(data.frame(phone = "2015550101"), p)
-  expect_true(out$ever_completed)
+  expect_equal(out$n_completed, 1L)
 })
 
 test_that("a required column missing from a projection path errors cleanly", {
@@ -273,15 +313,16 @@ test_that("terminated + completed resolves to completed (funnel order)", {
     .disposition_row("1", 1, engaged = 1, opted_in = 1, completed = 1,
                      terminated = 1)))
   expect_equal(res$latest_disposition, "completed")
-  expect_true(res$ever_terminated)          # the terminated flag still rolls up
+  expect_equal(res$n_terminated, 1L)        # the terminated flag still rolls up
+  expect_equal(res$n_completed, 1L)
 })
 
 test_that("a partially-dated dataset relabels a contacted-but-undated phone", {
   # Documented (finding #5): the "returns no rows" warning fires only when EVERY
   # disposition_date is NA. With a mix, a date bound silently drops the NA-dated
   # (but genuinely contacted) phone, which then screens back as never_contacted
-  # -- and no warning fires because the dataset is not all-NA. Beta-latent:
-  # today's projection is all-NA, so the mixed case does not yet occur in prod.
+  # -- and no warning fires because the dataset is not all-NA. The mixed case
+  # arises when some history predates disposition_date population.
   p <- write_disposition_parquet(rbind(
     .disposition_row("2015550101", 2339, engaged = 1,
                      disposition_date = "2026-03-01"),           # dated

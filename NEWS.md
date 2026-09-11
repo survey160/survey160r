@@ -1,6 +1,25 @@
 # survey160r (development version)
 
+## Breaking changes
+
+* **`disposition_summary()` / `disposition_screen()` report status COUNTS, not
+  booleans.** The per-phone `ever_engaged` / `ever_opted_in` / `ever_completed` /
+  `ever_terminated` flags are replaced by cumulative counts `n_engaged` /
+  `n_opted_in` / `n_completed` / `n_web_complete` / `n_terminated` -- how many of
+  the phone's campaigns reached each status (`0` = never, `> 0` = the count; they
+  overlap, since a completed campaign is also engaged). `ever_completed`'s
+  `completed OR web_complete` fold is split into `n_completed` + `n_web_complete`.
+  Replace a boolean filter like `ever_completed %in% TRUE` with `n_completed > 0`.
+  `ever_contacted` (the structural contacted flag) is unchanged.
+
 ## New features
+
+* **`disposition_summary()` / `disposition_screen()` gain date span and error
+  count.** New columns `first_disposition_date` / `last_disposition_date` (the
+  earliest and latest `disposition_date` across the phone's campaigns, `NA` when
+  none is dated) and `n_error` (how many of the phone's campaigns carried a
+  carrier delivery-error code). The summary now reads the projection's optional
+  `error` column; an un-enriched frame without it yields `n_error = 0`.
 
 * **`disposition_run()` now derives `disposition_date`.** The per-respondent
   frame gains a `disposition_date` column: the row-wise maximum of every
