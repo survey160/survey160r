@@ -33,7 +33,6 @@
   precedence as `latest`, so `completed` / `web_complete` rank highest) -- and
   pins the campaign behind each with `latest_campaign_id` / `best_campaign_id`
   (returned as character). `campaigns` still lists every id.
-
 * **`disposition_run()` now derives `disposition_date`.** The per-respondent
   frame gains a `disposition_date` column: the row-wise maximum of every
   `id.<step>.scriptDate` send timestamp (the phone's last outbound message),
