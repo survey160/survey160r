@@ -220,18 +220,20 @@
   summ[seq.int(from, min(pg * ps, nrow(summ))), , drop = FALSE]
 }
 
-# I/O: validate the path and read the projection. `columns` picks what to read:
-# the default reads just the summary columns; `NULL` reads every column
-# (disposition_records() uses this for the full stored schema).
+# I/O: validate the path, read the projection, then (when `columns` is given)
+# subset to those columns in R. `columns` = the summary read set by default;
+# `NULL` (disposition_records()) keeps every stored column.
 #
-# The requested set is intersected with the file's actual columns before the
-# read: nanoparquet errors if a `col_select` names a column the file lacks, so
-# requesting the full summary set from a column-short projection (e.g. an
-# un-enriched frame with no `disposition_date`) would crash here -- before the
-# rollup's own clean missing-required-column / optional-`disposition_date` guards
-# could run. Intersecting keeps the read projected (a real win on the 29M-row
-# file) while letting those guards produce the clean S160 error or the
-# optional-column handling; reading the schema first is a cheap footer-only read.
+# The read is deliberately NOT projected via nanoparquet's `col_select`:
+# nanoparquet 0.5.1 MISREADS NA integer values under `col_select` -- it returns
+# uninitialized memory (0 / 1 / other garbage, nondeterministic across runs)
+# instead of NA, so a projected read of e.g. `completed` (which is NA on
+# t2w_external rows) silently corrupts the funnel counts. A full read decodes NA
+# correctly; we then intersect with the file's actual columns, so a
+# column-short/legacy projection returns only what is present and the rollup's own
+# missing-required-column / optional-`disposition_date` guards still fire.
+# Trade-off: the read is no longer column-projected (a memory cost on the large
+# projection) -- restore col_select once nanoparquet fixes the NA decode.
 .disposition_read_parquet <- function(dataset, columns = .DISPOSITION_READ_COLS) {
   if (!is.character(dataset) || length(dataset) != 1L || !nzchar(dataset)) {
     stop("`dataset` must be a single Parquet path.", call. = FALSE)
@@ -239,10 +241,11 @@
   if (!file.exists(dataset)) {
     stop_not_found("disposition dataset", dataset)
   }
+  d <- as.data.frame(nanoparquet::read_parquet(dataset))
   if (!is.null(columns)) {
-    columns <- intersect(columns, nanoparquet::read_parquet_schema(dataset)$name)
+    d <- d[, intersect(columns, names(d)), drop = FALSE]
   }
-  as.data.frame(nanoparquet::read_parquet(dataset, col_select = columns))
+  d
 }
 
 # Pure per-phone rollup core, shared by disposition_summary() (public; path or

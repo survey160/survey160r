@@ -101,6 +101,22 @@ test_that("n_error is read from a projection PATH carrying an error column", {
   expect_equal(disposition_summary(p)$n_error, 1L)
 })
 
+test_that("an NA integer (completed on t2w_external) decodes to NA, not garbage", {
+  # Regression: nanoparquet 0.5.1 mis-decodes NA integers under col_select, so a
+  # PROJECTED read of `completed` (NA on t2w_external) returned uninitialized
+  # memory (0/1/garbage) and corrupted n_completed. The fixture carries an `error`
+  # column so the summary's read set includes it (the trigger); the reader now
+  # reads full + subsets, decoding NA correctly.
+  d <- data.frame(phone = "9", campaign_id = 1L,
+    engaged = 1L, opted_in = 0L, completed = NA_integer_, web_complete = 1L,
+    terminated = 0L, error = NA_character_,
+    disposition_date = as.Date("2026-01-01"), stringsAsFactors = FALSE)
+  res <- disposition_summary(write_disposition_parquet(d))
+  expect_equal(res$n_completed, 0L)          # NA completed must NOT count
+  expect_equal(res$n_web_complete, 1L)
+  expect_equal(res$latest_disposition, "web_complete")
+})
+
 test_that("with all-NA dates, latest and best fall back to the max campaign id", {
   d <- write_disposition_parquet(rbind(
     .disposition_row("1", 10, engaged = 1),      # NA date

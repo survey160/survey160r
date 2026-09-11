@@ -1,5 +1,13 @@
 # survey160r (development version)
 
+
+## Bug fixes
+
+* **NA integer values are no longer mis-read.** `disposition_summary()` /
+  `disposition_screen()` read the projection in full and subset in R, rather than
+  via nanoparquet `col_select`, which mis-decodes an NA integer (e.g. `completed`
+  on t2w_external rows) as uninitialized memory -- previously corrupting
+  `n_completed`.
 ## Breaking changes
 
 * **`disposition_summary()` / `disposition_screen()` report status COUNTS, not
