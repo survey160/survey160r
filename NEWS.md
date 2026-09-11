@@ -1,7 +1,52 @@
 # survey160r (development version)
 
+## Bug fixes
+
+* **NA integer values are no longer mis-read from nanoparquet-written
+  projections.** nanoparquet 0.5.1 mis-decodes an NA integer (e.g. `completed` on
+  t2w_external rows) under `col_select` -- returning uninitialized memory instead
+  of NA -- which could corrupt `n_completed`. `disposition_summary()` /
+  `disposition_screen()` now `col_select` only DuckDB-written projections (the
+  production writer, verified NA-safe) and read any other writer in full, so the
+  counts are correct regardless of writer while the production read stays
+  column-projected.
+
+## Breaking changes
+
+* **`disposition_summary()` / `disposition_screen()` report status COUNTS, not
+  booleans.** The per-phone `ever_engaged` / `ever_opted_in` / `ever_completed` /
+  `ever_terminated` flags are replaced by cumulative counts `n_engaged` /
+  `n_opted_in` / `n_completed` / `n_web_complete` / `n_terminated` -- how many of
+  the phone's campaigns reached each status (`0` = never, `> 0` = the count; they
+  overlap, since a completed campaign is also engaged). `ever_completed`'s
+  `completed OR web_complete` fold is split into `n_completed` + `n_web_complete`.
+  `ever_completed` folded `completed OR web_complete`, so migrate a filter like
+  `ever_completed %in% TRUE` to `(n_completed > 0 | n_web_complete > 0)` -- not
+  `n_completed > 0` alone, which would miss a phone that only web-completed.
+* **`ever_contacted` is removed** -- it was fully redundant with `n_campaigns`. A
+  never-contacted phone is now marked by `n_campaigns == 0` (a blank/unparseable
+  phone still comes back all-`NA`). Replace `!ever_contacted` with
+  `n_campaigns == 0`, and `ever_contacted %in% TRUE` with `n_campaigns > 0`.
+* **The summary columns are reordered** into a more intuitive flow: identity,
+  scope (`n_campaigns`, `campaigns`), the status counts, the latest and best
+  disposition (each with its campaign id), then the `first`/`last` date span.
+  Read columns by name, not position.
+
 ## New features
 
+* **`disposition_summary()` / `disposition_screen()` gain date span and error
+  count.** New columns `first_disposition_date` / `last_disposition_date` (the
+  earliest and latest `disposition_date` across the phone's campaigns, `NA` when
+  none is dated) and `n_error` (how many of the phone's campaigns carried a
+  carrier delivery-error code). The summary now reads the projection's optional
+  `error` column; an un-enriched frame without it yields `n_error = 0`.
+* **`best_disposition` + campaign ids on the summary.** `latest_disposition` is
+  selected by recency (the phone's most-recent campaign); the new
+  `best_disposition` is selected by funnel precedence -- the furthest-reached
+  category across all the phone's campaigns (`completed` / `web_complete` rank
+  highest, then `terminated`, `opted_in`, `engaged`, `non_response`). Each pins
+  its campaign with `latest_campaign_id` / `best_campaign_id` (returned as
+  character); `campaigns` still lists every id.
 * **`disposition_run()` now derives `disposition_date`.** The per-respondent
   frame gains a `disposition_date` column: the row-wise maximum of every
   `id.<step>.scriptDate` send timestamp (the phone's last outbound message),

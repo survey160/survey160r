@@ -26,16 +26,19 @@ rows considered (see \code{\link{disposition_summary}}). No \code{statuses}
 or pagination here -- every sample row is returned.}
 }
 \value{
-\code{sample} with the columns \code{ever_contacted},
-  \code{n_campaigns}, \code{ever_engaged}, \code{ever_opted_in},
-  \code{ever_completed}, \code{ever_terminated}, \code{latest_disposition},
-  \code{campaigns} appended. A valid phone that is absent from the rows
+\code{sample} with the \code{\link{disposition_summary}} columns
+  appended (see there for their meaning and order): \code{n_campaigns},
+  \code{campaigns}, \code{n_engaged}, \code{n_opted_in}, \code{n_completed},
+  \code{n_web_complete}, \code{n_terminated}, \code{n_error},
+  \code{latest_disposition}, \code{latest_campaign_id}, \code{best_disposition},
+  \code{best_campaign_id}, \code{first_disposition_date},
+  \code{last_disposition_date}. A valid phone that is absent from the rows
   selected by \code{campaign_ids}, \code{date_from}, and \code{date_to} (the
   whole dataset when those are unset) gets a \code{never_contacted} row
-  (\code{ever_contacted = FALSE}, \code{n_campaigns = 0}, the other
-  \code{ever_*} flags \code{FALSE}, \code{latest_disposition =
-  "never_contacted"}, \code{campaigns = NA}); only a phone that
-  digit-normalizes to nothing (blank/unparseable) gets an all-\code{NA} block.
+  (\code{n_campaigns = 0}, the \code{n_*} counts \code{0}, the dates \code{NA},
+  \code{latest_disposition = "never_contacted"}, \code{campaigns = NA}); only a
+  phone that digit-normalizes to nothing (blank/unparseable) gets an
+  all-\code{NA} block.
 }
 \description{
 Takes a sample data frame (a phone column plus
@@ -50,7 +53,8 @@ it (dropping the numbers already completed or refused). Mirrors the
 dataset <- disposition_pull()
 cleaned <- disposition_screen(my_sample, dataset, phone_col = "phone")
 # drop finished/terminated; blank-phone rows come back all-NA and are kept
-subset(cleaned, !(ever_completed \%in\% TRUE | ever_terminated \%in\% TRUE))
+subset(cleaned, !((n_completed > 0 | n_web_complete > 0) \%in\% TRUE |
+                    (n_terminated > 0) \%in\% TRUE))
 }
 }
 \seealso{

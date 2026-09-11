@@ -92,7 +92,8 @@
 #' cleaned <- opt_out_screen(my_sample, opt_out_pull())
 #' # chain with disposition, then drop on the caller's own rules:
 #' cleaned <- disposition_screen(cleaned, disposition_pull())
-#' subset(cleaned, !(opted_out %in% TRUE | ever_completed %in% TRUE))
+#' subset(cleaned, !(opted_out %in% TRUE |
+#'                     (n_completed > 0 | n_web_complete > 0) %in% TRUE))
 #' }
 #' @export
 opt_out_screen <- function(sample, dataset, phone_col = "phone") {
