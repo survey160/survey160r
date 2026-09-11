@@ -58,12 +58,18 @@ A data frame, one row per phone: \code{phone}, \code{ever_contacted},
   many campaigns carried a carrier delivery-error code),
   \code{first_disposition_date} / \code{last_disposition_date} (earliest and
   latest \code{disposition_date} across the phone's campaigns, \code{NA} when
-  none is dated), \code{latest_disposition}, and \code{campaigns}
-  (comma-separated campaign ids).
+  none is dated), \code{latest_disposition} + \code{latest_campaign_id} (the
+  category of the phone's most-recent campaign and that campaign's id),
+  \code{best_disposition} + \code{best_campaign_id} (the furthest-reached
+  category across all the phone's campaigns -- ranked by the same funnel
+  precedence, so \code{completed} / \code{web_complete} rank highest and
+  \code{terminated} above \code{opted_in} -- and the campaign that reached it),
+  and \code{campaigns} (comma-separated campaign ids). Campaign ids are
+  returned as character.
 }
 \description{
 Rolls the disposition data up to \strong{one row per phone} -- each number's
-cross-campaign status counts, date span, and latest disposition. Pass either the
+cross-campaign status counts, date span, and latest/best disposition. Pass either the
 projection \strong{path} (read it, then summarize) or an \strong{in-memory
 frame} already read with \code{\link{disposition_records}} (summarize it
 directly, no I/O), which lets you read once and summarize several phone

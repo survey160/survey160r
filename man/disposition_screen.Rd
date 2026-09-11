@@ -30,8 +30,9 @@ or pagination here -- every sample row is returned.}
   \code{n_campaigns}, \code{n_engaged}, \code{n_opted_in}, \code{n_completed},
   \code{n_web_complete}, \code{n_terminated}, \code{n_error},
   \code{first_disposition_date}, \code{last_disposition_date},
-  \code{latest_disposition}, \code{campaigns} appended (the
-  \code{\link{disposition_summary}} columns; see there for their meaning). A
+  \code{latest_disposition}, \code{latest_campaign_id},
+  \code{best_disposition}, \code{best_campaign_id}, \code{campaigns} appended
+  (the \code{\link{disposition_summary}} columns; see there for their meaning). A
   valid phone that is absent from the rows selected by \code{campaign_ids},
   \code{date_from}, and \code{date_to} (the whole dataset when those are unset)
   gets a \code{never_contacted} row (\code{ever_contacted = FALSE},

@@ -22,7 +22,9 @@ test_that("summarizes one row per phone with cross-campaign counts", {
   expect_named(res, c("phone", "ever_contacted", "n_campaigns", "n_engaged",
                       "n_opted_in", "n_completed", "n_web_complete",
                       "n_terminated", "n_error", "first_disposition_date",
-                      "last_disposition_date", "latest_disposition", "campaigns"))
+                      "last_disposition_date", "latest_disposition",
+                      "latest_campaign_id", "best_disposition", "best_campaign_id",
+                      "campaigns"))
   r1 <- res[res$phone == "2015550101", ]
   expect_equal(r1$n_campaigns, 2L)
   expect_true(r1$ever_contacted)
@@ -36,8 +38,13 @@ test_that("summarizes one row per phone with cross-campaign counts", {
   expect_equal(r1$last_disposition_date, as.Date("2026-04-01"))
   expect_equal(r1$campaigns, "2339,2354")
   expect_equal(r1$latest_disposition, "engaged")   # 2354 is later + only engaged
+  expect_equal(r1$latest_campaign_id, "2354")
+  expect_equal(r1$best_disposition, "completed")   # furthest reached, from 2339
+  expect_equal(r1$best_campaign_id, "2339")
   r2 <- res[res$phone == "2015550102", ]
   expect_equal(r2$latest_disposition, "terminated")
+  expect_equal(r2$best_disposition, "terminated")  # its only campaign
+  expect_equal(r2$best_campaign_id, "2339")
   expect_equal(r2$n_terminated, 1L)
   expect_equal(r2$n_completed, 0L)
   expect_equal(r2$first_disposition_date, as.Date("2026-03-01"))
@@ -69,6 +76,30 @@ test_that("n_error counts only campaigns carrying a non-blank error code", {
   res <- disposition_summary(d)
   expect_equal(res[res$phone == "2015550101", "n_error"], 1L)  # only "30007"
   expect_equal(res[res$phone == "2015550102", "n_error"], 0L)  # blank is not an error
+})
+
+test_that("best_disposition is the furthest category reached; latest is recency", {
+  # completed in an EARLY campaign, only non_response in the LATEST one.
+  d <- write_disposition_parquet(rbind(
+    .disposition_row("1", 10, engaged = 1, opted_in = 1, completed = 1,
+                     disposition_date = "2026-01-01"),
+    .disposition_row("1", 20, disposition_date = "2026-05-01")))   # non_response, later
+  res <- disposition_summary(d)
+  expect_equal(res$latest_disposition, "non_response")   # recency
+  expect_equal(res$latest_campaign_id, "20")
+  expect_equal(res$best_disposition, "completed")        # furthest ever reached
+  expect_equal(res$best_campaign_id, "10")
+})
+
+test_that("best_disposition tie on category resolves to the latest campaign", {
+  # both campaigns terminal at 'engaged'; best picks the later one (then max id),
+  # matching latest_disposition's tie-break.
+  d <- write_disposition_parquet(rbind(
+    .disposition_row("1", 10, engaged = 1, disposition_date = "2026-01-01"),
+    .disposition_row("1", 20, engaged = 1, disposition_date = "2026-02-01")))
+  res <- disposition_summary(d)
+  expect_equal(res$best_disposition, "engaged")
+  expect_equal(res$best_campaign_id, "20")               # later date wins the tie
 })
 
 test_that("screens a phone list, normalizing formats and flagging never-contacted", {
@@ -194,9 +225,11 @@ test_that("disposition_summary accepts an in-memory frame and validates input", 
   expect_setequal(res$phone, c("2015550101", "2015559999"))
   expect_equal(res[res$phone == "2015550101", "n_completed"], 1L)
   expect_false(res[res$phone == "2015559999", "ever_contacted"])
-  # a never-contacted phone has zero counts and undated first/last
+  # a never-contacted phone has zero counts, undated first/last, no campaign ids
   expect_equal(res[res$phone == "2015559999", "n_engaged"], 0L)
   expect_true(is.na(res[res$phone == "2015559999", "last_disposition_date"]))
+  expect_equal(res[res$phone == "2015559999", "best_disposition"], "never_contacted")
+  expect_true(is.na(res[res$phone == "2015559999", "best_campaign_id"]))
   # a frame missing the read columns is caught
   expect_error(disposition_summary(d[, c("phone", "campaign_id")]),
                "missing required column")

@@ -34,7 +34,9 @@
 .DISPOSITION_SUMMARY_COLS <- c("phone", "ever_contacted", "n_campaigns",
                       "n_engaged", "n_opted_in", "n_completed", "n_web_complete",
                       "n_terminated", "n_error", "first_disposition_date",
-                      "last_disposition_date", "latest_disposition", "campaigns")
+                      "last_disposition_date", "latest_disposition",
+                      "latest_campaign_id", "best_disposition", "best_campaign_id",
+                      "campaigns")
 
 # The stored disposition schema, in canonical order -- what
 # disposition_records() returns. `sent`/`mode`/`error` come from disposition_run();
@@ -71,6 +73,9 @@
     first_disposition_date = rep(as.Date(NA), n),
     last_disposition_date = rep(as.Date(NA), n),
     latest_disposition = rep("never_contacted", n),
+    latest_campaign_id = rep(NA_character_, n),
+    best_disposition = rep("never_contacted", n),
+    best_campaign_id = rep(NA_character_, n),
     campaigns = rep(NA_character_, n), stringsAsFactors = FALSE
   )
 }
@@ -158,6 +163,21 @@
     })[ph]
     as.Date(unname(v), origin = "1970-01-01")
   }
+  # Best (furthest-reached) disposition across the phone's campaigns: the highest
+  # funnel category any of them hit, ranked by the SAME precedence latest uses
+  # (.DISPOSITION_CATEGORIES: non_response < engaged < opted_in < terminated <
+  # completed < web_complete). Re-rank the rows highest-category first (tie ->
+  # latest date, then max id, matching latest_disposition's tie-break), take the
+  # first per phone, and align back to the latest-order phone vector `ph`.
+  rk <- match(d$.category, .DISPOSITION_CATEGORIES)
+  # `date_key` above is in the PRE-reorder order; rebuild the key aligned with the
+  # now-reordered `d` (NA dates sort last, as in the latest ordering).
+  dk <- dd_num
+  dk[is.na(dk)] <- -Inf
+  ob <- order(d$phone, -rk, -dk, -as.numeric(d$campaign_id))
+  db <- d[ob, , drop = FALSE]
+  best <- !duplicated(db$phone)
+  b <- match(ph, db$phone[best])
   data.frame(
     phone = ph,
     ever_contacted = TRUE,
@@ -171,6 +191,9 @@
     first_disposition_date = span(min),
     last_disposition_date = span(max),
     latest_disposition = d$.category[first],
+    latest_campaign_id = as.character(d$campaign_id[first]),
+    best_disposition = db$.category[best][b],
+    best_campaign_id = as.character(db$campaign_id[best][b]),
     campaigns = as.character(
       by_phone(d$campaign_id, function(x) paste(sort(unique(x)), collapse = ","))),
     stringsAsFactors = FALSE
@@ -283,7 +306,7 @@
 #' Summarize the disposition dataset for a phone list (one row per phone)
 #'
 #' Rolls the disposition data up to \strong{one row per phone} -- each number's
-#' cross-campaign status counts, date span, and latest disposition. Pass either the
+#' cross-campaign status counts, date span, and latest/best disposition. Pass either the
 #' projection \strong{path} (read it, then summarize) or an \strong{in-memory
 #' frame} already read with \code{\link{disposition_records}} (summarize it
 #' directly, no I/O), which lets you read once and summarize several phone
@@ -326,8 +349,14 @@
 #'   many campaigns carried a carrier delivery-error code),
 #'   \code{first_disposition_date} / \code{last_disposition_date} (earliest and
 #'   latest \code{disposition_date} across the phone's campaigns, \code{NA} when
-#'   none is dated), \code{latest_disposition}, and \code{campaigns}
-#'   (comma-separated campaign ids).
+#'   none is dated), \code{latest_disposition} + \code{latest_campaign_id} (the
+#'   category of the phone's most-recent campaign and that campaign's id),
+#'   \code{best_disposition} + \code{best_campaign_id} (the furthest-reached
+#'   category across all the phone's campaigns -- ranked by the same funnel
+#'   precedence, so \code{completed} / \code{web_complete} rank highest and
+#'   \code{terminated} above \code{opted_in} -- and the campaign that reached it),
+#'   and \code{campaigns} (comma-separated campaign ids). Campaign ids are
+#'   returned as character.
 #' @seealso \code{\link{disposition_screen}}, \code{\link{disposition_records}},
 #'   \code{\link{disposition_pull}}
 #' @examples
@@ -473,8 +502,9 @@ disposition_records <- function(dataset, phones = NULL, campaign_ids = NULL,
 #'   \code{n_campaigns}, \code{n_engaged}, \code{n_opted_in}, \code{n_completed},
 #'   \code{n_web_complete}, \code{n_terminated}, \code{n_error},
 #'   \code{first_disposition_date}, \code{last_disposition_date},
-#'   \code{latest_disposition}, \code{campaigns} appended (the
-#'   \code{\link{disposition_summary}} columns; see there for their meaning). A
+#'   \code{latest_disposition}, \code{latest_campaign_id},
+#'   \code{best_disposition}, \code{best_campaign_id}, \code{campaigns} appended
+#'   (the \code{\link{disposition_summary}} columns; see there for their meaning). A
 #'   valid phone that is absent from the rows selected by \code{campaign_ids},
 #'   \code{date_from}, and \code{date_to} (the whole dataset when those are unset)
 #'   gets a \code{never_contacted} row (\code{ever_contacted = FALSE},

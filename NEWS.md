@@ -20,6 +20,12 @@
   none is dated) and `n_error` (how many of the phone's campaigns carried a
   carrier delivery-error code). The summary now reads the projection's optional
   `error` column; an un-enriched frame without it yields `n_error = 0`.
+* **`best_disposition` + campaign ids on the summary.** Alongside the
+  recency-based `latest_disposition`, the summary now reports `best_disposition`
+  -- the furthest-reached funnel category across all the phone's campaigns (same
+  precedence as `latest`, so `completed` / `web_complete` rank highest) -- and
+  pins the campaign behind each with `latest_campaign_id` / `best_campaign_id`
+  (returned as character). `campaigns` still lists every id.
 
 * **`disposition_run()` now derives `disposition_date`.** The per-respondent
   frame gains a `disposition_date` column: the row-wise maximum of every
