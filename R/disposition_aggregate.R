@@ -180,9 +180,11 @@ empty_disposition_frame <- function() {
 #'   \code{opted_in}. \code{NULL} (default) is routing-based opt-in -- the
 #'   recipient reached a continuation step (any non-opener, non-terminal
 #'   \code{scriptDate}), which is language- and phrasing-agnostic and reads no
-#'   answer text. A caller may instead pass an explicit filter (e.g.
-#'   \code{id.intro.finalText == "Yes"}); its columns are added so a custom
-#'   population's inputs are not projected away.
+#'   answer text. A completion also sets \code{opted_in} (\code{disposition_run()}
+#'   OR-s in \code{completed}), so for a text-to-web campaign whose link sits in
+#'   the intro a web completion can be the only opt-in signal. A caller may
+#'   instead pass an explicit filter (e.g. \code{id.intro.finalText == "Yes"});
+#'   its columns are added so a custom population's inputs are not projected away.
 #' @return A character vector of unique dot-form column names, including
 #'   \code{phone}. Pass it as \code{columns =} to \code{s160_read_csv()} /
 #'   \code{s160_gcs_campaign_results_read()}.
