@@ -179,7 +179,12 @@ test_that("latency_report preserves summary metrics when no respondents pass fil
   # still appear in the output so the "we texted N but nobody consented"
   # denominator isn't lost. Latency cell counts are 0 across the board.
   expect_gt(nrow(cons), 0L)
-  expect_true(all(cons$n_opted_in == 0L))
+  # This config carries an explicit finalText == "Yes" population, so setting
+  # every finalText to "No" zeroes the custom-population consent. opted_in still
+  # folds in completion (a completer opted in), so n_opted_in reduces to exactly
+  # n_completed here -- 0 where nobody completed, and equal to the completers
+  # elsewhere. (The latency cell count `n` stays 0: it is population-filtered.)
+  expect_true(all(cons$n_opted_in == cons$n_completed))
   expect_true(any(cons$n_sent >= 1L))
   expect_true(all(cons$n == 0L))
   expect_true(all(is.na(cons$pct_le)))

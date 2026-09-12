@@ -3,7 +3,9 @@
 # Inline replacement for the old tests/testthat/fixtures/synthetic_config.yaml.
 # Used by test-latency_report.R to drive latency_report
 # against the synthetic.csv fixture. Field shape matches what latency_build_config()
-# returns.
+# returns; it deliberately carries an EXPLICIT `population` filter (the default is
+# now routing-based, i.e. population = NULL), so tests driven by this config also
+# exercise the custom-population opt-in branch of the funnel masks.
 synthetic_config <- function() {
   list(
     project_id = 1L,

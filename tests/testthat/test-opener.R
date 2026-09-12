@@ -1,9 +1,9 @@
 # R/opener.R is the single source of truth both the latency summary and the
 # disposition transform resolve the opener set from. These tests lock the shared
 # helpers and, crucially, the latency<->disposition alignment: if the two views
-# ever resolved a different opener set or population, they would report different
-# funnels. (The core .opening_questions / .opener_population / .question_timestamp /
-# .dot_form_headers behaviour is covered by test-latency_opening_question.R.)
+# ever resolved a different opener set or opt-in mask, they would report
+# different funnels. (The core .opening_questions / .question_timestamp /
+# .continuation_questions behaviour is covered by test-latency_opening_question.R.)
 
 # One-row frame with the named columns present (blank values); presence is all
 # the opener/population resolution looks at. check.names=FALSE keeps dot/bracket.
@@ -61,12 +61,16 @@ test_that("latency and disposition resolve the SAME opener set and population", 
     cfg <- latency_build_config(1L, d, field_timezone = "America/New_York")
     expect_equal(.discover_openers(d), .opening_questions(cfg$flow$questions),
                  info = nm)
-    expect_equal(.disposition_default_population(d), cfg$filters$population,
-                 info = nm)
+    # opt-in is routing-based (a mask, not a finalText filter), so neither path
+    # generates a population: both derive consent identically in .funnel_masks.
+    expect_null(cfg$filters$population, info = nm)
   }
 })
 
 test_that(".funnel_masks composes sent / engaged / opted-in on the opener set", {
+  # The custom-population override path: an explicit `population` filter still
+  # decides opt-in by answer text (here finalText == "Yes"), so a caller that
+  # needs a specific consent answer keeps it.
   ts <- "2026-01-26 15:00:00.000000Z"
   d <- data.frame(
     id.intro.scriptDate = c(ts, ts, ts, ""),   # r4 never sent
@@ -74,13 +78,37 @@ test_that(".funnel_masks composes sent / engaged / opted-in on the opener set", 
     id.intro.finalText  = c("Yes", "No", "Yes", "Yes"),
     stringsAsFactors = FALSE, check.names = FALSE
   )
-  m <- .funnel_masks(d, "intro", 'id.intro.finalText == "Yes"')
+  m <- .funnel_masks(d, "intro", latency_discover_questions(d),
+                     'id.intro.finalText == "Yes"')
   expect_s3_class(m$send, "POSIXct")                 # returned for date/hour bucketing
   expect_equal(m$sent,     c(TRUE, TRUE, TRUE, FALSE))
   # engaged is `!is.na(reply) & sent`: r3 has a send but no reply; r4 has a reply
   # but no send -- neither is engaged (a reply presupposes a send).
   expect_equal(m$engaged,  c(TRUE, TRUE, FALSE, FALSE))
   expect_equal(m$opted_in, c(TRUE, FALSE, TRUE, FALSE))   # r2 "No", r4 not sent
+})
+
+test_that(".funnel_masks default opt-in is routing-based (reached a continuation)", {
+  # No population filter: opt-in = the opener routed the recipient FORWARD, i.e.
+  # they reached a continuation step (survey body or the close family). This is
+  # language- and phrasing-agnostic -- it never reads the answer TEXT -- so a
+  # Spanish opt-in ("en español" -> close_spanish) or a templated answer counts,
+  # where the legacy finalText == "Yes" match silently read 0.
+  ts <- "2026-01-26 15:00:00.000000Z"
+  d <- data.frame(
+    id.intro.scriptDate    = c(ts, ts, ts, ""),   # r4 never sent
+    id.intro.batchDate     = c(ts, ts, ts, ts),
+    id.intro.finalText     = c("im down", "STOP", "en", "Yes"),  # never inspected
+    id.close.scriptDate    = c(ts, "", "", ""),   # r1 reached close (English)
+    id.close_sp.scriptDate = c("", "", ts, ""),   # r3 reached close (Spanish)
+    id.refused.scriptDate  = c("", ts, "", ""),   # r2 routed to a terminal step
+    stringsAsFactors = FALSE, check.names = FALSE
+  )
+  m <- .funnel_masks(d, "intro", latency_discover_questions(d))
+  expect_equal(m$sent, c(TRUE, TRUE, TRUE, FALSE))
+  # r1 reached close, r3 reached close_sp -> opted in; r2 hit a terminal branch
+  # (refused, excluded from continuation); r4 never sent.
+  expect_equal(m$opted_in, c(TRUE, FALSE, TRUE, FALSE))
 })
 
 test_that("latency counts and disposition flags agree on sent/engaged/opted-in", {

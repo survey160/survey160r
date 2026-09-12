@@ -2,6 +2,28 @@
 
 ## Bug fixes
 
+* **Opt-in is now measured by routing, not by the intro answer text, so
+  `n_opted_in` (latency) and `opted_in` (disposition) no longer read 0 for a
+  campaign whose consent answer is not the literal `"Yes"`.** The default opt-in
+  signal was `id.<opener>.finalText == "Yes"`, which silently missed every
+  campaign whose opener routes forward on a different answer -- a Spanish "en
+  español" branch, an "im down", a templated value -- undercounting opt-in to 0
+  for those recipients. Opt-in is now derived from the flow: a recipient opted in
+  when the opener routed them FORWARD, i.e. they reached a continuation step (any
+  non-opener, non-terminal `scriptDate` -- a survey-body question or the close
+  family; refusal / ineligible / opt-out branches are excluded). This is language-
+  and phrasing-agnostic and reads no answer text, so bilingual and non-`"Yes"`
+  campaigns are counted. Both views derive it from the one shared funnel mask, so
+  they stay in agreement. A caller that needs opt-in decided by a specific answer
+  can still pass an explicit `population` filter to `disposition_run()`; the
+  latency view uses the routing default. Because opt-in reads no answer text, the
+  projection helpers (`disposition_input_columns()`, `latency_input_columns()`) no
+  longer retain the opener `finalText` column by default. A completion is also
+  treated as an opt-in (`opted_in` is OR-ed with `completed`), so the funnel stays
+  monotone (`opted_in >= completed`) in every mode -- this matters for text-to-web
+  campaigns whose link sits in the intro, where the recipient completes on the web
+  with no downstream close step and the web completion is the only opt-in evidence.
+
 * **NA integer values are no longer mis-read from nanoparquet-written
   projections.** nanoparquet 0.5.1 mis-decodes an NA integer (e.g. `completed` on
   t2w_external rows) under `col_select` -- returning uninitialized memory instead

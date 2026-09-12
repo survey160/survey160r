@@ -9,14 +9,20 @@ disposition_input_columns(available = NULL, population = NULL)
 \arguments{
 \item{available}{Optional character vector of the actual (dot-form) column
 names present in the file (e.g. from \code{s160_csv_header()}). When
-supplied, the close-message Text columns are retained. Strongly recommended.}
+supplied, the close-message Text columns and every survey-body
+\code{scriptDate} are retained. Effectively required: omitting it yields a
+lossy projection that can undercount \code{opted_in} on a multi-question
+campaign (see Details).}
 
 \item{population}{Optional population-filter expression defining
-\code{opted_in}. \code{NULL} (default) uses the opening question set's accepted
-answer -- \code{id.intro.finalText == "Yes"} for a normal campaign, a
-disjunction over the intro-family openers for a routed one (opener set
-discovered from \code{available}). Its columns are added so a custom
-population's inputs are not projected away.}
+\code{opted_in}. \code{NULL} (default) is routing-based opt-in -- the
+recipient reached a continuation step (any non-opener, non-terminal
+\code{scriptDate}), which is language- and phrasing-agnostic and reads no
+answer text. A completion also sets \code{opted_in} (\code{disposition_run()}
+OR-s in \code{completed}), so for a text-to-web campaign whose link sits in
+the intro a web completion can be the only opt-in signal. A caller may
+instead pass an explicit filter (e.g. \code{id.intro.finalText == "Yes"});
+its columns are added so a custom population's inputs are not projected away.}
 }
 \value{
 A character vector of unique dot-form column names, including
@@ -34,12 +40,20 @@ it reads \code{phone} (the row key), and it does NOT read \code{campaignid}
 argument, not the data.
 }
 \details{
-Some columns are data-dependent: the close-message Text columns that
-\code{detect_survey_mode()} greps to tell \code{t2w_external} from
-\code{sms}. Pass \code{available} (e.g. the result of \code{s160_csv_header()})
-so those are matched against the real header and retained; omitting it risks
-projecting them away and misclassifying a \code{t2w_external} campaign as
-\code{sms}.
+Some columns are data-dependent, so \code{available} (e.g. the result of
+\code{s160_csv_header()}) is effectively required for a faithful projection:
+\enumerate{
+  \item the close-message Text columns \code{detect_survey_mode()} greps to
+    tell \code{t2w_external} from \code{sms} -- omit them and a
+    \code{t2w_external} campaign is misclassified as \code{sms};
+  \item every survey-body \code{scriptDate}, which the routing-based
+    \code{opted_in} keys on. Without \code{available} the set cannot enumerate
+    the body questions (it degrades to \code{intro} + the fallback \code{close}
+    only), so a projected read of a multi-question campaign would DROP the body
+    timestamps and silently undercount \code{opted_in} (a recipient who reached
+    a body question but not the close). Pass \code{available} (or read the full
+    file) whenever a campaign has body questions.
+}
 }
 \examples{
 \dontrun{

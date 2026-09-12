@@ -40,7 +40,7 @@ test_that("build_config applies stateless defaults", {
   expect_equal(cfg$project_id, 1L)                # default = campaign_id
   expect_equal(cfg$field_timezone, "UTC")
   expect_equal(cfg$flow$questions, c("intro", "q1", "close"))
-  expect_equal(cfg$filters$population, 'id.intro.finalText == "Yes"')
+  expect_null(cfg$filters$population)   # opt-in is routing-based, not a filter
   expect_equal(cfg$filters$campaign_id_column, "campaignid")
   expect_null(cfg$filters$respondent_id_column)
   expect_null(cfg$filters$date_filter)

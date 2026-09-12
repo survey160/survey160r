@@ -67,30 +67,39 @@
   .question_events(data, .closing_questions(questions), "scriptDate")
 }
 
-# Default opt-in population: the opening question set's accepted answer is "Yes"
-# -- a disjunction over the openers' finalText columns, restricted to those
-# PRESENT in `available` so an absent routed branch doesn't trip
-# validate_columns_present() / .population_mask's missing-column guard or the
-# population eval. For a pure-intro campaign this is exactly `.default_population`.
-.opener_population <- function(openers, available) {
-  cols <- sprintf("id.%s.finalText", openers)
-  present <- cols[cols %in% available]
-  if (length(present) == 0L) present <- cols[1L]
-  paste(sprintf("%s == \"Yes\"", present), collapse = " | ")
+# The terminal branches of a flow -- the steps the opener routes a NON-opt-in
+# answer to: refusal, ineligible, opt-out. Reaching one is a hard stop, not
+# consent. Name-matched (^refus / ^inelig / ^opt[-_]?out), case-insensitive, so a
+# bilingual/casual campaign is covered regardless of the answer TEXT.
+.terminal_questions <- function(questions) {
+  grep("^(refus|inelig|opt[-_]?out|optout)", questions,
+       ignore.case = TRUE, value = TRUE)
 }
 
-# v2 CSV headers arrive dot-form (id.<q>.field, as the readers munge them via
-# make.names) OR raw bracket-form (id[<q>]field). latency_discover_questions()
-# accepts both, so normalize a raw header to dot-form before .opener_population()
-# resolves finalText columns -- otherwise a raw bilingual header matches no
-# dot-form finalText column and the population collapses to the first opener,
-# silently dropping later branches. Dot-form names pass through unchanged.
-.dot_form_headers <- function(cols) {
-  sub("^id\\[([A-Za-z0-9_]+)\\]([A-Za-z0-9_]+)$", "id.\\1.\\2", cols)
+# The continuation steps -- every question that is neither an opener nor a
+# terminal branch (the survey body + the close family). Reaching ANY of them
+# means the opener routed the recipient FORWARD, i.e. they consented. Falls back
+# to the close family when the flow has no other continuation (a T2W / short
+# campaign whose opener routes straight to close), so the mask is never empty.
+.continuation_questions <- function(questions) {
+  cont <- setdiff(questions,
+                  c(.opening_questions(questions), .terminal_questions(questions)))
+  if (length(cont) > 0L) cont else .closing_questions(questions)
 }
 
-# The opt-in / consent mask: TRUE where the recipient passes the population
-# filter (default id.<opener>.finalText == "Yes"). Null-safe -- a population that
+# The routing-based opt-in / consent mask: TRUE where the recipient reached a
+# continuation step (the opener routed them forward). This is the DEFAULT consent
+# signal -- language- and phrasing-agnostic, unlike the legacy
+# id.<opener>.finalText == "Yes" text match, which silently reads 0 for a campaign
+# whose opt-in answer is "im down" / "en español" / a templated value. A caller
+# that needs a specific answer still passes an explicit `population` filter.
+.reached_continuation <- function(data, questions) {
+  .question_events(data, .continuation_questions(questions), "scriptDate")
+}
+
+# The custom-population consent mask: TRUE where the recipient passes an explicit
+# `population` filter (the routing default in .funnel_masks needs no population;
+# this is only reached when a caller supplies one). Null-safe -- a population that
 # references a genuinely-absent data column yields all-FALSE rather than an eval
 # error. A referenced symbol is "absent" only if it is neither a data column nor
 # resolvable in baseenv() (population_filter_mask binds columns with parent =
@@ -116,17 +125,28 @@
 # Each keys on the opener SET:
 #   sent     = received ANY opener send   (opener scriptDate present)
 #   engaged  = replied to ANY opener AND was sent (a reply presupposes a send)
-#   opted_in = passed the opt-in population AND was sent
+#   opted_in = reached a continuation step (the opener routed them forward) AND
+#              was sent -- OR passed an explicit `population` filter when one is
+#              given (the custom-consent override).
 # `send` (the coalesced opener scriptDate) is returned so the latency view can
 # bucket its summary by send date/hour; the disposition view uses only the masks.
-.funnel_masks <- function(data, openers, population) {
+# NOTE both consumers additionally OR the mode-dependent `completed` signal into
+# opted_in (a completion is an opt-in), so the reported opted_in is >= completed
+# in every mode; that fold lives in the consumers because completion is
+# mode-dependent (computed there), not in this routing/population mask.
+.funnel_masks <- function(data, openers, questions, population = NULL) {
   send <- .question_timestamp(data, openers, "scriptDate")
   reply <- .question_timestamp(data, openers, "batchDate")
   sent <- !is.na(send)
+  opted <- if (is.null(population)) {
+    .reached_continuation(data, questions)
+  } else {
+    .population_mask(data, population)
+  }
   list(
     send = send,
     sent = sent,
     engaged = !is.na(reply) & sent,
-    opted_in = .population_mask(data, population) & sent
+    opted_in = opted & sent
   )
 }
