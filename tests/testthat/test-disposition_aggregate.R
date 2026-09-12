@@ -489,6 +489,34 @@ test_that("disposition_input_columns: projected read matches a full read", {
   expect_equal(full_res$consolidated$error, c("4720", NA))     # survived projection
 })
 
+test_that("routing opt-in survives an `available` projection for a body-only reacher", {
+  # A multi-question SMS survey where r1 reaches a BODY question (q1) but never
+  # the close: routing opt-in keys on q1's scriptDate. `available` must project
+  # every reached body-question timestamp (not just the close family) or a
+  # projected read would undercount opted_in vs a full read. r1 body-only, r2
+  # completed (reached close), r3 texted but went no further.
+  full <- disp_frame(
+    phone = c("+15559601", "+15559602", "+15559603"),
+    id.intro.scriptDate = c(TS, TS, TS),
+    id.intro.batchDate  = c(TS, TS, TS),
+    id.intro.finalText  = c("nope", "nope", "nope"),  # non-"Yes"; routing ignores it
+    id.q1.scriptDate    = c(TS, TS, ""),   # r1, r2 routed forward to the body
+    id.close.scriptDate = c("", TS, "")    # only r2 reached the close
+  )
+  keep <- disposition_input_columns(available = names(full))
+  expect_true("id.q1.scriptDate" %in% keep)   # the body timestamp is projected
+  projected <- full[, intersect(keep, names(full)), drop = FALSE]
+  full_res <- disposition_run(1234, full, contacted_only = FALSE)
+  expect_equal(disposition_run(1234, projected, contacted_only = FALSE), full_res)
+  # r1 (body-only) and r2 (completed) opted in via routing; r3 did not.
+  expect_equal(full_res$consolidated$opted_in, c(1L, 1L, 0L))
+
+  # Contrast: the default (available = NULL) projection knows no body question, so
+  # it drops id.q1.scriptDate and a projected read would undercount r1's opt-in --
+  # this is why `available` is required for a faithful multi-question projection.
+  expect_false("id.q1.scriptDate" %in% disposition_input_columns())
+})
+
 # --- result shape (list mirroring latency_run) ------------------------------
 
 test_that("disposition_run returns a list of consolidated + meta", {
