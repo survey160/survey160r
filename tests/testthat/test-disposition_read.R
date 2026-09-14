@@ -21,7 +21,8 @@ test_that("summarizes one row per phone with cross-campaign counts", {
   expect_equal(nrow(res), 2L)
   expect_named(res, c("phone", "n_campaigns", "campaigns", "n_engaged",
                       "n_opted_in", "n_completed", "n_web_complete",
-                      "n_terminated", "n_error", "latest_disposition",
+                      "n_terminated", "n_refused", "n_ineligible", "n_error",
+                      "latest_disposition",
                       "latest_campaign_id", "best_disposition", "best_campaign_id",
                       "first_disposition_date", "last_disposition_date"))
   r1 <- res[res$phone == "2015550101", ]
@@ -46,6 +47,67 @@ test_that("summarizes one row per phone with cross-campaign counts", {
   expect_equal(r2$n_terminated, 1L)
   expect_equal(r2$n_completed, 0L)
   expect_equal(r2$first_disposition_date, as.Date("2026-03-01"))
+})
+
+test_that("terminated splits into refused / ineligible; the residual stays terminated", {
+  # survey160r 0.51.0 split: refused (declined) vs ineligible (screened out),
+  # name-derived. The DB producer keeps `terminated` (SQL status) as a SUPERSET, so
+  # a row can be terminated with neither flag set (an in-survey screener the name
+  # match could not classify) -> its category stays `terminated` (the residual).
+  d <- data.frame(
+    phone = c("2015550201", "2015550202", "2015550203"),
+    campaign_id = 1L,
+    engaged = 1L, opted_in = 0L, completed = 0L, web_complete = 0L,
+    refused    = c(1L, 0L, 0L),
+    ineligible = c(0L, 1L, 0L),
+    terminated = c(1L, 1L, 1L),   # all terminal (superset); p3 is the unsplit residual
+    disposition_date = as.Date("2026-03-01"), stringsAsFactors = FALSE)
+  res <- disposition_summary(d)
+  res <- res[order(res$phone), ]
+  expect_equal(res$latest_disposition, c("refused", "ineligible", "terminated"))
+  expect_equal(res$n_refused,    c(1L, 0L, 0L))
+  expect_equal(res$n_ineligible, c(0L, 1L, 0L))
+  expect_equal(res$n_terminated, c(1L, 1L, 1L))   # the union/superset count
+})
+
+test_that("best_disposition ranks refused > ineligible; records + statuses expose the split", {
+  # RANK, isolated from recency: refused in the EARLY campaign, ineligible in the
+  # LATE one -> latest is `ineligible` (recency) but best is `refused` (higher
+  # terminal rank), proving the .DISPOSITION_CATEGORIES ordering terminated <
+  # ineligible < refused.
+  d <- data.frame(
+    phone = "2015550301", campaign_id = c(10L, 20L), sent = 1L,
+    engaged = 1L, opted_in = 0L, completed = 0L, web_complete = 0L,
+    refused    = c(1L, 0L),
+    ineligible = c(0L, 1L),
+    terminated = c(1L, 1L),
+    disposition_date = as.Date(c("2026-01-01", "2026-05-01")), stringsAsFactors = FALSE)
+  res <- disposition_summary(d)
+  expect_equal(res$latest_disposition, "ineligible")   # campaign 20, later
+  expect_equal(res$best_disposition, "refused")         # refused outranks ineligible
+  expect_equal(res$n_terminated, 2L)
+  expect_equal(res$n_refused, 1L)
+  expect_equal(res$n_ineligible, 1L)
+  # the new categories are valid `statuses` filters (keyed on latest_disposition)
+  expect_equal(nrow(disposition_summary(d, statuses = "ineligible")), 1L)
+  expect_equal(nrow(disposition_summary(d, statuses = "refused")), 0L)  # latest is ineligible
+  # disposition_records surfaces the two columns as stored
+  rec <- disposition_records(write_disposition_parquet(d))
+  expect_true(all(c("refused", "ineligible") %in% names(rec)))
+  expect_equal(rec$refused, c(1L, 0L))
+  expect_equal(rec$ineligible, c(0L, 1L))
+})
+
+test_that("a pre-split projection defaults n_refused / n_ineligible to 0", {
+  # .disposition_row() carries no refused/ineligible columns (a pre-0.51.0
+  # projection): the rollup defaults them to 0, the terminal stays `terminated`,
+  # and the two new count columns are present and 0 (backward-compat).
+  res <- disposition_summary(write_disposition_parquet(rbind(
+    .disposition_row("1", 1, terminated = 1, disposition_date = "2026-03-01"))))
+  expect_true(all(c("n_refused", "n_ineligible") %in% names(res)))
+  expect_equal(res$n_refused, 0L)
+  expect_equal(res$n_ineligible, 0L)
+  expect_equal(res$latest_disposition, "terminated")
 })
 
 test_that("n_completed and n_web_complete are counted separately", {

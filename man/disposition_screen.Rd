@@ -29,7 +29,8 @@ or pagination here -- every sample row is returned.}
 \code{sample} with the \code{\link{disposition_summary}} columns
   appended (see there for their meaning and order): \code{n_campaigns},
   \code{campaigns}, \code{n_engaged}, \code{n_opted_in}, \code{n_completed},
-  \code{n_web_complete}, \code{n_terminated}, \code{n_error},
+  \code{n_web_complete}, \code{n_terminated}, \code{n_refused},
+  \code{n_ineligible}, \code{n_error},
   \code{latest_disposition}, \code{latest_campaign_id}, \code{best_disposition},
   \code{best_campaign_id}, \code{first_disposition_date},
   \code{last_disposition_date}. A valid phone that is absent from the rows

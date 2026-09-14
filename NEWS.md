@@ -2,6 +2,21 @@
 
 ## New features
 
+* **The disposition readers surface the `refused` / `ineligible` split.**
+  `disposition_records()` returns the two new columns as stored;
+  `disposition_summary()` / `disposition_screen()` gain `n_refused` /
+  `n_ineligible` counts (alongside `n_terminated`, kept as the union). The derived
+  disposition category splits too: `latest_disposition` / `best_disposition` now
+  report `refused` (declined) or `ineligible` (screened out) where the terminal was
+  name-classified, ranked `terminated` < `ineligible` < `refused`. `terminated` is
+  kept only for the unsplit residual -- a hard stop the DB producer's authoritative
+  SQL `status='terminated'` superset caught but the routing name-match could not
+  classify (e.g. an in-survey `q_<n>` screener). **Breaking:** a consumer that
+  matched `latest_disposition == "terminated"` must now also handle `"refused"` /
+  `"ineligible"` (screen on all three via `statuses=`). A pre-0.51.0 projection
+  that lacks the two columns still reads -- they default to 0 and those rows stay
+  `terminated`.
+
 * **`disposition_run()` splits `terminated` into `refused` and `ineligible`.**
   The per-phone frame gains two columns: `refused` (the recipient reached a
   refusal terminal -- declined) and `ineligible` (a screen-out / termination
