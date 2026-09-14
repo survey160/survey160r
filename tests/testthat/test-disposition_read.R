@@ -51,13 +51,16 @@ test_that("summarizes one row per phone with cross-campaign counts", {
 
 test_that("terminated splits into refused / ineligible; the residual stays terminated", {
   # survey160r 0.51.0 split: refused (declined) vs ineligible (screened out),
-  # name-derived. The DB producer keeps `terminated` (SQL status) as a SUPERSET, so
-  # a row can be terminated with neither flag set (an in-survey screener the name
-  # match could not classify) -> its category stays `terminated` (the residual).
+  # name-derived. A downstream projection keeps `terminated` (an authoritative
+  # status) as a SUPERSET, so a row can be terminated with neither flag set (an
+  # in-survey `q_7` screener the name match could not classify) -> its category
+  # stays `terminated`. p3 is that residual in its real shape: it REACHED q_7 (a
+  # continuation, so opted_in = 1) yet was terminated -- `terminated` must win over
+  # `opted_in` (a hard stop outranks consent), not fall back to `opted_in`.
   d <- data.frame(
     phone = c("2015550201", "2015550202", "2015550203"),
     campaign_id = 1L,
-    engaged = 1L, opted_in = 0L, completed = 0L, web_complete = 0L,
+    engaged = 1L, opted_in = c(0L, 0L, 1L), completed = 0L, web_complete = 0L,
     refused    = c(1L, 0L, 0L),
     ineligible = c(0L, 1L, 0L),
     terminated = c(1L, 1L, 1L),   # all terminal (superset); p3 is the unsplit residual
@@ -65,6 +68,7 @@ test_that("terminated splits into refused / ineligible; the residual stays termi
   res <- disposition_summary(d)
   res <- res[order(res$phone), ]
   expect_equal(res$latest_disposition, c("refused", "ineligible", "terminated"))
+  expect_equal(res$n_opted_in, c(0L, 0L, 1L))       # p3 reached the continuation
   expect_equal(res$n_refused,    c(1L, 0L, 0L))
   expect_equal(res$n_ineligible, c(0L, 1L, 0L))
   expect_equal(res$n_terminated, c(1L, 1L, 1L))   # the union/superset count

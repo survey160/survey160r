@@ -8,10 +8,14 @@
   `n_ineligible` counts (alongside `n_terminated`, kept as the union). The derived
   disposition category splits too: `latest_disposition` / `best_disposition` now
   report `refused` (declined) or `ineligible` (screened out) where the terminal was
-  name-classified, ranked `terminated` < `ineligible` < `refused`. `terminated` is
-  kept only for the unsplit residual -- a hard stop the DB producer's authoritative
-  SQL `status='terminated'` superset caught but the routing name-match could not
-  classify (e.g. an in-survey `q_<n>` screener). **Breaking:** a consumer that
+  name-classified, ranked `terminated` < `ineligible` < `refused`. `terminated`
+  survives as a category for the unsplit residual: `disposition_run()` itself never
+  emits one (it sets `terminated = refused | ineligible`), but a downstream
+  projection that sets `terminated` from an authoritative status independent of the
+  name-split -- the consumer DB producer keys it on SQL `status='terminated'` --
+  can carry a terminal with neither flag (e.g. an in-survey `q_<n>` screener the
+  name-match cannot classify), and the readers keep those rows `terminated`.
+  **Breaking:** a consumer that
   matched `latest_disposition == "terminated"` must now also handle `"refused"` /
   `"ineligible"` (screen on all three via `statuses=`). A pre-0.51.0 projection
   that lacks the two columns still reads -- they default to 0 and those rows stay

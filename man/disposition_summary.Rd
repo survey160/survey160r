@@ -65,8 +65,10 @@ A data frame, one row per phone, columns in this order:
   \code{n_engaged}, \code{n_opted_in}, \code{n_completed},
   \code{n_web_complete}, \code{n_terminated} (every hard stop -- the union),
   then \code{n_refused} and \code{n_ineligible} (its split; each \code{0} on a
-  pre-0.51.0 projection, and they can sum to less than \code{n_terminated} when
-  a terminal was unsplit) -- each \code{0} when the phone
+  pre-0.51.0 projection; they need not sum to \code{n_terminated}, since a
+  downstream projection can set \code{terminated} independently of the split --
+  less when a terminal was unsplit, more when the split flagged a terminal the
+  status had not) -- each \code{0} when the phone
   never reached that status and \code{> 0} the number of the phone's campaigns
   that did (they overlap: a completed campaign is also engaged) -- plus
   \code{n_error} (how many campaigns carried a carrier delivery-error code);
