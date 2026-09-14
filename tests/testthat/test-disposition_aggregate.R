@@ -28,7 +28,8 @@ test_that("sms campaign: per-respondent flags and mode", {
   res <- disposition_run(1234, d, contacted_only = FALSE)$consolidated
 
   expect_named(res, c("phone", "campaign_id", "sent", "engaged", "opted_in",
-                      "completed", "web_complete", "terminated", "mode", "error",
+                      "completed", "web_complete", "refused", "ineligible",
+                      "terminated", "mode", "error",
                       "disposition_date"))
   expect_equal(res$phone, c("+15550101", "+15550102", "+15550103"))
   expect_true(is.integer(res$campaign_id))
@@ -140,7 +141,46 @@ test_that("terminated flags ineligible OR refusal", {
     id.refusal.scriptDate    = c("",  TS, TS, "")
   )
   res <- disposition_run(1234, d)$consolidated
+  # terminated is the union; refused / ineligible split it by which terminal fired.
+  expect_equal(res$refused,    c(0L, 1L, 1L, 0L))   # p2, p3 reached refusal
+  expect_equal(res$ineligible, c(1L, 0L, 1L, 0L))   # p1, p3 reached ineligible
+  expect_equal(res$terminated, c(1L, 1L, 1L, 0L))   # refused | ineligible
+})
+
+test_that("refused/ineligible catch non-standard terminal names (online_refusal, terminate)", {
+  # The name-regex split recognizes terminal steps beyond the exact
+  # ineligible/refusal columns: online_refusal / panel_refuse -> refused;
+  # terminate / term / screenout -> ineligible. Reaching one is a hard stop, so it
+  # is NOT opted_in (the routing continuation set excludes every terminal family).
+  d <- disp_frame(
+    phone = c("+15550a01", "+15550a02", "+15550a03", "+15550a04"),
+    id.intro.scriptDate           = rep(TS, 4),
+    id.online_refusal.scriptDate  = c(TS, "", "", ""),   # refusal (non-standard)
+    id.panel_refuse.scriptDate    = c("", TS, "", ""),   # refusal (non-standard)
+    id.terminate.scriptDate       = c("", "", TS, ""),   # ineligible/termination
+    id.close.scriptDate           = c("", "", "", TS)    # r4 opted in (reached close)
+  )
+  res <- disposition_run(1234, d, contacted_only = FALSE)$consolidated
+  expect_equal(res$refused,    c(1L, 1L, 0L, 0L))
+  expect_equal(res$ineligible, c(0L, 0L, 1L, 0L))
   expect_equal(res$terminated, c(1L, 1L, 1L, 0L))
+  # the terminal reachers are NOT opted in; only r4 (reached close) is.
+  expect_equal(res$opted_in,   c(0L, 0L, 0L, 1L))
+})
+
+test_that("a q_<name> question ending in _refuse is NOT a refusal terminal", {
+  # q_pres_voted_3p_short_refuse is a survey question (a refused-to-answer branch),
+  # not a refusal terminal -- reaching it is participation, so it is a continuation
+  # (opted_in), not refused.
+  d <- disp_frame(
+    phone = c("+15550b01", "+15550b02"),
+    id.intro.scriptDate                    = c(TS, TS),
+    id.q_pres_voted_3p_short_refuse.scriptDate = c(TS, ""),  # a body question
+    id.refusal.scriptDate                  = c("", TS)       # a real refusal
+  )
+  res <- disposition_run(1234, d, contacted_only = FALSE)$consolidated
+  expect_equal(res$refused,  c(0L, 1L))   # only the real refusal, not the q_ step
+  expect_equal(res$opted_in, c(1L, 0L))   # r1 reached the body question -> opted in
 })
 
 test_that("custom population expression drives opted_in", {
@@ -215,7 +255,8 @@ test_that("zero-row input returns the empty disposition frame", {
   res <- disposition_run(1234, d)$consolidated
   expect_equal(nrow(res), 0L)
   expect_named(res, c("phone", "campaign_id", "sent", "engaged", "opted_in",
-                      "completed", "web_complete", "terminated", "mode", "error",
+                      "completed", "web_complete", "refused", "ineligible",
+                      "terminated", "mode", "error",
                       "disposition_date"))
   expect_true(is.integer(res$sent))
   expect_true(is.character(res$phone))
@@ -394,7 +435,8 @@ test_that("contacted_only with no contacted rows yields a typed zero-row frame",
   res <- disposition_run(1234, d)$consolidated
   expect_equal(nrow(res), 0L)
   expect_named(res, c("phone", "campaign_id", "sent", "engaged", "opted_in",
-                      "completed", "web_complete", "terminated", "mode", "error",
+                      "completed", "web_complete", "refused", "ineligible",
+                      "terminated", "mode", "error",
                       "disposition_date"))
   expect_true(is.integer(res$sent))
   expect_true(is.character(res$phone))

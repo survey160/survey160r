@@ -67,13 +67,51 @@
   .question_events(data, .closing_questions(questions), "scriptDate")
 }
 
-# The terminal branches of a flow -- the steps the opener routes a NON-opt-in
-# answer to: refusal, ineligible, opt-out. Reaching one is a hard stop, not
-# consent. Name-matched (^refus / ^inelig / ^opt[-_]?out), case-insensitive, so a
-# bilingual/casual campaign is covered regardless of the answer TEXT.
-.terminal_questions <- function(questions) {
-  grep("^(refus|inelig|opt[-_]?out|optout)", questions,
+# Every question discovered from the data/header, INCLUDING the terminal states
+# that latency_discover_questions() strips from the FLOW (it drops `.terminal_states`
+# so the latency segments don't count a screen-out as a body step). The terminal
+# disposition masks below need to SEE those terminal columns, so they enumerate
+# the unfiltered set here (dot form id.<q>.scriptDate or raw bracket id[<q>]scriptDate).
+.all_questions <- function(data) {
+  cols <- if (is.data.frame(data)) names(data) else as.character(data)
+  m_dot <- regmatches(cols, regexec("^id\\.([A-Za-z0-9_]+)\\.scriptDate$", cols))
+  m_brk <- regmatches(cols, regexec("^id\\[([A-Za-z0-9_]+)\\]scriptDate$", cols))
+  qs <- c(vapply(m_dot, function(x) if (length(x) == 2L) x[[2L]] else NA_character_, ""),
+          vapply(m_brk, function(x) if (length(x) == 2L) x[[2L]] else NA_character_, ""))
+  unique(qs[!is.na(qs)])
+}
+
+# The REFUSAL terminal steps -- the recipient declined. Name-matched on `refus`
+# anywhere (so refusal / online_refusal / panel_refuse / refusal_sp all count, not
+# just a `^refus` prefix), case-insensitive. EXCLUDES a `q_<n>` / `q_<name>`
+# survey question that merely ends in "_refuse" (a refused-to-answer branch of a
+# body question, e.g. q_pres_voted_3p_short_refuse) -- reaching one of those is
+# still participation, not a refusal terminal.
+.refusal_questions <- function(questions) {
+  cand <- grep("refus", questions, ignore.case = TRUE, value = TRUE)
+  cand[!grepl("^q[_0-9]", cand, ignore.case = TRUE)]
+}
+
+# The INELIGIBLE / TERMINATION terminal steps -- the survey screened the recipient
+# out or terminated them (not their choice). Name-matched on inelig / terminat /
+# a `term` token / screen / disqualif, case-insensitive, so misspellings
+# (ineligble, ineligable), Spanish (ineligible_sp), and short forms (term,
+# birthday_term) are covered.
+.ineligible_questions <- function(questions) {
+  grep("inelig|terminat|(^|_)term($|_)|screen|disqualif", questions,
        ignore.case = TRUE, value = TRUE)
+}
+
+# The terminal branches of a flow -- every hard stop the opener routes a NON-opt-in
+# answer to: a refusal, an ineligible/termination screen-out, or an opt-out.
+# Reaching one is a hard stop, not consent, so it is excluded from the opt-in
+# continuation set. The union of the refusal + ineligible families above plus
+# opt-out (`^opt[-_]?out`), name-matched and language-agnostic.
+.terminal_questions <- function(questions) {
+  optout <- grep("^(opt[-_]?out|optout)", questions, ignore.case = TRUE,
+                 value = TRUE)
+  unique(c(.refusal_questions(questions), .ineligible_questions(questions),
+           optout))
 }
 
 # The continuation steps -- every question that is neither an opener nor a

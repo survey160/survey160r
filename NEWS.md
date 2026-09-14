@@ -1,6 +1,25 @@
 # survey160r (development version)
 
+## New features
+
+* **`disposition_run()` splits `terminated` into `refused` and `ineligible`.**
+  The per-phone frame gains two columns: `refused` (the recipient reached a
+  refusal terminal -- declined) and `ineligible` (a screen-out / termination
+  terminal). `terminated` is kept as their union for back-compat. The terminal
+  steps are name-matched by regex over ALL discovered question columns (not the
+  two hardcoded `id.refusal` / `id.ineligible`), so non-standard names are caught:
+  `online_refusal` / `panel_refuse` / `refusal_sp` count as `refused`;
+  `terminate` / `terminating` / `term` / `screenout` / misspellings
+  (`ineligble`, `ineligable`) count as `ineligible`. A survey question that merely
+  ends in `_refuse` (a `q_<name>` refused-to-answer branch) is excluded, so it
+  stays a participation step.
+
 ## Bug fixes
+
+* **Routing opt-in no longer over-counts a non-standard terminal step as
+  consent.** The continuation set now excludes the full refusal + ineligible
+  families above (previously only `^refus` / `^inelig` / `^optout`), so reaching
+  `online_refusal`, `terminate`, etc. is correctly a hard stop, not an opt-in.
 
 * **Opt-in is now measured by routing, not by the intro answer text, so
   `n_opted_in` (latency) and `opted_in` (disposition) no longer read 0 for a
