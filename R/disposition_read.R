@@ -19,13 +19,23 @@
 # consolidated file, a full read + in-R filter is sub-second.
 
 # Columns the summary reads (the Parquet read is projected to just these).
+# `refused`/`ineligible` (survey160r 0.51.0) are optional -- a projection produced
+# before the split lacks them, and the rollup defaults them to 0 (see below), so an
+# old projection reads as all-`terminated` with no refused/ineligible detail.
 .DISPOSITION_READ_COLS <- c("phone", "campaign_id", "engaged", "opted_in", "completed",
-                   "web_complete", "terminated", "error", "disposition_date")
+                   "web_complete", "refused", "ineligible", "terminated", "error",
+                   "disposition_date")
 
 # The derived disposition categories, in funnel order (least -> most advanced).
 # `never_contacted` is only produced for screened phones absent from the data.
+# The terminal band splits `terminated` into `ineligible` (screened out) and
+# `refused` (declined), name-derived by survey160r; `terminated` is KEPT for the
+# unsplit residual (the DB producer's SQL `status='terminated'` is a superset that
+# also covers in-survey screeners whose step name carries no terminal signal, so a
+# row can be terminated with neither refused nor ineligible set). Rank within the
+# band: terminated (least specific) < ineligible < refused.
 .DISPOSITION_CATEGORIES <- c("never_contacted", "non_response", "engaged", "opted_in",
-                    "terminated", "completed", "web_complete")
+                    "terminated", "ineligible", "refused", "completed", "web_complete")
 
 # Columns of the per-phone summary (also the block appended by _screen()), in
 # output order: identity, scope (n_campaigns + the id list), the cumulative status
@@ -35,8 +45,9 @@
 # marked by n_campaigns == 0 (was ever_contacted = FALSE, removed).
 .DISPOSITION_SUMMARY_COLS <- c("phone", "n_campaigns", "campaigns",
                       "n_engaged", "n_opted_in", "n_completed", "n_web_complete",
-                      "n_terminated", "n_error", "latest_disposition",
-                      "latest_campaign_id", "best_disposition", "best_campaign_id",
+                      "n_terminated", "n_refused", "n_ineligible", "n_error",
+                      "latest_disposition", "latest_campaign_id",
+                      "best_disposition", "best_campaign_id",
                       "first_disposition_date", "last_disposition_date")
 
 # The stored disposition schema, in canonical order -- what
@@ -44,8 +55,9 @@
 # `loi`/`topic`/`disposition_date` are added by downstream enrichment, so an
 # un-enriched projection lacks those three and records() returns just the subset present.
 .DISPOSITION_RECORD_COLS <- c("phone", "campaign_id", "sent", "engaged",
-                      "opted_in", "completed", "web_complete", "terminated",
-                      "error", "loi", "topic", "mode", "disposition_date")
+                      "opted_in", "completed", "web_complete", "refused",
+                      "ineligible", "terminated", "error", "loi", "topic", "mode",
+                      "disposition_date")
 
 # Phone matching uses the shared .normalize_phone (aaa_utils.R) so a sample
 # matches the disposition and opt-out datasets identically.
@@ -58,7 +70,16 @@
   out <- rep("non_response", nrow(d))   # data is contacted-only (sent == 1)
   out[is1(d$engaged)] <- "engaged"
   out[is1(d$opted_in)] <- "opted_in"
+  # Terminal band, in precedence order (later wins, matching .DISPOSITION_CATEGORIES
+  # rank): `terminated` is the unsplit residual, then the name-split `ineligible`
+  # (screened out) and `refused` (declined) refine it where routing identified the
+  # terminal. A row absent `refused`/`ineligible` (old projection -- the rollup
+  # defaults them to 0) stays `terminated`. `refused`/`ineligible` can also be set
+  # without `terminated` (routing saw the terminal step but the SQL status lagged),
+  # so they are assigned independently, not gated on `terminated`.
   out[is1(d$terminated)] <- "terminated"
+  out[is1(d$ineligible)] <- "ineligible"
+  out[is1(d$refused)] <- "refused"
   out[is1(d$completed)] <- "completed"
   out[is1(d$web_complete)] <- "web_complete"
   out
@@ -72,7 +93,8 @@
     n_campaigns = rep(0L, n),
     campaigns = rep(NA_character_, n),
     n_engaged = rep(0L, n), n_opted_in = rep(0L, n), n_completed = rep(0L, n),
-    n_web_complete = rep(0L, n), n_terminated = rep(0L, n), n_error = rep(0L, n),
+    n_web_complete = rep(0L, n), n_terminated = rep(0L, n), n_refused = rep(0L, n),
+    n_ineligible = rep(0L, n), n_error = rep(0L, n),
     latest_disposition = rep("never_contacted", n),
     latest_campaign_id = rep(NA_character_, n),
     best_disposition = rep("never_contacted", n),
@@ -169,7 +191,8 @@
   # Best (furthest-reached) disposition across the phone's campaigns: the highest
   # funnel category any of them hit, ranked by the SAME precedence latest uses
   # (.DISPOSITION_CATEGORIES: non_response < engaged < opted_in < terminated <
-  # completed < web_complete). Re-rank the rows highest-category first (tie ->
+  # ineligible < refused < completed < web_complete). Re-rank the rows
+  # highest-category first (tie ->
   # latest date, then max id, matching latest_disposition's tie-break), take the
   # first per phone, and align back to the latest-order phone vector `ph`.
   rk <- match(d$.category, .DISPOSITION_CATEGORIES)
@@ -191,6 +214,8 @@
     n_completed = as.integer(by_phone(d$completed, count1)),
     n_web_complete = as.integer(by_phone(d$web_complete, count1)),
     n_terminated = as.integer(by_phone(d$terminated, count1)),
+    n_refused = as.integer(by_phone(d$refused, count1)),
+    n_ineligible = as.integer(by_phone(d$ineligible, count1)),
     n_error = as.integer(by_phone(has_error, function(x) sum(x, na.rm = TRUE))),
     latest_disposition = d$.category[first],
     latest_campaign_id = as.character(d$campaign_id[first]),
@@ -269,7 +294,8 @@
   # omits it still summarizes (mirroring disposition_records(), which tolerates
   # its absence too). The funnel-flag columns are always required.
   missing_cols <- setdiff(setdiff(.DISPOSITION_READ_COLS,
-                                  c("disposition_date", "error")),
+                                  c("disposition_date", "error",
+                                    "refused", "ineligible")),
                           names(data))
   if (length(missing_cols) > 0L) {
     stop_s160(sprintf("input is missing required column(s): %s",
@@ -285,6 +311,16 @@
   # `error` is optional too (an un-enriched frame lacks it) -> n_error is 0.
   if (!"error" %in% names(data)) {
     data$error <- rep(NA_character_, nrow(data))
+  }
+  # `refused`/`ineligible` (the terminal split) are optional: a projection produced
+  # before survey160r 0.51.0 lacks them -> default 0, so those rows summarize as
+  # plain `terminated` (n_refused / n_ineligible are 0 and the category never
+  # refines past the residual). New projections carry them and the split appears.
+  if (!"refused" %in% names(data)) {
+    data$refused <- rep(0L, nrow(data))
+  }
+  if (!"ineligible" %in% names(data)) {
+    data$ineligible <- rep(0L, nrow(data))
   }
   if (!is.null(statuses)) {
     bad <- setdiff(as.character(statuses), .DISPOSITION_CATEGORIES)
@@ -333,6 +369,9 @@
 #'   read with \pkg{nanoparquet}, projected to the summary columns; a frame must
 #'   carry \code{phone}, \code{campaign_id}, \code{engaged}, \code{opted_in},
 #'   \code{completed}, \code{web_complete}, and \code{terminated}.
+#'   \code{refused} and \code{ineligible} (the terminal split) are optional --
+#'   absent (a pre-0.51.0 projection) they default to 0, so terminals summarize as
+#'   plain \code{terminated}; present, they split it (see \code{statuses} / Value).
 #'   \code{disposition_date} is optional -- it orders each phone's latest campaign
 #'   and backs the \code{date_from}/\code{date_to} filters; an un-enriched
 #'   \code{\link{disposition_records}} frame that omits it still summarizes
@@ -347,8 +386,12 @@
 #'   campaigns before summarizing.
 #' @param statuses Optional subset of the derived disposition categories
 #'   (\code{never_contacted}, \code{non_response}, \code{engaged},
-#'   \code{opted_in}, \code{terminated}, \code{completed}, \code{web_complete});
-#'   keep only phones whose \code{latest_disposition} is one of them.
+#'   \code{opted_in}, \code{terminated}, \code{ineligible}, \code{refused},
+#'   \code{completed}, \code{web_complete}); keep only phones whose
+#'   \code{latest_disposition} is one of them. \code{ineligible} (screened out) and
+#'   \code{refused} (declined) are the split of \code{terminated}; \code{terminated}
+#'   now denotes only the unsplit residual (a terminal the routing name-match could
+#'   not classify), so screen on all three to catch every hard stop.
 #' @param date_from,date_to Optional \code{Date}/date-string bounds on
 #'   \code{disposition_date}. A row whose \code{disposition_date} is \code{NA} is
 #'   dropped by any bound (an all-\code{NA} column drops every row, with a
@@ -360,15 +403,23 @@
 #'   \code{phone}; \code{n_campaigns} and \code{campaigns} (how many campaigns,
 #'   and the comma-separated id list); the cumulative status counts
 #'   \code{n_engaged}, \code{n_opted_in}, \code{n_completed},
-#'   \code{n_web_complete}, \code{n_terminated} -- each \code{0} when the phone
+#'   \code{n_web_complete}, \code{n_terminated} (every hard stop -- the union),
+#'   then \code{n_refused} and \code{n_ineligible} (its split; each \code{0} on a
+#'   pre-0.51.0 projection; they need not sum to \code{n_terminated}, since a
+#'   downstream projection can set \code{terminated} independently of the split --
+#'   less when a terminal was unsplit, more when the split flagged a terminal the
+#'   status had not) -- each \code{0} when the phone
 #'   never reached that status and \code{> 0} the number of the phone's campaigns
 #'   that did (they overlap: a completed campaign is also engaged) -- plus
 #'   \code{n_error} (how many campaigns carried a carrier delivery-error code);
 #'   \code{latest_disposition} + \code{latest_campaign_id} (the category of the
-#'   phone's most-recent campaign and that campaign's id); \code{best_disposition}
+#'   phone's most-recent campaign and that campaign's id -- now one of
+#'   \code{refused} / \code{ineligible} / \code{terminated} for a hard stop);
+#'   \code{best_disposition}
 #'   + \code{best_campaign_id} (the furthest-reached category across all the
 #'   phone's campaigns -- ranked by the same funnel precedence, so \code{completed}
-#'   / \code{web_complete} rank highest and \code{terminated} above
+#'   / \code{web_complete} rank highest and the terminal band
+#'   (\code{terminated} < \code{ineligible} < \code{refused}) above
 #'   \code{opted_in} -- and the campaign that reached it); and
 #'   \code{first_disposition_date} / \code{last_disposition_date} (earliest and
 #'   latest \code{disposition_date} across the phone's campaigns, \code{NA} when
@@ -420,7 +471,8 @@ disposition_summary <- function(x, phones = NULL, campaign_ids = NULL,
 #' stored} -- one row per \code{(phone, campaign_id)}, carrying the full
 #' disposition schema: \code{phone}, \code{campaign_id}, \code{sent},
 #' \code{engaged}, \code{opted_in}, \code{completed}, \code{web_complete},
-#' \code{terminated}, \code{error}, \code{loi}, \code{topic}, \code{mode},
+#' \code{refused}, \code{ineligible}, \code{terminated}, \code{error},
+#' \code{loi}, \code{topic}, \code{mode},
 #' \code{disposition_date}. This is the level directly beneath
 #' \code{\link{disposition_summary}}: where \code{summary} rolls every phone up to a
 #' single screening row, \code{records} hands back the raw per-campaign rows --
@@ -430,10 +482,12 @@ disposition_summary <- function(x, phones = NULL, campaign_ids = NULL,
 #' order above -- a legacy or minimal projection that lacks a column (e.g.
 #' \code{error}, \code{loi}, \code{topic}, or \code{disposition_date}) omits it,
 #' rather than filling an all-\code{NA} column. A projection written straight from
-#' \code{\link{disposition_run}} carries the funnel flags plus \code{mode},
+#' \code{\link{disposition_run}} carries the funnel flags (including the
+#' \code{refused} / \code{ineligible} terminal split as of 0.51.0; a pre-0.51.0
+#' projection omits those two) plus \code{mode},
 #' \code{error} (the carrier delivery-error code), and \code{disposition_date}
 #' (\code{max(scriptDate)}); \code{loi} / \code{topic} are added by the tracker
-#' enrichment, so only the enriched projection carries all thirteen.
+#' enrichment, so only the enriched projection carries all fifteen.
 #' \code{disposition_date} is \code{NA} for a row with no send; \code{error} is
 #' \code{NA} when the export carries no usable code (a clean send, or an export
 #' lacking the column). The
@@ -520,7 +574,8 @@ disposition_records <- function(dataset, phones = NULL, campaign_ids = NULL,
 #' @return \code{sample} with the \code{\link{disposition_summary}} columns
 #'   appended (see there for their meaning and order): \code{n_campaigns},
 #'   \code{campaigns}, \code{n_engaged}, \code{n_opted_in}, \code{n_completed},
-#'   \code{n_web_complete}, \code{n_terminated}, \code{n_error},
+#'   \code{n_web_complete}, \code{n_terminated}, \code{n_refused},
+#'   \code{n_ineligible}, \code{n_error},
 #'   \code{latest_disposition}, \code{latest_campaign_id}, \code{best_disposition},
 #'   \code{best_campaign_id}, \code{first_disposition_date},
 #'   \code{last_disposition_date}. A valid phone that is absent from the rows

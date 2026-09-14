@@ -42,7 +42,8 @@ Reads the disposition Parquet projection and returns its rows \strong{as
 stored} -- one row per \code{(phone, campaign_id)}, carrying the full
 disposition schema: \code{phone}, \code{campaign_id}, \code{sent},
 \code{engaged}, \code{opted_in}, \code{completed}, \code{web_complete},
-\code{terminated}, \code{error}, \code{loi}, \code{topic}, \code{mode},
+\code{refused}, \code{ineligible}, \code{terminated}, \code{error},
+\code{loi}, \code{topic}, \code{mode},
 \code{disposition_date}. This is the level directly beneath
 \code{\link{disposition_summary}}: where \code{summary} rolls every phone up to a
 single screening row, \code{records} hands back the raw per-campaign rows --
@@ -53,10 +54,12 @@ Only the canonical columns \emph{present in the file} are returned, in the
 order above -- a legacy or minimal projection that lacks a column (e.g.
 \code{error}, \code{loi}, \code{topic}, or \code{disposition_date}) omits it,
 rather than filling an all-\code{NA} column. A projection written straight from
-\code{\link{disposition_run}} carries the funnel flags plus \code{mode},
+\code{\link{disposition_run}} carries the funnel flags (including the
+\code{refused} / \code{ineligible} terminal split as of 0.51.0; a pre-0.51.0
+projection omits those two) plus \code{mode},
 \code{error} (the carrier delivery-error code), and \code{disposition_date}
 (\code{max(scriptDate)}); \code{loi} / \code{topic} are added by the tracker
-enrichment, so only the enriched projection carries all thirteen.
+enrichment, so only the enriched projection carries all fifteen.
 \code{disposition_date} is \code{NA} for a row with no send; \code{error} is
 \code{NA} when the export carries no usable code (a clean send, or an export
 lacking the column). The

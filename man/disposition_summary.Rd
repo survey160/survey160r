@@ -22,6 +22,9 @@ disposition data frame (from \code{\link{disposition_records}}). A path is
 read with \pkg{nanoparquet}, projected to the summary columns; a frame must
 carry \code{phone}, \code{campaign_id}, \code{engaged}, \code{opted_in},
 \code{completed}, \code{web_complete}, and \code{terminated}.
+\code{refused} and \code{ineligible} (the terminal split) are optional --
+absent (a pre-0.51.0 projection) they default to 0, so terminals summarize as
+plain \code{terminated}; present, they split it (see \code{statuses} / Value).
 \code{disposition_date} is optional -- it orders each phone's latest campaign
 and backs the \code{date_from}/\code{date_to} filters; an un-enriched
 \code{\link{disposition_records}} frame that omits it still summarizes
@@ -39,8 +42,12 @@ campaigns before summarizing.}
 
 \item{statuses}{Optional subset of the derived disposition categories
 (\code{never_contacted}, \code{non_response}, \code{engaged},
-\code{opted_in}, \code{terminated}, \code{completed}, \code{web_complete});
-keep only phones whose \code{latest_disposition} is one of them.}
+\code{opted_in}, \code{terminated}, \code{ineligible}, \code{refused},
+\code{completed}, \code{web_complete}); keep only phones whose
+\code{latest_disposition} is one of them. \code{ineligible} (screened out) and
+\code{refused} (declined) are the split of \code{terminated}; \code{terminated}
+now denotes only the unsplit residual (a terminal the routing name-match could
+not classify), so screen on all three to catch every hard stop.}
 
 \item{date_from, date_to}{Optional \code{Date}/date-string bounds on
 \code{disposition_date}. A row whose \code{disposition_date} is \code{NA} is
@@ -56,15 +63,23 @@ A data frame, one row per phone, columns in this order:
   \code{phone}; \code{n_campaigns} and \code{campaigns} (how many campaigns,
   and the comma-separated id list); the cumulative status counts
   \code{n_engaged}, \code{n_opted_in}, \code{n_completed},
-  \code{n_web_complete}, \code{n_terminated} -- each \code{0} when the phone
+  \code{n_web_complete}, \code{n_terminated} (every hard stop -- the union),
+  then \code{n_refused} and \code{n_ineligible} (its split; each \code{0} on a
+  pre-0.51.0 projection; they need not sum to \code{n_terminated}, since a
+  downstream projection can set \code{terminated} independently of the split --
+  less when a terminal was unsplit, more when the split flagged a terminal the
+  status had not) -- each \code{0} when the phone
   never reached that status and \code{> 0} the number of the phone's campaigns
   that did (they overlap: a completed campaign is also engaged) -- plus
   \code{n_error} (how many campaigns carried a carrier delivery-error code);
   \code{latest_disposition} + \code{latest_campaign_id} (the category of the
-  phone's most-recent campaign and that campaign's id); \code{best_disposition}
+  phone's most-recent campaign and that campaign's id -- now one of
+  \code{refused} / \code{ineligible} / \code{terminated} for a hard stop);
+  \code{best_disposition}
   + \code{best_campaign_id} (the furthest-reached category across all the
   phone's campaigns -- ranked by the same funnel precedence, so \code{completed}
-  / \code{web_complete} rank highest and \code{terminated} above
+  / \code{web_complete} rank highest and the terminal band
+  (\code{terminated} < \code{ineligible} < \code{refused}) above
   \code{opted_in} -- and the campaign that reached it); and
   \code{first_disposition_date} / \code{last_disposition_date} (earliest and
   latest \code{disposition_date} across the phone's campaigns, \code{NA} when
