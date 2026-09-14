@@ -14,6 +14,14 @@
   deliberately NOT a refusal: a survey question's refused-to-answer branch
   (`q_<name>_refuse`) and the post-close panel-recruitment decline (`panel_refuse`,
   which fires after the survey close) both stay participation/continuation steps.
+  Classification is by name rather than the script's step `type` because `type`
+  alone cannot split refused from ineligible (both are `terminating`) and mislabels
+  some real screen-outs (e.g. `ineligable` ships as `type=closing`); verified
+  against the full production script corpus, the name regex classifies 99.6% of
+  `terminating` steps with no false positives. The residual is 4 generically-named
+  in-survey screener steps (`q_7` / `q_4` / `q_2` / `q_0_copy_copy`, 16 campaigns)
+  whose name carries no terminal signal -- folding in the step `type` for those is
+  a deferred enhancement.
 
 ## Bug fixes
 

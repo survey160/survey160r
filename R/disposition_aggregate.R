@@ -57,26 +57,25 @@
 }
 
 # refused: the recipient reached a REFUSAL terminal step (they declined). Keys on
-# any refusal-family question's scriptDate (refusal / online_refusal / panel_refuse
+# any refusal-family question's scriptDate (refusal / online_refusal / refusal_sp
 # / ..., discovered per campaign via .refusal_questions), not the single hardcoded
 # id.refusal -- so a campaign whose refusal step is named online_refusal is caught.
 .mask_refused <- function(data) {
-  refq <- .refusal_questions(.all_questions(data))
-  if (length(refq) == 0L) return(rep(FALSE, nrow(data)))
-  .question_events(data, refq, "scriptDate")
+  .reached_terminal(data, .refusal_questions(.all_questions(data)))
 }
 
 # ineligible: the recipient reached an INELIGIBLE / TERMINATION terminal step (the
 # survey screened them out). Keys on any ineligible-family question's scriptDate
 # (ineligible / terminate / term / screenout / ..., via .ineligible_questions).
 .mask_ineligible <- function(data) {
-  inelq <- .ineligible_questions(.all_questions(data))
-  if (length(inelq) == 0L) return(rep(FALSE, nrow(data)))
-  .question_events(data, inelq, "scriptDate")
+  .reached_terminal(data, .ineligible_questions(.all_questions(data)))
 }
 
-# terminated: any hard stop -- the union of refused (declined) and ineligible
-# (screened out). Kept alongside the two split columns for back-compat.
+# terminated: any hard stop -- the union (OR, not sum) of refused (declined) and
+# ineligible (screened out). Kept alongside the two split columns for back-compat.
+# The two are not mutually exclusive: a data anomaly that fires both terminals
+# leaves refused = ineligible = terminated = 1 (so refused + ineligible can exceed
+# terminated), which is why terminated is a re-derived OR, never a column sum.
 .mask_terminated <- function(refused, ineligible) refused | ineligible
 
 # error: the carrier delivery-error code for this record, as a string. The
@@ -242,6 +241,11 @@ disposition_input_columns <- function(available = NULL, population = NULL) {
     "web_complete",
     "error_code",                           # raw carrier delivery-error code (-> `error`)
     sprintf("id.%s.scriptDate", closers),   # close family (close / close_sp / ...)
+    # The two STANDARD terminal columns, so refused / ineligible resolve even on
+    # the lossy `available = NULL` path. The refused / ineligible masks match many
+    # more names (online_refusal, terminate, ...); those non-standard terminals are
+    # only guaranteed present when `available` is passed (the grep below retains
+    # every scriptDate). Pass `available` for a faithful terminal split.
     "id.ineligible.scriptDate",
     "id.refusal.scriptDate"
   )
@@ -251,7 +255,9 @@ disposition_input_columns <- function(available = NULL, population = NULL) {
       grep(.report_support_patterns, available, value = TRUE),
       # every script-step send timestamp, so disposition_run() can take the
       # row-wise max(scriptDate) for `disposition_date` (not just the opener /
-      # closer / terminal sends already listed above).
+      # closer / terminal sends already listed above) -- and so the refused /
+      # ineligible masks see every non-standard terminal column, not just the two
+      # standard names above.
       grep("^id\\..+\\.scriptDate$", available, value = TRUE))
   }
   unique(cols)
