@@ -8,11 +8,12 @@
   terminal). `terminated` is kept as their union for back-compat. The terminal
   steps are name-matched by regex over ALL discovered question columns (not the
   two hardcoded `id.refusal` / `id.ineligible`), so non-standard names are caught:
-  `online_refusal` / `panel_refuse` / `refusal_sp` count as `refused`;
-  `terminate` / `terminating` / `term` / `screenout` / misspellings
-  (`ineligble`, `ineligable`) count as `ineligible`. A survey question that merely
-  ends in `_refuse` (a `q_<name>` refused-to-answer branch) is excluded, so it
-  stays a participation step.
+  `online_refusal` / `refusal_sp` count as `refused` (matched on the full word
+  `refusal`); `terminate` / `terminating` / `term` / `screenout` / misspellings
+  (`ineligble`, `ineligable`) count as `ineligible`. A bare `refuse` is
+  deliberately NOT a refusal: a survey question's refused-to-answer branch
+  (`q_<name>_refuse`) and the post-close panel-recruitment decline (`panel_refuse`,
+  which fires after the survey close) both stay participation/continuation steps.
 
 ## Bug fixes
 

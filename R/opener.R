@@ -81,15 +81,16 @@
   unique(qs[!is.na(qs)])
 }
 
-# The REFUSAL terminal steps -- the recipient declined. Name-matched on `refus`
-# anywhere (so refusal / online_refusal / panel_refuse / refusal_sp all count, not
-# just a `^refus` prefix), case-insensitive. EXCLUDES a `q_<n>` / `q_<name>`
-# survey question that merely ends in "_refuse" (a refused-to-answer branch of a
-# body question, e.g. q_pres_voted_3p_short_refuse) -- reaching one of those is
-# still participation, not a refusal terminal.
+# The REFUSAL terminal steps -- the recipient declined the survey. Name-matched on
+# the full word `refusal` anywhere (so refusal / online_refusal / refusal_sp all
+# count, not just a `^refus` prefix), case-insensitive. Requiring `refusal` (not a
+# bare `refuse`) is deliberate and precise: every genuine refusal terminal in prod
+# spells it "refusal", whereas a bare "refuse" is either a survey question's
+# refused-to-answer branch (q_..._refuse, still participation) or the panel
+# recruitment decline (panel_refuse), which fires AFTER the close -- the recipient
+# completed the survey and only declined the panel, so it is NOT a survey refusal.
 .refusal_questions <- function(questions) {
-  cand <- grep("refus", questions, ignore.case = TRUE, value = TRUE)
-  cand[!grepl("^q[_0-9]", cand, ignore.case = TRUE)]
+  grep("refusal", questions, ignore.case = TRUE, value = TRUE)
 }
 
 # The INELIGIBLE / TERMINATION terminal steps -- the survey screened the recipient

@@ -147,31 +147,33 @@ test_that("terminated flags ineligible OR refusal", {
   expect_equal(res$terminated, c(1L, 1L, 1L, 0L))   # refused | ineligible
 })
 
-test_that("refused/ineligible catch non-standard terminal names (online_refusal, terminate)", {
-  # The name-regex split recognizes terminal steps beyond the exact
-  # ineligible/refusal columns: online_refusal / panel_refuse -> refused;
-  # terminate / term / screenout -> ineligible. Reaching one is a hard stop, so it
-  # is NOT opted_in (the routing continuation set excludes every terminal family).
+test_that("refused/ineligible catch non-standard names; panel_refuse is a post-close continuation", {
+  # The name-regex split recognizes terminals beyond the exact ineligible/refusal
+  # columns: online_refusal -> refused; terminate / term / screenout -> ineligible.
+  # But panel_refuse is NOT a survey refusal -- it is the panel-recruitment decline
+  # that fires AFTER the close (the recipient completed the survey, then declined
+  # the panel), so it stays a continuation. Requiring the full word "refusal"
+  # (not a bare "refuse") draws that line without a script.
   d <- disp_frame(
     phone = c("+15550a01", "+15550a02", "+15550a03", "+15550a04"),
-    id.intro.scriptDate           = rep(TS, 4),
-    id.online_refusal.scriptDate  = c(TS, "", "", ""),   # refusal (non-standard)
-    id.panel_refuse.scriptDate    = c("", TS, "", ""),   # refusal (non-standard)
-    id.terminate.scriptDate       = c("", "", TS, ""),   # ineligible/termination
-    id.close.scriptDate           = c("", "", "", TS)    # r4 opted in (reached close)
+    id.intro.scriptDate          = rep(TS, 4),
+    id.online_refusal.scriptDate = c(TS, "", "", ""),   # refusal (non-standard)
+    id.terminate.scriptDate      = c("", TS, "", ""),   # termination -> ineligible
+    id.close.scriptDate          = c("", "", TS, TS),   # r3, r4 completed the survey
+    id.panel_refuse.scriptDate   = c("", "", TS, "")    # r3 declined the PANEL, post-close
   )
   res <- disposition_run(1234, d, contacted_only = FALSE)$consolidated
-  expect_equal(res$refused,    c(1L, 1L, 0L, 0L))
-  expect_equal(res$ineligible, c(0L, 0L, 1L, 0L))
-  expect_equal(res$terminated, c(1L, 1L, 1L, 0L))
-  # the terminal reachers are NOT opted in; only r4 (reached close) is.
-  expect_equal(res$opted_in,   c(0L, 0L, 0L, 1L))
+  expect_equal(res$refused,    c(1L, 0L, 0L, 0L))   # only online_refusal
+  expect_equal(res$ineligible, c(0L, 1L, 0L, 0L))   # only terminate
+  expect_equal(res$terminated, c(1L, 1L, 0L, 0L))   # panel_refuse is NOT terminal
+  # r1/r2 hit terminals; r3 (close + panel_refuse) and r4 (close) opted in.
+  expect_equal(res$opted_in,   c(0L, 0L, 1L, 1L))
 })
 
 test_that("a q_<name> question ending in _refuse is NOT a refusal terminal", {
   # q_pres_voted_3p_short_refuse is a survey question (a refused-to-answer branch),
-  # not a refusal terminal -- reaching it is participation, so it is a continuation
-  # (opted_in), not refused.
+  # not a refusal terminal -- it spells "refuse", not "refusal", so it is excluded
+  # and stays a continuation (opted_in), not refused.
   d <- disp_frame(
     phone = c("+15550b01", "+15550b02"),
     id.intro.scriptDate                    = c(TS, TS),

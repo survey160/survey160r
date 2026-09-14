@@ -101,7 +101,7 @@ test_that(".funnel_masks default opt-in is routing-based (reached a continuation
     id.intro.finalText     = c("im down", "STOP", "en", "Yes"),  # never inspected
     id.close.scriptDate    = c(ts, "", "", ""),   # r1 reached close (English)
     id.close_sp.scriptDate = c("", "", ts, ""),   # r3 reached close (Spanish)
-    id.refused.scriptDate  = c("", ts, "", ""),   # r2 routed to a terminal step
+    id.refusal.scriptDate  = c("", ts, "", ""),   # r2 routed to a terminal step
     stringsAsFactors = FALSE, check.names = FALSE
   )
   m <- .funnel_masks(d, "intro", latency_discover_questions(d))
