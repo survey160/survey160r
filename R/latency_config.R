@@ -38,18 +38,12 @@
 #' )
 #' @export
 latency_discover_questions <- function(data) {
-  cols <- if (is.data.frame(data)) names(data) else as.character(data)
-  # Match either bracket form (raw header) or dot form (post read.csv).
-  m_dot <- regmatches(cols, regexec("^id\\.([A-Za-z0-9_]+)\\.scriptDate$", cols))
-  m_brk <- regmatches(cols, regexec("^id\\[([A-Za-z0-9_]+)\\]scriptDate$", cols))
-  qs_dot <- vapply(m_dot, function(x) if (length(x) == 2) x[2] else NA_character_,
-                   character(1))
-  qs_brk <- vapply(m_brk, function(x) if (length(x) == 2) x[2] else NA_character_,
-                   character(1))
-  qs <- ifelse(!is.na(qs_dot), qs_dot, qs_brk)
-  qs <- qs[!is.na(qs)]
-  qs <- qs[!qs %in% .terminal_states]
-  unique(qs)
+  # The FLOW questions are the full enumerated set (.all_questions, opener.R --
+  # one regex shared with the terminal disposition masks) minus the terminal
+  # states, so a screen-out never counts as a body step. .all_questions already
+  # dedupes and preserves column (flow) order.
+  qs <- .all_questions(data)
+  qs[!qs %in% .terminal_states]
 }
 
 #' Build a latency config from a campaign id and its CSV

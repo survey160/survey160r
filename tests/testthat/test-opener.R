@@ -41,6 +41,38 @@ test_that(".question_events is the send/reply disjunction over the opener set", 
   expect_equal(.question_events(d, c("intro", "intro_sp"), "batchDate"), c(FALSE, FALSE))
 })
 
+test_that(".refusal_questions / .ineligible_questions classify the terminal families", {
+  # The heart of the refused/ineligible split: which question names are which
+  # terminal. Locks the regex boundaries so a future narrowing can't silently
+  # drop a real terminal (or a widening claim a body question).
+  qs <- c("intro", "q1", "refusal", "online_refusal", "refusal_sp",
+          "panel_refuse", "q_x_refuse", "ineligible", "ineligble", "terminate",
+          "birthday_term", "screenout", "disqualified", "close")
+  # refusal: the FULL word only. panel_refuse (post-close panel decline) and a
+  # q_<name>_refuse body branch spell "refuse", not "refusal" -> not refusals.
+  expect_equal(.refusal_questions(qs),
+               c("refusal", "online_refusal", "refusal_sp"))
+  # ineligible / termination: incl. the misspelling `ineligble`, the short `term`
+  # token (birthday_term), screen-outs, and disqualif*.
+  expect_equal(.ineligible_questions(qs),
+               c("ineligible", "ineligble", "terminate", "birthday_term",
+                 "screenout", "disqualified"))
+  # neither family claims a body question, the opener/close, or the refuse steps.
+  expect_false(any(c("intro", "q1", "close", "panel_refuse", "q_x_refuse") %in%
+                     c(.refusal_questions(qs), .ineligible_questions(qs))))
+})
+
+test_that(".reached_terminal is all-FALSE on an empty family (coalesce-safe)", {
+  # A campaign with no terminal column of a given family: the mask must be an
+  # all-FALSE column of length nrow, never reach dplyr::coalesce() (which errors
+  # on zero arguments) via .question_events.
+  d <- data.frame(id.intro.scriptDate = c("x", "y", "z"),
+                  stringsAsFactors = FALSE, check.names = FALSE)
+  expect_equal(.reached_terminal(d, character(0)), c(FALSE, FALSE, FALSE))
+  expect_equal(.reached_terminal(d, .refusal_questions(.all_questions(d))),
+               c(FALSE, FALSE, FALSE))
+})
+
 test_that("latency and disposition resolve the SAME opener set and population", {
   # The alignment guarantee: for every flow shape, the latency config path and
   # the disposition path derive an identical opener set and opt-in population.
@@ -101,7 +133,7 @@ test_that(".funnel_masks default opt-in is routing-based (reached a continuation
     id.intro.finalText     = c("im down", "STOP", "en", "Yes"),  # never inspected
     id.close.scriptDate    = c(ts, "", "", ""),   # r1 reached close (English)
     id.close_sp.scriptDate = c("", "", ts, ""),   # r3 reached close (Spanish)
-    id.refused.scriptDate  = c("", ts, "", ""),   # r2 routed to a terminal step
+    id.refusal.scriptDate  = c("", ts, "", ""),   # r2 routed to a terminal step
     stringsAsFactors = FALSE, check.names = FALSE
   )
   m <- .funnel_masks(d, "intro", latency_discover_questions(d))

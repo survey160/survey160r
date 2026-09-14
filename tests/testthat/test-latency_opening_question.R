@@ -42,7 +42,7 @@ test_that(".continuation_questions is the survey body + close, minus terminals",
   # intro-family openers and the terminal branches (refus / inelig / opt-out) are
   # excluded; the survey body and the close family remain.
   expect_equal(
-    .continuation_questions(c("intro", "intro_sp", "q1", "refused", "close")),
+    .continuation_questions(c("intro", "intro_sp", "q1", "refusal", "close")),
     c("q1", "close")
   )
   # a T2W / short flow whose opener routes straight to close has no body -> the

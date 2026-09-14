@@ -51,7 +51,8 @@ A list mirroring \code{latency_run()}'s shape: \code{consolidated} (a
   data frame, one row per (contacted) respondent, with columns \code{phone}
   (character), \code{campaign_id} (integer), the 0/1 integer flags
   \code{sent}, \code{engaged}, \code{opted_in}, \code{completed},
-  \code{web_complete}, \code{terminated} -- \code{completed} is \code{NA} under
+  \code{web_complete}, \code{refused}, \code{ineligible}, \code{terminated}
+  (\code{refused | ineligible}) -- \code{completed} is \code{NA} under
   \code{t2w_external} -- \code{mode} (character), \code{error} (character;
   the raw carrier delivery-error code, \code{NA} when the export carries no
   usable error code), and \code{disposition_date} (a \code{Date}: the row-wise
@@ -67,7 +68,8 @@ A list mirroring \code{latency_run()}'s shape: \code{consolidated} (a
 Turns an in-memory campaign results CSV (one row per respondent) into a list
 carrying the per-respondent disposition frame in \code{consolidated} (one row
 per contacted phone, with 0/1 funnel flags \code{sent}, \code{engaged},
-\code{opted_in}, \code{completed}, \code{web_complete}, \code{terminated}, the
+\code{opted_in}, \code{completed}, \code{web_complete}, \code{refused},
+\code{ineligible}, \code{terminated} (the union of the two), the
 campaign's \code{mode}, the raw carrier delivery-error code \code{error}, and
 the \code{disposition_date} (the last-send day, \code{max(scriptDate)}))
 plus source provenance in \code{meta}. Pure

@@ -56,13 +56,27 @@
   .reached_close(data, latency_discover_questions(data)) & sent
 }
 
-# terminated: any hard stop -- screened out (ineligible) or refused. Either
-# terminal-state scriptDate being non-NA marks the row terminated.
-.mask_terminated <- function(data) {
-  inelig <- !is.na(.column_timestamps(data, "id.ineligible.scriptDate"))
-  refusal <- !is.na(.column_timestamps(data, "id.refusal.scriptDate"))
-  inelig | refusal
+# refused: the recipient reached a REFUSAL terminal step (they declined). Keys on
+# any refusal-family question's scriptDate (refusal / online_refusal / refusal_sp
+# / ..., discovered per campaign via .refusal_questions), not the single hardcoded
+# id.refusal -- so a campaign whose refusal step is named online_refusal is caught.
+.mask_refused <- function(data) {
+  .reached_terminal(data, .refusal_questions(.all_questions(data)))
 }
+
+# ineligible: the recipient reached an INELIGIBLE / TERMINATION terminal step (the
+# survey screened them out). Keys on any ineligible-family question's scriptDate
+# (ineligible / terminate / term / screenout / ..., via .ineligible_questions).
+.mask_ineligible <- function(data) {
+  .reached_terminal(data, .ineligible_questions(.all_questions(data)))
+}
+
+# terminated: any hard stop -- the union (OR, not sum) of refused (declined) and
+# ineligible (screened out). Kept alongside the two split columns for back-compat.
+# The two are not mutually exclusive: a data anomaly that fires both terminals
+# leaves refused = ineligible = terminated = 1 (so refused + ineligible can exceed
+# terminated), which is why terminated is a re-derived OR, never a column sum.
+.mask_terminated <- function(refused, ineligible) refused | ineligible
 
 # error: the carrier delivery-error code for this record, as a string. The
 # export carries phonelist.error_code, written only on a send/delivery failure
@@ -126,6 +140,8 @@ empty_disposition_frame <- function() {
     opted_in = integer(0),
     completed = integer(0),
     web_complete = integer(0),
+    refused = integer(0),
+    ineligible = integer(0),
     terminated = integer(0),
     mode = character(0),
     error = character(0),
@@ -225,6 +241,11 @@ disposition_input_columns <- function(available = NULL, population = NULL) {
     "web_complete",
     "error_code",                           # raw carrier delivery-error code (-> `error`)
     sprintf("id.%s.scriptDate", closers),   # close family (close / close_sp / ...)
+    # The two STANDARD terminal columns, so refused / ineligible resolve even on
+    # the lossy `available = NULL` path. The refused / ineligible masks match many
+    # more names (online_refusal, terminate, ...); those non-standard terminals are
+    # only guaranteed present when `available` is passed (the grep below retains
+    # every scriptDate). Pass `available` for a faithful terminal split.
     "id.ineligible.scriptDate",
     "id.refusal.scriptDate"
   )
@@ -234,7 +255,9 @@ disposition_input_columns <- function(available = NULL, population = NULL) {
       grep(.report_support_patterns, available, value = TRUE),
       # every script-step send timestamp, so disposition_run() can take the
       # row-wise max(scriptDate) for `disposition_date` (not just the opener /
-      # closer / terminal sends already listed above).
+      # closer / terminal sends already listed above) -- and so the refused /
+      # ineligible masks see every non-standard terminal column, not just the two
+      # standard names above.
       grep("^id\\..+\\.scriptDate$", available, value = TRUE))
   }
   unique(cols)
@@ -245,7 +268,8 @@ disposition_input_columns <- function(available = NULL, population = NULL) {
 #' Turns an in-memory campaign results CSV (one row per respondent) into a list
 #' carrying the per-respondent disposition frame in \code{consolidated} (one row
 #' per contacted phone, with 0/1 funnel flags \code{sent}, \code{engaged},
-#' \code{opted_in}, \code{completed}, \code{web_complete}, \code{terminated}, the
+#' \code{opted_in}, \code{completed}, \code{web_complete}, \code{refused},
+#' \code{ineligible}, \code{terminated} (the union of the two), the
 #' campaign's \code{mode}, the raw carrier delivery-error code \code{error}, and
 #' the \code{disposition_date} (the last-send day, \code{max(scriptDate)}))
 #' plus source provenance in \code{meta}. Pure
@@ -305,7 +329,8 @@ disposition_input_columns <- function(available = NULL, population = NULL) {
 #'   data frame, one row per (contacted) respondent, with columns \code{phone}
 #'   (character), \code{campaign_id} (integer), the 0/1 integer flags
 #'   \code{sent}, \code{engaged}, \code{opted_in}, \code{completed},
-#'   \code{web_complete}, \code{terminated} -- \code{completed} is \code{NA} under
+#'   \code{web_complete}, \code{refused}, \code{ineligible}, \code{terminated}
+#'   (\code{refused | ineligible}) -- \code{completed} is \code{NA} under
 #'   \code{t2w_external} -- \code{mode} (character), \code{error} (character;
 #'   the raw carrier delivery-error code, \code{NA} when the export carries no
 #'   usable error code), and \code{disposition_date} (a \code{Date}: the row-wise
@@ -384,6 +409,10 @@ disposition_run <- function(campaign_id, data, population = NULL,
   # NA-safe), and `completed` is already gated on `sent`. KEEP IN SYNC with
   # build_summary_frame() (summary_aggregate.R), which folds it identically.
   opted_in <- masks$opted_in | (completed %in% TRUE)
+  # Terminal disposition split: refused (declined) vs ineligible (screened out),
+  # with terminated the union kept for back-compat.
+  refused <- .mask_refused(data)
+  ineligible <- .mask_ineligible(data)
 
   # Output columns use the canonical funnel vocabulary (sent / engaged /
   # opted_in / completed), matching the latency signals and .funnel_masks().
@@ -396,7 +425,9 @@ disposition_run <- function(campaign_id, data, population = NULL,
     opted_in = as.integer(opted_in),
     completed = as.integer(completed),
     web_complete = as.integer(.mask_web_complete(data)),
-    terminated = as.integer(.mask_terminated(data)),
+    refused = as.integer(refused),
+    ineligible = as.integer(ineligible),
+    terminated = as.integer(.mask_terminated(refused, ineligible)),
     mode = rep(survey_mode, length(phone)),
     error = .disposition_error(data),
     disposition_date = .disposition_dates(data, field_timezone),

@@ -1,6 +1,34 @@
 # survey160r (development version)
 
+## New features
+
+* **`disposition_run()` splits `terminated` into `refused` and `ineligible`.**
+  The per-phone frame gains two columns: `refused` (the recipient reached a
+  refusal terminal -- declined) and `ineligible` (a screen-out / termination
+  terminal). `terminated` is kept as their union for back-compat. The terminal
+  steps are name-matched by regex over ALL discovered question columns (not the
+  two hardcoded `id.refusal` / `id.ineligible`), so non-standard names are caught:
+  `online_refusal` / `refusal_sp` count as `refused` (matched on the full word
+  `refusal`); `terminate` / `terminating` / `term` / `screenout` / misspellings
+  (`ineligble`, `ineligable`) count as `ineligible`. A bare `refuse` is
+  deliberately NOT a refusal: a survey question's refused-to-answer branch
+  (`q_<name>_refuse`) and the post-close panel-recruitment decline (`panel_refuse`,
+  which fires after the survey close) both stay participation/continuation steps.
+  Classification is by name rather than the script's step `type` because `type`
+  alone cannot split refused from ineligible (both are `terminating`) and mislabels
+  some real screen-outs (e.g. `ineligable` ships as `type=closing`); verified
+  against the full production script corpus, the name regex classifies 99.6% of
+  `terminating` steps with no false positives. The residual is 4 generically-named
+  in-survey screener steps (`q_7` / `q_4` / `q_2` / `q_0_copy_copy`, 16 campaigns)
+  whose name carries no terminal signal -- folding in the step `type` for those is
+  a deferred enhancement.
+
 ## Bug fixes
+
+* **Routing opt-in no longer over-counts a non-standard terminal step as
+  consent.** The continuation set now excludes the full refusal + ineligible
+  families above (previously only `^refus` / `^inelig` / `^optout`), so reaching
+  `online_refusal`, `terminate`, etc. is correctly a hard stop, not an opt-in.
 
 * **Opt-in is now measured by routing, not by the intro answer text, so
   `n_opted_in` (latency) and `opted_in` (disposition) no longer read 0 for a

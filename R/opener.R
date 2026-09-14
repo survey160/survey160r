@@ -67,13 +67,88 @@
   .question_events(data, .closing_questions(questions), "scriptDate")
 }
 
-# The terminal branches of a flow -- the steps the opener routes a NON-opt-in
-# answer to: refusal, ineligible, opt-out. Reaching one is a hard stop, not
-# consent. Name-matched (^refus / ^inelig / ^opt[-_]?out), case-insensitive, so a
-# bilingual/casual campaign is covered regardless of the answer TEXT.
-.terminal_questions <- function(questions) {
-  grep("^(refus|inelig|opt[-_]?out|optout)", questions,
+# TRUE where the recipient reached ANY question in `questions` (a terminal
+# family's scriptDate present) -- the reached-any signal the refused / ineligible
+# masks share. Guards the empty set (a campaign with no such terminal column):
+# .question_events -> .question_timestamp -> dplyr::coalesce() errors on zero
+# arguments, so an empty family must short-circuit to an all-FALSE column of the
+# right length rather than reach coalesce. Unlike .reached_close, the terminal
+# families CAN be empty (.closing_questions always falls back to "close").
+.reached_terminal <- function(data, questions) {
+  if (length(questions) == 0L) return(rep(FALSE, nrow(data)))
+  .question_events(data, questions, "scriptDate")
+}
+
+# Every id.<q>.scriptDate question discovered from a frame or raw header, in
+# column (flow) order, deduped -- the raw enumerator both the flow and the
+# terminal masks derive from. Accepts dot form (id.<q>.scriptDate, post read.csv)
+# or raw bracket form (id[<q>]scriptDate, on disk). This is the UNFILTERED set:
+# latency_discover_questions() is exactly this minus `.terminal_states` (it drops
+# refusal / ineligible so the latency segments don't count a screen-out as a body
+# step), whereas the terminal disposition masks need to SEE those terminal
+# columns, so they enumerate here. One regex, so the flow view and the terminal
+# view can never drift on what counts as a question column.
+.all_questions <- function(data) {
+  cols <- if (is.data.frame(data)) names(data) else as.character(data)
+  m_dot <- regmatches(cols, regexec("^id\\.([A-Za-z0-9_]+)\\.scriptDate$", cols))
+  m_brk <- regmatches(cols, regexec("^id\\[([A-Za-z0-9_]+)\\]scriptDate$", cols))
+  qs_dot <- vapply(m_dot, function(x) if (length(x) == 2L) x[[2L]] else NA_character_,
+                   character(1))
+  qs_brk <- vapply(m_brk, function(x) if (length(x) == 2L) x[[2L]] else NA_character_,
+                   character(1))
+  qs <- ifelse(!is.na(qs_dot), qs_dot, qs_brk)   # each column is one form or none
+  unique(qs[!is.na(qs)])
+}
+
+# Terminal classification is by question NAME, not by the script's step `type`
+# field, for two reasons verified against the full prod script corpus:
+#   1. `type` cannot make the refused/ineligible SPLIT -- a refusal and a
+#      screen-out are BOTH `type=terminating`; only the name distinguishes them.
+#   2. The name catches terminals `type` mislabels -- e.g. `ineligable` (a
+#      misspelled screen-out) ships as `type=closing` in 10 campaigns, which a
+#      type-based rule would read as a completion; the name regex flags it.
+# The one thing the name misses that `type` would catch: 4 generically-named
+# `q_<n>` steps (q_7 / q_4 / q_2 / q_0_copy_copy, 16 campaigns) that terminate on
+# an in-survey answer -- their name gives no terminal signal. Folding the step
+# `type` in for those is a deferred, script-driven enhancement.
+#
+# The REFUSAL terminal steps -- the recipient declined the survey. Name-matched on
+# the full word `refusal` anywhere (so refusal / online_refusal / refusal_sp all
+# count, not just a `^refus` prefix), case-insensitive. Requiring `refusal` (not a
+# bare `refuse`) is deliberate and precise: every genuine refusal terminal in prod
+# spells it "refusal", whereas a bare "refuse" is either a survey question's
+# refused-to-answer branch (q_..._refuse, still participation) or the panel
+# recruitment decline (panel_refuse), which fires AFTER the close -- the recipient
+# completed the survey and only declined the panel, so it is NOT a survey refusal.
+.refusal_questions <- function(questions) {
+  grep("refusal", questions, ignore.case = TRUE, value = TRUE)
+}
+
+# The INELIGIBLE / TERMINATION terminal steps -- the survey screened the recipient
+# out or terminated them (not their choice). Name-matched on inelig / terminat /
+# a `term` token / screen / disqualif, case-insensitive, so misspellings
+# (ineligble, ineligable), Spanish (ineligible_sp), and short forms (term,
+# birthday_term) are covered. TRADE-OFF: the bare `term` token would also match a
+# body question tokenized `..._term_...` (e.g. a hypothetical `long_term`) -- but
+# verified against the full prod script corpus, every `term`-token step (term,
+# birthday_term, birthday_term_sp) is authoritatively `type=terminating`, i.e. a
+# real screen-out; no body question uses the token. Kept broad because a missed
+# screen-out mislabels a real terminal, and the false positive does not occur.
+.ineligible_questions <- function(questions) {
+  grep("inelig|terminat|(^|_)term($|_)|screen|disqualif", questions,
        ignore.case = TRUE, value = TRUE)
+}
+
+# The terminal branches of a flow -- every hard stop the opener routes a NON-opt-in
+# answer to: a refusal, an ineligible/termination screen-out, or an opt-out.
+# Reaching one is a hard stop, not consent, so it is excluded from the opt-in
+# continuation set. The union of the refusal + ineligible families above plus
+# opt-out (`^opt[-_]?out`), name-matched and language-agnostic.
+.terminal_questions <- function(questions) {
+  optout <- grep("^(opt[-_]?out|optout)", questions, ignore.case = TRUE,
+                 value = TRUE)
+  unique(c(.refusal_questions(questions), .ineligible_questions(questions),
+           optout))
 }
 
 # The continuation steps -- every question that is neither an opener nor a
