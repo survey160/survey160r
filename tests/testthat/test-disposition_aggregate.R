@@ -167,6 +167,27 @@ test_that("refused counts a reply-only refusal (batchDate, no send)", {
   expect_equal(res$terminated, c(1L, 1L, 0L))   # union
 })
 
+test_that("projection preserves a reply-only NON-standard refusal (online_refusal)", {
+  # online_refusal is a non-standard terminal name -- it is projected only by the
+  # `available` grep/sprintf batchDate path, not the two standard columns. Reached
+  # ONLY by reply (batchDate). Dropping id.online_refusal.batchDate from
+  # disposition_input_columns() would let a projected read miss the refusal that a
+  # full read catches, so assert both the projection keeps it and the reads agree.
+  full <- disp_frame(
+    phone = c("+15559701", "+15559702"),
+    id.intro.scriptDate          = c(TS, TS),
+    id.intro.finalText           = c("Yes", "Yes"),
+    id.online_refusal.scriptDate = c("", ""),   # present -> discovered; no send
+    id.online_refusal.batchDate  = c(TS, "")    # p1 refused via reply only
+  )
+  keep <- disposition_input_columns(available = names(full))
+  expect_true("id.online_refusal.batchDate" %in% keep)     # the terminal batchDate is projected
+  projected <- full[, intersect(keep, names(full)), drop = FALSE]
+  full_res <- disposition_run(1234, full, contacted_only = FALSE)
+  expect_equal(disposition_run(1234, projected, contacted_only = FALSE), full_res)
+  expect_equal(full_res$consolidated$refused, c(1L, 0L))   # reply-only refusal survives projection
+})
+
 test_that("refused/ineligible catch non-standard names; panel_refuse is a post-close continuation", {
   # The name-regex split recognizes terminals beyond the exact ineligible/refusal
   # columns: online_refusal -> refused; terminate / term / screenout -> ineligible.
