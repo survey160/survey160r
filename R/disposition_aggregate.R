@@ -247,7 +247,12 @@ disposition_input_columns <- function(available = NULL, population = NULL) {
     # only guaranteed present when `available` is passed (the grep below retains
     # every scriptDate). Pass `available` for a faithful terminal split.
     "id.ineligible.scriptDate",
-    "id.refusal.scriptDate"
+    "id.refusal.scriptDate",
+    # ...plus their batchDate (reply): a refusal is commonly recorded ONLY on the
+    # respondent's inbound reply (no send), so .reached_terminal reads batchDate
+    # too and the reply timestamp must survive the projection.
+    "id.ineligible.batchDate",
+    "id.refusal.batchDate"
   )
   if (!is.null(available)) {
     cols <- c(
@@ -258,7 +263,11 @@ disposition_input_columns <- function(available = NULL, population = NULL) {
       # closer / terminal sends already listed above) -- and so the refused /
       # ineligible masks see every non-standard terminal column, not just the two
       # standard names above.
-      grep("^id\\..+\\.scriptDate$", available, value = TRUE))
+      grep("^id\\..+\\.scriptDate$", available, value = TRUE),
+      # ...and the reply (batchDate) for every discovered terminal, so a
+      # reply-only refusal (no send) is not dropped by the projection.
+      sprintf("id.%s.batchDate",
+              c(.refusal_questions(qs), .ineligible_questions(qs))))
   }
   unique(cols)
 }

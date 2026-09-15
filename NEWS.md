@@ -1,5 +1,16 @@
 # survey160r (development version)
 
+## Bug fixes
+
+* **`refused` no longer silently drops reply-only refusals.** A terminal step is
+  now counted as reached by the respondent's own reply (`batchDate`), not only by
+  a send (`scriptDate`). Many scripts route a refuser to the refusal step and end
+  *without sending a message*, so the refusal is recorded only on the inbound
+  reply and had no `scriptDate` -- `disposition_run()` was scoring those as not
+  refused, undercounting `refused` fleet-wide. `disposition_input_columns()` now
+  also projects the terminal families' `batchDate`. `ineligible` is unchanged
+  (screen-outs do send their message).
+
 ## New features
 
 * **The disposition readers surface the `refused` / `ineligible` split.**

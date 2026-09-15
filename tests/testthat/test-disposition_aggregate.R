@@ -147,6 +147,26 @@ test_that("terminated flags ineligible OR refusal", {
   expect_equal(res$terminated, c(1L, 1L, 1L, 0L))   # refused | ineligible
 })
 
+test_that("refused counts a reply-only refusal (batchDate, no send)", {
+  # Many scripts route a refuser to the refusal step and END without sending a
+  # message, so the refusal is stamped only on the respondent's inbound reply
+  # (batchDate) and has no scriptDate. The refusal column is still present (empty
+  # scriptDate) so the family is discovered; the reached signal is the reply.
+  # A screen-out DOES send its message (scriptDate), so ineligible is unaffected.
+  d <- disp_frame(
+    phone = c("+15550501", "+15550502", "+15550503"),
+    id.intro.scriptDate      = rep(TS, 3),
+    id.intro.finalText       = rep("Yes", 3),
+    id.refusal.scriptDate    = c("", "", ""),   # present -> family discovered; no send
+    id.refusal.batchDate     = c(TS, "", ""),   # p1 replied into the refusal terminal
+    id.ineligible.scriptDate = c("", TS, "")    # p2 screened out via a send
+  )
+  res <- disposition_run(1234, d)$consolidated
+  expect_equal(res$refused,    c(1L, 0L, 0L))   # p1 refused via reply-only (the fix)
+  expect_equal(res$ineligible, c(0L, 1L, 0L))   # p2 via send, unaffected
+  expect_equal(res$terminated, c(1L, 1L, 0L))   # union
+})
+
 test_that("refused/ineligible catch non-standard names; panel_refuse is a post-close continuation", {
   # The name-regex split recognizes terminals beyond the exact ineligible/refusal
   # columns: online_refusal -> refused; terminate / term / screenout -> ineligible.
@@ -490,7 +510,8 @@ test_that("disposition_input_columns: default set is exactly the read columns", 
   # continuation step -> id.close.scriptDate here), so no finalText is read.
   expect_setequal(cols, c("phone", "id.intro.scriptDate", "id.intro.batchDate",
                           "web_complete", "error_code", "id.close.scriptDate",
-                          "id.ineligible.scriptDate", "id.refusal.scriptDate"))
+                          "id.ineligible.scriptDate", "id.refusal.scriptDate",
+                          "id.ineligible.batchDate", "id.refusal.batchDate"))
   expect_false("campaignid" %in% cols)           # stamped from the argument
   expect_false("id.intro.finalText" %in% cols)   # routing opt-in never reads it
 })
