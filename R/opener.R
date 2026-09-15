@@ -68,15 +68,21 @@
 }
 
 # TRUE where the recipient reached ANY question in `questions` (a terminal
-# family's scriptDate present) -- the reached-any signal the refused / ineligible
-# masks share. Guards the empty set (a campaign with no such terminal column):
+# family) -- the reached-any signal the refused / ineligible masks share. A
+# terminal is reached by a SEND (scriptDate) OR by the respondent's own REPLY
+# (batchDate): a refusal is commonly stamped only on the inbound reply, because
+# the script routes to it and ends WITHOUT sending a message, so it has no
+# scriptDate -- keying on the send alone silently dropped those refusals. A
+# screen-out DOES send its message (scriptDate present), so ineligible is
+# unaffected. Guards the empty set (a campaign with no such terminal column):
 # .question_events -> .question_timestamp -> dplyr::coalesce() errors on zero
 # arguments, so an empty family must short-circuit to an all-FALSE column of the
 # right length rather than reach coalesce. Unlike .reached_close, the terminal
 # families CAN be empty (.closing_questions always falls back to "close").
 .reached_terminal <- function(data, questions) {
   if (length(questions) == 0L) return(rep(FALSE, nrow(data)))
-  .question_events(data, questions, "scriptDate")
+  .question_events(data, questions, "scriptDate") |
+    .question_events(data, questions, "batchDate")
 }
 
 # Every id.<q>.scriptDate question discovered from a frame or raw header, in
