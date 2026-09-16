@@ -52,12 +52,15 @@
 
 # The stored disposition schema, in canonical order -- what
 # disposition_records() returns. `sent`/`mode`/`error` come from disposition_run();
-# `loi`/`topic`/`disposition_date` are added by downstream enrichment, so an
-# un-enriched projection lacks those three and records() returns just the subset present.
+# `loi`/`topic`/`registration_id`/`disposition_date` are added by downstream
+# enrichment, so an un-enriched projection lacks those and records() returns just
+# the subset present. `registration_id` (survey160r 0.54.0) is a per-campaign
+# Project-Tracker id carried through unchanged; a projection produced before it was
+# added simply lacks the column and records() omits it.
 .DISPOSITION_RECORD_COLS <- c("phone", "campaign_id", "sent", "engaged",
                       "opted_in", "completed", "web_complete", "refused",
                       "ineligible", "terminated", "error", "loi", "topic", "mode",
-                      "disposition_date")
+                      "registration_id", "disposition_date")
 
 # Phone matching uses the shared .normalize_phone (aaa_utils.R) so a sample
 # matches the disposition and opt-out datasets identically.

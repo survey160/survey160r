@@ -1,5 +1,15 @@
 # survey160r (development version)
 
+## Features
+
+* **`disposition_records()` carries a `registration_id` column when present.** The
+  per-campaign registration id (an id-like context scalar added upstream during
+  enrichment) is now part of `.DISPOSITION_RECORD_COLS`, so a projection enriched
+  with it passes the value through unchanged (one string per `(phone, campaign_id)`).
+  Projections produced before the column existed read exactly as before -- the
+  reader returns just the subset of canonical columns present, so the addition is
+  backward compatible and requires no re-enrichment of old data.
+
 ## Bug fixes
 
 * **`refused` no longer silently drops reply-only refusals.** A terminal step is
