@@ -12,7 +12,7 @@ test_that("disposition_pull resolves env to the disposition bucket + object", {
   a <- cap$args
   expect_equal(a$fn, "disposition_pull")
   expect_equal(a$bucket, "s160_disposition_dev")
-  expect_equal(a$object_name, "disposition_by_phone/disposition_all.parquet")
+  expect_equal(a$object_name, "disposition_all.parquet")
   expect_equal(a$cache_suffix, ".parquet")
   expect_equal(a$noun, "disposition projection")
 })

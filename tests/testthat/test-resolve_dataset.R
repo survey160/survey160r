@@ -5,13 +5,13 @@
 test_that("resolve_dataset returns the physical bucket + object per tier", {
   d_prod <- survey160r:::resolve_dataset("disposition", "prod")
   expect_equal(d_prod$bucket, "s160_disposition_prod")
-  expect_equal(d_prod$object, "disposition_by_phone/disposition_all.parquet")
+  expect_equal(d_prod$object, "disposition_all.parquet")
   expect_equal(survey160r:::resolve_dataset("disposition", "dev")$bucket,
                "s160_disposition_dev")
 
   o_prod <- survey160r:::resolve_dataset("opt_out", "prod")
   expect_equal(o_prod$bucket, "s160_disposition_prod")
-  expect_equal(o_prod$object, "global_opt_out/global_opt_out.parquet")
+  expect_equal(o_prod$object, "global_opt_out.parquet")
 
   c_prod <- survey160r:::resolve_dataset("campaign_results", "prod")
   expect_equal(c_prod$bucket, "campaign_results")
@@ -69,7 +69,7 @@ test_that(".locate honors a deprecated explicit bucket with a warning", {
   expect_match(w, "prod")
   expect_match(w, "env =")
   expect_equal(loc$bucket, "my_bucket")
-  expect_equal(loc$object, "disposition_by_phone/disposition_all.parquet")
+  expect_equal(loc$object, "disposition_all.parquet")
 })
 
 test_that(".locate rejects an invalid explicit bucket", {
@@ -132,7 +132,7 @@ test_that("s160_config(refresh = TRUE) drops the cache and reloads", {
 
 test_that("dataset_object returns the object path, or NULL", {
   expect_equal(survey160r:::dataset_object("disposition"),
-               "disposition_by_phone/disposition_all.parquet")
+               "disposition_all.parquet")
   expect_null(survey160r:::dataset_object("campaign_results"))  # per-campaign
   expect_null(survey160r:::dataset_object("nope"))              # unknown dataset
 })

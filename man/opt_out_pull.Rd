@@ -38,7 +38,7 @@ The local path to the downloaded Parquet (a single string), ready for
   \code{\link{opt_out_screen}}.
 }
 \description{
-Pulls the opt-out Parquet (\code{global_opt_out/global_opt_out.parquet}) from
+Pulls the opt-out Parquet (\code{global_opt_out.parquet}) from
 the environment's disposition bucket to a local file and returns the path --
 ready to hand to \code{\link{opt_out_screen}}. Downloaded once and reused from
 the local cache on later calls (pass \code{refresh = TRUE} to force a fresh
