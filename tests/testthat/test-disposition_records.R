@@ -9,18 +9,19 @@
 .record_base <- function() {
   write_disposition_parquet(rbind(
     .record_row("2015550102", 2339, terminated = 1, mode = "sms", loi = 9,
-                topic = "Policy", disposition_date = "2026-03-01"),
+                topic = "Policy", registration_id = "REG-C",
+                disposition_date = "2026-03-01"),
     .record_row("2015550101", 2354, engaged = 1, loi = 11, topic = "Brand",
-                disposition_date = "2026-04-01"),
+                registration_id = "REG-B", disposition_date = "2026-04-01"),
     .record_row("2015550101", 2339, engaged = 1, opted_in = 1, completed = 1,
                 web_complete = 1, loi = 12, topic = "Brand",
-                disposition_date = "2026-03-01")
+                registration_id = "REG-A", disposition_date = "2026-03-01")
   ))
 }
 
 .RECORD_COLS <- c("phone", "campaign_id", "sent", "engaged", "opted_in",
                   "completed", "web_complete", "terminated", "error", "loi",
-                  "topic", "mode", "disposition_date")
+                  "topic", "mode", "registration_id", "disposition_date")
 
 test_that("returns raw rows, one per (phone, campaign), full schema, ordered", {
   res <- disposition_records(.record_base())
@@ -33,6 +34,8 @@ test_that("returns raw rows, one per (phone, campaign), full schema, ordered", {
   expect_equal(res$web_complete, c(1L, 0L, 0L))
   expect_equal(res$mode, c("t2w", "t2w", "sms"))
   expect_equal(res$topic, c("Brand", "Brand", "Policy"))
+  # registration_id is carried through unchanged, one per (phone, campaign)
+  expect_equal(res$registration_id, c("REG-A", "REG-B", "REG-C"))
 })
 
 test_that("phones filter normalizes and returns only stored rows (no never-contacted)", {
@@ -91,8 +94,8 @@ test_that("output is canonical order; extra (provenance) columns are dropped", {
                      error = "DELIVERY_FAILED", disposition_date = "2026-03-01")
   row$source_csv_hash <- "abc123"                        # extra column
   row <- row[, c("mode", "source_csv_hash", "campaign_id", "phone", "loi",
-                 "topic", "disposition_date", "sent", "engaged", "opted_in",
-                 "completed", "web_complete", "terminated", "error")]  # scrambled
+                 "topic", "registration_id", "disposition_date", "sent", "engaged",
+                 "opted_in", "completed", "web_complete", "terminated", "error")]  # scrambled
   res <- disposition_records(write_disposition_parquet(row))
   expect_named(res, .RECORD_COLS)                        # canonical order restored
   expect_false("source_csv_hash" %in% names(res))        # extra dropped

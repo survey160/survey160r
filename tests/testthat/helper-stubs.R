@@ -322,6 +322,7 @@ write_opt_out_parquet <- function(rows) {
                         opted_in = 0L, completed = 0L, web_complete = 0L,
                         terminated = 0L, error = NA_character_, loi = NA_real_,
                         topic = NA_character_, mode = "t2w",
+                        registration_id = NA_character_,
                         disposition_date = as.Date(NA)) {
   data.frame(
     phone = phone, campaign_id = as.integer(campaign_id),
@@ -330,7 +331,9 @@ write_opt_out_parquet <- function(rows) {
     web_complete = as.integer(web_complete),
     terminated = as.integer(terminated), error = as.character(error),
     loi = as.numeric(loi), topic = as.character(topic),
-    mode = as.character(mode), disposition_date = as.Date(disposition_date),
+    mode = as.character(mode),
+    registration_id = as.character(registration_id),
+    disposition_date = as.Date(disposition_date),
     stringsAsFactors = FALSE
   )
 }
