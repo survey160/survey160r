@@ -7,11 +7,11 @@
         "campaign_results": { "bucket": "campaign_results" },
         "disposition": {
           "bucket": "s160_disposition_prod",
-          "object": "disposition_by_phone/disposition_all.parquet"
+          "object": "disposition_all.parquet"
         },
         "opt_out": {
           "bucket": "s160_disposition_prod",
-          "object": "global_opt_out/global_opt_out.parquet"
+          "object": "global_opt_out.parquet"
         }
       }
     },
@@ -27,11 +27,11 @@
         "campaign_results": { "bucket": "campaign_results_dev" },
         "disposition": {
           "bucket": "s160_disposition_dev",
-          "object": "disposition_by_phone/disposition_all.parquet"
+          "object": "disposition_all.parquet"
         },
         "opt_out": {
           "bucket": "s160_disposition_dev",
-          "object": "global_opt_out/global_opt_out.parquet"
+          "object": "global_opt_out.parquet"
         }
       }
     }

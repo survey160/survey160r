@@ -1,5 +1,16 @@
 # survey160r (development version)
 
+## Changes
+
+* **Consolidated disposition/opt-out reads now live at the bucket root.** The
+  disposition read projection and the opt-out list moved from
+  `disposition_by_phone/disposition_all.parquet` and
+  `global_opt_out/global_opt_out.parquet` to `disposition_all.parquet` and
+  `global_opt_out.parquet` (bucket root), matching the single-file-at-root
+  convention. `disposition_pull()` / `opt_out_pull()` resolve the new paths via
+  the bundled `inst/config.json`; the objects must be republished at the root
+  before this version is consumed.
+
 ## Bug fixes
 
 * **`refused` no longer silently drops reply-only refusals.** A terminal step is

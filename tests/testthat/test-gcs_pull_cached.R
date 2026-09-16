@@ -40,7 +40,7 @@ gpc_args <- function(dest = NULL, bucket = "s160_disposition_prod",
                      refresh = FALSE, progress = FALSE) {
   list(fn = "disposition_pull", dest = dest, bucket = bucket,
        refresh = refresh, progress = progress,
-       object_name = "disposition_by_phone/disposition_all.parquet",
+       object_name = "disposition_all.parquet",
        cache_suffix = ".parquet", noun = "disposition projection")
 }
 
@@ -63,7 +63,7 @@ test_that("default pulls into the user cache and returns the path", {
   p <- suppressMessages(do.call(.gcs_pull_cached, gpc_args()))
 
   expect_equal(p, file.path(tmp, "s160_disposition_prod.parquet"))
-  expect_equal(cap$object_name, "disposition_by_phone/disposition_all.parquet")
+  expect_equal(cap$object_name, "disposition_all.parquet")
   expect_equal(cap$bucket, "s160_disposition_prod")
   expect_true(file.exists(p))
 })

@@ -11,7 +11,7 @@ test_that("opt_out_pull resolves env to the opt-out bucket + object", {
   a <- cap$args
   expect_equal(a$fn, "opt_out_pull")
   expect_equal(a$bucket, "s160_disposition_dev")
-  expect_equal(a$object_name, "global_opt_out/global_opt_out.parquet")
+  expect_equal(a$object_name, "global_opt_out.parquet")
   expect_equal(a$cache_suffix, ".global_opt_out.parquet")
   expect_equal(a$noun, "opt-out list")
 })

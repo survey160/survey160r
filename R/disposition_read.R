@@ -626,7 +626,7 @@ disposition_screen <- function(sample, dataset, phone_col = "phone",
 #' Download the disposition projection from GCS
 #'
 #' Pulls the phone-sorted disposition projection
-#' (\code{disposition_by_phone/disposition_all.parquet}) from the environment's
+#' (\code{disposition_all.parquet}) from the environment's
 #' disposition bucket to a local file and returns the path -- ready to hand to
 #' \code{\link{disposition_summary}} / \code{\link{disposition_screen}}. Downloaded
 #' once and reused from the local cache on later calls (pass \code{refresh = TRUE}
