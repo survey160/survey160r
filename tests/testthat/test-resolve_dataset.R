@@ -13,6 +13,12 @@ test_that("resolve_dataset returns the physical bucket + object per tier", {
   expect_equal(o_prod$bucket, "s160_disposition_prod")
   expect_equal(o_prod$object, "global_opt_out.parquet")
 
+  m_prod <- survey160r:::resolve_dataset("campaign_metrics", "prod")
+  expect_equal(m_prod$bucket, "s160_analytics_prod")
+  expect_equal(m_prod$object, "campaign_all.parquet")
+  expect_equal(survey160r:::resolve_dataset("campaign_metrics", "dev")$bucket,
+               "s160_analytics_dev")
+
   c_prod <- survey160r:::resolve_dataset("campaign_results", "prod")
   expect_equal(c_prod$bucket, "campaign_results")
   expect_null(c_prod$object)
@@ -94,7 +100,8 @@ test_that("s160_datasets lists every registry tier as (dataset, env)", {
     paste(d$dataset, d$env),
     c("campaign_results prod", "campaign_results staging", "campaign_results dev",
       "disposition prod", "disposition dev",
-      "opt_out prod", "opt_out dev")
+      "opt_out prod", "opt_out dev",
+      "campaign_metrics prod", "campaign_metrics dev")
   )
   expect_equal(rownames(d), as.character(seq_len(nrow(d))))
 })
@@ -117,7 +124,8 @@ test_that("s160_config returns the bundled environment config", {
   expect_equal(cfg$environments$prod$api_url, "https://api.survey160.com")
   expect_equal(cfg$environments$dev$api_url, "https://dev-api.survey160.com")
   expect_setequal(names(cfg$environments$prod$datasets),
-                  c("campaign_results", "disposition", "opt_out"))
+                  c("campaign_results", "disposition", "opt_out",
+                    "campaign_metrics"))
   expect_equal(cfg$environments$prod$datasets$campaign_results$bucket,
                "campaign_results")
 })

@@ -61,6 +61,13 @@ reference:
   contents:
   - opt_out_pull
   - opt_out_screen
+- title: Campaign metrics
+  desc: >
+    Download the consolidated per-campaign metrics + recipient-latency
+    projection (campaign_all.parquet) from the analytics bucket, then read and
+    aggregate it directly.
+  contents:
+  - campaign_metrics_pull
 
 articles:
 - title: Guides
