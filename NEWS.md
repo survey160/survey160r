@@ -1,5 +1,16 @@
 # survey160r (development version)
 
+## Documentation
+
+* **Articles and README refreshed for the current disposition reader surface.**
+  The disposition guide, the README, and the opt-out guide now document the
+  `n_*` status counts (which replaced the removed `ever_*` booleans), the
+  `refused` / `ineligible` terminal split, `best_disposition`, and the populated
+  `disposition_date` (the "beta / all-`NA` date" caveats are gone). The
+  `disposition_pull()` size note is corrected from "around 150 MB" to "a few
+  hundred MB" -- the projection has grown well past the old figure. Docs-only;
+  no behaviour change.
+
 ## Features
 
 * **`campaign_metrics_pull()`: fetch the consolidated campaign-metrics projection.**

@@ -7,7 +7,7 @@ R package for accessing Survey160 campaign data, across these areas:
 
 - **[Raw data access](#raw-data-access)** -- read campaign results from Google Cloud Storage (`s160_gcs_*`) and trigger fresh exports via the API (`s160_api_*`).
 - **[Latency analysis](vignettes/latency.Rmd)** -- compute a per-campaign recipient-latency report from a raw campaign CSV, as an in-memory R object.
-- **[Disposition screening](vignettes/disposition.Rmd)** -- screen a phone sample against every recipient Survey160 has contacted, dropping numbers already completed or refused before you field.
+- **[Disposition screening](vignettes/disposition.Rmd)** -- screen a phone sample against every recipient Survey160 has contacted, dropping numbers already completed, refused, or screened out before you field.
 - **[Opt-out screening](vignettes/opt-out.Rmd)** -- screen a phone sample against the opt-out list, flagging numbers that have opted out before you field.
 
 **New here?** To screen a sample before fielding, jump to [Disposition screening](#disposition-screening). First time on this machine, start with [First-time setup](#first-time-setup) -- you need a credential and a bucket grant before any data call works.
@@ -38,7 +38,7 @@ records <- data.frame(
   campaign_id = c(101L, 102L, 101L),
   engaged = c(1L, 1L, 0L), opted_in = c(1L, 0L, 0L), completed = c(1L, 0L, 0L),
   web_complete = c(0L, 0L, 0L), terminated = c(0L, 1L, 0L),
-  date_closed_on = as.Date(c("2026-01-10", "2026-01-20", "2026-01-15"))
+  disposition_date = as.Date(c("2026-01-10", "2026-01-20", "2026-01-15"))
 )
 disposition_summary(records, phones = c("5551234567", "5550000000"))
 ```
@@ -100,20 +100,22 @@ Compute a per-campaign recipient-latency report from a raw campaign CSV, returne
 
 ## Disposition screening
 
-Screen a phone sample against every recipient Survey160 has contacted, dropping numbers already completed or refused before you field. Pull the shared dataset once, then screen in place:
+Screen a phone sample against every recipient Survey160 has contacted, dropping numbers already completed, refused, or screened out before you field. Pull the shared dataset once, then screen in place:
 
 ```r
 library(survey160r)
 s160_gcs_init()   # one-time browser sign-in (cached)
 
 my_sample <- data.frame(phone = c("2015550101", "2015550102"))  # your list; extra columns are kept
-dataset   <- disposition_pull()                     # downloads ~140 MB the first time, then cached
+dataset   <- disposition_pull()                     # downloads a few hundred MB the first time, then cached
 cleaned   <- disposition_screen(my_sample, dataset) # screening columns appended 1:1
-# drop already-completed / refused; blank-phone rows come back all-NA and are kept
-subset(cleaned, !(ever_completed %in% TRUE | ever_terminated %in% TRUE))
+# drop already-completed (SMS or web) and every hard stop; blank-phone rows come
+# back all-NA and are kept
+subset(cleaned, !((n_completed > 0 | n_web_complete > 0) %in% TRUE |
+                    (n_terminated > 0 | n_refused > 0 | n_ineligible > 0) %in% TRUE))
 ```
 
-Full walkthrough -- the appended columns, ad-hoc queries, the read-once tip, and beta caveats -- in the **[disposition guide](vignettes/disposition.Rmd)** (`vignette("disposition")` once installed).
+Full walkthrough -- the appended columns, ad-hoc queries, the `refused` / `ineligible` split, and the read-once tip -- in the **[disposition guide](vignettes/disposition.Rmd)** (`vignette("disposition")` once installed).
 
 ## Opt-out screening
 
@@ -205,7 +207,7 @@ Common symptoms and fixes:
 | `could not find function "disposition_pull"` | R-universe has not rebuilt the latest release yet | Install from GitHub (`pak::pkg_install("survey160/survey160r")`), then restart R |
 | `disposition_pull()` returns data you know is out of date | It reused a cached copy | Re-download with `disposition_pull(refresh = TRUE)` |
 | `unused argument (...)` from a reader | The argument belongs to a different function (e.g. `filter_open` is on `s160_api_campaign_results()`, not `s160_gcs_campaign_results_read()`) | Move it to the right function, or drop it |
-| A `date_from` / `date_to` filter returns 0 rows | In the beta, `date_closed_on` is `NA`, so any date filter matches nothing | Do not filter by date yet |
+| A `date_from` / `date_to` filter drops more rows than expected | A row whose `disposition_date` is `NA` (never populated for that campaign) is dropped by any date bound | Expected -- only dated rows match a date filter; omit the bound to keep undated rows |
 
 Reset credentials (edit `~/.Renviron`, remove the relevant line, restart R):
 

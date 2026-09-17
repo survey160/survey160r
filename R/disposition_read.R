@@ -652,8 +652,8 @@ disposition_screen <- function(sample, dataset, phone_col = "phone",
 #'   pass, so refresh to pick up a newer one).
 #' @param progress Show a download progress bar. Defaults to
 #'   \code{interactive()}: a live bar in an interactive session, silent in batch
-#'   or scheduled runs. The projection is around 150 MB, so an interactive pull
-#'   otherwise looks stalled while it transfers.
+#'   or scheduled runs. The projection is a few hundred MB, so an interactive
+#'   pull otherwise looks stalled while it transfers.
 #' @return The local path to the downloaded Parquet (a single string).
 #' @seealso \code{\link{disposition_summary}}, \code{\link{disposition_screen}},
 #'   \code{\link{opt_out_pull}}, \code{\link{s160_gcs_init}}
