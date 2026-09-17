@@ -23,14 +23,14 @@ below (defaults match \code{\link{campaign_metrics_records}}).}
 \code{[0, 1]}; \code{TRUE} scales them to \code{0-100}.}
 }
 \value{
-\code{x} with \code{engagement_rate}, \code{optin_engaged_rate}, and
+\code{x} with \code{engagement_rate}, \code{opted_in_engaged_rate}, and
   \code{completion_rate} appended (same type as \code{x}).
 }
 \description{
 The single definition of the Survey160 funnel rates, so every consumer
 computes them the same way. Given a frame carrying the summed funnel counts,
 appends three columns: \code{engagement_rate} (\code{engaged / sent}, a first
-reply), \code{optin_engaged_rate} (\code{opted_in / engaged}, conversion among
+reply), \code{opted_in_engaged_rate} (\code{opted_in / engaged}, conversion among
 the engaged), and \code{completion_rate} (\code{completed / sent}). A rate
 with a zero denominator is \code{NA} (not \code{NaN}/\code{Inf}). Used by
 \code{\link{campaign_metrics_summary}}, and usable on any counts frame.

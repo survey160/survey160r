@@ -54,6 +54,10 @@ test_that("records errors on a non-existent path", {
   expect_error(campaign_metrics_records("/no/such/file.parquet"), "not found")
 })
 
+test_that("records rejects an input that is neither a path nor a data frame", {
+  expect_error(campaign_metrics_records(123), "single Parquet path or a data frame")
+})
+
 test_that("records reads and dedups from a Parquet path", {
   tmp <- withr::local_tempfile(fileext = ".parquet")
   nanoparquet::write_parquet(raw_cells(), tmp)

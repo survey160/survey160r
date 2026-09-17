@@ -63,8 +63,9 @@ A data frame, one row per phone, columns in this order:
   \code{phone}; \code{n_campaigns} and \code{campaigns} (how many campaigns,
   and the comma-separated id list); the cumulative status counts
   \code{n_engaged}, \code{n_opted_in}, \code{n_completed},
-  \code{n_web_complete}, \code{n_terminated} (every hard stop -- the union),
-  then \code{n_refused} and \code{n_ineligible} (its split; each \code{0} on a
+  \code{n_web_complete}, \code{n_terminated} (campaigns the producer flagged as
+  a hard stop), then \code{n_refused} and \code{n_ineligible} (the
+  name-classified terminals; each \code{0} on a
   pre-0.51.0 projection; they need not sum to \code{n_terminated}, since a
   downstream projection can set \code{terminated} independently of the split --
   less when a terminal was unsplit, more when the split flagged a terminal the

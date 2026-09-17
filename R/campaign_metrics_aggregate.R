@@ -17,9 +17,10 @@
                               names(.CAMPAIGN_METRICS_RENAME))
 .CAMPAIGN_METRICS_COUNTS <- c("n_sent", "n_engaged", "n_opted_in", "n_completed")
 
-# Read the projection Parquet, projecting to the cell columns. Mirrors
-# .disposition_read_parquet(): use nanoparquet col_select when the writer was
-# duckdb (column pushdown), otherwise read and subset.
+# Read the projection Parquet, projecting to the cell columns with nanoparquet
+# column pushdown (col_select), so the wide recipient-latency columns are never
+# read. Only the columns that exist are requested, so a slimmer projection still
+# reads.
 .campaign_metrics_read_parquet <- function(dataset) {
   if (!is.character(dataset) || length(dataset) != 1L || !nzchar(dataset)) {
     stop("`x` must be a single Parquet path or a data frame.", call. = FALSE)
@@ -27,14 +28,8 @@
   if (!file.exists(dataset)) stop_not_found("campaign metrics projection", dataset)
   want <- c("campaign_id", "date", "hour_local",
             unname(.CAMPAIGN_METRICS_RENAME), .CAMPAIGN_METRICS_COUNTS)
-  cb <- nanoparquet::read_parquet_info(dataset)$created_by
-  duckdb <- length(cb) == 1L && !is.na(cb) && grepl("duckdb", cb, ignore.case = TRUE)
-  if (duckdb) {
-    cols <- intersect(want, nanoparquet::read_parquet_schema(dataset)$name)
-    return(as.data.frame(nanoparquet::read_parquet(dataset, col_select = cols)))
-  }
-  d <- as.data.frame(nanoparquet::read_parquet(dataset))
-  d[, intersect(want, names(d)), drop = FALSE]
+  cols <- intersect(want, nanoparquet::read_parquet_schema(dataset)$name)
+  as.data.frame(nanoparquet::read_parquet(dataset, col_select = cols))
 }
 
 # tracker_<x> -> <x>, only when the short name is not already present.
@@ -51,7 +46,7 @@
 #' The single definition of the Survey160 funnel rates, so every consumer
 #' computes them the same way. Given a frame carrying the summed funnel counts,
 #' appends three columns: \code{engagement_rate} (\code{engaged / sent}, a first
-#' reply), \code{optin_engaged_rate} (\code{opted_in / engaged}, conversion among
+#' reply), \code{opted_in_engaged_rate} (\code{opted_in / engaged}, conversion among
 #' the engaged), and \code{completion_rate} (\code{completed / sent}). A rate
 #' with a zero denominator is \code{NA} (not \code{NaN}/\code{Inf}). Used by
 #' \code{\link{campaign_metrics_summary}}, and usable on any counts frame.
@@ -61,7 +56,7 @@
 #' @param sent,engaged,opted_in,completed Column names of the funnel counts.
 #' @param percent When \code{FALSE} (default) rates are proportions in
 #'   \code{[0, 1]}; \code{TRUE} scales them to \code{0-100}.
-#' @return \code{x} with \code{engagement_rate}, \code{optin_engaged_rate}, and
+#' @return \code{x} with \code{engagement_rate}, \code{opted_in_engaged_rate}, and
 #'   \code{completion_rate} appended (same type as \code{x}).
 #' @seealso \code{\link{campaign_metrics_summary}}
 #' @examples
@@ -81,7 +76,7 @@ funnel_rates <- function(x, sent = "n_sent", engaged = "n_engaged",
   mult  <- if (isTRUE(percent)) 100 else 1
   ratio <- function(num, den) ifelse(den > 0, num / den, NA_real_)
   x$engagement_rate    <- mult * ratio(x[[engaged]],   x[[sent]])
-  x$optin_engaged_rate <- mult * ratio(x[[opted_in]],  x[[engaged]])
+  x$opted_in_engaged_rate <- mult * ratio(x[[opted_in]],  x[[engaged]])
   x$completion_rate    <- mult * ratio(x[[completed]], x[[sent]])
   x
 }
@@ -156,7 +151,7 @@ campaign_metrics_records <- function(x, dedup = TRUE) {
 #' @return A data frame, one row per \code{by} group: the \code{by} columns,
 #'   \code{campaigns} (distinct campaign count), the summed \code{n_sent},
 #'   \code{n_engaged}, \code{n_opted_in}, \code{n_completed}, and (when
-#'   \code{rates}) \code{engagement_rate}, \code{optin_engaged_rate},
+#'   \code{rates}) \code{engagement_rate}, \code{opted_in_engaged_rate},
 #'   \code{completion_rate}.
 #' @seealso \code{\link{campaign_metrics_records}}, \code{\link{funnel_rates}}
 #' @examples
@@ -169,7 +164,10 @@ campaign_metrics_records <- function(x, dedup = TRUE) {
 #' @export
 campaign_metrics_summary <- function(x, by = "campaign_id", rates = TRUE,
                                      percent = FALSE) {
-  d  <- campaign_metrics_records(x)
+  d <- campaign_metrics_records(x)
+  if (!"campaign_id" %in% names(d)) {
+    stop("campaign_metrics_summary(): `campaign_id` is required.", call. = FALSE)
+  }
   by <- as.character(by)
   bad <- setdiff(by, names(d))
   if (length(bad)) {

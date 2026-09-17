@@ -39,7 +39,9 @@ cleaned <- opt_out_screen(my_sample, opt_out_pull())
 cleaned <- disposition_screen(cleaned, disposition_pull())
 
 kept <- subset(cleaned,
-  !(opted_out %in% TRUE | ever_completed %in% TRUE | ever_terminated %in% TRUE))
+  !(opted_out %in% TRUE |
+      (n_completed > 0 | n_web_complete > 0) %in% TRUE |
+      (n_terminated > 0 | n_refused > 0 | n_ineligible > 0) %in% TRUE))
 ```
 
 Both lists live in the same `s160_disposition_prod` bucket and cache to separate files, so one `s160_gcs_init()` covers both pulls.

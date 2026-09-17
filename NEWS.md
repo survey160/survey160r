@@ -1,5 +1,25 @@
 # survey160r (development version)
 
+## Documentation
+
+* **Articles and README refreshed for the current disposition reader surface.**
+  The disposition guide, the README, and the opt-out guide now document the
+  `n_*` status counts (which replaced the removed `ever_*` booleans), the
+  `refused` / `ineligible` terminal split, `best_disposition`, and the populated
+  `disposition_date` (the "beta / all-`NA` date" caveats are gone). The
+  `disposition_pull()` size note is corrected from "around 150 MB" to "a few
+  hundred MB" -- the projection has grown well past the old figure. Docs-only;
+  no behaviour change.
+
+* **Reference pages corrected.** `disposition_records()`'s documented return
+  schema now lists `registration_id` (added to the stored schema in 0.54.0). The
+  `disposition_screen()` example and the disposition guide now screen on all
+  three hard stops (`n_terminated` / `n_refused` / `n_ineligible`) rather than
+  `n_terminated` alone: on the production projection the three are set
+  independently, so a `n_terminated`-only filter could keep a refuser. A stray
+  section-sign glyph in two latency reference pages is spelled out ("section").
+  Docs-only.
+
 ## Features
 
 * **`campaign_metrics_records()` / `campaign_metrics_summary()` / `funnel_rates()`:
@@ -12,7 +32,7 @@
   no longer double-count). `campaign_metrics_summary(by = ...)` rolls those cells
   up to summed funnel counts by any project dimension(s) and appends the funnel
   rates. `funnel_rates()` is the single definition of `engagement_rate`,
-  `optin_engaged_rate`, and `completion_rate` (zero denominators return `NA`).
+  `opted_in_engaged_rate`, and `completion_rate` (zero denominators return `NA`).
 
 * **`campaign_metrics_pull()`: fetch the consolidated campaign-metrics projection.**
   A new bare reader in the `campaign_metrics` family, parallel to
