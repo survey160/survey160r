@@ -89,7 +89,6 @@ For the "records reaching each question" view -- which stage sheds respondents -
 
 ```{r}
 question_funnel(data, c("intro", "q1", "q2", "close"))
-#>   question question_index n_reached pct_reached
 ```
 
 It returns one row per question with `n_reached` and `pct_reached` (share of the first stage). Underneath, `question_timestamps(data, "close")` reads and parses one question's timestamp column, and `parse_campaign_timestamps()` decodes the export's timestamp strings directly -- both operate on the raw export data frame.

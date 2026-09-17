@@ -53,9 +53,10 @@ it (dropping the numbers already completed or refused). Mirrors the
 \dontrun{
 dataset <- disposition_pull()
 cleaned <- disposition_screen(my_sample, dataset, phone_col = "phone")
-# drop finished/terminated; blank-phone rows come back all-NA and are kept
+# drop finished (completed/web) and every hard stop (refused / ineligible /
+# terminated); blank-phone rows come back all-NA and are kept
 subset(cleaned, !((n_completed > 0 | n_web_complete > 0) \%in\% TRUE |
-                    (n_terminated > 0) \%in\% TRUE))
+  (n_terminated > 0 | n_refused > 0 | n_ineligible > 0) \%in\% TRUE))
 }
 }
 \seealso{

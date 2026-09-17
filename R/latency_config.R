@@ -108,7 +108,7 @@ latency_build_config <- function(campaign_id, data,
 
 #' Validate a latency config against a data frame
 #'
-#' Implements the fail-fast checks from spec §2.4. Aborts with a named error
+#' Implements the fail-fast checks from spec section 2.4. Aborts with a named error
 #' on the first failing rule.
 #'
 #' @param config The config list (typically from

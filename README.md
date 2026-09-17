@@ -9,6 +9,7 @@ R package for accessing Survey160 campaign data, across these areas:
 - **[Latency analysis](vignettes/latency.Rmd)** -- compute a per-campaign recipient-latency report from a raw campaign CSV, as an in-memory R object.
 - **[Disposition screening](vignettes/disposition.Rmd)** -- screen a phone sample against every recipient Survey160 has contacted, dropping numbers already completed, refused, or screened out before you field.
 - **[Opt-out screening](vignettes/opt-out.Rmd)** -- screen a phone sample against the opt-out list, flagging numbers that have opted out before you field.
+- **Campaign metrics** -- download the consolidated per-campaign metrics + recipient-latency projection (`campaign_all.parquet`) with `campaign_metrics_pull()`, then read and aggregate it directly.
 
 **New here?** To screen a sample before fielding, jump to [Disposition screening](#disposition-screening). First time on this machine, start with [First-time setup](#first-time-setup) -- you need a credential and a bucket grant before any data call works.
 
@@ -37,7 +38,8 @@ records <- data.frame(
   phone = c("5551234567", "5551234567", "5559876543"),
   campaign_id = c(101L, 102L, 101L),
   engaged = c(1L, 1L, 0L), opted_in = c(1L, 0L, 0L), completed = c(1L, 0L, 0L),
-  web_complete = c(0L, 0L, 0L), terminated = c(0L, 1L, 0L),
+  web_complete = c(0L, 0L, 0L), refused = c(0L, 1L, 0L), ineligible = c(0L, 0L, 0L),
+  terminated = c(0L, 1L, 0L),
   disposition_date = as.Date(c("2026-01-10", "2026-01-20", "2026-01-15"))
 )
 disposition_summary(records, phones = c("5551234567", "5550000000"))

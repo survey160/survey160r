@@ -36,7 +36,7 @@ kept <- subset(
 )
 ```
 
-`disposition_screen()` returns `my_sample` unchanged with the screening columns appended 1:1 (see [What you get back](#what-you-get-back)). The columns are cumulative **counts** across the number's campaigns, so `> 0` means "reached that status at least once". `n_terminated` is every hard stop; `n_refused` (declined) and `n_ineligible` (screened out) are its name-derived split -- screen on all three, since a number can be flagged refused/ineligible without a bare `terminated`. The `%in% TRUE` guard keeps blank or unparseable phones (they screen to all-`NA`), so they surface for correction rather than vanishing.
+`disposition_screen()` returns `my_sample` unchanged with the screening columns appended 1:1 (see [What you get back](#what-you-get-back)). The columns are cumulative **counts** across the number's campaigns, so `> 0` means "reached that status at least once". `n_terminated`, `n_refused` (declined), and `n_ineligible` (screened out) are the hard-stop signals; on the prod projection they are set independently -- a number can be flagged `refused` / `ineligible` without a bare `terminated`, and vice versa -- so screen on all three. The `%in% TRUE` guard keeps blank or unparseable phones (they screen to all-`NA`), so they surface for correction rather than vanishing.
 
 ## Look up specific numbers
 
@@ -80,8 +80,8 @@ Note `5551234567`: its **latest** disposition is `refused` (its most recent camp
 | `n_engaged` | Campaigns where it replied. |
 | `n_opted_in` | Campaigns where it consented. |
 | `n_completed` / `n_web_complete` | Campaigns it completed on SMS (reached the close) / on the web. |
-| `n_terminated` | Campaigns that ended in a hard stop (the union of every refusal / screen-out / terminal). |
-| `n_refused` / `n_ineligible` | Of those, where it declined / where it screened out (the name-derived split). |
+| `n_terminated` | Campaigns that ended in a hard stop -- a refusal, a screen-out, or a terminal the routing could not name-classify. |
+| `n_refused` / `n_ineligible` | Campaigns where it declined / where it screened out (the name-classified terminals). On the prod projection these are set independently of `n_terminated` and need not sum to it -- so screen on all three. |
 | `n_error` | Campaigns that carried a carrier delivery-error code. |
 | `latest_disposition` / `latest_campaign_id` | Outcome of the **most-recent** campaign, and that campaign's id. |
 | `best_disposition` / `best_campaign_id` | **Furthest-reached** outcome across all its campaigns, and the id that reached it. |
@@ -94,9 +94,10 @@ The counts overlap rather than partition `n_campaigns` -- a completed campaign i
 ## Notes
 
 - **Contacted-only.** A loaded number that was never texted is not in the dataset; it screens as `never_contacted`.
-- **Text-to-web (external) campaigns** have no completion callback, so `completed` is `NA` and never a false positive.
-- **`disposition_date` and `error` are populated.** The live producer stamps each phone's last-send date and any carrier error code, so the `date_from` / `date_to` filters and `n_error` work (prod currently spans mid-2023 to the last pipeline pass).
+- **Text-to-web (external) campaigns** have no completion callback, so `completed` is `NA` -- never a false positive, but an external completer reads as `n_completed = 0` and is kept (a false negative you cannot screen out here).
+- **`disposition_date` and `error` are populated.** The live producer stamps each phone's last-send date and any carrier delivery-error code, so the `date_from` / `date_to` filters and `n_error` work (prod currently spans mid-2023 to the last pipeline pass). A row with no surviving send has an `NA` `disposition_date`, which any date bound drops.
 - **Terminal split rollout.** `refused` / `ineligible` are set for the terminals the routing could name-classify; a small residual stays `terminated`. A projection produced before the split defaults them to `0`, so those rows read as plain `terminated`.
+- **Screen on the counts, not on `latest_disposition`.** `latest_disposition` / `best_disposition` are informational; a number whose most-recent campaign only reached `engaged` can still have completed an earlier one, so filter on the `n_*` counts (which see every campaign), not the latest label.
 - **Scale.** The projection is tens of millions of rows and a few hundred MB; each reader reads it whole, so pull once and summarize per sample in memory (see [Screen several samples](#screen-several-samples)).
 - **Stale cache.** The dataset is re-published periodically; `disposition_pull(refresh = TRUE)` forces a fresh download.
 - **`env`.** `disposition_pull()` reads `"prod"` (default) or `"dev"` -- there is no `staging` tier (staging sends fold into the prod bucket), so `env = "staging"` errors; use `env = "prod"` for staging data. Run `s160_datasets()` to see every dataset's environments.
