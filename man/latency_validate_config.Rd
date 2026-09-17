@@ -16,7 +16,7 @@ latency_validate_config(config, data)
 Invisible \code{TRUE} on success; otherwise stops with an error.
 }
 \description{
-Implements the fail-fast checks from spec §2.4. Aborts with a named error
+Implements the fail-fast checks from spec section 2.4. Aborts with a named error
 on the first failing rule.
 }
 \examples{

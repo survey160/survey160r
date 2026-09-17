@@ -61,7 +61,7 @@ A hand-built data frame works too; `result$meta` provenance is then `NA`, which 
 | `campaign_id`, `project_id` | Wave identity |
 | `survey_mode` | `sms` / `t2w` / `t2w_external` |
 | `date`, `hour_local` | Bucket grain (`hour_local` is `NA` for the day rollup) |
-| `segment`, `segment_index` | Pair of consecutive flow questions, e.g. `intro->q1` |
+| `segment`, `segment_index` | Consecutive flow-question pair (the two names joined by a right-arrow, e.g. `intro` then `q1`) and its position |
 | `threshold_min` | Fleet threshold (1, 3, 5, or 10 min) |
 | `n`, `pct_le` | Per-segment in-window dispatch metrics |
 | `n_respondents`, `pct_resp_hit_gt`, `pct_resp_worst_gt` | Respondent-cascade metrics |
@@ -89,7 +89,6 @@ For the "records reaching each question" view -- which stage sheds respondents -
 
 ```{r}
 question_funnel(data, c("intro", "q1", "q2", "close"))
-#>   question question_index n_reached pct_reached
 ```
 
 It returns one row per question with `n_reached` and `pct_reached` (share of the first stage). Underneath, `question_timestamps(data, "close")` reads and parses one question's timestamp column, and `parse_campaign_timestamps()` decodes the export's timestamp strings directly -- both operate on the raw export data frame.

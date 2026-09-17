@@ -30,8 +30,8 @@ pass, so refresh to pick up a newer one).}
 
 \item{progress}{Show a download progress bar. Defaults to
 \code{interactive()}: a live bar in an interactive session, silent in batch
-or scheduled runs. The projection is around 150 MB, so an interactive pull
-otherwise looks stalled while it transfers.}
+or scheduled runs. The projection is a few hundred MB, so an interactive
+pull otherwise looks stalled while it transfers.}
 }
 \value{
 The local path to the downloaded Parquet (a single string).

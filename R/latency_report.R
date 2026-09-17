@@ -31,7 +31,7 @@ UNIVERSAL_THRESHOLDS_MIN <- c(1L, 3L, 5L, 10L)
 #' Pure function of \code{(data, config, run_at)}: no I/O, no mutable globals.
 #' With a supplied \code{run_at} the output is fully deterministic; left
 #' \code{NULL} it stamps \code{run_at_utc} from \code{Sys.time()}.
-#' Implements the algorithm in \code{campaign_scripts.md} §2.
+#' Implements the algorithm in \code{campaign_scripts.md} section 2.
 #'
 #' @param data A data frame with one row per respondent and the per-question
 #'   timestamp columns named \code{id.<q>.scriptDate} / \code{id.<q>.batchDate}
@@ -47,7 +47,7 @@ UNIVERSAL_THRESHOLDS_MIN <- c(1L, 3L, 5L, 10L)
 #' @return A list with \code{consolidated} (one row per
 #'   (campaign_id, date, hour_local, segment, threshold_min)),
 #'   \code{latency_frame} (one row per respondent x segment),
-#'   \code{diagnostics} (counts and breakdowns per spec §3.3), and
+#'   \code{diagnostics} (counts and breakdowns per spec section 3.3), and
 #'   \code{meta} (algorithm_version, config_hash, run_at_utc).
 #' @examples
 #' data <- data.frame(

@@ -43,7 +43,7 @@ stored} -- one row per \code{(phone, campaign_id)}, carrying the full
 disposition schema: \code{phone}, \code{campaign_id}, \code{sent},
 \code{engaged}, \code{opted_in}, \code{completed}, \code{web_complete},
 \code{refused}, \code{ineligible}, \code{terminated}, \code{error},
-\code{loi}, \code{topic}, \code{mode},
+\code{loi}, \code{topic}, \code{mode}, \code{registration_id},
 \code{disposition_date}. This is the level directly beneath
 \code{\link{disposition_summary}}: where \code{summary} rolls every phone up to a
 single screening row, \code{records} hands back the raw per-campaign rows --
@@ -58,8 +58,9 @@ rather than filling an all-\code{NA} column. A projection written straight from
 \code{refused} / \code{ineligible} terminal split as of 0.51.0; a pre-0.51.0
 projection omits those two) plus \code{mode},
 \code{error} (the carrier delivery-error code), and \code{disposition_date}
-(\code{max(scriptDate)}); \code{loi} / \code{topic} are added by the tracker
-enrichment, so only the enriched projection carries all fifteen.
+(\code{max(scriptDate)}); \code{loi} / \code{topic} / \code{registration_id}
+are added by the tracker enrichment, so only the enriched projection carries
+all sixteen.
 \code{disposition_date} is \code{NA} for a row with no send; \code{error} is
 \code{NA} when the export carries no usable code (a clean send, or an export
 lacking the column). The

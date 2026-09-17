@@ -13,7 +13,7 @@ vignette: >
 knitr::opts_chunk$set(collapse = TRUE, comment = "#>", eval = FALSE)
 ```
 
-Screen a phone sample against the **disposition dataset** -- one row per `(phone, campaign_id)` for every recipient Survey160 has contacted across closed campaigns -- to drop numbers already completed or refused before you field. Assumes you have completed First-time setup (see the package README): GCS access to `s160_disposition_prod`.
+Screen a phone sample against the **disposition dataset** -- one row per `(phone, campaign_id)` for every recipient Survey160 has contacted across closed campaigns -- to drop numbers already completed, refused, or screened out before you field. Assumes you have completed First-time setup (see the package README): GCS access to `s160_disposition_prod`.
 
 ## Screen a sample
 
@@ -22,14 +22,21 @@ Pull the dataset once (cached), then annotate your sample in place:
 ```{r}
 library(survey160r)
 s160_gcs_init()   # one browser sign-in, cached
-dataset <- disposition_pull()            # ~140 MB first pull, then cached
+dataset <- disposition_pull()            # a few hundred MB first pull, then cached
 
 my_sample <- data.frame(phone = c("2015550101", "2015550102"))   # your phone sample
 cleaned <- disposition_screen(my_sample, dataset)
-kept <- subset(cleaned, !(ever_completed %in% TRUE | ever_terminated %in% TRUE))
+
+# keep numbers not already finished: not completed (SMS or web), and not a hard
+# stop (declined, screened out, or an unsplit terminal)
+kept <- subset(
+  cleaned,
+  !((n_completed > 0 | n_web_complete > 0) %in% TRUE |
+      (n_terminated > 0 | n_refused > 0 | n_ineligible > 0) %in% TRUE)
+)
 ```
 
-`disposition_screen()` returns `my_sample` unchanged with the screening columns appended 1:1 (see [What you get back](#what-you-get-back)). The `%in% TRUE` filter drops completed and refused numbers; blank or unparseable phones screen to all-`NA` and are kept, so they surface for correction rather than vanishing.
+`disposition_screen()` returns `my_sample` unchanged with the screening columns appended 1:1 (see [What you get back](#what-you-get-back)). The columns are cumulative **counts** across the number's campaigns, so `> 0` means "reached that status at least once". `n_terminated`, `n_refused` (declined), and `n_ineligible` (screened out) are the hard-stop signals; on the prod projection they are set independently -- a number can be flagged `refused` / `ineligible` without a bare `terminated`, and vice versa -- so screen on all three. The `%in% TRUE` guard keeps blank or unparseable phones (they screen to all-`NA`), so they surface for correction rather than vanishing.
 
 ## Look up specific numbers
 
@@ -37,29 +44,30 @@ kept <- subset(cleaned, !(ever_completed %in% TRUE | ever_terminated %in% TRUE))
 
 ```{r}
 disposition_summary(dataset, phones = c("2015550101", "2015550102"))
-disposition_records(dataset, campaign_ids = 2339)
+disposition_records(dataset, campaign_ids = 1234)
 ```
 
-Both take `phones` / `campaign_ids` filters. Phones match digit-normalized: a leading US `1` is dropped, so an 11-digit number matches a stored 10-digit one.
+Both take `phones` / `campaign_ids` filters. Phones match digit-normalized: a leading US `1` is dropped, so an 11-digit number matches a stored 10-digit one. `disposition_records()` hands back the stored schema as-is -- the funnel flags (including the `refused` / `ineligible` split), `mode`, `error`, `loi`, `topic`, and `disposition_date` (plus `registration_id` once the projection is republished carrying it); see `?disposition_records`.
 
 ## Screen several samples
 
-Each reader call reads the whole file, so read once and summarize in memory per sample. `disposition_summary()` accepts either the dataset path or an already-read frame; on a frame it does no I/O, so this runs:
+Each reader call reads the whole file (nanoparquet has no predicate pushdown), so read once and summarize in memory per sample. `disposition_summary()` accepts either the dataset path or an already-read frame; on a frame it does no I/O, so this runs:
 
 ```{r summary_frame, eval = TRUE}
 library(survey160r)
 records <- data.frame(
   phone          = c("5551234567", "5551234567", "5559876543"),
   campaign_id    = c(101L, 102L, 101L),
-  engaged        = c(1L, 1L, 0L), opted_in       = c(1L, 0L, 0L),
-  completed       = c(1L, 0L, 0L), web_complete = c(0L, 0L, 0L),
+  engaged        = c(1L, 1L, 0L), opted_in     = c(1L, 0L, 0L),
+  completed      = c(1L, 0L, 0L), web_complete = c(0L, 0L, 0L),
+  refused        = c(0L, 1L, 0L), ineligible   = c(0L, 0L, 0L),
   terminated     = c(0L, 1L, 0L),
-  date_closed_on = as.Date(c("2026-01-10", "2026-01-20", "2026-01-15"))
+  disposition_date = as.Date(c("2026-01-10", "2026-01-20", "2026-01-15"))
 )
 disposition_summary(records, phones = c("5551234567", "5550000000"))
 ```
 
-In your own code, read once and reuse: `records <- disposition_records(dataset)`, then `disposition_summary(records, phones = ...)` for each list -- `disposition_summary()` takes either a `dataset` path or the in-memory frame `disposition_records()` returns.
+Note `5551234567`: its **latest** disposition is `refused` (its most recent campaign, 102, ended in a refusal) while its **best** is `completed` (campaign 101 finished the survey). In your own code, read once and reuse: `records <- disposition_records(dataset)`, then `disposition_summary(records, phones = ...)` for each list.
 
 ## What you get back
 
@@ -67,22 +75,30 @@ In your own code, read once and reuse: `records <- disposition_records(dataset)`
 
 | Column | Meaning |
 |---|---|
-| `ever_contacted` | Ever sent an intro (present in the dataset). |
-| `n_campaigns` | Distinct campaigns that contacted it. |
-| `ever_engaged` | Ever replied. |
-| `ever_opted_in` | Ever consented. |
-| `ever_completed` | Ever completed (reached the SMS close, or a web completion). |
-| `ever_terminated` | Ever screened out or refused. |
-| `latest_disposition` | Outcome of the most recent campaign (funnel below). |
-| `campaigns` | Comma-separated campaign ids. |
+| `phone` | The digit-normalized number. |
+| `n_campaigns` / `campaigns` | How many campaigns contacted it (`0` = never contacted), and the comma-separated id list. |
+| `n_engaged` | Campaigns where it replied. |
+| `n_opted_in` | Campaigns where it consented. |
+| `n_completed` / `n_web_complete` | Campaigns it completed on SMS (reached the close) / on the web. |
+| `n_terminated` | Campaigns the producer flagged as a hard stop (the `terminated` flag). |
+| `n_refused` / `n_ineligible` | Campaigns where the terminal was a decline / a screen-out (name-classified). On the prod projection these are set independently of `n_terminated` and need not sum to it -- so screen on all three. |
+| `n_error` | Campaigns that carried a carrier delivery-error code. |
+| `latest_disposition` / `latest_campaign_id` | Outcome of the **most-recent** campaign, and that campaign's id. |
+| `best_disposition` / `best_campaign_id` | **Furthest-reached** outcome across all its campaigns, and the id that reached it. |
+| `first_disposition_date` / `last_disposition_date` | Earliest and latest disposition date across its campaigns. |
 
-`latest_disposition`, least to most advanced: `never_contacted` -> `non_response` -> `engaged` -> `opted_in` -> `terminated` -> `completed` -> `web_complete`. `disposition_records()` returns the stored per-campaign columns instead; see `?disposition_records`.
+The counts overlap rather than partition `n_campaigns` -- a completed campaign is also engaged -- so read each as "reached status X in this many campaigns".
+
+`latest_disposition` and `best_disposition`, least to most advanced: `never_contacted` -> `non_response` -> `engaged` -> `opted_in` -> `terminated` -> `ineligible` -> `refused` -> `completed` -> `web_complete`. The terminal band (`terminated` < `ineligible` < `refused`) sits between `opted_in` and `completed`: `terminated` is the unsplit residual, `ineligible` a screen-out, `refused` a decline. `disposition_records()` returns the stored per-campaign columns instead; see `?disposition_records`.
 
 ## Notes
 
 - **Contacted-only.** A loaded number that was never texted is not in the dataset; it screens as `never_contacted`.
-- **Text-to-web (external) campaigns** have no completion callback, so `completed` is `NA` and never a false positive.
-- **`date_closed_on` and `error` are `NA` in the beta**, so the `date_from` / `date_to` filters return no rows.
+- **Text-to-web (external) campaigns** have no completion callback, so `completed` is `NA` -- never a false positive, but an external completer reads as `n_completed = 0` and is kept (a false negative you cannot screen out here).
+- **`disposition_date` and `error` are populated.** The live producer stamps each phone's last-send date and any carrier delivery-error code, so the `date_from` / `date_to` filters and `n_error` work (prod currently spans mid-2023 to the last pipeline pass). A row with no surviving send has an `NA` `disposition_date`, which any date bound drops.
+- **Terminal split rollout.** `refused` / `ineligible` are set for the terminals the routing could name-classify; a small residual stays `terminated`. A projection produced before the split defaults them to `0`, so those rows read as plain `terminated`.
+- **Screen on the counts, not on `latest_disposition`.** `latest_disposition` / `best_disposition` are informational; a number whose most-recent campaign only reached `engaged` can still have completed an earlier one, so filter on the `n_*` counts (which see every campaign), not the latest label.
+- **Scale.** The projection is tens of millions of rows and a few hundred MB; each reader reads it whole, so pull once and summarize per sample in memory (see [Screen several samples](#screen-several-samples)).
 - **Stale cache.** The dataset is re-published periodically; `disposition_pull(refresh = TRUE)` forces a fresh download.
 - **`env`.** `disposition_pull()` reads `"prod"` (default) or `"dev"` -- there is no `staging` tier (staging sends fold into the prod bucket), so `env = "staging"` errors; use `env = "prod"` for staging data. Run `s160_datasets()` to see every dataset's environments.
 

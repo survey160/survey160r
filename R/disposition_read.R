@@ -406,8 +406,9 @@
 #'   \code{phone}; \code{n_campaigns} and \code{campaigns} (how many campaigns,
 #'   and the comma-separated id list); the cumulative status counts
 #'   \code{n_engaged}, \code{n_opted_in}, \code{n_completed},
-#'   \code{n_web_complete}, \code{n_terminated} (every hard stop -- the union),
-#'   then \code{n_refused} and \code{n_ineligible} (its split; each \code{0} on a
+#'   \code{n_web_complete}, \code{n_terminated} (campaigns the producer flagged as
+#'   a hard stop), then \code{n_refused} and \code{n_ineligible} (the
+#'   name-classified terminals; each \code{0} on a
 #'   pre-0.51.0 projection; they need not sum to \code{n_terminated}, since a
 #'   downstream projection can set \code{terminated} independently of the split --
 #'   less when a terminal was unsplit, more when the split flagged a terminal the
@@ -475,7 +476,7 @@ disposition_summary <- function(x, phones = NULL, campaign_ids = NULL,
 #' disposition schema: \code{phone}, \code{campaign_id}, \code{sent},
 #' \code{engaged}, \code{opted_in}, \code{completed}, \code{web_complete},
 #' \code{refused}, \code{ineligible}, \code{terminated}, \code{error},
-#' \code{loi}, \code{topic}, \code{mode},
+#' \code{loi}, \code{topic}, \code{mode}, \code{registration_id},
 #' \code{disposition_date}. This is the level directly beneath
 #' \code{\link{disposition_summary}}: where \code{summary} rolls every phone up to a
 #' single screening row, \code{records} hands back the raw per-campaign rows --
@@ -489,8 +490,9 @@ disposition_summary <- function(x, phones = NULL, campaign_ids = NULL,
 #' \code{refused} / \code{ineligible} terminal split as of 0.51.0; a pre-0.51.0
 #' projection omits those two) plus \code{mode},
 #' \code{error} (the carrier delivery-error code), and \code{disposition_date}
-#' (\code{max(scriptDate)}); \code{loi} / \code{topic} are added by the tracker
-#' enrichment, so only the enriched projection carries all fifteen.
+#' (\code{max(scriptDate)}); \code{loi} / \code{topic} / \code{registration_id}
+#' are added by the tracker enrichment, so only the enriched projection carries
+#' all sixteen.
 #' \code{disposition_date} is \code{NA} for a row with no send; \code{error} is
 #' \code{NA} when the export carries no usable code (a clean send, or an export
 #' lacking the column). The
@@ -594,9 +596,10 @@ disposition_records <- function(dataset, phones = NULL, campaign_ids = NULL,
 #' \dontrun{
 #' dataset <- disposition_pull()
 #' cleaned <- disposition_screen(my_sample, dataset, phone_col = "phone")
-#' # drop finished/terminated; blank-phone rows come back all-NA and are kept
+#' # drop finished (completed/web) and every hard stop (refused / ineligible /
+#' # terminated); blank-phone rows come back all-NA and are kept
 #' subset(cleaned, !((n_completed > 0 | n_web_complete > 0) %in% TRUE |
-#'                     (n_terminated > 0) %in% TRUE))
+#'   (n_terminated > 0 | n_refused > 0 | n_ineligible > 0) %in% TRUE))
 #' }
 #' @export
 disposition_screen <- function(sample, dataset, phone_col = "phone",
@@ -652,8 +655,8 @@ disposition_screen <- function(sample, dataset, phone_col = "phone",
 #'   pass, so refresh to pick up a newer one).
 #' @param progress Show a download progress bar. Defaults to
 #'   \code{interactive()}: a live bar in an interactive session, silent in batch
-#'   or scheduled runs. The projection is around 150 MB, so an interactive pull
-#'   otherwise looks stalled while it transfers.
+#'   or scheduled runs. The projection is a few hundred MB, so an interactive
+#'   pull otherwise looks stalled while it transfers.
 #' @return The local path to the downloaded Parquet (a single string).
 #' @seealso \code{\link{disposition_summary}}, \code{\link{disposition_screen}},
 #'   \code{\link{opt_out_pull}}, \code{\link{s160_gcs_init}}
