@@ -64,10 +64,14 @@ reference:
 - title: Campaign metrics
   desc: >
     Download the consolidated per-campaign metrics + recipient-latency
-    projection (campaign_all.parquet) from the analytics bucket, then read and
-    aggregate it directly.
+    projection (campaign_all.parquet) from the analytics bucket, read it into
+    analysis-ready cells, and roll it up to funnel counts and rates by any
+    project dimension.
   contents:
   - campaign_metrics_pull
+  - campaign_metrics_records
+  - campaign_metrics_summary
+  - funnel_rates
 
 articles:
 - title: Guides

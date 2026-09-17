@@ -22,6 +22,18 @@
 
 ## Features
 
+* **`campaign_metrics_records()` / `campaign_metrics_summary()` / `funnel_rates()`:
+  aggregate the campaign-metrics projection.** Post-pull transforms in the
+  `campaign_metrics` family, parallel to `disposition_records()` /
+  `disposition_summary()`. `campaign_metrics_records()` reads `campaign_all.parquet`
+  into analysis-ready cells -- the `tracker_*` dimensions renamed to short names,
+  the funnel counts, and the cell keys -- and, by default, collapses the
+  latency/threshold replication to one row per cell (so summing the raw pull can
+  no longer double-count). `campaign_metrics_summary(by = ...)` rolls those cells
+  up to summed funnel counts by any project dimension(s) and appends the funnel
+  rates. `funnel_rates()` is the single definition of `engagement_rate`,
+  `opted_in_engaged_rate`, and `completion_rate` (zero denominators return `NA`).
+
 * **`campaign_metrics_pull()`: fetch the consolidated campaign-metrics projection.**
   A new bare reader in the `campaign_metrics` family, parallel to
   `disposition_pull()` / `opt_out_pull()`, that downloads `campaign_all.parquet`

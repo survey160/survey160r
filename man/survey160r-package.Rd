@@ -15,7 +15,11 @@ Parquet projection (\code{\link{disposition_summary}},
 it from GCS (\code{\link{disposition_pull}}). \strong{Opt-out} screening
 annotates a sample with each number's opt-out status
 (\code{\link{opt_out_screen}}), fetched from GCS with
-\code{\link{opt_out_pull}}.
+\code{\link{opt_out_pull}}. \strong{Campaign metrics} reads the consolidated
+per-campaign metrics projection into cells
+(\code{\link{campaign_metrics_records}}) and rolls them up to funnel counts
+and rates by any project dimension (\code{\link{campaign_metrics_summary}}),
+fetched from GCS with \code{\link{campaign_metrics_pull}}.
 }
 \section{First-time setup}{
 
@@ -58,6 +62,24 @@ before you field. Pull the opt-out list once, then screen a sample in place:
     (cached locally; it shares the disposition bucket).
   \item \code{\link{opt_out_screen}} -- append \code{opted_out} and
     \code{opt_out_date} to your sample, 1:1 with its rows, never dropping any.
+}
+}
+
+\section{Campaign metrics}{
+
+Work with the consolidated per-campaign metrics + recipient-latency
+projection -- the funnel counts (\code{n_sent} / \code{n_engaged} /
+\code{n_opted_in} / \code{n_completed}) and the \code{tracker_*} project
+dimensions per \code{(campaign, date, hour)}:
+\itemize{
+  \item \code{\link{campaign_metrics_pull}} -- download the projection
+    (\code{campaign_all.parquet}) from the analytics bucket (cached locally).
+  \item \code{\link{campaign_metrics_records}} -- read it into analysis-ready
+    cells; collapses the latency/threshold replication to one row per cell,
+    so summing the raw pull cannot double-count.
+  \item \code{\link{campaign_metrics_summary}} -- roll the cells up to summed
+    funnel counts and rates by any project dimension.
+    \code{\link{funnel_rates}} is the shared definition of the funnel rates.
 }
 }
 
