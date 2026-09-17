@@ -80,8 +80,8 @@ Note `5551234567`: its **latest** disposition is `refused` (its most recent camp
 | `n_engaged` | Campaigns where it replied. |
 | `n_opted_in` | Campaigns where it consented. |
 | `n_completed` / `n_web_complete` | Campaigns it completed on SMS (reached the close) / on the web. |
-| `n_terminated` | Campaigns that ended in a hard stop -- a refusal, a screen-out, or a terminal the routing could not name-classify. |
-| `n_refused` / `n_ineligible` | Campaigns where it declined / where it screened out (the name-classified terminals). On the prod projection these are set independently of `n_terminated` and need not sum to it -- so screen on all three. |
+| `n_terminated` | Campaigns the producer flagged as a hard stop (the `terminated` flag). |
+| `n_refused` / `n_ineligible` | Campaigns where the terminal was a decline / a screen-out (name-classified). On the prod projection these are set independently of `n_terminated` and need not sum to it -- so screen on all three. |
 | `n_error` | Campaigns that carried a carrier delivery-error code. |
 | `latest_disposition` / `latest_campaign_id` | Outcome of the **most-recent** campaign, and that campaign's id. |
 | `best_disposition` / `best_campaign_id` | **Furthest-reached** outcome across all its campaigns, and the id that reached it. |
