@@ -12,6 +12,10 @@
         "opt_out": {
           "bucket": "s160_disposition_prod",
           "object": "global_opt_out.parquet"
+        },
+        "campaign_metrics": {
+          "bucket": "s160_analytics_prod",
+          "object": "campaign_all.parquet"
         }
       }
     },
@@ -32,6 +36,10 @@
         "opt_out": {
           "bucket": "s160_disposition_dev",
           "object": "global_opt_out.parquet"
+        },
+        "campaign_metrics": {
+          "bucket": "s160_analytics_dev",
+          "object": "campaign_all.parquet"
         }
       }
     }

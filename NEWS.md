@@ -2,6 +2,16 @@
 
 ## Features
 
+* **`campaign_metrics_pull()`: fetch the consolidated campaign-metrics projection.**
+  A new bare reader in the `campaign_metrics` family, parallel to
+  `disposition_pull()` / `opt_out_pull()`, that downloads `campaign_all.parquet`
+  (the fleet's per-campaign funnel + recipient-latency view carrying the
+  `tracker_*` project dimensions) from the environment's analytics bucket and
+  returns the local path. Available for `prod` and `dev`. It is aggregate
+  metrics, not phone-keyed PII, so it lives in the analytics bucket and has no
+  screen helper -- read the pulled Parquet directly (e.g. arrow / nanoparquet)
+  and aggregate.
+
 * **`disposition_records()` carries a `registration_id` column when present.** The
   per-campaign registration id (an id-like context scalar added upstream during
   enrichment) is now part of `.DISPOSITION_RECORD_COLS`, so a projection enriched
