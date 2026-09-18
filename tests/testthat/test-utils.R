@@ -110,6 +110,15 @@ test_that("handles a data.table (what the survey160r readers return)", {
   expect_equal(out$complete, c(1L, 0L, 1L))
 })
 
+test_that("repairs every character column even under duplicate column names", {
+  df <- data.frame(DUP = MOJI_ENDASH, DUP = MOJI_ENDASH, n = 1L,
+                   check.names = FALSE, stringsAsFactors = FALSE)
+  out <- fix(df)
+  expect_equal(out[[1]], CLEAN_ENDASH)
+  expect_equal(out[[2]], CLEAN_ENDASH) # positional access, not by name
+  expect_equal(out[[3]], 1L)
+})
+
 test_that("leaves non-character (factor) columns unchanged, as documented", {
   df <- data.frame(TREATMENT = MOJI_ENDASH, stringsAsFactors = TRUE)
   out <- fix(df)

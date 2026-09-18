@@ -181,17 +181,17 @@
 #' @export
 utils_fix_double_utf8 <- function(x, apply = FALSE, quiet = FALSE) {
   if (is.data.frame(x)) {
-    chr_cols <- names(x)[vapply(x, is.character, logical(1))]
-    counts <- integer(length(chr_cols))
-    for (i in seq_along(chr_cols)) {
-      col <- chr_cols[[i]]
-      repaired <- .fix_double_utf8_chr(x[[col]]) # explicit column access -> data.frame/data.table safe
-      counts[[i]] <- .count_repaired(x[[col]], repaired)
+    chr_idx <- which(vapply(x, is.character, logical(1)))
+    counts <- integer(length(chr_idx))
+    for (i in seq_along(chr_idx)) {
+      j <- chr_idx[[i]] # positional access: data.table-safe and correct under duplicate column names
+      repaired <- .fix_double_utf8_chr(x[[j]])
+      counts[[i]] <- .count_repaired(x[[j]], repaired)
       if (apply) {
-        x[[col]] <- repaired
+        x[[j]] <- repaired
       }
     }
-    if (!quiet) .log_repair(counts, chr_cols, apply)
+    if (!quiet) .log_repair(counts, names(x)[chr_idx], apply)
     return(x)
   }
   if (!is.character(x)) {
