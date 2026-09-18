@@ -60,9 +60,20 @@ test_that("repairs mojibake mixed with a clean multi-byte character in one value
   expect_equal(fix(mixed), paste0(CLEAN_EACUTE, " ", CLEAN_ENDASH, " x"))
 })
 
-test_that("a mojibake run abutting a legit high byte is left unchanged, not damaged", {
-  adj <- utf8(c(0x63, 0x61, 0x66, 0xC3, 0xA9, 0xC3, 0x83, 0xC2, 0xA9))
-  expect_identical(fix(adj), adj)
+test_that("repairs a doubled character directly adjacent to a genuine accented one", {
+  # "caf" + single-encoded e-acute + doubled e-acute, no separator: one run that
+  # is not valid UTF-8 whole, so sub-runs are repaired independently.
+  adj      <- utf8(c(0x63, 0x61, 0x66, 0xC3, 0xA9, 0xC3, 0x83, 0xC2, 0xA9))
+  expected <- utf8(c(0x63, 0x61, 0x66, 0xC3, 0xA9, 0xC3, 0xA9)) # "cafe-acute" + repaired e-acute
+  expect_equal(fix(adj), expected)
+})
+
+test_that("keeps a trailing lone high byte after a doubled run (sub-run tail)", {
+  # doubled e-acute followed by a single-encoded e-acute: the tail byte starts no
+  # valid sequence and is kept.
+  run      <- utf8(c(0xC3, 0x83, 0xC2, 0xA9, 0xC3, 0xA9))
+  expected <- utf8(c(0xC3, 0xA9, 0xC3, 0xA9)) # repaired e-acute + kept e-acute
+  expect_equal(fix(run), expected)
 })
 
 test_that("is idempotent -- a second pass changes nothing", {
@@ -90,11 +101,13 @@ test_that("repairs only the character columns of a data frame", {
 })
 
 test_that("handles a data.table (what the survey160r readers return)", {
-  dt <- data.table::data.table(TREATMENT = c(MOJI_ENDASH, MOJI_ENDASH), complete = c(1L, 0L))
+  # Three rows so a column count (2) can never be mistaken for a row index --
+  # guards the explicit-column-access path against `x[is_chr]` row semantics.
+  dt <- data.table::data.table(TREATMENT = rep(MOJI_ENDASH, 3L), complete = c(1L, 0L, 1L))
   out <- fix(dt)
   expect_s3_class(out, "data.table")
-  expect_equal(out$TREATMENT, c(CLEAN_ENDASH, CLEAN_ENDASH))
-  expect_equal(out$complete, c(1L, 0L))
+  expect_equal(out$TREATMENT, rep(CLEAN_ENDASH, 3L))
+  expect_equal(out$complete, c(1L, 0L, 1L))
 })
 
 test_that("leaves non-character (factor) columns unchanged, as documented", {

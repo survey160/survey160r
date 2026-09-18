@@ -11,17 +11,51 @@
 # columns (treatment labels, employer/title text) mojibaked while live SMS
 # answers stay clean. This reverses that one layer.
 
+# Reverse a single maximal run of Latin-1-supplement code points (U+0080..U+00FF)
+# byte by byte: greedily consume the longest valid UTF-8 sequence from the run's
+# Latin-1 bytes (that is a doubled character, so emit its decoded form), and when
+# the next byte starts no valid sequence (a legitimately single-encoded Latin-1
+# character), keep that one character unchanged. Only reached for runs the fast
+# vectorized path could not reverse whole -- e.g. a doubled character directly
+# adjacent to a genuine accented character.
+.repair_run_partial <- function(run) {
+  bytes <- charToRaw(iconv(run, from = "UTF-8", to = "latin1"))
+  n <- length(bytes)
+  out <- character(n)
+  filled <- 0L
+  i <- 1L
+  while (i <= n) {
+    took <- 1L
+    maxk <- min(4L, n - i + 1L)
+    if (maxk >= 2L) {
+      for (k in maxk:2L) {
+        cand <- rawToChar(bytes[i:(i + k - 1L)])
+        Encoding(cand) <- "UTF-8"
+        if (validUTF8(cand)) {
+          took <- k
+          break
+        }
+      }
+    }
+    piece <- rawToChar(bytes[i:(i + took - 1L)])
+    Encoding(piece) <- if (took == 1L) "latin1" else "UTF-8"
+    filled <- filled + 1L
+    out[filled] <- enc2utf8(piece)
+    i <- i + took
+  }
+  paste0(out[seq_len(filled)], collapse = "")
+}
+
 # Reverse the doubling within each maximal run of Latin-1-supplement code points
-# (U+0080..U+00FF). Those code points are the only thing a Latin-1 mis-decode of
-# UTF-8 bytes can produce, so confining the reversal to such runs leaves every
-# other character (a genuine multi-byte character that was never doubled, or
-# ASCII) byte-for-byte unchanged. A run is reversed only when re-reading its
-# bytes as UTF-8 yields valid UTF-8; otherwise it is a legitimately
-# single-encoded value (e.g. an accented name) and is kept as-is. This makes the
-# repair idempotent -- a reversed value leaves the U+0080..U+00FF band, so a
-# second pass matches nothing. All runs across all elements are collapsed and
-# re-decoded in a single iconv call, then spliced back, so a whole export column
-# is repaired in one vectorized pass rather than element by element.
+# (U+0080..U+00FF): those are the only code points a Latin-1 mis-decode of UTF-8
+# bytes can produce, so every other character (a genuine multi-byte character
+# that was never doubled, or ASCII) is left byte-for-byte unchanged. The common
+# case -- a run that is entirely a doubled sequence -- is decoded for the whole
+# column in one vectorized iconv call; the rare run that mixes doubled and clean
+# Latin-1 characters falls back to the byte-by-byte .repair_run_partial. A run
+# that decodes to no valid UTF-8 (a lone single-encoded accent) is kept as-is,
+# which makes the repair idempotent: a reversed value leaves the U+0080..U+00FF
+# band, so a second pass matches nothing.
 .fix_double_utf8_chr <- function(x) {
   na <- is.na(x)
   x <- enc2utf8(x)
@@ -36,6 +70,9 @@
   Encoding(decoded) <- "UTF-8"                           # reinterpret those bytes as UTF-8
   reversible <- !is.na(decoded) & validUTF8(decoded)
   flat[reversible] <- decoded[reversible]
+  if (!all(reversible)) {
+    flat[!reversible] <- vapply(flat[!reversible], .repair_run_partial, character(1), USE.NAMES = FALSE)
+  }
   runs[lens > 0L] <- unname(split(flat, rep.int(seq_along(runs), lens)))
   regmatches(x, matches) <- runs
   x[na] <- NA_character_ # regmatches<- reconstructs an NA element as "NA"; restore it
@@ -94,16 +131,17 @@
 #' the repair is a no-op on clean input, call it with \code{apply = TRUE}
 #' directly.
 #'
-#' The reversal is applied per maximal run of Latin-1-supplement code points
-#' (U+0080..U+00FF) and only where re-reading the run as UTF-8 is valid, so text
-#' that was never doubled -- a genuine en dash, an emoji, an accented name that is
-#' correctly single-encoded -- is left byte-for-byte unchanged. A clean input is
-#' therefore returned unchanged, and the operation is idempotent. Only character
-#' columns of a data frame are inspected; factor and other columns are left
-#' unchanged (read the export with \code{stringsAsFactors = FALSE}, the R 4.x
-#' default, so sample columns are character). Unless \code{quiet = TRUE}, a
-#' one-line summary is emitted with \code{message()}, so neither a dry run nor a
-#' repair is silent.
+#' The reversal is applied only to Latin-1-supplement code points
+#' (U+0080..U+00FF) -- the only thing a Latin-1 mis-decode can produce -- and only
+#' where the bytes re-read as valid UTF-8, so text that was never doubled (a
+#' genuine en dash, an emoji, an accented name that is correctly single-encoded)
+#' is left byte-for-byte unchanged, even where such a character sits directly
+#' beside a doubled one. A clean input is therefore returned unchanged, and the
+#' operation is idempotent. Only character columns of a data frame are inspected;
+#' factor and other columns are left unchanged (read the export with
+#' \code{stringsAsFactors = FALSE}, the R 4.x default, so sample columns are
+#' character). Unless \code{quiet = TRUE}, a one-line summary is emitted with
+#' \code{message()}, so neither a dry run nor a repair is silent.
 #'
 #' Mojibake repair is heuristic. The guard above makes a false repair unlikely,
 #' but a value that legitimately contains a Latin-1 run whose bytes happen to be
@@ -143,18 +181,17 @@
 #' @export
 utils_fix_double_utf8 <- function(x, apply = FALSE, quiet = FALSE) {
   if (is.data.frame(x)) {
-    is_chr <- vapply(x, is.character, logical(1))
-    chr_cols <- names(x)[is_chr]
-    repaired <- lapply(x[is_chr], .fix_double_utf8_chr)
-    counts <- vapply(
-      seq_along(repaired),
-      function(i) .count_repaired(x[[chr_cols[i]]], repaired[[i]]),
-      integer(1)
-    )
-    if (!quiet) .log_repair(counts, chr_cols, apply)
-    if (apply) {
-      x[is_chr] <- repaired
+    chr_cols <- names(x)[vapply(x, is.character, logical(1))]
+    counts <- integer(length(chr_cols))
+    for (i in seq_along(chr_cols)) {
+      col <- chr_cols[[i]]
+      repaired <- .fix_double_utf8_chr(x[[col]]) # explicit column access -> data.frame/data.table safe
+      counts[[i]] <- .count_repaired(x[[col]], repaired)
+      if (apply) {
+        x[[col]] <- repaired
+      }
     }
+    if (!quiet) .log_repair(counts, chr_cols, apply)
     return(x)
   }
   if (!is.character(x)) {

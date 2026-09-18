@@ -40,16 +40,17 @@ it once to see what it would do, then again with \code{apply = TRUE}; or, since
 the repair is a no-op on clean input, call it with \code{apply = TRUE}
 directly.
 
-The reversal is applied per maximal run of Latin-1-supplement code points
-(U+0080..U+00FF) and only where re-reading the run as UTF-8 is valid, so text
-that was never doubled -- a genuine en dash, an emoji, an accented name that is
-correctly single-encoded -- is left byte-for-byte unchanged. A clean input is
-therefore returned unchanged, and the operation is idempotent. Only character
-columns of a data frame are inspected; factor and other columns are left
-unchanged (read the export with \code{stringsAsFactors = FALSE}, the R 4.x
-default, so sample columns are character). Unless \code{quiet = TRUE}, a
-one-line summary is emitted with \code{message()}, so neither a dry run nor a
-repair is silent.
+The reversal is applied only to Latin-1-supplement code points
+(U+0080..U+00FF) -- the only thing a Latin-1 mis-decode can produce -- and only
+where the bytes re-read as valid UTF-8, so text that was never doubled (a
+genuine en dash, an emoji, an accented name that is correctly single-encoded)
+is left byte-for-byte unchanged, even where such a character sits directly
+beside a doubled one. A clean input is therefore returned unchanged, and the
+operation is idempotent. Only character columns of a data frame are inspected;
+factor and other columns are left unchanged (read the export with
+\code{stringsAsFactors = FALSE}, the R 4.x default, so sample columns are
+character). Unless \code{quiet = TRUE}, a one-line summary is emitted with
+\code{message()}, so neither a dry run nor a repair is silent.
 
 Mojibake repair is heuristic. The guard above makes a false repair unlikely,
 but a value that legitimately contains a Latin-1 run whose bytes happen to be
