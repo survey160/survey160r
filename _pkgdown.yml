@@ -44,7 +44,6 @@ reference:
   - question_timestamps
   - question_funnel
   - fix_double_utf8
-  - has_double_utf8
 - title: Disposition screening
   desc: >
     Screen a phone sample against the disposition dataset -- which numbers have

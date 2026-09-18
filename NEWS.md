@@ -22,23 +22,22 @@
 
 ## Features
 
-* **`fix_double_utf8()` / `has_double_utf8()`: repair and detect double-encoded
-  (mojibake) text in a campaign export.** A raw export can carry non-ASCII
-  characters in its appended sample columns (treatment labels, vendor-appended
-  employer/title text) doubly encoded -- an upload that read a UTF-8 file as
-  Latin-1 and re-encoded it to UTF-8, so an en dash arrives as
-  `"â"`. `fix_double_utf8()` reverses that one layer on a
-  character vector or on the character columns of a data frame. It repairs only
-  maximal Latin-1-supplement runs whose bytes re-read as valid UTF-8, so
-  genuinely single-encoded text (a real en dash, an emoji, an accented name) is
-  left byte-for-byte unchanged; a clean input is returned unchanged, and the
-  operation is idempotent. Unless `quiet = TRUE`, it emits a one-line
-  `message()` summary of how many values (and which columns) were repaired, so a
-  repair is never silent. `has_double_utf8()` reports whether any value is
-  double-encoded without modifying the data -- use it to check an export before
-  repairing, or to confirm a repair left nothing behind. Both are a post-hoc
-  remedy for exports produced before the double encoding is fixed at its upload
-  source.
+* **`fix_double_utf8()`: detect or repair double-encoded (mojibake) text in a
+  campaign export.** A raw export can carry non-ASCII characters in its appended
+  sample columns (treatment labels, vendor-appended employer/title text) doubly
+  encoded -- an upload that read a UTF-8 file as Latin-1 and re-encoded it to
+  UTF-8, so an en dash arrives as `"â"`. The function verifies by
+  default and repairs on request: with `apply = FALSE` (the default) it is a dry
+  run that reports how many values it would repair (and, for a data frame, which
+  columns) and returns the input unchanged; with `apply = TRUE` it returns the
+  repaired data. It reverses only maximal Latin-1-supplement runs whose bytes
+  re-read as valid UTF-8, so genuinely single-encoded text (a real en dash, an
+  emoji, an accented name) is left byte-for-byte unchanged; a clean input is
+  returned unchanged, and the repair is idempotent. It works on a character
+  vector or on the character columns of a data frame, and unless `quiet = TRUE`
+  it emits a one-line `message()` summary, so neither a dry run nor a repair is
+  silent. It is a post-hoc remedy for exports produced before the double encoding
+  is fixed at its upload source.
 
 * **`campaign_metrics_records()` / `campaign_metrics_summary()` / `funnel_rates()`:
   aggregate the campaign-metrics projection.** Post-pull transforms in the

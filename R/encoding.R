@@ -1,4 +1,4 @@
-# Repair double-UTF-8 ("Latin-1 intermediate") mojibake in campaign export text.
+# Detect or repair double-UTF-8 ("Latin-1 intermediate") mojibake in export text.
 #
 # When a sample upload reads a UTF-8 file as Latin-1 and re-encodes it to UTF-8,
 # every non-ASCII character is doubly encoded: an en dash (UTF-8 bytes
@@ -48,48 +48,59 @@
   sum(changed)
 }
 
-# One-line summary of a repair, on the message stream (stderr). `cols` is NULL
-# for a vector and the character-column names for a data frame.
-.log_repair <- function(counts, cols) {
+# One-line summary on the message stream (stderr). `cols` is NULL for a vector
+# and the character-column names for a data frame; `apply` picks the dry-run vs
+# applied wording.
+.log_repair <- function(counts, cols, apply) {
   total <- sum(counts)
   if (total == 0L) {
     message("fix_double_utf8: no double-encoded values found.")
-  } else if (is.null(cols)) {
-    message(sprintf("fix_double_utf8: repaired %d value(s).", total))
+    return(invisible(NULL))
+  }
+  where <- if (is.null(cols)) {
+    "."
   } else {
     affected <- cols[counts > 0L]
+    sprintf(" across %d column(s): %s.", length(affected), paste(affected, collapse = ", "))
+  }
+  if (apply) {
+    message(sprintf("fix_double_utf8: repaired %d value(s)%s", total, where))
+  } else {
     message(sprintf(
-      "fix_double_utf8: repaired %d value(s) across %d column(s): %s.",
-      total, length(affected), paste(affected, collapse = ", ")
+      "fix_double_utf8: found %d double-encoded value(s)%s Re-run with `apply = TRUE` to repair.",
+      total, where
     ))
   }
   invisible(NULL)
 }
 
-#' Repair double-encoded UTF-8 (mojibake) in export text
+#' Detect or repair double-encoded UTF-8 (mojibake) in export text
 #'
 #' Reverses a double UTF-8 encoding in which a value's original UTF-8 bytes were
 #' mis-read as Latin-1 (ISO-8859-1) and re-encoded to UTF-8 -- so an en dash
 #' arrives as three stray Latin-1-supplement characters, a trademark sign as
 #' three, an accented letter as two, and so on. This is the corruption a raw
 #' Survey160 campaign export can carry in its appended sample columns (treatment
-#' labels, vendor-appended employer/title text). Use it on a campaign export
-#' frame before analysis or re-export.
+#' labels, vendor-appended employer/title text).
+#'
+#' The function verifies by default and repairs on request. With
+#' \code{apply = FALSE} (the default) it is a \strong{dry run}: it reports how
+#' many values it would repair (and, for a data frame, which columns) and returns
+#' \code{x} unchanged. With \code{apply = TRUE} it returns the repaired data. Run
+#' it once to see what it would do, then again with \code{apply = TRUE}; or, since
+#' the repair is a no-op on clean input, call it with \code{apply = TRUE}
+#' directly.
 #'
 #' The reversal is applied per maximal run of Latin-1-supplement code points
 #' (U+0080..U+00FF) and only where re-reading the run as UTF-8 is valid, so text
-#' that was never doubled -- a genuine en dash, an emoji, an accented name that
-#' is correctly single-encoded -- is left byte-for-byte unchanged. A clean input
-#' is therefore returned unchanged. The operation is idempotent: running it twice
-#' is the same as running it once.
-#'
-#' Only character columns of a data frame are repaired; factor and other columns
-#' are returned unchanged (read the export with \code{stringsAsFactors = FALSE},
-#' which is the R 4.x default, so sample columns are character). Unless
-#' \code{quiet = TRUE}, a one-line summary of how many values were repaired (and,
-#' for a data frame, which columns) is emitted with \code{message()}, so a repair
-#' is never silent. Use \code{\link{has_double_utf8}} to check for corruption
-#' without modifying the data (for example, to confirm a repair cleared it).
+#' that was never doubled -- a genuine en dash, an emoji, an accented name that is
+#' correctly single-encoded -- is left byte-for-byte unchanged. A clean input is
+#' therefore returned unchanged, and the operation is idempotent. Only character
+#' columns of a data frame are inspected; factor and other columns are left
+#' unchanged (read the export with \code{stringsAsFactors = FALSE}, the R 4.x
+#' default, so sample columns are character). Unless \code{quiet = TRUE}, a
+#' one-line summary is emitted with \code{message()}, so neither a dry run nor a
+#' repair is silent.
 #'
 #' Mojibake repair is heuristic. The guard above makes a false repair unlikely,
 #' but a value that legitimately contains a Latin-1 run whose bytes happen to be
@@ -98,20 +109,26 @@
 #' export); this function repairs exports produced before that fix.
 #'
 #' @param x A character vector, or a data frame (its character columns are
-#'   repaired; other columns are returned unchanged).
+#'   inspected; other columns are returned unchanged).
+#' @param apply If \code{FALSE} (the default), do a dry run: report what would be
+#'   repaired and return \code{x} unchanged. Set \code{TRUE} to return the
+#'   repaired data.
 #' @param quiet If \code{FALSE} (the default), emit a one-line \code{message()}
-#'   summarizing how many values were repaired. Set \code{TRUE} to silence it
-#'   (e.g. when calling in a loop).
-#' @return \code{x} with double-encoded runs reversed: a character vector of the
-#'   same length, or the same data frame with its character columns repaired.
-#'   \code{NA} and non-character columns pass through untouched.
-#' @seealso \code{\link{has_double_utf8}} to detect corruption without
-#'   modifying the data; \code{\link{s160_read_csv}} and
+#'   summary. Set \code{TRUE} to silence it (e.g. when calling in a loop).
+#' @return With \code{apply = TRUE}, \code{x} with double-encoded runs reversed
+#'   (a character vector of the same length, or the same data frame with its
+#'   character columns repaired). With \code{apply = FALSE}, \code{x} unchanged.
+#'   \code{NA} and non-character columns always pass through untouched.
+#' @seealso \code{\link{s160_read_csv}} and
 #'   \code{\link{s160_gcs_campaign_results_read}}, which read the raw export
 #'   this repairs.
 #' @examples
-#' # The escaped bytes below are the mojibake form of a single en dash:
+#' # The escaped bytes below are the mojibake form of a single en dash.
+#' # Dry run (default): reports what it would repair, returns the input unchanged.
 #' fix_double_utf8("Treatment Group \u00e2\u0080\u0093 Control")
+#'
+#' # Apply the repair:
+#' fix_double_utf8("Treatment Group \u00e2\u0080\u0093 Control", apply = TRUE)
 #'
 #' # A whole export frame -- character columns are repaired, others untouched:
 #' df <- data.frame(
@@ -119,9 +136,9 @@
 #'   complete = 1L,
 #'   stringsAsFactors = FALSE
 #' )
-#' fix_double_utf8(df, quiet = TRUE)
+#' fix_double_utf8(df, apply = TRUE, quiet = TRUE)
 #' @export
-fix_double_utf8 <- function(x, quiet = FALSE) {
+fix_double_utf8 <- function(x, apply = FALSE, quiet = FALSE) {
   if (is.data.frame(x)) {
     is_chr <- vapply(x, is.character, logical(1))
     chr_cols <- names(x)[is_chr]
@@ -131,46 +148,16 @@ fix_double_utf8 <- function(x, quiet = FALSE) {
       function(i) .count_repaired(x[[chr_cols[i]]], repaired[[i]]),
       integer(1)
     )
-    x[is_chr] <- repaired
-    if (!quiet) .log_repair(counts, chr_cols)
+    if (!quiet) .log_repair(counts, chr_cols, apply)
+    if (apply) {
+      x[is_chr] <- repaired
+    }
     return(x)
   }
   if (!is.character(x)) {
     stop_s160("`x` must be a character vector or a data frame.", fn = "fix_double_utf8")
   }
   out <- .fix_double_utf8_chr(x)
-  if (!quiet) .log_repair(.count_repaired(x, out), NULL)
-  out
-}
-
-#' Detect double-encoded UTF-8 (mojibake) in export text
-#'
-#' Reports whether any value would be changed by \code{\link{fix_double_utf8}},
-#' without modifying the data. Use it to verify a raw export before repairing, or
-#' to confirm a repaired export is clean (it should then return \code{FALSE}).
-#'
-#' Like \code{\link{fix_double_utf8}}, it inspects only character columns of a
-#' data frame.
-#'
-#' @param x A character vector or a data frame.
-#' @return A single \code{TRUE}/\code{FALSE}: \code{TRUE} if any value is
-#'   double-encoded (would be repaired), else \code{FALSE}.
-#' @seealso \code{\link{fix_double_utf8}} to perform the repair.
-#' @examples
-#' has_double_utf8("Treatment Group \u00e2\u0080\u0093 Control") # TRUE
-#' has_double_utf8("Democrat")                                            # FALSE
-#' @export
-has_double_utf8 <- function(x) {
-  if (is.data.frame(x)) {
-    is_chr <- vapply(x, is.character, logical(1))
-    return(any(vapply(x[is_chr], .has_double_utf8_chr, logical(1))))
-  }
-  if (!is.character(x)) {
-    stop_s160("`x` must be a character vector or a data frame.", fn = "has_double_utf8")
-  }
-  .has_double_utf8_chr(x)
-}
-
-.has_double_utf8_chr <- function(x) {
-  .count_repaired(x, .fix_double_utf8_chr(x)) > 0L
+  if (!quiet) .log_repair(.count_repaired(x, out), NULL, apply)
+  if (apply) out else x
 }
