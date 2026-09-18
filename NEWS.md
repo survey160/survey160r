@@ -22,7 +22,7 @@
 
 ## Features
 
-* **`fix_double_utf8()`: detect or repair double-encoded (mojibake) text in a
+* **`utils_fix_double_utf8()`: detect or repair double-encoded (mojibake) text in a
   campaign export.** A raw export can carry non-ASCII characters in its appended
   sample columns (treatment labels, vendor-appended employer/title text) doubly
   encoded -- an upload that read a UTF-8 file as Latin-1 and re-encoded it to

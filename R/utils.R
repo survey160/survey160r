@@ -1,12 +1,15 @@
-# Detect or repair double-UTF-8 ("Latin-1 intermediate") mojibake in export text.
+# Utilities -- standalone helpers that operate on an in-memory campaign export,
+# independent of any Survey160 data source (hence the `utils_` domain rather than
+# a data-domain prefix). Pure compute; no I/O.
 #
+# utils_fix_double_utf8: repair double-UTF-8 ("Latin-1 intermediate") mojibake.
 # When a sample upload reads a UTF-8 file as Latin-1 and re-encodes it to UTF-8,
-# every non-ASCII character is doubly encoded: an en dash (UTF-8 bytes
-# E2 80 93) is read as three Latin-1 code points (U+00E2 U+0080 U+0093) and
-# re-emitted as UTF-8 bytes C3 A2 C2 80 C2 93. The doubled bytes are carried
-# verbatim through the export CSV, so a raw campaign export can arrive with
-# appended sample columns (treatment labels, employer/title text) mojibaked
-# while live SMS answers stay clean. This module reverses that one layer.
+# every non-ASCII character is doubly encoded: an en dash (UTF-8 bytes E2 80 93)
+# is read as three Latin-1 code points (U+00E2 U+0080 U+0093) and re-emitted as
+# UTF-8 bytes C3 A2 C2 80 C2 93. The doubled bytes are carried verbatim through
+# the export CSV, so a raw campaign export can arrive with appended sample
+# columns (treatment labels, employer/title text) mojibaked while live SMS
+# answers stay clean. This reverses that one layer.
 
 # Reverse the doubling within each maximal run of Latin-1-supplement code points
 # (U+0080..U+00FF). Those code points are the only thing a Latin-1 mis-decode of
@@ -54,7 +57,7 @@
 .log_repair <- function(counts, cols, apply) {
   total <- sum(counts)
   if (total == 0L) {
-    message("fix_double_utf8: no double-encoded values found.")
+    message("utils_fix_double_utf8: no double-encoded values found.")
     return(invisible(NULL))
   }
   where <- if (is.null(cols)) {
@@ -64,10 +67,10 @@
     sprintf(" across %d column(s): %s.", length(affected), paste(affected, collapse = ", "))
   }
   if (apply) {
-    message(sprintf("fix_double_utf8: repaired %d value(s)%s", total, where))
+    message(sprintf("utils_fix_double_utf8: repaired %d value(s)%s", total, where))
   } else {
     message(sprintf(
-      "fix_double_utf8: found %d double-encoded value(s)%s Re-run with `apply = TRUE` to repair.",
+      "utils_fix_double_utf8: found %d double-encoded value(s)%s Re-run with `apply = TRUE` to repair.",
       total, where
     ))
   }
@@ -125,10 +128,10 @@
 #' @examples
 #' # The escaped bytes below are the mojibake form of a single en dash.
 #' # Dry run (default): reports what it would repair, returns the input unchanged.
-#' fix_double_utf8("Treatment Group \u00e2\u0080\u0093 Control")
+#' utils_fix_double_utf8("Treatment Group \u00e2\u0080\u0093 Control")
 #'
 #' # Apply the repair:
-#' fix_double_utf8("Treatment Group \u00e2\u0080\u0093 Control", apply = TRUE)
+#' utils_fix_double_utf8("Treatment Group \u00e2\u0080\u0093 Control", apply = TRUE)
 #'
 #' # A whole export frame -- character columns are repaired, others untouched:
 #' df <- data.frame(
@@ -136,9 +139,9 @@
 #'   complete = 1L,
 #'   stringsAsFactors = FALSE
 #' )
-#' fix_double_utf8(df, apply = TRUE, quiet = TRUE)
+#' utils_fix_double_utf8(df, apply = TRUE, quiet = TRUE)
 #' @export
-fix_double_utf8 <- function(x, apply = FALSE, quiet = FALSE) {
+utils_fix_double_utf8 <- function(x, apply = FALSE, quiet = FALSE) {
   if (is.data.frame(x)) {
     is_chr <- vapply(x, is.character, logical(1))
     chr_cols <- names(x)[is_chr]
@@ -155,7 +158,7 @@ fix_double_utf8 <- function(x, apply = FALSE, quiet = FALSE) {
     return(x)
   }
   if (!is.character(x)) {
-    stop_s160("`x` must be a character vector or a data frame.", fn = "fix_double_utf8")
+    stop_s160("`x` must be a character vector or a data frame.", fn = "utils_fix_double_utf8")
   }
   out <- .fix_double_utf8_chr(x)
   if (!quiet) .log_repair(.count_repaired(x, out), NULL, apply)

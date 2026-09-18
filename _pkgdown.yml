@@ -37,13 +37,17 @@ reference:
 - title: Campaign export helpers
   desc: >
     Work directly with a raw campaign export data frame -- decode its timestamp
-    columns, view the per-question reached funnel, and repair double-encoded
-    (mojibake) text in its appended sample columns.
+    columns and view the per-question reached funnel.
   contents:
   - parse_campaign_timestamps
   - question_timestamps
   - question_funnel
-  - fix_double_utf8
+- title: Utilities
+  desc: >
+    Standalone helpers that operate on an in-memory export, independent of any
+    Survey160 data source.
+  contents:
+  - utils_fix_double_utf8
 - title: Disposition screening
   desc: >
     Screen a phone sample against the disposition dataset -- which numbers have

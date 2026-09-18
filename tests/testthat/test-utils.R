@@ -1,4 +1,4 @@
-# Coverage for R/encoding.R: fix_double_utf8() (dry-run by default, apply to fix).
+# Coverage for R/utils.R: utils_fix_double_utf8() (dry-run by default, apply to fix).
 
 # Byte helpers keep the intent legible and the source pure ASCII: build a value
 # from the exact bytes involved, and assert on the exact bytes back.
@@ -8,7 +8,7 @@ utf8 <- function(bytes) {
   s
 }
 bytes_of <- function(s) as.integer(charToRaw(enc2utf8(s)))
-fix <- function(x, ...) suppressMessages(fix_double_utf8(x, apply = TRUE, ...))
+fix <- function(x, ...) suppressMessages(utils_fix_double_utf8(x, apply = TRUE, ...))
 
 # Corruption signatures observed in real exports (Latin-1 intermediate):
 MOJI_ENDASH <- utf8(c(0xC3, 0xA2, 0xC2, 0x80, 0xC2, 0x93)) # -> en dash  (E2 80 93)
@@ -21,9 +21,9 @@ CLEAN_EMOJI  <- utf8(c(0xF0, 0x9F, 0x91, 0x8D))            # thumbs-up
 # --- dry run is the default --------------------------------------------------
 
 test_that("dry run is the default: the input is returned unchanged", {
-  expect_identical(suppressMessages(fix_double_utf8(MOJI_ENDASH)), MOJI_ENDASH)
+  expect_identical(suppressMessages(utils_fix_double_utf8(MOJI_ENDASH)), MOJI_ENDASH)
   df <- data.frame(TREATMENT = MOJI_ENDASH, complete = 1L, stringsAsFactors = FALSE)
-  expect_identical(suppressMessages(fix_double_utf8(df)), df)
+  expect_identical(suppressMessages(utils_fix_double_utf8(df)), df)
 })
 
 # --- repair (apply = TRUE) ---------------------------------------------------
@@ -105,34 +105,34 @@ test_that("leaves non-character (factor) columns unchanged, as documented", {
 })
 
 test_that("rejects input that is neither a character vector nor a data frame", {
-  expect_error(fix_double_utf8(1:5), "must be a character vector or a data frame")
+  expect_error(utils_fix_double_utf8(1:5), "must be a character vector or a data frame")
 })
 
 # --- logging -----------------------------------------------------------------
 
 test_that("dry run reports what it would repair and how to apply it", {
-  expect_message(fix_double_utf8(MOJI_ENDASH),
+  expect_message(utils_fix_double_utf8(MOJI_ENDASH),
                  "found 1 double-encoded value.*apply = TRUE")
 })
 
 test_that("apply logs a one-line repair summary for a vector", {
-  expect_message(fix_double_utf8(MOJI_ENDASH, apply = TRUE), "repaired 1 value")
+  expect_message(utils_fix_double_utf8(MOJI_ENDASH, apply = TRUE), "repaired 1 value")
 })
 
 test_that("logs affected column names for a data frame (dry run)", {
   df <- data.frame(TREATMENT = MOJI_ENDASH, note = "ascii", stringsAsFactors = FALSE)
-  expect_message(fix_double_utf8(df), "column\\(s\\): TREATMENT")
+  expect_message(utils_fix_double_utf8(df), "column\\(s\\): TREATMENT")
 })
 
 test_that("apply logs affected column names for a data frame", {
   df <- data.frame(TREATMENT = MOJI_ENDASH, note = "ascii", stringsAsFactors = FALSE)
-  expect_message(fix_double_utf8(df, apply = TRUE), "repaired 1 value.*TREATMENT")
+  expect_message(utils_fix_double_utf8(df, apply = TRUE), "repaired 1 value.*TREATMENT")
 })
 
 test_that("logs that a clean input had nothing to repair", {
-  expect_message(fix_double_utf8("Democrat"), "no double-encoded values found")
+  expect_message(utils_fix_double_utf8("Democrat"), "no double-encoded values found")
 })
 
 test_that("quiet = TRUE silences the summary", {
-  expect_silent(fix_double_utf8(MOJI_ENDASH, apply = TRUE, quiet = TRUE))
+  expect_silent(utils_fix_double_utf8(MOJI_ENDASH, apply = TRUE, quiet = TRUE))
 })
