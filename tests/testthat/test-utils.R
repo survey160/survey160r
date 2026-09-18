@@ -132,23 +132,29 @@ test_that("rejects input that is neither a character vector nor a data frame", {
 
 # --- logging -----------------------------------------------------------------
 
-test_that("dry run reports what it would repair and how to apply it", {
+test_that("dry run reports the count and how to apply it (concise)", {
   expect_message(utils_fix_double_utf8(MOJI_ENDASH),
-                 "found 1 double-encoded value.*apply = TRUE")
+                 "1 double-encoded value.*apply = TRUE to fix")
 })
 
 test_that("apply logs a one-line repair summary for a vector", {
   expect_message(utils_fix_double_utf8(MOJI_ENDASH, apply = TRUE), "repaired 1 value")
 })
 
-test_that("logs affected column names for a data frame (dry run)", {
+test_that("names affected columns for a data frame (dry run)", {
   df <- data.frame(TREATMENT = MOJI_ENDASH, note = "ascii", stringsAsFactors = FALSE)
-  expect_message(utils_fix_double_utf8(df), "column\\(s\\): TREATMENT")
+  expect_message(utils_fix_double_utf8(df), "double-encoded value.*in TREATMENT")
 })
 
-test_that("apply logs affected column names for a data frame", {
+test_that("apply names affected columns for a data frame", {
   df <- data.frame(TREATMENT = MOJI_ENDASH, note = "ascii", stringsAsFactors = FALSE)
-  expect_message(utils_fix_double_utf8(df, apply = TRUE), "repaired 1 value.*TREATMENT")
+  expect_message(utils_fix_double_utf8(df, apply = TRUE), "repaired 1 value.*in TREATMENT")
+})
+
+test_that("caps the column list and summarizes the rest as '+N more'", {
+  df <- data.frame(a = MOJI_ENDASH, b = MOJI_ENDASH, c = MOJI_ENDASH, d = MOJI_ENDASH,
+                   stringsAsFactors = FALSE)
+  expect_message(utils_fix_double_utf8(df), "in a, b, c \\+1 more")
 })
 
 test_that("logs that a clean input had nothing to repair", {
