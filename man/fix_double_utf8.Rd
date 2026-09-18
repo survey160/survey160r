@@ -4,11 +4,15 @@
 \alias{fix_double_utf8}
 \title{Repair double-encoded UTF-8 (mojibake) in export text}
 \usage{
-fix_double_utf8(x)
+fix_double_utf8(x, quiet = FALSE)
 }
 \arguments{
 \item{x}{A character vector, or a data frame (its character columns are
 repaired; other columns are returned unchanged).}
+
+\item{quiet}{If \code{FALSE} (the default), emit a one-line \code{message()}
+summarizing how many values were repaired. Set \code{TRUE} to silence it
+(e.g. when calling in a loop).}
 }
 \value{
 \code{x} with double-encoded runs reversed: a character vector of the
@@ -28,8 +32,17 @@ frame before analysis or re-export.
 The reversal is applied per maximal run of Latin-1-supplement code points
 (U+0080..U+00FF) and only where re-reading the run as UTF-8 is valid, so text
 that was never doubled -- a genuine en dash, an emoji, an accented name that
-is correctly single-encoded -- is left byte-for-byte unchanged. The operation
-is idempotent: running it twice is the same as running it once.
+is correctly single-encoded -- is left byte-for-byte unchanged. A clean input
+is therefore returned unchanged. The operation is idempotent: running it twice
+is the same as running it once.
+
+Only character columns of a data frame are repaired; factor and other columns
+are returned unchanged (read the export with \code{stringsAsFactors = FALSE},
+which is the R 4.x default, so sample columns are character). Unless
+\code{quiet = TRUE}, a one-line summary of how many values were repaired (and,
+for a data frame, which columns) is emitted with \code{message()}, so a repair
+is never silent. Use \code{\link{has_double_utf8}} to check for corruption
+without modifying the data (for example, to confirm a repair cleared it).
 
 Mojibake repair is heuristic. The guard above makes a false repair unlikely,
 but a value that legitimately contains a Latin-1 run whose bytes happen to be
@@ -47,10 +60,11 @@ df <- data.frame(
   complete = 1L,
   stringsAsFactors = FALSE
 )
-fix_double_utf8(df)
+fix_double_utf8(df, quiet = TRUE)
 }
 \seealso{
-\code{\link{s160_read_csv}} and
+\code{\link{has_double_utf8}} to detect corruption without
+  modifying the data; \code{\link{s160_read_csv}} and
   \code{\link{s160_gcs_campaign_results_read}}, which read the raw export
   this repairs.
 }
