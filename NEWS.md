@@ -11,12 +11,6 @@
   conflict: a duplicate phone whose rows *differ* still stops, so a real
   grain violation is never silently merged. Source provenance (`meta`) is
   preserved across the collapse.
-* **`disposition_run()` gains a `survey_mode` override.** `NULL` (default)
-  auto-detects the mode from the data, exactly as before. An explicit
-  `"sms"` / `"t2w"` / `"t2w_external"` pins it, so a caller that processes one
-  campaign in phone-sharded batches can force the whole-campaign mode onto every
-  shard -- a shard that holds no `web_complete` row would otherwise misclassify,
-  and the mode drives the `completed` signal.
 
 ## Documentation
 

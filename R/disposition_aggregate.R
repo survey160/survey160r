@@ -272,26 +272,6 @@ disposition_input_columns <- function(available = NULL, population = NULL) {
   unique(cols)
 }
 
-# Validate a `disposition_run()` `survey_mode` override: NULL (auto-detect from
-# the data) or one of the three canonical modes. A caller that shards a campaign
-# by phone passes the whole-campaign mode so every shard classifies identically
-# -- the mode drives the `completed` signal, and a shard with no web-complete row
-# would otherwise misclassify.
-.validate_survey_mode <- function(survey_mode) {
-  if (is.null(survey_mode)) {
-    return(invisible(NULL))
-  }
-  valid_modes <- c("sms", "t2w", "t2w_external")
-  if (!is.character(survey_mode) || length(survey_mode) != 1L ||
-        is.na(survey_mode) || !survey_mode %in% valid_modes) {
-    stop_s160(sprintf(
-      "`survey_mode` must be NULL or one of %s.",
-      paste(sprintf("\"%s\"", valid_modes), collapse = ", ")),
-      fn = "disposition_run")
-  }
-  invisible(NULL)
-}
-
 #' Build the per-respondent disposition frame for one campaign
 #'
 #' Turns an in-memory campaign results CSV (one row per respondent) into a list
@@ -358,13 +338,6 @@ disposition_input_columns <- function(available = NULL, population = NULL) {
 #'   send timestamp is stored naive-UTC; the row-wise max is converted to this
 #'   zone before its calendar date is taken -- matching the latency view's
 #'   send-date bucketing and the live DB producer's \code{lastsms::date}.
-#' @param survey_mode Optional survey-mode override, one of \code{"sms"},
-#'   \code{"t2w"}, or \code{"t2w_external"}. \code{NULL} (default) auto-detects
-#'   the mode from the data -- the usual path. Pass an explicit mode to pin it,
-#'   for a caller that processes one campaign in phone-sharded batches: a shard
-#'   might hold no \code{web_complete} row and misclassify, and because the mode
-#'   selects the \code{completed} signal it must be the whole-campaign value on
-#'   every shard. The detected mode is unchanged when this is \code{NULL}.
 #' @return A list mirroring \code{latency_run()}'s shape: \code{consolidated} (a
 #'   data frame, one row per (contacted) respondent, with columns \code{phone}
 #'   (character), \code{campaign_id} (integer), the 0/1 integer flags
@@ -390,8 +363,7 @@ disposition_input_columns <- function(available = NULL, population = NULL) {
 #' @export
 disposition_run <- function(campaign_id, data, population = NULL,
                             contacted_only = TRUE,
-                            field_timezone = "America/New_York",
-                            survey_mode = NULL) {
+                            field_timezone = "America/New_York") {
   check_data_frame(data, "data", fn = "disposition_run")
   if (!"phone" %in% names(data)) {
     stop_s160("`data` must contain a `phone` column.", fn = "disposition_run")
@@ -419,7 +391,6 @@ disposition_run <- function(campaign_id, data, population = NULL,
       "`field_timezone` (\"%s\") is not a known IANA timezone (see OlsonNames()).",
       field_timezone), fn = "disposition_run")
   }
-  .validate_survey_mode(survey_mode)
   if (nrow(data) == 0L) {
     return(list(consolidated = empty_disposition_frame(),
                 meta = .disposition_meta(data)))
@@ -454,7 +425,7 @@ disposition_run <- function(campaign_id, data, population = NULL,
       as.character(campaign_id), n_dup, dup_idx), fn = "disposition_run")
   }
 
-  survey_mode <- survey_mode %||% detect_survey_mode(data)
+  survey_mode <- detect_survey_mode(data)
   questions <- latency_discover_questions(data)
   # `population` NULL (the default) -> .funnel_masks derives opt-in from routing
   # (reached a continuation step); a caller-supplied filter overrides it.
