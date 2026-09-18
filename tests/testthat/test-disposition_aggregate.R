@@ -269,13 +269,36 @@ test_that("web_complete non-1 / non-numeric values do not count", {
   expect_equal(res$web_complete, c(1L, 0L, 0L))
 })
 
-test_that("duplicate phone is rejected (grain guard)", {
+test_that("conflicting duplicate phone is rejected (grain guard)", {
+  # Same phone, DIFFERING rows (finalText Yes vs No) -- a genuine grain
+  # violation the identical-row dedup does not collapse, so the guard stops it.
+  d <- disp_frame(
+    phone = c("+15550801", "+15550801"),
+    id.intro.scriptDate = c(TS, TS),
+    id.intro.finalText = c("Yes", "No")
+  )
+  expect_error(disposition_run(1234, d), "duplicate phone")
+})
+
+test_that("fully-identical duplicate rows are collapsed, not rejected", {
+  # An exact-duplicate row (a verbatim re-export, a duplicated upstream batch)
+  # carries nothing the first copy does not, so it is dropped before the grain
+  # guard rather than erroring -- the campaign is not lost over export noise.
+  # Source provenance must survive the row-subset that drops it.
   d <- disp_frame(
     phone = c("+15550801", "+15550801"),
     id.intro.scriptDate = c(TS, TS),
     id.intro.finalText = c("Yes", "Yes")
   )
-  expect_error(disposition_run(1234, d), "duplicate phone")
+  attr(d, "source_csv_hash") <- "deadbeef"
+  attr(d, "source_csv_path") <- "gs://bucket/results.csv"
+  out <- disposition_run(1234, d)
+  res <- out$consolidated
+  expect_equal(nrow(res), 1L)                 # collapsed to a single row
+  expect_equal(res$phone, "+15550801")
+  expect_equal(res$sent, 1L)
+  expect_equal(out$meta$source_csv_hash, "deadbeef")   # attrs survive the subset
+  expect_equal(out$meta$source_csv_path, "gs://bucket/results.csv")
 })
 
 test_that("missing phone column is rejected", {
@@ -366,10 +389,12 @@ test_that("engaged is null-safe when the batchDate (reply) column is absent", {
 })
 
 test_that("duplicate-phone error message does not leak the phone value (PII)", {
+  # Conflicting rows (differing finalText) so the guard fires; the message must
+  # still name only the campaign / count / row index, never the phone value.
   d <- disp_frame(
     phone = c("+15551301", "+15551301"),
     id.intro.scriptDate = c(TS, TS),
-    id.intro.finalText = c("Yes", "Yes")
+    id.intro.finalText = c("Yes", "No")
   )
   err <- tryCatch(disposition_run(1234, d), error = function(e) conditionMessage(e))
   expect_no_match(err, "\\+1555", fixed = FALSE)
