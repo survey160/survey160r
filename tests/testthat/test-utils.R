@@ -164,3 +164,10 @@ test_that("logs that a clean input had nothing to repair", {
 test_that("quiet = TRUE silences the summary", {
   expect_silent(utils_fix_double_utf8(MOJI_ENDASH, apply = TRUE, quiet = TRUE))
 })
+
+test_that("returns invisibly so a bare console call prints only the summary", {
+  expect_false(withVisible(utils_fix_double_utf8(MOJI_ENDASH, quiet = TRUE))$visible)
+  expect_false(withVisible(utils_fix_double_utf8(MOJI_ENDASH, apply = TRUE, quiet = TRUE))$visible)
+  df <- data.frame(TREATMENT = MOJI_ENDASH, stringsAsFactors = FALSE)
+  expect_false(withVisible(utils_fix_double_utf8(df, quiet = TRUE))$visible)
+})

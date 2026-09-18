@@ -21,7 +21,9 @@ summary. Set \code{TRUE} to silence it (e.g. when calling in a loop).}
 With \code{apply = TRUE}, \code{x} with double-encoded runs reversed
   (a character vector of the same length, or the same data frame with its
   character columns repaired). With \code{apply = FALSE}, \code{x} unchanged.
-  \code{NA} and non-character columns always pass through untouched.
+  \code{NA} and non-character columns always pass through untouched. The value
+  is returned invisibly, so a bare console call (e.g. a dry-run check) prints
+  only the one-line summary, not the data; assign or pipe it to use it.
 }
 \description{
 Reverses a double UTF-8 encoding in which a value's original UTF-8 bytes were
