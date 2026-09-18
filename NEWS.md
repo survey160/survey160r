@@ -49,8 +49,10 @@
   vector or on the character columns of a data frame, and unless `quiet = TRUE`
   it emits a concise one-line `message()` summary (a count, the affected columns
   capped at three with `+N more`, and -- on a dry run -- how to apply), so
-  neither a dry run nor a repair is silent. It is a post-hoc remedy for exports
-  produced before the double encoding is fixed at its upload source.
+  neither a dry run nor a repair is silent. The result is returned invisibly, so
+  a bare console check prints only the summary line and not the (often
+  100-plus-column) data. It is a post-hoc remedy for exports produced before the
+  double encoding is fixed at its upload source.
 
 * **`campaign_metrics_records()` / `campaign_metrics_summary()` / `funnel_rates()`:
   aggregate the campaign-metrics projection.** Post-pull transforms in the

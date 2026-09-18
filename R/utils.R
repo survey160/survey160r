@@ -159,7 +159,9 @@
 #' @return With \code{apply = TRUE}, \code{x} with double-encoded runs reversed
 #'   (a character vector of the same length, or the same data frame with its
 #'   character columns repaired). With \code{apply = FALSE}, \code{x} unchanged.
-#'   \code{NA} and non-character columns always pass through untouched.
+#'   \code{NA} and non-character columns always pass through untouched. The value
+#'   is returned invisibly, so a bare console call (e.g. a dry-run check) prints
+#'   only the one-line summary, not the data; assign or pipe it to use it.
 #' @seealso \code{\link{s160_read_csv}} and
 #'   \code{\link{s160_gcs_campaign_results_read}}, which read the raw export
 #'   this repairs.
@@ -192,12 +194,12 @@ utils_fix_double_utf8 <- function(x, apply = FALSE, quiet = FALSE) {
       }
     }
     if (!quiet) .log_repair(counts, names(x)[chr_idx], apply)
-    return(x)
+    return(invisible(x))
   }
   if (!is.character(x)) {
     stop_s160("`x` must be a character vector or a data frame.", fn = "utils_fix_double_utf8")
   }
   out <- .fix_double_utf8_chr(x)
   if (!quiet) .log_repair(.count_repaired(x, out), NULL, apply)
-  if (apply) out else x
+  invisible(if (apply) out else x)
 }
