@@ -85,10 +85,14 @@ so it is excluded; non-responses (contacted but no reply) are kept. Pass
 \code{contacted_only = FALSE} to emit one row per input respondent instead.
 
 Grain: one row per \code{(phone, campaign_id)}. Phone is unique within a
-campaign export, so the function stops if it finds a duplicate phone rather
-than silently collapsing rows. The uniqueness guard and survey-mode
-classification always run on the full data, so the \code{contacted_only}
-filter never changes \code{mode} or masks a duplicate.
+campaign export. Fully-identical duplicate rows (a common export artifact --
+a re-export appended to itself, a batch duplicated upstream) are collapsed
+first, since an exact duplicate carries no information the first copy does
+not; the function then \emph{stops} if a duplicate phone remains -- i.e. a
+phone whose rows \emph{differ} -- rather than silently merging a genuine
+conflict. The dedup and survey-mode classification always run on the full
+data, so the \code{contacted_only} filter never changes \code{mode} or masks
+a conflict.
 
 The \code{completed} flag is survey-mode dependent: for a \code{t2w} campaign
 it is the \code{web_complete} callback; for \code{sms} it is reaching the

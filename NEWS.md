@@ -1,5 +1,17 @@
 # survey160r (development version)
 
+## Disposition
+
+* **`disposition_run()` collapses fully-identical duplicate rows instead of
+  erroring on them.** A campaign export can repeat a respondent's row verbatim
+  (a re-export appended to itself, a batch duplicated in an upstream merge). An
+  exact-duplicate row carries no information the first copy does not, so it is
+  now dropped before the one-row-per-`(phone, campaign_id)` grain guard rather
+  than failing the whole campaign. The guard is unchanged for a genuine
+  conflict: a duplicate phone whose rows *differ* still stops, so a real
+  grain violation is never silently merged. Source provenance (`meta`) is
+  preserved across the collapse.
+
 ## Documentation
 
 * **Articles and README refreshed for the current disposition reader surface.**

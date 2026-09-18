@@ -293,10 +293,14 @@ disposition_input_columns <- function(available = NULL, population = NULL) {
 #' \code{contacted_only = FALSE} to emit one row per input respondent instead.
 #'
 #' Grain: one row per \code{(phone, campaign_id)}. Phone is unique within a
-#' campaign export, so the function stops if it finds a duplicate phone rather
-#' than silently collapsing rows. The uniqueness guard and survey-mode
-#' classification always run on the full data, so the \code{contacted_only}
-#' filter never changes \code{mode} or masks a duplicate.
+#' campaign export. Fully-identical duplicate rows (a common export artifact --
+#' a re-export appended to itself, a batch duplicated upstream) are collapsed
+#' first, since an exact duplicate carries no information the first copy does
+#' not; the function then \emph{stops} if a duplicate phone remains -- i.e. a
+#' phone whose rows \emph{differ} -- rather than silently merging a genuine
+#' conflict. The dedup and survey-mode classification always run on the full
+#' data, so the \code{contacted_only} filter never changes \code{mode} or masks
+#' a conflict.
 #'
 #' The \code{completed} flag is survey-mode dependent: for a \code{t2w} campaign
 #' it is the \code{web_complete} callback; for \code{sms} it is reaching the
@@ -366,7 +370,7 @@ disposition_run <- function(campaign_id, data, population = NULL,
   }
   if (length(campaign_id) != 1L) {
     # A vector id would recycle into the frame and multiply rows past the
-    # dedup guard (which runs on the input phone), silently breaking the grain.
+    # grain guard (which runs on the input phone), silently breaking the grain.
     stop_s160("`campaign_id` must be a single value.", fn = "disposition_run")
   }
   if (!is.logical(contacted_only) || length(contacted_only) != 1L ||
@@ -392,15 +396,32 @@ disposition_run <- function(campaign_id, data, population = NULL,
                 meta = .disposition_meta(data)))
   }
 
+  # Collapse fully-identical duplicate rows before the grain guard. A campaign
+  # export can repeat a respondent's row verbatim (a re-export appended to
+  # itself, an upstream merge that duplicated a batch): an exactly-duplicated row
+  # carries nothing the first copy does not, so dropping it cannot change any
+  # downstream flag or date -- a true no-op on the disposition output. Only EXACT
+  # duplicates collapse here; a duplicate phone whose rows DIFFER survives to the
+  # grain guard below, so a genuine conflict is never silently merged.
+  dup_rows <- duplicated(data)
+  if (any(dup_rows)) {
+    kept <- data[!dup_rows, , drop = FALSE]
+    # Row-subsetting drops the source-provenance attributes `s160_read_csv`
+    # stamps; carry them onto the deduped frame so `meta` still reports them.
+    attr(kept, "source_csv_hash") <- attr(data, "source_csv_hash")
+    attr(kept, "source_csv_path") <- attr(data, "source_csv_path")
+    data <- kept
+  }
+
   phone <- as.character(data[["phone"]])
   dup_idx <- anyDuplicated(phone)
   if (dup_idx > 0L) {
     n_dup <- sum(duplicated(phone))
     stop_s160(sprintf(paste0(
-      "campaign %s has %d duplicate phone value(s) (first ",
-      "duplicate at row %d). The disposition grain is one row per (phone, ",
-      "campaign_id); a duplicate means the export or an upstream merge ",
-      "violated it."),
+      "campaign %s has %d duplicate phone value(s) with conflicting rows ",
+      "(first at row %d, after identical duplicates were collapsed). The ",
+      "disposition grain is one row per (phone, campaign_id); a duplicate phone ",
+      "whose rows differ means the export or an upstream merge violated it."),
       as.character(campaign_id), n_dup, dup_idx), fn = "disposition_run")
   }
 
