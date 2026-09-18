@@ -97,19 +97,19 @@
     message("utils_fix_double_utf8: no double-encoded values found.")
     return(invisible(NULL))
   }
-  where <- if (is.null(cols)) {
-    "."
-  } else {
+  where <- ""
+  if (!is.null(cols)) {
     affected <- cols[counts > 0L]
-    sprintf(" across %d column(s): %s.", length(affected), paste(affected, collapse = ", "))
+    shown <- affected[seq_len(min(3L, length(affected)))]
+    extra <- length(affected) - length(shown)
+    where <- sprintf(" in %s%s", paste(shown, collapse = ", "),
+                     if (extra > 0L) sprintf(" +%d more", extra) else "")
   }
   if (apply) {
-    message(sprintf("utils_fix_double_utf8: repaired %d value(s)%s", total, where))
+    message(sprintf("utils_fix_double_utf8: repaired %d value(s)%s.", total, where))
   } else {
-    message(sprintf(
-      "utils_fix_double_utf8: found %d double-encoded value(s)%s Re-run with `apply = TRUE` to repair.",
-      total, where
-    ))
+    message(sprintf("utils_fix_double_utf8: %d double-encoded value(s)%s; apply = TRUE to fix.",
+                    total, where))
   }
   invisible(NULL)
 }
