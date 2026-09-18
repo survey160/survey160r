@@ -42,6 +42,12 @@ reference:
   - parse_campaign_timestamps
   - question_timestamps
   - question_funnel
+- title: Utilities
+  desc: >
+    Standalone helpers that operate on an in-memory export, independent of any
+    Survey160 data source.
+  contents:
+  - utils_fix_double_utf8
 - title: Disposition screening
   desc: >
     Screen a phone sample against the disposition dataset -- which numbers have
