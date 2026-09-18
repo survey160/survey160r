@@ -9,7 +9,8 @@ disposition_run(
   data,
   population = NULL,
   contacted_only = TRUE,
-  field_timezone = "America/New_York"
+  field_timezone = "America/New_York",
+  survey_mode = NULL
 )
 }
 \arguments{
@@ -45,6 +46,14 @@ unknown zone is rejected rather than silently mis-bucketed. Each
 send timestamp is stored naive-UTC; the row-wise max is converted to this
 zone before its calendar date is taken -- matching the latency view's
 send-date bucketing and the live DB producer's \code{lastsms::date}.}
+
+\item{survey_mode}{Optional survey-mode override, one of \code{"sms"},
+\code{"t2w"}, or \code{"t2w_external"}. \code{NULL} (default) auto-detects
+the mode from the data -- the usual path. Pass an explicit mode to pin it,
+for a caller that processes one campaign in phone-sharded batches: a shard
+might hold no \code{web_complete} row and misclassify, and because the mode
+selects the \code{completed} signal it must be the whole-campaign value on
+every shard. The detected mode is unchanged when this is \code{NULL}.}
 }
 \value{
 A list mirroring \code{latency_run()}'s shape: \code{consolidated} (a

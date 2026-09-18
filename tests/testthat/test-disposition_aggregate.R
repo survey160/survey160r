@@ -301,6 +301,34 @@ test_that("fully-identical duplicate rows are collapsed, not rejected", {
   expect_equal(out$meta$source_csv_path, "gs://bucket/results.csv")
 })
 
+test_that("survey_mode override pins the mode and its completion signal", {
+  # A close-reacher with no web complete: auto-detects sms (completed = reached
+  # close), but forcing t2w switches completion to the web_complete callback --
+  # so the override changes both `mode` and the mode-dependent `completed` flag.
+  # This is what lets a phone-sharded caller pin the whole-campaign mode onto a
+  # shard that happens to hold no web-complete row.
+  d <- disp_frame(
+    phone = "+15559901",
+    id.intro.scriptDate = TS,
+    id.close.scriptDate = TS,        # reached close -> sms-completed
+    web_complete = "0"
+  )
+  auto <- disposition_run(1234, d)$consolidated
+  expect_equal(auto$mode, "sms")
+  expect_equal(auto$completed, 1L)
+  forced <- disposition_run(1234, d, survey_mode = "t2w")$consolidated
+  expect_equal(forced$mode, "t2w")
+  expect_equal(forced$completed, 0L)   # web_complete callback, not the close
+})
+
+test_that("survey_mode override rejects an unknown or non-scalar mode", {
+  d <- disp_frame(phone = "+15559902", id.intro.scriptDate = TS)
+  expect_error(disposition_run(1234, d, survey_mode = "web"),
+               "must be NULL or one of")
+  expect_error(disposition_run(1234, d, survey_mode = c("sms", "t2w")),
+               "must be NULL or one of")
+})
+
 test_that("missing phone column is rejected", {
   d <- data.frame(campaignid = 1234L, id.intro.finalText = "Yes",
                   stringsAsFactors = FALSE)
