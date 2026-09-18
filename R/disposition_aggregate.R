@@ -7,8 +7,9 @@
 # (algorithm here, persistence downstream).
 #
 # Grain: one row per (phone, campaign_id). Phone is unique within a campaign
-# export (verified across production campaigns), so disposition_run() enforces
-# it with a hard guard rather than silently collapsing rows.
+# export (verified across production campaigns). disposition_run() collapses
+# fully-identical duplicate rows (export noise), then hard-guards a duplicate
+# phone whose rows DIFFER rather than silently merging a real grain violation.
 #
 # The per-respondent masks below mirror the signals build_summary_frame()
 # (summary_aggregate.R) computes before aggregating to (date, hour). NOTE:
