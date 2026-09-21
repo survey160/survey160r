@@ -103,10 +103,10 @@ The counts overlap rather than partition `n_campaigns` -- a completed campaign i
 | `opted_in` | Consented to take the survey. |
 | `completed` | Reached the survey close in-channel. `NA` on text-to-web external (no completion callback). |
 | `web_complete` | Completed on the web. Equals `completed` for a `t2w` campaign; `0` for `sms` and `t2w_external`. |
-| `terminated` | Hard-stop flag -- the unsplit residual, a superset of the two below. |
-| `refused` / `ineligible` | The name-classified terminal split: a decline / a screen-out. Set independently of `terminated`. |
-| `error` | The send's carrier delivery-error code; blank when the message was delivered. |
-| `carrier` | The recipient's mobile network, from the export's optional misc column (`NA` when the export omits it). |
+| `terminated` | Hard-stop flag. On the prod projection it is set independently of the split below -- a row can be `terminated` with neither `refused` nor `ineligible`, and either can be set without `terminated` -- so screen on all three. |
+| `refused` / `ineligible` | The name-classified terminal split -- a decline / a screen-out. |
+| `error` | The raw carrier delivery-error code for the send; `NA` when the export carries no usable code. |
+| `carrier` | The recipient's mobile network, from the export's optional `misc` column; `NA` when that column is omitted or blank. |
 | `loi` / `topic` | Length of interview in minutes, and the campaign topic, from the Project Tracker. |
 | `mode` | Send channel: `sms`, `t2w`, or `t2w_external`. |
 | `registration_id` | The campaign's 10DLC registration id, from the Project Tracker. |
