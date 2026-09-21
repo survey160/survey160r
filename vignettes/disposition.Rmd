@@ -47,7 +47,7 @@ disposition_summary(dataset, phones = c("2015550101", "2015550102"))
 disposition_records(dataset, campaign_ids = 1234)
 ```
 
-Both take `phones` / `campaign_ids` filters. Phones match digit-normalized: a leading US `1` is dropped, so an 11-digit number matches a stored 10-digit one. `disposition_records()` hands back the stored schema as-is -- the funnel flags (including the `refused` / `ineligible` split), `mode`, `error`, `loi`, `topic`, and `disposition_date` (plus `registration_id` once the projection is republished carrying it); see `?disposition_records`.
+Both take `phones` / `campaign_ids` filters. Phones match digit-normalized: a leading US `1` is dropped, so an 11-digit number matches a stored 10-digit one. `disposition_records()` hands back the stored schema as-is, one row per `(phone, campaign_id)` -- the funnel flags, the recipient's carrier and any delivery error, the Tracker dimensions, and the disposition date. See [The stored record columns](#the-stored-record-columns).
 
 ## Screen several samples
 
@@ -89,7 +89,30 @@ Note `5551234567`: its **latest** disposition is `refused` (its most recent camp
 
 The counts overlap rather than partition `n_campaigns` -- a completed campaign is also engaged -- so read each as "reached status X in this many campaigns".
 
-`latest_disposition` and `best_disposition`, least to most advanced: `never_contacted` -> `non_response` -> `engaged` -> `opted_in` -> `terminated` -> `ineligible` -> `refused` -> `completed` -> `web_complete`. The terminal band (`terminated` < `ineligible` < `refused`) sits between `opted_in` and `completed`: `terminated` is the unsplit residual, `ineligible` a screen-out, `refused` a decline. `disposition_records()` returns the stored per-campaign columns instead; see `?disposition_records`.
+`latest_disposition` and `best_disposition`, least to most advanced: `never_contacted` -> `non_response` -> `engaged` -> `opted_in` -> `terminated` -> `ineligible` -> `refused` -> `completed` -> `web_complete`. The terminal band (`terminated` < `ineligible` < `refused`) sits between `opted_in` and `completed`: `terminated` is the unsplit residual, `ineligible` a screen-out, `refused` a decline. `disposition_records()` returns the stored per-campaign columns instead; see [The stored record columns](#the-stored-record-columns).
+
+## The stored record columns
+
+`disposition_records()` returns the dataset as stored -- one row per `(phone, campaign_id)`, contacted-only -- which `disposition_summary()` and `disposition_screen()` roll up per phone (above). The columns, in funnel order:
+
+| Column | Meaning |
+|---|---|
+| `phone` / `campaign_id` | The row key: the digit-normalized number and the campaign that contacted it. |
+| `sent` | Always `1` -- the dataset holds only contacted numbers. |
+| `engaged` | Replied at all. |
+| `opted_in` | Consented to take the survey. |
+| `completed` | Reached the survey close in-channel. `NA` on text-to-web external (no completion callback). |
+| `web_complete` | Completed on the web. Equals `completed` for a `t2w` campaign; `0` for `sms` and `t2w_external`. |
+| `terminated` | Hard-stop flag -- the unsplit residual, a superset of the two below. |
+| `refused` / `ineligible` | The name-classified terminal split: a decline / a screen-out. Set independently of `terminated`. |
+| `error` | The send's carrier delivery-error code; blank when the message was delivered. |
+| `carrier` | The recipient's mobile network, from the export's optional misc column (`NA` when the export omits it). |
+| `loi` / `topic` | Length of interview in minutes, and the campaign topic, from the Project Tracker. |
+| `mode` | Send channel: `sms`, `t2w`, or `t2w_external`. |
+| `registration_id` | The campaign's 10DLC registration id, from the Project Tracker. |
+| `disposition_date` | The number's last-send date, or `NA` when no send survives archival. |
+
+The funnel flags overlap rather than partition -- a `completed` row is also `engaged` -- so read each as a status the row reached, not an exclusive bucket. Provenance of the columns: `sent`, the funnel flags, `mode`, `error`, and `carrier` are derived from the campaign export; `loi`, `topic`, and `registration_id` come from the Project Tracker, so they are populated only for campaigns the Tracker covers and read `NA` on older campaigns that predate it. An un-enriched projection (published before a column existed, or without Tracker enrichment) simply omits that column, and `disposition_records()` returns whatever subset is present -- see `?disposition_records`.
 
 ## Notes
 
