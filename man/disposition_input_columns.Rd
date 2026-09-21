@@ -26,8 +26,10 @@ its columns are added so a custom population's inputs are not projected away.}
 }
 \value{
 A character vector of unique dot-form column names, including
-  \code{phone}. Pass it as \code{columns =} to \code{s160_read_csv()} /
-  \code{s160_gcs_campaign_results_read()}.
+  \code{phone} and (best-effort) the optional \code{carrier} misc column --
+  matched case-insensitively when \code{available} is supplied, else requested
+  as lowercase \code{"carrier"}. Pass it as \code{columns =} to
+  \code{s160_read_csv()} / \code{s160_gcs_campaign_results_read()}.
 }
 \description{
 Returns the (dot-form) column names \code{disposition_run()} touches, so a

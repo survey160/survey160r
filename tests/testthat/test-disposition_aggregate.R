@@ -29,7 +29,7 @@ test_that("sms campaign: per-respondent flags and mode", {
 
   expect_named(res, c("phone", "campaign_id", "sent", "engaged", "opted_in",
                       "completed", "web_complete", "refused", "ineligible",
-                      "terminated", "mode", "error",
+                      "terminated", "mode", "error", "carrier",
                       "disposition_date"))
   expect_equal(res$phone, c("+15550101", "+15550102", "+15550103"))
   expect_true(is.integer(res$campaign_id))
@@ -79,6 +79,42 @@ test_that("error: reader-inferred integer / all-NA logical error_code coerce to 
   res <- disposition_run(1234, d_lgl, contacted_only = FALSE)$consolidated
   expect_true(is.character(res$error))
   expect_true(all(is.na(res$error)))
+})
+
+test_that("carrier: recipient mobile carrier passes through; blank/whitespace -> NA", {
+  d <- disp_frame(
+    phone = c("+15550501", "+15550502", "+15550503", "+15550504", "+15550505"),
+    id.intro.scriptDate = rep(TS, 5),             # all contacted
+    id.intro.finalText  = rep("Yes", 5),
+    carrier             = c("AT&T", "Verizon", "", "  T-Mobile  ", "Other")
+  )
+  res <- disposition_run(1234, d, contacted_only = FALSE)$consolidated
+  expect_true(is.character(res$carrier))
+  # verbatim passthrough; whitespace trimmed; blank -> NA; "Other" kept as-is
+  expect_equal(res$carrier, c("AT&T", "Verizon", NA, "T-Mobile", "Other"))
+})
+
+test_that("carrier: absent misc column -> all NA; header case is ignored", {
+  # No carrier column at all -> null-safe all-NA (the common case for a campaign
+  # whose uploaded list carried no carrier).
+  d_absent <- disp_frame(
+    phone = c("+15550601", "+15550602"),
+    id.intro.scriptDate = rep(TS, 2),
+    id.intro.finalText  = rep("Yes", 2)
+  )
+  res_absent <- disposition_run(1234, d_absent, contacted_only = FALSE)$consolidated
+  expect_true(is.character(res_absent$carrier))
+  expect_true(all(is.na(res_absent$carrier)))
+
+  # A differently-cased header ("Carrier") is matched case-insensitively.
+  d_upper <- disp_frame(
+    phone = c("+15550701", "+15550702"),
+    id.intro.scriptDate = rep(TS, 2),
+    id.intro.finalText  = rep("Yes", 2),
+    Carrier             = c("Verizon", "AT&T")
+  )
+  res_upper <- disposition_run(1234, d_upper, contacted_only = FALSE)$consolidated
+  expect_equal(res_upper$carrier, c("Verizon", "AT&T"))
 })
 
 test_that("t2w campaign: completed comes from the web_complete callback", {
@@ -322,7 +358,7 @@ test_that("zero-row input returns the empty disposition frame", {
   expect_equal(nrow(res), 0L)
   expect_named(res, c("phone", "campaign_id", "sent", "engaged", "opted_in",
                       "completed", "web_complete", "refused", "ineligible",
-                      "terminated", "mode", "error",
+                      "terminated", "mode", "error", "carrier",
                       "disposition_date"))
   expect_true(is.integer(res$sent))
   expect_true(is.character(res$phone))
@@ -504,7 +540,7 @@ test_that("contacted_only with no contacted rows yields a typed zero-row frame",
   expect_equal(nrow(res), 0L)
   expect_named(res, c("phone", "campaign_id", "sent", "engaged", "opted_in",
                       "completed", "web_complete", "refused", "ineligible",
-                      "terminated", "mode", "error",
+                      "terminated", "mode", "error", "carrier",
                       "disposition_date"))
   expect_true(is.integer(res$sent))
   expect_true(is.character(res$phone))
@@ -555,7 +591,8 @@ test_that("disposition_input_columns: default set is exactly the read columns", 
   # No id.intro.finalText: the default opt-in is routing-based (reached a
   # continuation step -> id.close.scriptDate here), so no finalText is read.
   expect_setequal(cols, c("phone", "id.intro.scriptDate", "id.intro.batchDate",
-                          "web_complete", "error_code", "id.close.scriptDate",
+                          "web_complete", "error_code", "carrier",
+                          "id.close.scriptDate",
                           "id.ineligible.scriptDate", "id.refusal.scriptDate",
                           "id.ineligible.batchDate", "id.refusal.batchDate"))
   expect_false("campaignid" %in% cols)           # stamped from the argument
@@ -568,6 +605,13 @@ test_that("disposition_input_columns: retains close-message Text cols from `avai
   cols <- disposition_input_columns(available = header)
   expect_true(all(c("id.close.scriptText", "id.closeB.batchText") %in% cols))
   expect_false("id.intro.scriptText" %in% cols)  # not a close-message Text col
+  expect_false("userid" %in% cols)
+})
+
+test_that("disposition_input_columns: retains a case-variant carrier from `available`", {
+  header <- c("phone", "id.intro.scriptDate", "Carrier", "userid")
+  cols <- disposition_input_columns(available = header)
+  expect_true("Carrier" %in% cols)               # matched case-insensitively, actual name kept
   expect_false("userid" %in% cols)
 })
 

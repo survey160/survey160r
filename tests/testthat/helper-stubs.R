@@ -320,7 +320,8 @@ write_opt_out_parquet <- function(rows) {
 # a contacted-but-no-reply t2w record. Shared by the disposition_records tests.
 .record_row <- function(phone, campaign_id, sent = 1L, engaged = 0L,
                         opted_in = 0L, completed = 0L, web_complete = 0L,
-                        terminated = 0L, error = NA_character_, loi = NA_real_,
+                        terminated = 0L, error = NA_character_,
+                        carrier = NA_character_, loi = NA_real_,
                         topic = NA_character_, mode = "t2w",
                         registration_id = NA_character_,
                         disposition_date = as.Date(NA)) {
@@ -330,6 +331,7 @@ write_opt_out_parquet <- function(rows) {
     opted_in = as.integer(opted_in), completed = as.integer(completed),
     web_complete = as.integer(web_complete),
     terminated = as.integer(terminated), error = as.character(error),
+    carrier = as.character(carrier),
     loi = as.numeric(loi), topic = as.character(topic),
     mode = as.character(mode),
     registration_id = as.character(registration_id),
