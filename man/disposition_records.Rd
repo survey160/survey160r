@@ -43,7 +43,7 @@ stored} -- one row per \code{(phone, campaign_id)}, carrying the full
 disposition schema: \code{phone}, \code{campaign_id}, \code{sent},
 \code{engaged}, \code{opted_in}, \code{completed}, \code{web_complete},
 \code{refused}, \code{ineligible}, \code{terminated}, \code{error},
-\code{loi}, \code{topic}, \code{mode}, \code{registration_id},
+\code{carrier}, \code{loi}, \code{topic}, \code{mode}, \code{registration_id},
 \code{disposition_date}. This is the level directly beneath
 \code{\link{disposition_summary}}: where \code{summary} rolls every phone up to a
 single screening row, \code{records} hands back the raw per-campaign rows --

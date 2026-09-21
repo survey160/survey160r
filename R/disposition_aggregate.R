@@ -111,10 +111,14 @@
 # block (phonelist.misc -> carrier) only when the uploaded recipient list supplied
 # it, so it is present for some campaigns and absent for others. Values are
 # ops/vendor-entered ("AT&T", "Verizon", "T-Mobile", "Metro PCS", "US Cellular",
-# "Other", ...) and are carried through verbatim -- never normalized, grouped, or
-# MVNO-folded here (that is a read-time concern, mirroring `error`). The column
-# name is matched case-insensitively ("carrier" / "Carrier"); a blank / whitespace
-# value normalizes to NA. Null-safe: an export without the column yields all NA.
+# "Other", ...) and are carried through as-is APART FROM trimming surrounding
+# whitespace and mapping a blank / whitespace-only value to NA -- the same
+# hygiene `.disposition_error` applies, and matching the DB producer's SQL
+# `NULLIF(trim(misc->>'carrier'), '')` so both disposition producers emit an
+# identical value. SEMANTIC normalization (MVNO-folding e.g. Metro PCS, typo
+# fixing, grouping) is deliberately left to the read/analysis layer. The column
+# name is matched case-insensitively ("carrier" / "Carrier"). Null-safe: an
+# export without the column yields all NA.
 .disposition_carrier <- function(data) {
   col <- names(data)[tolower(names(data)) == "carrier"]
   if (length(col) == 0L) {
@@ -380,8 +384,9 @@ disposition_input_columns <- function(available = NULL, population = NULL) {
 #'   \code{t2w_external} -- \code{mode} (character), \code{error} (character;
 #'   the raw carrier delivery-error code, \code{NA} when the export carries no
 #'   usable error code), \code{carrier} (character; the recipient's mobile carrier
-#'   from the export's optional \code{misc} column, verbatim, \code{NA} when the
-#'   export omits it or the value is blank), and \code{disposition_date} (a \code{Date}: the row-wise
+#'   from the export's optional \code{misc} column, surrounding whitespace
+#'   trimmed, \code{NA} when the export omits it or the value is blank), and
+#'   \code{disposition_date} (a \code{Date}: the row-wise
 #'   max \code{id.<step>.scriptDate} bucketed to \code{field_timezone} -- the last
 #'   outbound send -- or \code{NA} when no send time survives); under the default
 #'   \code{sent} is \code{1} for every row) and

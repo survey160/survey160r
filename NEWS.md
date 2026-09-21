@@ -6,8 +6,10 @@
   returns it.** The recipient's mobile carrier ("AT&T", "Verizon", "T-Mobile",
   "Metro PCS", "US Cellular", "Other", ...) rides in the campaign export's
   optional `misc` block, present only for campaigns whose uploaded list supplied
-  it. It is carried through verbatim (never normalized or MVNO-folded), matched
-  case-insensitively, blank/whitespace normalized to `NA`, and `NA` for a campaign
+  it. Surrounding whitespace is trimmed and a blank/whitespace value maps to `NA`
+  (the same hygiene as `error`, and matching the DB producer's `trim()`); semantic
+  normalization (MVNO-folding, typo-fixing, grouping) is left to the read layer. It is matched
+  case-insensitively, and `NA` for a campaign
   whose export omits the column. `disposition_input_columns()` retains it so a
   projected read keeps it. A projection produced before this release simply lacks
   the column and the reader omits it (subset-tolerant, like `registration_id`).

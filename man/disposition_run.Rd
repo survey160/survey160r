@@ -56,8 +56,9 @@ A list mirroring \code{latency_run()}'s shape: \code{consolidated} (a
   \code{t2w_external} -- \code{mode} (character), \code{error} (character;
   the raw carrier delivery-error code, \code{NA} when the export carries no
   usable error code), \code{carrier} (character; the recipient's mobile carrier
-  from the export's optional \code{misc} column, verbatim, \code{NA} when the
-  export omits it or the value is blank), and \code{disposition_date} (a \code{Date}: the row-wise
+  from the export's optional \code{misc} column, surrounding whitespace
+  trimmed, \code{NA} when the export omits it or the value is blank), and
+  \code{disposition_date} (a \code{Date}: the row-wise
   max \code{id.<step>.scriptDate} bucketed to \code{field_timezone} -- the last
   outbound send -- or \code{NA} when no send time survives); under the default
   \code{sent} is \code{1} for every row) and
