@@ -106,6 +106,25 @@
   ec
 }
 
+# carrier: the recipient's mobile carrier for this record, as a raw string. It is
+# an OPTIONAL per-respondent column: the campaign export carries it in the `misc`
+# block (phonelist.misc -> carrier) only when the uploaded recipient list supplied
+# it, so it is present for some campaigns and absent for others. Values are
+# ops/vendor-entered ("AT&T", "Verizon", "T-Mobile", "Metro PCS", "US Cellular",
+# "Other", ...) and are carried through verbatim -- never normalized, grouped, or
+# MVNO-folded here (that is a read-time concern, mirroring `error`). The column
+# name is matched case-insensitively ("carrier" / "Carrier"); a blank / whitespace
+# value normalizes to NA. Null-safe: an export without the column yields all NA.
+.disposition_carrier <- function(data) {
+  col <- names(data)[tolower(names(data)) == "carrier"]
+  if (length(col) == 0L) {
+    return(rep(NA_character_, nrow(data)))
+  }
+  cr <- trimws(as.character(data[[col[[1L]]]]))
+  cr[is.na(cr) | cr == ""] <- NA_character_
+  cr
+}
+
 # disposition_date: the per-respondent disposition day -- the CSV analogue of the
 # DB producer's `lastsms::date`. Each script step's send timestamp lives in an
 # `id.<step>.scriptDate` column, so the ROW-WISE MAX over every scriptDate is the
@@ -146,6 +165,7 @@ empty_disposition_frame <- function() {
     terminated = integer(0),
     mode = character(0),
     error = character(0),
+    carrier = character(0),
     disposition_date = as.Date(character(0)),
     stringsAsFactors = FALSE
   )
@@ -203,8 +223,10 @@ empty_disposition_frame <- function() {
 #'   instead pass an explicit filter (e.g. \code{id.intro.finalText == "Yes"});
 #'   its columns are added so a custom population's inputs are not projected away.
 #' @return A character vector of unique dot-form column names, including
-#'   \code{phone}. Pass it as \code{columns =} to \code{s160_read_csv()} /
-#'   \code{s160_gcs_campaign_results_read()}.
+#'   \code{phone} and (best-effort) the optional \code{carrier} misc column --
+#'   matched case-insensitively when \code{available} is supplied, else requested
+#'   as lowercase \code{"carrier"}. Pass it as \code{columns =} to
+#'   \code{s160_read_csv()} / \code{s160_gcs_campaign_results_read()}.
 #' @seealso \code{\link{latency_input_columns}}, the latency analogue. It leads
 #'   with its \emph{required} \code{config}; here \code{available} leads because
 #'   it is the argument you almost always pass (see the example), and there is no
@@ -241,6 +263,11 @@ disposition_input_columns <- function(available = NULL, population = NULL) {
     pop_cols,
     "web_complete",
     "error_code",                           # raw carrier delivery-error code (-> `error`)
+    # Optional recipient mobile carrier, carried in the export's misc block, present
+    # only when the uploaded list supplied it (-> `carrier`). Requested here like
+    # error_code so the lossy `available = NULL` path still keeps a lowercase
+    # "carrier"; the `available` branch below also matches other casings.
+    "carrier",
     sprintf("id.%s.scriptDate", closers),   # close family (close / close_sp / ...)
     # The two STANDARD terminal columns, so refused / ineligible resolve even on
     # the lossy `available = NULL` path. The refused / ineligible masks match many
@@ -265,6 +292,9 @@ disposition_input_columns <- function(available = NULL, population = NULL) {
       # ineligible masks see every non-standard terminal column, not just the two
       # standard names above.
       grep("^id\\..+\\.scriptDate$", available, value = TRUE),
+      # the optional recipient-carrier misc column, matched case-insensitively so a
+      # differently-cased header ("Carrier") is retained under its actual name.
+      grep("^carrier$", available, value = TRUE, ignore.case = TRUE),
       # ...and the reply (batchDate) for every discovered terminal, so a
       # reply-only refusal (no send) is not dropped by the projection.
       sprintf("id.%s.batchDate",
@@ -280,7 +310,9 @@ disposition_input_columns <- function(available = NULL, population = NULL) {
 #' per contacted phone, with 0/1 funnel flags \code{sent}, \code{engaged},
 #' \code{opted_in}, \code{completed}, \code{web_complete}, \code{refused},
 #' \code{ineligible}, \code{terminated} (the union of the two), the
-#' campaign's \code{mode}, the raw carrier delivery-error code \code{error}, and
+#' campaign's \code{mode}, the raw carrier delivery-error code \code{error}, the
+#' recipient's mobile \code{carrier} (from the export's optional \code{misc}
+#' column, \code{NA} when the export omits it), and
 #' the \code{disposition_date} (the last-send day, \code{max(scriptDate)}))
 #' plus source provenance in \code{meta}. Pure
 #' function, no I/O -- pair with \code{s160_gcs_campaign_results_read(hash = TRUE)} for the GCS source.
@@ -347,7 +379,9 @@ disposition_input_columns <- function(available = NULL, population = NULL) {
 #'   (\code{refused | ineligible}) -- \code{completed} is \code{NA} under
 #'   \code{t2w_external} -- \code{mode} (character), \code{error} (character;
 #'   the raw carrier delivery-error code, \code{NA} when the export carries no
-#'   usable error code), and \code{disposition_date} (a \code{Date}: the row-wise
+#'   usable error code), \code{carrier} (character; the recipient's mobile carrier
+#'   from the export's optional \code{misc} column, verbatim, \code{NA} when the
+#'   export omits it or the value is blank), and \code{disposition_date} (a \code{Date}: the row-wise
 #'   max \code{id.<step>.scriptDate} bucketed to \code{field_timezone} -- the last
 #'   outbound send -- or \code{NA} when no send time survives); under the default
 #'   \code{sent} is \code{1} for every row) and
@@ -461,6 +495,7 @@ disposition_run <- function(campaign_id, data, population = NULL,
     terminated = as.integer(.mask_terminated(refused, ineligible)),
     mode = rep(survey_mode, length(phone)),
     error = .disposition_error(data),
+    carrier = .disposition_carrier(data),
     disposition_date = .disposition_dates(data, field_timezone),
     stringsAsFactors = FALSE
   )

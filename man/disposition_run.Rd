@@ -55,7 +55,9 @@ A list mirroring \code{latency_run()}'s shape: \code{consolidated} (a
   (\code{refused | ineligible}) -- \code{completed} is \code{NA} under
   \code{t2w_external} -- \code{mode} (character), \code{error} (character;
   the raw carrier delivery-error code, \code{NA} when the export carries no
-  usable error code), and \code{disposition_date} (a \code{Date}: the row-wise
+  usable error code), \code{carrier} (character; the recipient's mobile carrier
+  from the export's optional \code{misc} column, verbatim, \code{NA} when the
+  export omits it or the value is blank), and \code{disposition_date} (a \code{Date}: the row-wise
   max \code{id.<step>.scriptDate} bucketed to \code{field_timezone} -- the last
   outbound send -- or \code{NA} when no send time survives); under the default
   \code{sent} is \code{1} for every row) and
@@ -70,7 +72,9 @@ carrying the per-respondent disposition frame in \code{consolidated} (one row
 per contacted phone, with 0/1 funnel flags \code{sent}, \code{engaged},
 \code{opted_in}, \code{completed}, \code{web_complete}, \code{refused},
 \code{ineligible}, \code{terminated} (the union of the two), the
-campaign's \code{mode}, the raw carrier delivery-error code \code{error}, and
+campaign's \code{mode}, the raw carrier delivery-error code \code{error}, the
+recipient's mobile \code{carrier} (from the export's optional \code{misc}
+column, \code{NA} when the export omits it), and
 the \code{disposition_date} (the last-send day, \code{max(scriptDate)}))
 plus source provenance in \code{meta}. Pure
 function, no I/O -- pair with \code{s160_gcs_campaign_results_read(hash = TRUE)} for the GCS source.

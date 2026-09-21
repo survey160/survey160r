@@ -57,10 +57,12 @@ rather than filling an all-\code{NA} column. A projection written straight from
 \code{\link{disposition_run}} carries the funnel flags (including the
 \code{refused} / \code{ineligible} terminal split as of 0.51.0; a pre-0.51.0
 projection omits those two) plus \code{mode},
-\code{error} (the carrier delivery-error code), and \code{disposition_date}
+\code{error} (the carrier delivery-error code), \code{carrier} (the recipient's
+mobile carrier, from the export's optional \code{misc} column), and
+\code{disposition_date}
 (\code{max(scriptDate)}); \code{loi} / \code{topic} / \code{registration_id}
 are added by the tracker enrichment, so only the enriched projection carries
-all sixteen.
+all seventeen.
 \code{disposition_date} is \code{NA} for a row with no send; \code{error} is
 \code{NA} when the export carries no usable code (a clean send, or an export
 lacking the column). The

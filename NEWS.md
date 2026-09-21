@@ -2,6 +2,16 @@
 
 ## Disposition
 
+* **`disposition_run()` now emits a `carrier` column, and `disposition_records()`
+  returns it.** The recipient's mobile carrier ("AT&T", "Verizon", "T-Mobile",
+  "Metro PCS", "US Cellular", "Other", ...) rides in the campaign export's
+  optional `misc` block, present only for campaigns whose uploaded list supplied
+  it. It is carried through verbatim (never normalized or MVNO-folded), matched
+  case-insensitively, blank/whitespace normalized to `NA`, and `NA` for a campaign
+  whose export omits the column. `disposition_input_columns()` retains it so a
+  projected read keeps it. A projection produced before this release simply lacks
+  the column and the reader omits it (subset-tolerant, like `registration_id`).
+
 * **`disposition_run()` collapses fully-identical duplicate rows instead of
   erroring on them.** A campaign export can repeat a respondent's row verbatim
   (a re-export appended to itself, a batch duplicated in an upstream merge). An

@@ -51,16 +51,18 @@
                       "first_disposition_date", "last_disposition_date")
 
 # The stored disposition schema, in canonical order -- what
-# disposition_records() returns. `sent`/`mode`/`error` come from disposition_run();
-# `loi`/`topic`/`registration_id`/`disposition_date` are added by downstream
-# enrichment, so an un-enriched projection lacks those and records() returns just
-# the subset present. `registration_id` (survey160r 0.54.0) is a per-campaign
-# Project-Tracker id carried through unchanged; a projection produced before it was
-# added simply lacks the column and records() omits it.
+# disposition_records() returns. `sent`/`mode`/`error`/`carrier` come from
+# disposition_run(); `loi`/`topic`/`registration_id`/`disposition_date` are added by
+# downstream enrichment, so an un-enriched projection lacks those and records()
+# returns just the subset present. `registration_id` (survey160r 0.54.0) is a
+# per-campaign Project-Tracker id carried through unchanged; `carrier` (0.60.0) is
+# the recipient's mobile carrier from the export's optional misc column. Either is
+# simply absent from a projection produced before it was added, and records() omits
+# a column it does not carry.
 .DISPOSITION_RECORD_COLS <- c("phone", "campaign_id", "sent", "engaged",
                       "opted_in", "completed", "web_complete", "refused",
-                      "ineligible", "terminated", "error", "loi", "topic", "mode",
-                      "registration_id", "disposition_date")
+                      "ineligible", "terminated", "error", "carrier", "loi",
+                      "topic", "mode", "registration_id", "disposition_date")
 
 # Phone matching uses the shared .normalize_phone (aaa_utils.R) so a sample
 # matches the disposition and opt-out datasets identically.
@@ -489,10 +491,12 @@ disposition_summary <- function(x, phones = NULL, campaign_ids = NULL,
 #' \code{\link{disposition_run}} carries the funnel flags (including the
 #' \code{refused} / \code{ineligible} terminal split as of 0.51.0; a pre-0.51.0
 #' projection omits those two) plus \code{mode},
-#' \code{error} (the carrier delivery-error code), and \code{disposition_date}
+#' \code{error} (the carrier delivery-error code), \code{carrier} (the recipient's
+#' mobile carrier, from the export's optional \code{misc} column), and
+#' \code{disposition_date}
 #' (\code{max(scriptDate)}); \code{loi} / \code{topic} / \code{registration_id}
 #' are added by the tracker enrichment, so only the enriched projection carries
-#' all sixteen.
+#' all seventeen.
 #' \code{disposition_date} is \code{NA} for a row with no send; \code{error} is
 #' \code{NA} when the export carries no usable code (a clean send, or an export
 #' lacking the column). The
