@@ -13,7 +13,13 @@
 # user-uploaded configs without first restricting the expression grammar
 # (e.g., via rlang::parse_expr + a small allowlist of operators).
 apply_population_filter <- function(data, expr) {
-  data[population_filter_mask(data, expr), , drop = FALSE]
+  mask <- population_filter_mask(data, expr)
+  # No-op filter (the common case: `filters.population` unset -> an all-TRUE
+  # mask) returns `data` unchanged instead of `data[mask, ]`, which would
+  # duplicate the whole frame. `isTRUE(all(mask))` is FALSE the moment any row
+  # is FALSE or NA, so a real filter still takes the subset path unchanged.
+  if (isTRUE(all(mask))) return(data)
+  data[mask, , drop = FALSE]
 }
 
 # Return the row indices to keep when deduping by respondent_id, choosing the
