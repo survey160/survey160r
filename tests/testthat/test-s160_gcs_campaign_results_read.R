@@ -137,3 +137,93 @@ test_that("a non-logical hash is rejected", {
   expect_error(s160_gcs_campaign_results_read(1980, hash = NA),
                "single TRUE or FALSE")
 })
+
+test_that("columns_fn projects columns using the downloaded file's header", {
+  stub_gcs_base()
+  stub_gcs_download_ok(content = c("a,b,c", "1,2,3"))
+  seen <- new_capture()
+
+  res <- suppressMessages(s160_gcs_campaign_results_read(
+    1980,
+    columns_fn = function(header) {
+      seen$header <- header
+      c("a", "c")
+    }))
+
+  # The resolver receives the file's full header and its result is the projection.
+  expect_equal(seen$header, c("a", "b", "c"))
+  expect_equal(names(res), c("a", "c"))
+})
+
+test_that("an explicit columns= wins over columns_fn", {
+  stub_gcs_base()
+  stub_gcs_download_ok(content = c("a,b,c", "1,2,3"))
+  called <- new_capture()
+
+  res <- suppressMessages(s160_gcs_campaign_results_read(
+    1980,
+    columns = "a",
+    columns_fn = function(header) {
+      called$was <- TRUE
+      c("b", "c")
+    }))
+
+  expect_equal(names(res), "a")
+  # columns_fn is not consulted when columns is supplied.
+  expect_null(called$was)
+})
+
+test_that("a columns_fn error warns and falls back to a full read", {
+  stub_gcs_base()
+  stub_gcs_download_ok(content = c("a,b", "1,2"))
+
+  expect_warning(
+    res <- suppressMessages(s160_gcs_campaign_results_read(
+      1980,
+      columns_fn = function(header) stop("cannot derive columns"))),
+    "column projection via `columns_fn` failed.*cannot derive columns"
+  )
+  expect_equal(names(res), c("a", "b"))
+})
+
+test_that("a non-function columns_fn is rejected up front", {
+  stub_gcs_base()
+  expect_error(
+    s160_gcs_campaign_results_read(1980, columns_fn = c("a", "b")),
+    "`columns_fn` must be a function"
+  )
+})
+
+test_that("an encoding forwarded through ... reaches the resolver header read", {
+  stub_gcs_base()
+  stub_gcs_download_ok(content = c("a,b,c", "1,2,3"))
+  # A non-default encoding must flow to BOTH the header peek and the body read
+  # (the same value), so a non-UTF-8 export's munged names match the projection
+  # instead of missing and silently reading every column. Here it resolves.
+  res <- suppressMessages(s160_gcs_campaign_results_read(
+    1980,
+    encoding = "Latin-1",
+    columns_fn = function(header) c("a", "c")))
+
+  expect_equal(names(res), c("a", "c"))
+})
+
+test_that("columns_fn receives the munged (dot-form) header, not raw bracket names", {
+  stub_gcs_base()
+  # Raw export headers are bracket-form (id[q1]scriptDate); s160_csv_header()
+  # munges them to the dot-form the latency column helpers key off, so the
+  # resolver must see the munged names to project correctly.
+  stub_gcs_download_ok(content = c("id[q1]scriptDate,phone",
+                                   "2024-01-01 00:00:00,5551234"))
+  seen <- new_capture()
+
+  res <- suppressMessages(s160_gcs_campaign_results_read(
+    1980,
+    columns_fn = function(header) {
+      seen$header <- header
+      "id.q1.scriptDate"
+    }))
+
+  expect_equal(seen$header, c("id.q1.scriptDate", "phone"))
+  expect_equal(names(res), "id.q1.scriptDate")
+})

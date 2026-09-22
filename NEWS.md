@@ -1,5 +1,22 @@
 # survey160r (development version)
 
+## Reader
+
+* **`s160_gcs_campaign_results_read()` gains a `columns_fn` argument for
+  header-derived column projection.** The reader already accepted an explicit
+  `columns=` set, but a caller that wants only the columns a transform reads
+  (via `latency_input_columns()` / `disposition_input_columns()`) cannot build
+  that set without the file's header, which lives in GCS. `columns_fn` closes
+  the gap: a resolver `function(header) -> columns` is applied to the header of
+  the just-downloaded file, and its result becomes the projection. This makes
+  the GCS reader project as narrowly as the local `s160_read_csv()` path does,
+  so a fleet pass over wide exports keeps only the needed columns and reads far
+  less into memory. `columns=` still wins when supplied; a resolver (or
+  header-peek) error emits a warning and falls back to a full read (so a broken
+  projection is visible rather than silently reading every column); a
+  non-function `columns_fn` is rejected; and with neither argument the reader is
+  unchanged and reads every column.
+
 ## Disposition
 
 * **`disposition_run()` now emits a `carrier` column, and `disposition_records()`

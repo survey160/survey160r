@@ -615,6 +615,16 @@ finish_gcs_init <- function(bucket) {
 #'   e.g. from \code{latency_input_columns()}. When set, only those columns are
 #'   parsed (via \code{data.table::fread}'s column projection), cutting read
 #'   time and memory on wide exports. \code{NULL} (default) reads every column.
+#' @param columns_fn Optional resolver \code{function(header) -> columns} for
+#'   the common case where the projection set depends on the file's own header
+#'   (e.g. \code{function(h) latency_input_columns(latency_build_config(0L, h),
+#'   available = h)}). Used only when \code{columns} is \code{NULL}: the header
+#'   is peeked from the downloaded file and passed to \code{columns_fn}, whose
+#'   result becomes the projection. A resolver (or header-peek) error emits a
+#'   warning and falls back to a full read. A non-function value is rejected.
+#'   This is the GCS counterpart to the downstream fleet reader's local
+#'   projection, so both paths keep only the columns the transform needs.
+#'   \code{NULL} (default) applies no header-derived projection.
 #' @param hash When \code{TRUE}, stamp provenance on the returned frame -- the
 #'   sha256 of the downloaded CSV bytes as \code{source_csv_hash} and the
 #'   canonical \code{gs://} source as \code{source_csv_path}, which
@@ -642,6 +652,7 @@ s160_gcs_campaign_results_read <- function(campaign_id, filename = NULL,
                                            destdir = NULL,
                                            env = .ENV_CHOICES,
                                            bucket = NULL, columns = NULL,
+                                           columns_fn = NULL,
                                            hash = FALSE, ...) {
   campaign_id <- validate_campaign_id(campaign_id)
   env <- match.arg(env)
@@ -649,6 +660,10 @@ s160_gcs_campaign_results_read <- function(campaign_id, filename = NULL,
                     "s160_gcs_campaign_results_read")$bucket
   if (!is.logical(hash) || length(hash) != 1L || is.na(hash)) {
     stop_s160("`hash` must be a single TRUE or FALSE.",
+              fn = "s160_gcs_campaign_results_read")
+  }
+  if (!is.null(columns_fn) && !is.function(columns_fn)) {
+    stop_s160("`columns_fn` must be a function of the CSV header, or NULL.",
               fn = "s160_gcs_campaign_results_read")
   }
 
@@ -691,6 +706,32 @@ s160_gcs_campaign_results_read <- function(campaign_id, filename = NULL,
 
   if (!is.null(destdir)) {
     message(sprintf("Saved to: %s", local_path))
+  }
+
+  # Column projection can be deferred to a resolver that needs the file's own
+  # header (e.g. latency_input_columns(), which keys off which optional columns
+  # a given export actually carries). An explicit `columns=` always wins; when
+  # it is NULL and `columns_fn` is supplied, peek the just-downloaded header and
+  # let the resolver choose the set. Mirrors read_local_csv()'s `columns_fn` in
+  # the downstream fleet runner, so the GCS and local paths project identically.
+  # A resolver (or header-peek) error warns and falls back to a full read, so a
+  # broken projection is visible in the logs -- silence here would let a fleet
+  # pass quietly read every column and blow memory with no signal -- while the
+  # transform still runs and surfaces the real problem.
+  if (is.null(columns) && !is.null(columns_fn)) {
+    # Peek the header with the same encoding the body read will use (forwarded
+    # through `...` to fast_read_csv), so a non-UTF-8 export's munged names match
+    # the projection instead of silently missing and reading every column.
+    header_encoding <- list(...)$encoding
+    if (is.null(header_encoding)) header_encoding <- "UTF-8"
+    columns <- tryCatch(
+      columns_fn(s160_csv_header(local_path, encoding = header_encoding)),
+      error = function(e) {
+        warning(sprintf(
+          "column projection via `columns_fn` failed (%s); reading all columns.", # nolint line_length_linter
+          conditionMessage(e)), call. = FALSE)
+        NULL
+      })
   }
 
   data <- fast_read_csv(local_path, columns = columns,
