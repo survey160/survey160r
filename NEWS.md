@@ -11,9 +11,11 @@
   the just-downloaded file, and its result becomes the projection. This makes
   the GCS reader project as narrowly as the local `s160_read_csv()` path does,
   so a fleet pass over wide exports keeps only the needed columns and reads far
-  less into memory. `columns=` still wins when supplied; a resolver error falls
-  back to a full read; and with neither argument the reader is unchanged and
-  reads every column.
+  less into memory. `columns=` still wins when supplied; a resolver (or
+  header-peek) error emits a warning and falls back to a full read (so a broken
+  projection is visible rather than silently reading every column); a
+  non-function `columns_fn` is rejected; and with neither argument the reader is
+  unchanged and reads every column.
 
 ## Disposition
 

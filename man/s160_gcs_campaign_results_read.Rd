@@ -43,7 +43,8 @@ the common case where the projection set depends on the file's own header
 (e.g. \code{function(h) latency_input_columns(latency_build_config(0L, h),
 available = h)}). Used only when \code{columns} is \code{NULL}: the header
 is peeked from the downloaded file and passed to \code{columns_fn}, whose
-result becomes the projection. A resolver error falls back to a full read.
+result becomes the projection. A resolver (or header-peek) error emits a
+warning and falls back to a full read. A non-function value is rejected.
 This is the GCS counterpart to the downstream fleet reader's local
 projection, so both paths keep only the columns the transform needs.
 \code{NULL} (default) applies no header-derived projection.}

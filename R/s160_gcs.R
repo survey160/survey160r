@@ -620,7 +620,8 @@ finish_gcs_init <- function(bucket) {
 #'   (e.g. \code{function(h) latency_input_columns(latency_build_config(0L, h),
 #'   available = h)}). Used only when \code{columns} is \code{NULL}: the header
 #'   is peeked from the downloaded file and passed to \code{columns_fn}, whose
-#'   result becomes the projection. A resolver error falls back to a full read.
+#'   result becomes the projection. A resolver (or header-peek) error emits a
+#'   warning and falls back to a full read. A non-function value is rejected.
 #'   This is the GCS counterpart to the downstream fleet reader's local
 #'   projection, so both paths keep only the columns the transform needs.
 #'   \code{NULL} (default) applies no header-derived projection.
@@ -659,6 +660,10 @@ s160_gcs_campaign_results_read <- function(campaign_id, filename = NULL,
                     "s160_gcs_campaign_results_read")$bucket
   if (!is.logical(hash) || length(hash) != 1L || is.na(hash)) {
     stop_s160("`hash` must be a single TRUE or FALSE.",
+              fn = "s160_gcs_campaign_results_read")
+  }
+  if (!is.null(columns_fn) && !is.function(columns_fn)) {
+    stop_s160("`columns_fn` must be a function of the CSV header, or NULL.",
               fn = "s160_gcs_campaign_results_read")
   }
 
@@ -709,11 +714,18 @@ s160_gcs_campaign_results_read <- function(campaign_id, filename = NULL,
   # it is NULL and `columns_fn` is supplied, peek the just-downloaded header and
   # let the resolver choose the set. Mirrors read_local_csv()'s `columns_fn` in
   # the downstream fleet runner, so the GCS and local paths project identically.
-  # A resolver error falls back to a full read so the transform surfaces the
-  # real problem rather than a column-derivation one.
+  # A resolver (or header-peek) error warns and falls back to a full read, so a
+  # broken projection is visible in the logs -- silence here would let a fleet
+  # pass quietly read every column and blow memory with no signal -- while the
+  # transform still runs and surfaces the real problem.
   if (is.null(columns) && !is.null(columns_fn)) {
     columns <- tryCatch(columns_fn(s160_csv_header(local_path)),
-                        error = function(e) NULL)
+                        error = function(e) {
+                          warning(sprintf(
+                            "column projection via `columns_fn` failed (%s); reading all columns.", # nolint line_length_linter
+                            conditionMessage(e)), call. = FALSE)
+                          NULL
+                        })
   }
 
   data <- fast_read_csv(local_path, columns = columns,
