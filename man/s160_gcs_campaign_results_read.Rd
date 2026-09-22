@@ -11,6 +11,7 @@ s160_gcs_campaign_results_read(
   env = .ENV_CHOICES,
   bucket = NULL,
   columns = NULL,
+  columns_fn = NULL,
   hash = FALSE,
   ...
 )
@@ -36,6 +37,16 @@ supplied bucket is honored with a warning for back-compat.}
 e.g. from \code{latency_input_columns()}. When set, only those columns are
 parsed (via \code{data.table::fread}'s column projection), cutting read
 time and memory on wide exports. \code{NULL} (default) reads every column.}
+
+\item{columns_fn}{Optional resolver \code{function(header) -> columns} for
+the common case where the projection set depends on the file's own header
+(e.g. \code{function(h) latency_input_columns(latency_build_config(0L, h),
+available = h)}). Used only when \code{columns} is \code{NULL}: the header
+is peeked from the downloaded file and passed to \code{columns_fn}, whose
+result becomes the projection. A resolver error falls back to a full read.
+This is the GCS counterpart to the downstream fleet reader's local
+projection, so both paths keep only the columns the transform needs.
+\code{NULL} (default) applies no header-derived projection.}
 
 \item{hash}{When \code{TRUE}, stamp provenance on the returned frame -- the
 sha256 of the downloaded CSV bytes as \code{source_csv_hash} and the

@@ -137,3 +137,49 @@ test_that("a non-logical hash is rejected", {
   expect_error(s160_gcs_campaign_results_read(1980, hash = NA),
                "single TRUE or FALSE")
 })
+
+test_that("columns_fn projects columns using the downloaded file's header", {
+  stub_gcs_base()
+  stub_gcs_download_ok(content = c("a,b,c", "1,2,3"))
+  seen <- new_capture()
+
+  res <- suppressMessages(s160_gcs_campaign_results_read(
+    1980,
+    columns_fn = function(header) {
+      seen$header <- header
+      c("a", "c")
+    }))
+
+  # The resolver receives the file's full header and its result is the projection.
+  expect_equal(seen$header, c("a", "b", "c"))
+  expect_equal(names(res), c("a", "c"))
+})
+
+test_that("an explicit columns= wins over columns_fn", {
+  stub_gcs_base()
+  stub_gcs_download_ok(content = c("a,b,c", "1,2,3"))
+  called <- new_capture()
+
+  res <- suppressMessages(s160_gcs_campaign_results_read(
+    1980,
+    columns = "a",
+    columns_fn = function(header) {
+      called$was <- TRUE
+      c("b", "c")
+    }))
+
+  expect_equal(names(res), "a")
+  # columns_fn is not consulted when columns is supplied.
+  expect_null(called$was)
+})
+
+test_that("a columns_fn error falls back to a full read", {
+  stub_gcs_base()
+  stub_gcs_download_ok(content = c("a,b", "1,2"))
+
+  res <- suppressMessages(s160_gcs_campaign_results_read(
+    1980,
+    columns_fn = function(header) stop("cannot derive columns")))
+
+  expect_equal(names(res), c("a", "b"))
+})
