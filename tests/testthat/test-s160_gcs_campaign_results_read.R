@@ -194,6 +194,20 @@ test_that("a non-function columns_fn is rejected up front", {
   )
 })
 
+test_that("an encoding forwarded through ... reaches the resolver header read", {
+  stub_gcs_base()
+  stub_gcs_download_ok(content = c("a,b,c", "1,2,3"))
+  # A non-default encoding must flow to BOTH the header peek and the body read
+  # (the same value), so a non-UTF-8 export's munged names match the projection
+  # instead of missing and silently reading every column. Here it resolves.
+  res <- suppressMessages(s160_gcs_campaign_results_read(
+    1980,
+    encoding = "Latin-1",
+    columns_fn = function(header) c("a", "c")))
+
+  expect_equal(names(res), c("a", "c"))
+})
+
 test_that("columns_fn receives the munged (dot-form) header, not raw bracket names", {
   stub_gcs_base()
   # Raw export headers are bracket-form (id[q1]scriptDate); s160_csv_header()

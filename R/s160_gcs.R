@@ -719,13 +719,19 @@ s160_gcs_campaign_results_read <- function(campaign_id, filename = NULL,
   # pass quietly read every column and blow memory with no signal -- while the
   # transform still runs and surfaces the real problem.
   if (is.null(columns) && !is.null(columns_fn)) {
-    columns <- tryCatch(columns_fn(s160_csv_header(local_path)),
-                        error = function(e) {
-                          warning(sprintf(
-                            "column projection via `columns_fn` failed (%s); reading all columns.", # nolint line_length_linter
-                            conditionMessage(e)), call. = FALSE)
-                          NULL
-                        })
+    # Peek the header with the same encoding the body read will use (forwarded
+    # through `...` to fast_read_csv), so a non-UTF-8 export's munged names match
+    # the projection instead of silently missing and reading every column.
+    header_encoding <- list(...)$encoding
+    if (is.null(header_encoding)) header_encoding <- "UTF-8"
+    columns <- tryCatch(
+      columns_fn(s160_csv_header(local_path, encoding = header_encoding)),
+      error = function(e) {
+        warning(sprintf(
+          "column projection via `columns_fn` failed (%s); reading all columns.", # nolint line_length_linter
+          conditionMessage(e)), call. = FALSE)
+        NULL
+      })
   }
 
   data <- fast_read_csv(local_path, columns = columns,
