@@ -170,6 +170,12 @@ latency_report <- function(data, config, run_at = NULL) {
   # hour-pass NA-hour rows would duplicate the unknown-time bucket after rbind.
   # The (hour=NULL) unknown bucket belongs to the day partition only.
   hour_grain <- hour_grain[!is.na(hour_grain$hour_local), , drop = FALSE]
+  # Reclaim the hour pass's aggregation intermediates (dplyr materialises
+  # grouped copies of the long frame in aggregate_consolidated) before the day
+  # pass allocates its own. Without this, R's lazy GC can leave both passes'
+  # transients resident at once, roughly doubling peak memory on a very large
+  # campaign. Output-neutral -- purely a memory reclaim.
+  invisible(gc(verbose = FALSE))
   day_frame <- frame
   if (nrow(day_frame) > 0L) day_frame$hour_local <- NA_integer_
   day_grain <- aggregate_consolidated(day_frame, config, cfg_hash, run_at,

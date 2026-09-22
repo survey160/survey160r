@@ -1,5 +1,16 @@
 # survey160r (development version)
 
+## Performance
+
+* **Lower peak memory in `latency_report()` on very large campaigns.** Two
+  output-neutral reclaims: the no-op population filter (the common case, when
+  `filters.population` is unset) now returns the frame unchanged instead of
+  taking a whole-frame `data[mask, ]` copy; and the hour-grain aggregation's
+  transient grouped frames are reclaimed (an explicit `gc()`) before the day
+  pass allocates its own, so R's lazy collection no longer leaves both passes'
+  intermediates resident at once. Neither changes any output -- they trim the
+  peak on the biggest campaigns where the latency long-frame dominates memory.
+
 ## Reader
 
 * **`s160_gcs_campaign_results_read()` gains a `columns_fn` argument for
