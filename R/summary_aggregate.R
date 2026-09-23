@@ -313,14 +313,14 @@ build_refusal_frame <- function(data, config) {
   field_tz <- config$field_timezone
   questions <- config$flow$questions
 
-  refusal_col <- "id.refusal.scriptDate"
-  if (!refusal_col %in% names(data)) return(empty_refusal_frame())
-  refusal_ts <- parse_campaign_timestamps(data[[refusal_col]])
+  refusal_timestamp_column <- "id.refusal.scriptDate"
+  if (!refusal_timestamp_column %in% names(data)) return(empty_refusal_frame())
+  refusal_timestamp <- parse_campaign_timestamps(data[[refusal_timestamp_column]])
   # Anchor on the OPENING question set's reply (coalesced), not a hardcoded
   # id.intro.batchDate, so a bilingual campaign's routed cohort is bucketed.
   intro_batch <- .question_timestamp(data, .opening_questions(questions), "batchDate")
 
-  is_refusal <- !is.na(refusal_ts) & !is.na(intro_batch)
+  is_refusal <- !is.na(refusal_timestamp) & !is.na(intro_batch)
   if (!any(is_refusal)) return(empty_refusal_frame())
 
   # Pre-parse the scriptDate columns the last-reached computation needs;
