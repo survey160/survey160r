@@ -10,10 +10,12 @@
   segment, keeping only rows with a real date and rebuilding the dropped
   NA-date rows' `(date=NA, hour_local=NA)` day-rollup bucket from per-segment
   counts, so peak memory is bounded by real respondent engagement rather than by
-  `(n_questions - 1) x N`. `consolidated` and `diagnostics` are byte-identical to
-  the default path (enforced by parity tests, including three multi-GB real
-  exports); only `latency_frame` differs, then holding just the kept real-date
-  rows. The default (`compact = FALSE`) is unchanged.
+  `(n_questions - 1) x N`. `consolidated` and `diagnostics` match the default
+  path -- enforced by parity tests on synthetic fixtures and hand-built edge
+  cases, and additionally checked manually against three real multi-GB exports
+  (a full byte-identical run on one, 250k-row subsets on the others); only
+  `latency_frame` differs, then holding just the kept real-date rows. The
+  default (`compact = FALSE`) is unchanged.
 
 * **`latency_report()` per-bucket aggregation rewritten on `data.table`; very
   large campaigns now complete in seconds on a modest memory budget.** The
