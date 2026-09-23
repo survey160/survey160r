@@ -113,7 +113,8 @@
 # so column set, types, fills and sort match exactly. Returns a zero-row
 # consolidated frame when there were no NA-date rows.
 .na_date_day_rows <- function(na_date, config, cfg_hash, run_at, src_csv_hash,
-                              summary_day, ineligible_day, survey_mode) {
+                              summary_day, ineligible_day, refusal_day,
+                              survey_mode) {
   project_id <- as.integer(config$project_id)
   if (nrow(na_date) == 0L) {
     return(empty_consolidated(project_id, cfg_hash, run_at))
@@ -174,6 +175,7 @@
                         run_at = run_at, src_csv_hash = src_csv_hash,
                         summary_frame = summary_day,
                         ineligible_frame = ineligible_day,
+                        refusal_frame = refusal_day,
                         survey_mode = survey_mode)
 }
 

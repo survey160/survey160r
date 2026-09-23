@@ -193,6 +193,97 @@ test_that("collapse_ineligible_to_day: empty frame in -> empty frame out", {
   expect_equal(nrow(collapse_ineligible_to_day(empty_ineligible_frame())), 0L)
 })
 
+test_that("build_refusal_frame: per-segment counts", {
+  cfg <- synthetic_config()
+  # Inline 3-respondent frame: r1 refused after q1, r2 refused after q2,
+  # r3 not refused. Bucketed by intro.batchDate at hour 16 EST.
+  d <- data.frame(
+    campaignid = c(1L, 1L, 1L),
+    userid = c("r1", "r2", "r3"),
+    id.intro.finalText = c("Yes", "Yes", "Yes"),
+    id.intro.scriptDate = rep("2026-01-26 21:00:00.000000Z", 3),
+    id.intro.batchDate = rep("2026-01-26 21:00:30.000000Z", 3),
+    id.q1.scriptDate = rep("2026-01-26 21:01:00.000000Z", 3),
+    id.q1.batchDate = c("",                                       # r1 stops here
+                       "2026-01-26 21:01:30.000000Z",
+                       "2026-01-26 21:01:30.000000Z"),
+    id.q2.scriptDate = c("",
+                         "2026-01-26 21:02:00.000000Z",
+                         "2026-01-26 21:02:00.000000Z"),
+    id.q2.batchDate = c("", "", "2026-01-26 21:02:30.000000Z"),
+    id.close.scriptDate = c("", "", "2026-01-26 21:03:00.000000Z"),
+    id.refusal.scriptDate = c("2026-01-26 21:01:05.000000Z",
+                              "2026-01-26 21:02:05.000000Z",
+                              ""),
+    stringsAsFactors = FALSE
+  )
+  refused <- build_refusal_frame(d, cfg)
+  # r1 last reached = q1 (index 2 in questions), segment_index = 1 (intro->q1)
+  # r2 last reached = q2 (index 3), segment_index = 2 (q1->q2)
+  expect_setequal(refused$segment_index, c(1L, 2L))
+  expect_equal(refused$n_refused[refused$segment_index == 1L], 1L)
+  expect_equal(refused$n_refused[refused$segment_index == 2L], 1L)
+})
+
+test_that("build_refusal_frame: zero rows / no refusal column / no refusal values", {
+  cfg <- synthetic_config()
+  # zero rows
+  expect_equal(nrow(build_refusal_frame(
+    minimal_synthetic_data(with_rows = FALSE), cfg
+  )), 0L)
+  # column missing entirely
+  d_no_col <- load_synthetic_data(mutate = function(d) {
+    d$id.refusal.scriptDate <- NULL
+    d
+  })
+  expect_equal(nrow(build_refusal_frame(d_no_col, cfg)), 0L)
+  # column present but all blank
+  d_all_blank <- load_synthetic_data(mutate = function(d) {
+    d$id.refusal.scriptDate <- ""
+    d
+  })
+  expect_equal(nrow(build_refusal_frame(d_all_blank, cfg)), 0L)
+})
+
+test_that("build_refusal_frame: respondent who only reached intro is dropped", {
+  cfg <- synthetic_config()
+  d <- data.frame(
+    campaignid = 1L,
+    userid = "r1",
+    id.intro.finalText = "Yes",
+    id.intro.scriptDate = "2026-01-26 21:00:00.000000Z",
+    id.intro.batchDate = "2026-01-26 21:00:30.000000Z",
+    id.q1.scriptDate = "",  # never reached q1
+    id.q1.batchDate = "",
+    id.q2.scriptDate = "",
+    id.q2.batchDate = "",
+    id.close.scriptDate = "",
+    id.refusal.scriptDate = "2026-01-26 21:00:45.000000Z",
+    stringsAsFactors = FALSE
+  )
+  expect_equal(nrow(build_refusal_frame(d, cfg)), 0L)
+})
+
+test_that("collapse_refusal_to_day: sums hourly per (campaign, date, segment)", {
+  hourly <- data.frame(
+    campaign_id = c(1L, 1L, 1L),
+    date = as.Date(c("2026-01-26", "2026-01-26", "2026-01-26")),
+    hour_local = c(15L, 16L, 16L),
+    segment_index = c(1L, 1L, 2L),
+    n_refused = c(2L, 3L, 5L),
+    stringsAsFactors = FALSE
+  )
+  day <- collapse_refusal_to_day(hourly)
+  expect_setequal(day$segment_index, c(1L, 2L))
+  expect_equal(day$n_refused[day$segment_index == 1L], 5L)
+  expect_equal(day$n_refused[day$segment_index == 2L], 5L)
+  expect_true(all(is.na(day$hour_local)))
+})
+
+test_that("collapse_refusal_to_day: empty frame in -> empty frame out", {
+  expect_equal(nrow(collapse_refusal_to_day(empty_refusal_frame())), 0L)
+})
+
 test_that("population_filter_mask: NULL / empty expr returns all-TRUE", {
   d <- load_synthetic_data()
   expect_true(all(population_filter_mask(d, NULL)))
@@ -460,7 +551,7 @@ test_that("build_consolidated_scaffold: NA hour_local dedups (day-rollup grain)"
   expect_true(all(is.na(scaffold$hour_local)))
 })
 
-test_that("aggregate_consolidated tolerates NULL summary/ineligible (defensive default)", {
+test_that("aggregate_consolidated tolerates NULL summary/ineligible/refusal (defensive default)", {
   # Synthetic config + a single-respondent frame to exercise the
   # `is.null(summary_frame)` defaulting path. The frame still needs the
   # full latency-frame columns build_latency_frame() produces.
@@ -481,4 +572,5 @@ test_that("aggregate_consolidated tolerates NULL summary/ineligible (defensive d
   expect_true(all(cons$n_opted_in == 0L))
   expect_true(all(cons$n_completed == 0L))
   expect_true(all(cons$n_ineligible == 0L))
+  expect_true(all(cons$n_refused == 0L))
 })

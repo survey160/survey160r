@@ -200,6 +200,8 @@ validate_columns_present <- function(config, data) {
 #   id.ineligible.scriptDate  -- build_ineligible_frame() (a terminal state, so it
 #                                is NOT in config$flow$questions and would be missed
 #                                by required_timestamp_columns alone)
+#   id.refusal.scriptDate     -- build_refusal_frame() (the refusal-terminal sibling,
+#                                likewise not in config$flow$questions)
 # The opener finalText column(s) are NOT listed here: they are the population's
 # referenced columns, and latency_input_columns() already retains all.vars(pop),
 # so the opener-family finalText is projected per campaign (not hardcoded intro).
@@ -208,7 +210,8 @@ validate_columns_present <- function(config, data) {
 # The projection parity test (test-latency_input_columns.R) guards against drift.
 .report_support_columns <- c(
   "web_complete",
-  "id.ineligible.scriptDate"
+  "id.ineligible.scriptDate",
+  "id.refusal.scriptDate"
 )
 
 # Non-flow columns whose names are NOT fixed -- detect_survey_mode()'s
@@ -226,7 +229,8 @@ validate_columns_present <- function(config, data) {
 #' set, the population-filter columns (extracted from
 #' \code{config$filters$population}), the campaign-id and optional
 #' respondent-id columns, plus the fixed non-flow support columns
-#' (\code{web_complete}, \code{id.ineligible.scriptDate}). The opener
+#' (\code{web_complete}, \code{id.ineligible.scriptDate},
+#' \code{id.refusal.scriptDate}). The opener
 #' \code{finalText} is not fixed here: it is one of the population-filter
 #' columns above, so it is retained per campaign only when the population
 #' references it.
