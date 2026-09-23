@@ -1,5 +1,15 @@
 # survey160r (development version)
 
+## Breaking changes
+
+* **Disposition record columns `loi`, `topic`, and `registration_id` are renamed
+  to `tracker_loi`, `tracker_topic`, and `tracker_registration_id`**, so the
+  disposition parquet's Tracker-derived dimensions match the campaign (latency)
+  parquet's `tracker_*` convention. `disposition_records()` now returns the
+  prefixed names. A projection written before the rename (carrying the bare names)
+  has those columns omitted by `records()` until it is re-stamped with the
+  prefixed names.
+
 ## Performance
 
 * **`latency_report()` / `latency_run()` gain `compact = TRUE`, a streaming path

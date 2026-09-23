@@ -332,9 +332,11 @@ write_opt_out_parquet <- function(rows) {
     web_complete = as.integer(web_complete),
     terminated = as.integer(terminated), error = as.character(error),
     carrier = as.character(carrier),
-    loi = as.numeric(loi), topic = as.character(topic),
+    # Tracker-enrichment columns carry the tracker_ prefix in storage (as the
+    # latency parquet does); the params stay bare as fixture knobs.
+    tracker_loi = as.numeric(loi), tracker_topic = as.character(topic),
     mode = as.character(mode),
-    registration_id = as.character(registration_id),
+    tracker_registration_id = as.character(registration_id),
     disposition_date = as.Date(disposition_date),
     stringsAsFactors = FALSE
   )
