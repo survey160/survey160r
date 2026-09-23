@@ -71,7 +71,7 @@
       kept[[i]] <- data.frame(
         respondent_index = resp_idx[real],
         campaign_id = campaign_id[real],
-        segment = sprintf("%s→%s", q_prior, q_next),
+        segment = sprintf("%s\u2192%s", q_prior, q_next),
         segment_index = i,
         delta_min = delta[real],
         segment_date_local = seg_date_local[real],
@@ -121,7 +121,7 @@
   questions <- config$flow$questions
   thresholds <- UNIVERSAL_THRESHOLDS_MIN
   n_seg <- length(questions) - 1L
-  seg_label <- sprintf("%s→%s", questions[-length(questions)],
+  seg_label <- sprintf("%s\u2192%s", questions[-length(questions)],
                        questions[-1])
 
   # Scaffold: (campaign, date=NA, hour=NA) x all segments x thresholds -- built
