@@ -43,8 +43,13 @@ stored} -- one row per \code{(phone, campaign_id)}, carrying the full
 disposition schema: \code{phone}, \code{campaign_id}, \code{sent},
 \code{engaged}, \code{opted_in}, \code{completed}, \code{web_complete},
 \code{refused}, \code{ineligible}, \code{terminated}, \code{error},
-\code{carrier}, \code{loi}, \code{topic}, \code{mode}, \code{registration_id},
-\code{disposition_date}. This is the level directly beneath
+\code{carrier}, \code{survey_mode}, \code{tracker_loi}, \code{tracker_topic},
+\code{tracker_mode}, \code{tracker_registration_id}, \code{tracker_client},
+\code{tracker_project}, \code{tracker_brand}, \code{tracker_state},
+\code{tracker_vendor}, \code{tracker_fielding_location},
+\code{tracker_pricing_structure}, \code{tracker_voter_file_source},
+\code{tracker_n_questions}, \code{disposition_date}.
+This is the level directly beneath
 \code{\link{disposition_summary}}: where \code{summary} rolls every phone up to a
 single screening row, \code{records} hands back the raw per-campaign rows --
 for inspection, export, or a custom rollup.
@@ -52,17 +57,19 @@ for inspection, export, or a custom rollup.
 \details{
 Only the canonical columns \emph{present in the file} are returned, in the
 order above -- a legacy or minimal projection that lacks a column (e.g.
-\code{error}, \code{loi}, \code{topic}, or \code{disposition_date}) omits it,
+\code{error}, \code{tracker_loi}, \code{tracker_topic}, or \code{disposition_date}) omits it,
 rather than filling an all-\code{NA} column. A projection written straight from
 \code{\link{disposition_run}} carries the funnel flags (including the
 \code{refused} / \code{ineligible} terminal split as of 0.51.0; a pre-0.51.0
-projection omits those two) plus \code{mode},
+projection omits those two) plus \code{survey_mode} (the DETECTED mode),
 \code{error} (the carrier delivery-error code), \code{carrier} (the recipient's
 mobile carrier, from the export's optional \code{misc} column), and
 \code{disposition_date}
-(\code{max(scriptDate)}); \code{loi} / \code{topic} / \code{registration_id}
+(\code{max(scriptDate)}); the \code{tracker_*} dimensions (loi, topic, mode --
+the DECLARED Tracker mode -- registration_id, client, project, brand, state,
+vendor, fielding_location, pricing_structure, voter_file_source, n_questions)
 are added by the tracker enrichment, so only the enriched projection carries
-all seventeen.
+all 27.
 \code{disposition_date} is \code{NA} for a row with no send; \code{error} is
 \code{NA} when the export carries no usable code (a clean send, or an export
 lacking the column). The
