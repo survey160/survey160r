@@ -54,7 +54,7 @@ test_that("latency_run surfaces validate_config failures on a malformed CSV", {
 test_that("latency_run forwards `...` overrides to latency_build_config", {
   captured <- new_capture()
   local_mocked_bindings(
-    latency_report = function(data, config, run_at = NULL) {
+    latency_report = function(data, config, run_at = NULL, compact = FALSE) {
       captured$cfg <- config
       list(consolidated = data.frame(), diagnostics = list(),
            meta = list(algorithm_version = "2.0.0", config_hash = "h",
@@ -90,7 +90,7 @@ test_that("latency_run accepts a pre-built config and skips build_config", {
       captured$build_called <- TRUE
       NULL
     },
-    latency_report = function(data, config, run_at = NULL) {
+    latency_report = function(data, config, run_at = NULL, compact = FALSE) {
       captured$cfg <- config
       list(consolidated = data.frame(), diagnostics = list(), meta = list())
     }
@@ -116,7 +116,7 @@ test_that("latency_run forwards an explicit run_at to latency_report", {
   captured <- new_capture()
   fixed_at <- as.POSIXct("2026-01-01 00:00:00", tz = "UTC")
   local_mocked_bindings(
-    latency_report = function(data, config, run_at = NULL) {
+    latency_report = function(data, config, run_at = NULL, compact = FALSE) {
       captured$run_at <- run_at
       list(consolidated = data.frame(), diagnostics = list(), meta = list())
     }

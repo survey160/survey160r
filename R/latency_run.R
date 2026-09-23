@@ -54,6 +54,11 @@
 #'   provenance column. \code{NULL} (default) leaves the column as
 #'   \code{NA_character_}; typically filled at write time by the step
 #'   that persists the result.
+#' @param compact Forwarded to \code{latency_report()}. \code{FALSE} (default)
+#'   materialises the full long frame; \code{TRUE} computes the identical
+#'   \code{consolidated} / \code{diagnostics} without materialising it (bounded
+#'   peak memory), returning only the real-date rows as \code{latency_frame}.
+#'   Use for very wide, high-volume campaigns. See \code{\link{latency_report}}.
 #' @param ... Forwarded to \code{latency_build_config()} when
 #'   \code{config} is \code{NULL}. Must be empty when \code{config} is
 #'   supplied (passing both errors).
@@ -84,6 +89,7 @@ latency_run <- function(campaign_id, data,
                         config = NULL,
                         run_at = NULL,
                         run_by = NULL,
+                        compact = FALSE,
                         ...) {
   if (is.null(config)) {
     config <- latency_build_config(campaign_id, data, ...)
@@ -92,7 +98,7 @@ latency_run <- function(campaign_id, data,
                      "overrides via `...`, not both."),
               fn = "latency_run")
   }
-  result <- latency_report(data, config, run_at = run_at)
+  result <- latency_report(data, config, run_at = run_at, compact = compact)
   if (!is.null(run_by) && !is.null(result$consolidated) &&
         nrow(result$consolidated) > 0L) {
     result$consolidated$run_by <- rep(run_by, nrow(result$consolidated))
