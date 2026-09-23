@@ -151,9 +151,14 @@ latency_report <- function(data, config, run_at = NULL) {
   frame <- build_latency_frame(data, config, parse_failed_mask)
 
   # The wide input and its per-column parse-fail masks are not read again once
-  # the long frame exists; drop them so the aggregation passes below do not
-  # carry the full-width input resident alongside the long frame. Output-neutral.
-  rm(data, parse_failed_mask)
+  # the long frame exists; drop them so the aggregation passes below do not carry
+  # the full-width input resident alongside the long frame. `parsed` (the
+  # parse_timestamps() list) and `pair` (the dedupe/date_filter subset list, when
+  # those steps ran) still hold references to the same frame and masks, so they
+  # must go too or nothing is actually reclaimed. `parse_failures` is a separate
+  # binding and survives for build_diagnostics(). Output-neutral.
+  rm(list = intersect(c("data", "parse_failed_mask", "parsed", "pair"),
+                      ls(all.names = FALSE)))
   invisible(gc(verbose = FALSE))
 
   # Step 6: aggregate to consolidated at TWO grains in the same frame.

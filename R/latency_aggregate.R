@@ -64,10 +64,10 @@ aggregate_consolidated <- function(frame, config, cfg_hash, run_at,
   # a fraction of the peak memory. Convert once here; build_consolidated_scaffold
   # and assemble_consolidated below keep operating on the data.frame `bucketed`
   # and the small joined frames.
-  bucketed_dt <- data.table::as.data.table(bucketed)
-  totals <- aggregate_totals(bucketed_dt)
-  cascade <- aggregate_worst_cascade(bucketed_dt, thresholds)
-  cells <- aggregate_segment_cells(bucketed_dt, thresholds)
+  bucketed_data_table <- data.table::as.data.table(bucketed)
+  totals <- aggregate_totals(bucketed_data_table)
+  cascade <- aggregate_worst_cascade(bucketed_data_table, thresholds)
+  cells <- aggregate_segment_cells(bucketed_data_table, thresholds)
 
   # Scaffold: union of bucket keys from latency frame and summary frame.
   # Without this, hours where every respondent was filtered out (e.g.
