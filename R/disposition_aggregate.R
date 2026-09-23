@@ -167,7 +167,7 @@ empty_disposition_frame <- function() {
     refused = integer(0),
     ineligible = integer(0),
     terminated = integer(0),
-    mode = character(0),
+    survey_mode = character(0),
     error = character(0),
     carrier = character(0),
     disposition_date = as.Date(character(0)),
@@ -314,7 +314,7 @@ disposition_input_columns <- function(available = NULL, population = NULL) {
 #' per contacted phone, with 0/1 funnel flags \code{sent}, \code{engaged},
 #' \code{opted_in}, \code{completed}, \code{web_complete}, \code{refused},
 #' \code{ineligible}, \code{terminated} (the union of the two), the
-#' campaign's \code{mode}, the raw carrier delivery-error code \code{error}, the
+#' campaign's \code{survey_mode}, the raw carrier delivery-error code \code{error}, the
 #' recipient's mobile \code{carrier} (from the export's optional \code{misc}
 #' column, \code{NA} when the export omits it), and
 #' the \code{disposition_date} (the last-send day, \code{max(scriptDate)}))
@@ -336,7 +336,7 @@ disposition_input_columns <- function(available = NULL, population = NULL) {
 #' not; the function then \emph{stops} if a duplicate phone remains -- i.e. a
 #' phone whose rows \emph{differ} -- rather than silently merging a genuine
 #' conflict. The dedup and survey-mode classification always run on the full
-#' data, so the \code{contacted_only} filter never changes \code{mode} or masks
+#' data, so the \code{contacted_only} filter never changes \code{survey_mode} or masks
 #' a conflict.
 #'
 #' The \code{completed} flag is survey-mode dependent: for a \code{t2w} campaign
@@ -344,7 +344,7 @@ disposition_input_columns <- function(available = NULL, population = NULL) {
 #' close -- any close-family \code{scriptDate} (\code{id.close.scriptDate} /
 #' \code{id.close_sp.scriptDate} / ...), so a bilingual campaign's Spanish
 #' completers count; for \code{t2w_external} it is not computable and
-#' is \code{NA} for every row. \code{mode} is classified per campaign from the
+#' is \code{NA} for every row. \code{survey_mode} is classified per campaign from the
 #' data.
 #'
 #' @param campaign_id Campaign id (numeric or character). Stamped on every row
@@ -381,7 +381,7 @@ disposition_input_columns <- function(available = NULL, population = NULL) {
 #'   \code{sent}, \code{engaged}, \code{opted_in}, \code{completed},
 #'   \code{web_complete}, \code{refused}, \code{ineligible}, \code{terminated}
 #'   (\code{refused | ineligible}) -- \code{completed} is \code{NA} under
-#'   \code{t2w_external} -- \code{mode} (character), \code{error} (character;
+#'   \code{t2w_external} -- \code{survey_mode} (character), \code{error} (character;
 #'   the raw carrier delivery-error code, \code{NA} when the export carries no
 #'   usable error code), \code{carrier} (character; the recipient's mobile carrier
 #'   from the export's optional \code{misc} column, surrounding whitespace
@@ -498,7 +498,7 @@ disposition_run <- function(campaign_id, data, population = NULL,
     refused = as.integer(refused),
     ineligible = as.integer(ineligible),
     terminated = as.integer(.mask_terminated(refused, ineligible)),
-    mode = rep(survey_mode, length(phone)),
+    survey_mode = rep(survey_mode, length(phone)),
     error = .disposition_error(data),
     carrier = .disposition_carrier(data),
     disposition_date = .disposition_dates(data, field_timezone),

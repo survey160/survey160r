@@ -51,18 +51,28 @@
                       "first_disposition_date", "last_disposition_date")
 
 # The stored disposition schema, in canonical order -- what
-# disposition_records() returns. `sent`/`mode`/`error`/`carrier` come from
-# disposition_run(); `loi`/`topic`/`registration_id`/`disposition_date` are added by
-# downstream enrichment, so an un-enriched projection lacks those and records()
-# returns just the subset present. `registration_id` (survey160r 0.54.0) is a
-# per-campaign Project-Tracker id carried through unchanged; `carrier` (0.60.0) is
+# disposition_records() returns. `sent`/`survey_mode`/`error`/`carrier` come from
+# disposition_run() (`survey_mode` is the DETECTED mode, matching the latency
+# parquet's `survey_mode`; renamed from `mode` in 0.65.0);
+# the full `tracker_*` dimension set (loi, topic, mode, registration_id, client,
+# project, brand, state, vendor, fielding_location, pricing_structure,
+# voter_file_source, n_questions) and `disposition_date` are added by downstream
+# enrichment, so an un-enriched projection lacks those and
+# records() returns just the subset present. `tracker_registration_id` (added 0.54.0;
+# carried the tracker_ prefix since 0.65.0) is a per-campaign Project-Tracker id
+# carried through unchanged; `carrier` (0.60.0) is
 # the recipient's mobile carrier from the export's optional misc column. Either is
 # simply absent from a projection produced before it was added, and records() omits
 # a column it does not carry.
 .DISPOSITION_RECORD_COLS <- c("phone", "campaign_id", "sent", "engaged",
                       "opted_in", "completed", "web_complete", "refused",
-                      "ineligible", "terminated", "error", "carrier", "loi",
-                      "topic", "mode", "registration_id", "disposition_date")
+                      "ineligible", "terminated", "error", "carrier", "survey_mode",
+                      "tracker_loi", "tracker_topic", "tracker_mode",
+                      "tracker_registration_id", "tracker_client", "tracker_project",
+                      "tracker_brand", "tracker_state", "tracker_vendor",
+                      "tracker_fielding_location", "tracker_pricing_structure",
+                      "tracker_voter_file_source", "tracker_n_questions",
+                      "disposition_date")
 
 # Phone matching uses the shared .normalize_phone (aaa_utils.R) so a sample
 # matches the disposition and opt-out datasets identically.
@@ -478,25 +488,32 @@ disposition_summary <- function(x, phones = NULL, campaign_ids = NULL,
 #' disposition schema: \code{phone}, \code{campaign_id}, \code{sent},
 #' \code{engaged}, \code{opted_in}, \code{completed}, \code{web_complete},
 #' \code{refused}, \code{ineligible}, \code{terminated}, \code{error},
-#' \code{carrier}, \code{loi}, \code{topic}, \code{mode}, \code{registration_id},
-#' \code{disposition_date}. This is the level directly beneath
+#' \code{carrier}, \code{survey_mode}, \code{tracker_loi}, \code{tracker_topic},
+#' \code{tracker_mode}, \code{tracker_registration_id}, \code{tracker_client},
+#' \code{tracker_project}, \code{tracker_brand}, \code{tracker_state},
+#' \code{tracker_vendor}, \code{tracker_fielding_location},
+#' \code{tracker_pricing_structure}, \code{tracker_voter_file_source},
+#' \code{tracker_n_questions}, \code{disposition_date}.
+#' This is the level directly beneath
 #' \code{\link{disposition_summary}}: where \code{summary} rolls every phone up to a
 #' single screening row, \code{records} hands back the raw per-campaign rows --
 #' for inspection, export, or a custom rollup.
 #'
 #' Only the canonical columns \emph{present in the file} are returned, in the
 #' order above -- a legacy or minimal projection that lacks a column (e.g.
-#' \code{error}, \code{loi}, \code{topic}, or \code{disposition_date}) omits it,
+#' \code{error}, \code{tracker_loi}, \code{tracker_topic}, or \code{disposition_date}) omits it,
 #' rather than filling an all-\code{NA} column. A projection written straight from
 #' \code{\link{disposition_run}} carries the funnel flags (including the
 #' \code{refused} / \code{ineligible} terminal split as of 0.51.0; a pre-0.51.0
-#' projection omits those two) plus \code{mode},
+#' projection omits those two) plus \code{survey_mode} (the DETECTED mode),
 #' \code{error} (the carrier delivery-error code), \code{carrier} (the recipient's
 #' mobile carrier, from the export's optional \code{misc} column), and
 #' \code{disposition_date}
-#' (\code{max(scriptDate)}); \code{loi} / \code{topic} / \code{registration_id}
+#' (\code{max(scriptDate)}); the \code{tracker_*} dimensions (loi, topic, mode --
+#' the DECLARED Tracker mode -- registration_id, client, project, brand, state,
+#' vendor, fielding_location, pricing_structure, voter_file_source, n_questions)
 #' are added by the tracker enrichment, so only the enriched projection carries
-#' all seventeen.
+#' all 27.
 #' \code{disposition_date} is \code{NA} for a row with no send; \code{error} is
 #' \code{NA} when the export carries no usable code (a clean send, or an export
 #' lacking the column). The

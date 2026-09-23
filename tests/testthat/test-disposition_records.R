@@ -23,7 +23,12 @@
 
 .RECORD_COLS <- c("phone", "campaign_id", "sent", "engaged", "opted_in",
                   "completed", "web_complete", "terminated", "error", "carrier",
-                  "loi", "topic", "mode", "registration_id", "disposition_date")
+                  "survey_mode", "tracker_loi", "tracker_topic", "tracker_mode",
+                  "tracker_registration_id", "tracker_client", "tracker_project",
+                  "tracker_brand", "tracker_state", "tracker_vendor",
+                  "tracker_fielding_location", "tracker_pricing_structure",
+                  "tracker_voter_file_source", "tracker_n_questions",
+                  "disposition_date")
 
 test_that("returns raw rows, one per (phone, campaign), full schema, ordered", {
   res <- disposition_records(.record_base())
@@ -34,10 +39,10 @@ test_that("returns raw rows, one per (phone, campaign), full schema, ordered", {
   expect_equal(res$campaign_id, c(2339L, 2354L, 2339L))
   # per-(phone, campaign) values, NOT rolled up
   expect_equal(res$web_complete, c(1L, 0L, 0L))
-  expect_equal(res$mode, c("t2w", "t2w", "sms"))
-  expect_equal(res$topic, c("Brand", "Brand", "Policy"))
-  # registration_id is carried through unchanged, one per (phone, campaign)
-  expect_equal(res$registration_id, c("REG-A", "REG-B", "REG-C"))
+  expect_equal(res$survey_mode, c("t2w", "t2w", "sms"))
+  expect_equal(res$tracker_topic, c("Brand", "Brand", "Policy"))
+  # tracker_registration_id is carried through unchanged, one per (phone, campaign)
+  expect_equal(res$tracker_registration_id, c("REG-A", "REG-B", "REG-C"))
   # carrier is carried through unchanged, one per (phone, campaign)
   expect_equal(res$carrier, c("T-Mobile", "Verizon", "AT&T"))
 })
@@ -74,19 +79,19 @@ test_that("date bounds filter on disposition_date; NA close dates drop", {
 
 test_that("a date bound with no disposition_date column errors", {
   bare_cols <- c("phone", "campaign_id", "sent", "engaged", "opted_in",
-                 "completed", "web_complete", "terminated", "mode")
+                 "completed", "web_complete", "terminated", "survey_mode")
   p <- write_disposition_parquet(.record_row("2015550101", 2339, engaged = 1)[, bare_cols])
   expect_error(disposition_records(p, date_from = "2026-01-01"), "disposition_date")
   expect_error(disposition_records(p, date_to = "2026-01-01"), "disposition_date")
 })
 
 test_that("a minimal projection returns only the columns present", {
-  # A file missing the enrichment columns (loi/topic/disposition_date) -- and, for a
+  # A file missing the enrichment columns (tracker_loi/tracker_topic/disposition_date) -- and, for a
   # pre-0.36 producer, `error` too -- reads back as just the columns it carries.
   # disposition_run() now emits `error`, so a current un-enriched projection is ten
   # columns; this bare fixture omits it to exercise the reader's subset tolerance.
   bare_cols <- c("phone", "campaign_id", "sent", "engaged", "opted_in",
-                 "completed", "web_complete", "terminated", "mode")
+                 "completed", "web_complete", "terminated", "survey_mode")
   res <- disposition_records(
     write_disposition_parquet(.record_row("2015550101", 2339, engaged = 1)[, bare_cols]))
   expect_named(res, bare_cols)
@@ -97,9 +102,13 @@ test_that("output is canonical order; extra (provenance) columns are dropped", {
   row <- .record_row("2015550101", 2339, engaged = 1, loi = 12, topic = "Brand",
                      error = "DELIVERY_FAILED", disposition_date = "2026-03-01")
   row$source_csv_hash <- "abc123"                        # extra column
-  row <- row[, c("mode", "source_csv_hash", "campaign_id", "phone", "loi", "carrier",
-                 "topic", "registration_id", "disposition_date", "sent", "engaged",
-                 "opted_in", "completed", "web_complete", "terminated", "error")]  # scrambled
+  row <- row[, c("survey_mode", "source_csv_hash", "campaign_id", "phone", "tracker_loi",
+                 "carrier", "tracker_topic", "tracker_mode", "tracker_registration_id",
+                 "tracker_client", "tracker_project", "tracker_brand", "tracker_state",
+                 "tracker_vendor", "tracker_fielding_location", "tracker_pricing_structure",
+                 "tracker_voter_file_source", "tracker_n_questions",
+                 "disposition_date", "sent", "engaged", "opted_in", "completed",
+                 "web_complete", "terminated", "error")]  # scrambled
   res <- disposition_records(write_disposition_parquet(row))
   expect_named(res, .RECORD_COLS)                        # canonical order restored
   expect_false("source_csv_hash" %in% names(res))        # extra dropped
