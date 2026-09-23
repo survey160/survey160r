@@ -72,7 +72,12 @@ build_latency_frame <- function(data, config, parse_failed_mask = NULL) {
       stringsAsFactors = FALSE
     )
   }
-  frame <- do.call(rbind, segments)
+  # rbindlist + setDF instead of do.call(rbind, ...): do.call(rbind) over the
+  # per-segment sub-frames is O(segments^2) in copies and dominated peak memory
+  # for wide, high-volume campaigns (a ~47M-row frame peaked ~17GB just here).
+  # rbindlist binds in one pass; setDF converts back to a plain data.frame in
+  # place (no copy), preserving the documented data.frame return contract.
+  frame <- data.table::setDF(data.table::rbindlist(segments))
   attr(frame, "n_clamped") <- total_clamped
   frame
 }

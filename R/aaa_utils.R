@@ -1,5 +1,13 @@
 # Shared internal utilities
 
+# Mark this package data.table-aware. The latency aggregations call
+# `dt[, j, by]` with data.table's non-standard j/by evaluation; without this
+# flag data.table's cedta() (Calling Env is Data.Table Aware) check fails --
+# because every data.table call here is namespace-qualified (`data.table::`),
+# so NAMESPACE carries no data.table import for cedta() to detect -- and
+# `[.data.table` silently falls back to `[.data.frame`, erroring on the list j.
+.datatable.aware <- TRUE
+
 # Null-coalescing operator. Used package-wide.
 `%||%` <- function(a, b) if (is.null(a)) b else a
 

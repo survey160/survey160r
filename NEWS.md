@@ -2,6 +2,20 @@
 
 ## Performance
 
+* **`latency_report()` per-bucket aggregation rewritten on `data.table`; very
+  large campaigns now complete in seconds on a modest memory budget.** The
+  three per-bucket aggregations (`aggregate_totals()`,
+  `aggregate_worst_cascade()`, `aggregate_segment_cells()`) moved from
+  `dplyr::group_by()` / `summarise()` to `data.table`, and the long frame is
+  bound with `data.table::rbindlist()` instead of `do.call(rbind, ...)`. On a
+  ~47M-row long frame (a ~500k-respondent, 95-question campaign) the report
+  dropped from >15 min and >11 GB (the `dplyr` path did not finish) to ~11 s,
+  and comfortably inside a 32 GB budget. Output is identical -- the full test
+  suite, including the legacy-parity fixtures, passes unchanged; only the
+  aggregation engine changed. (The package is marked `.datatable.aware` so
+  data.table's non-standard `j`/`by` evaluation resolves from within the
+  namespace-qualified calls.)
+
 * **Lower peak memory in `latency_report()` on very large campaigns.** Two
   output-neutral reclaims: the no-op population filter (the common case, when
   `filters.population` is unset) now returns the frame unchanged instead of

@@ -150,6 +150,17 @@ latency_report <- function(data, config, run_at = NULL) {
   # Step 5: build the per-(respondent, segment) frame.
   frame <- build_latency_frame(data, config, parse_failed_mask)
 
+  # The wide input and its per-column parse-fail masks are not read again once
+  # the long frame exists; drop them so the aggregation passes below do not carry
+  # the full-width input resident alongside the long frame. `parsed` (the
+  # parse_timestamps() list) and `pair` (the dedupe/date_filter subset list, when
+  # those steps ran) still hold references to the same frame and masks, so they
+  # must go too or nothing is actually reclaimed. `parse_failures` is a separate
+  # binding and survives for build_diagnostics(). Output-neutral.
+  rm(list = intersect(c("data", "parse_failed_mask", "parsed", "pair"),
+                      ls(all.names = FALSE)))
+  invisible(gc(verbose = FALSE))
+
   # Step 6: aggregate to consolidated at TWO grains in the same frame.
   # Hour rows (hour_local 0-23) for time-of-day analysis; day-rollup rows
   # (hour_local = NA) carrying correct day-grain cascade metrics that can't
@@ -170,11 +181,11 @@ latency_report <- function(data, config, run_at = NULL) {
   # hour-pass NA-hour rows would duplicate the unknown-time bucket after rbind.
   # The (hour=NULL) unknown bucket belongs to the day partition only.
   hour_grain <- hour_grain[!is.na(hour_grain$hour_local), , drop = FALSE]
-  # Reclaim the hour pass's aggregation intermediates (dplyr materialises
-  # grouped copies of the long frame in aggregate_consolidated) before the day
-  # pass allocates its own. Without this, R's lazy GC can leave both passes'
-  # transients resident at once, roughly doubling peak memory on a very large
-  # campaign. Output-neutral -- purely a memory reclaim.
+  # Reclaim the hour pass's aggregation intermediates (aggregate_consolidated
+  # converts the long frame to a data.table and builds transient grouped
+  # results) before the day pass allocates its own. Without this, R's lazy GC
+  # can leave both passes' transients resident at once, inflating peak memory on
+  # a very large campaign. Output-neutral -- purely a memory reclaim.
   invisible(gc(verbose = FALSE))
   day_frame <- frame
   if (nrow(day_frame) > 0L) day_frame$hour_local <- NA_integer_
