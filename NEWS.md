@@ -9,6 +9,12 @@
   prefixed names. A projection written before the rename (carrying the bare names)
   has those columns omitted by `records()` until it is re-stamped with the
   prefixed names.
+* **Disposition `mode` is renamed to `survey_mode`, and a new `tracker_mode`
+  column is recognised**, mirroring the latency parquet's split of the DETECTED
+  mode (`survey_mode`, from `disposition_run()` / `detect_survey_mode()`) from the
+  DECLARED Tracker mode (`tracker_mode`, a downstream tracker enrichment).
+  `disposition_records()` returns `survey_mode` in place of `mode` and carries
+  `tracker_mode` when the projection has it.
 
 ## Performance
 

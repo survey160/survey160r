@@ -323,6 +323,7 @@ write_opt_out_parquet <- function(rows) {
                         terminated = 0L, error = NA_character_,
                         carrier = NA_character_, loi = NA_real_,
                         topic = NA_character_, mode = "t2w",
+                        tracker_mode = NA_character_,
                         registration_id = NA_character_,
                         disposition_date = as.Date(NA)) {
   data.frame(
@@ -332,10 +333,12 @@ write_opt_out_parquet <- function(rows) {
     web_complete = as.integer(web_complete),
     terminated = as.integer(terminated), error = as.character(error),
     carrier = as.character(carrier),
-    # Tracker-enrichment columns carry the tracker_ prefix in storage (as the
-    # latency parquet does); the params stay bare as fixture knobs.
+    # survey_mode is the DETECTED mode (from disposition_run); tracker_* are the
+    # tracker-enrichment columns, prefixed in storage as the latency parquet does.
+    # Param knobs stay bare (`mode`, `loi`, `topic`, `registration_id`).
+    survey_mode = as.character(mode),
     tracker_loi = as.numeric(loi), tracker_topic = as.character(topic),
-    mode = as.character(mode),
+    tracker_mode = as.character(tracker_mode),
     tracker_registration_id = as.character(registration_id),
     disposition_date = as.Date(disposition_date),
     stringsAsFactors = FALSE
