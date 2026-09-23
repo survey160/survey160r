@@ -15,6 +15,13 @@
   DECLARED Tracker mode (`tracker_mode`, a downstream tracker enrichment).
   `disposition_records()` returns `survey_mode` in place of `mode` and carries
   `tracker_mode` when the projection has it.
+* **`disposition_records()` now recognises the full `tracker_*` dimension set** --
+  adding `tracker_client`, `tracker_project`, `tracker_brand`, `tracker_state`,
+  `tracker_vendor`, `tracker_fielding_location`, `tracker_pricing_structure`,
+  `tracker_voter_file_source`, and `tracker_n_questions` alongside the existing
+  `tracker_loi`/`tracker_topic`/`tracker_registration_id`, so the disposition
+  projection carries the same Tracker dimensions as the campaign (latency) parquet.
+  Enrichment columns: returned when the projection has them.
 
 ## Performance
 

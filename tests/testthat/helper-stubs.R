@@ -325,6 +325,11 @@ write_opt_out_parquet <- function(rows) {
                         topic = NA_character_, mode = "t2w",
                         tracker_mode = NA_character_,
                         registration_id = NA_character_,
+                        client = NA_character_, project = NA_character_,
+                        brand = NA_character_, state = NA_character_,
+                        vendor = NA_character_, fielding_location = NA_character_,
+                        pricing_structure = NA_character_,
+                        voter_file_source = NA_character_, n_questions = NA_integer_,
                         disposition_date = as.Date(NA)) {
   data.frame(
     phone = phone, campaign_id = as.integer(campaign_id),
@@ -340,6 +345,13 @@ write_opt_out_parquet <- function(rows) {
     tracker_loi = as.numeric(loi), tracker_topic = as.character(topic),
     tracker_mode = as.character(tracker_mode),
     tracker_registration_id = as.character(registration_id),
+    tracker_client = as.character(client), tracker_project = as.character(project),
+    tracker_brand = as.character(brand), tracker_state = as.character(state),
+    tracker_vendor = as.character(vendor),
+    tracker_fielding_location = as.character(fielding_location),
+    tracker_pricing_structure = as.character(pricing_structure),
+    tracker_voter_file_source = as.character(voter_file_source),
+    tracker_n_questions = as.integer(n_questions),
     disposition_date = as.Date(disposition_date),
     stringsAsFactors = FALSE
   )

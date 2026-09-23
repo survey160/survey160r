@@ -24,7 +24,11 @@
 .RECORD_COLS <- c("phone", "campaign_id", "sent", "engaged", "opted_in",
                   "completed", "web_complete", "terminated", "error", "carrier",
                   "survey_mode", "tracker_loi", "tracker_topic", "tracker_mode",
-                  "tracker_registration_id", "disposition_date")
+                  "tracker_registration_id", "tracker_client", "tracker_project",
+                  "tracker_brand", "tracker_state", "tracker_vendor",
+                  "tracker_fielding_location", "tracker_pricing_structure",
+                  "tracker_voter_file_source", "tracker_n_questions",
+                  "disposition_date")
 
 test_that("returns raw rows, one per (phone, campaign), full schema, ordered", {
   res <- disposition_records(.record_base())
@@ -100,6 +104,9 @@ test_that("output is canonical order; extra (provenance) columns are dropped", {
   row$source_csv_hash <- "abc123"                        # extra column
   row <- row[, c("survey_mode", "source_csv_hash", "campaign_id", "phone", "tracker_loi",
                  "carrier", "tracker_topic", "tracker_mode", "tracker_registration_id",
+                 "tracker_client", "tracker_project", "tracker_brand", "tracker_state",
+                 "tracker_vendor", "tracker_fielding_location", "tracker_pricing_structure",
+                 "tracker_voter_file_source", "tracker_n_questions",
                  "disposition_date", "sent", "engaged", "opted_in", "completed",
                  "web_complete", "terminated", "error")]  # scrambled
   res <- disposition_records(write_disposition_parquet(row))
