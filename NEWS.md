@@ -2,6 +2,19 @@
 
 ## Performance
 
+* **`latency_report()` / `latency_run()` gain `compact = TRUE`, a streaming path
+  that never materialises the long frame.** On very wide campaigns the
+  `(n_questions - 1) x N_respondents` long frame is almost entirely NA drop-off
+  (a row per respondent for every configured question, even the deep ones no
+  respondent reached). With `compact = TRUE` the report is computed segment by
+  segment, keeping only rows with a real date and rebuilding the dropped
+  NA-date rows' `(date=NA, hour_local=NA)` day-rollup bucket from per-segment
+  counts, so peak memory is bounded by real respondent engagement rather than by
+  `(n_questions - 1) x N`. `consolidated` and `diagnostics` are byte-identical to
+  the default path (enforced by parity tests, including three multi-GB real
+  exports); only `latency_frame` differs, then holding just the kept real-date
+  rows. The default (`compact = FALSE`) is unchanged.
+
 * **`latency_report()` per-bucket aggregation rewritten on `data.table`; very
   large campaigns now complete in seconds on a modest memory budget.** The
   three per-bucket aggregations (`aggregate_totals()`,

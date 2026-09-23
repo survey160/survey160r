@@ -4,7 +4,7 @@
 \alias{latency_report}
 \title{Compute a latency report for one campaign}
 \usage{
-latency_report(data, config, run_at = NULL)
+latency_report(data, config, run_at = NULL, compact = FALSE)
 }
 \arguments{
 \item{data}{A data frame with one row per respondent and the per-question
@@ -20,12 +20,25 @@ a hand-built list with the same shape).}
 Fleet runners pass a single timestamp here so every campaign in one
 fleet pass shares the same \code{run_at_utc}, making "last fleet
 run" queries trivial.}
+
+\item{compact}{When \code{FALSE} (default) the full per-(respondent, segment)
+long frame is materialised and returned as \code{latency_frame}. When
+\code{TRUE} the report is computed segment-by-segment WITHOUT materialising
+the long frame: only rows with a real (non-NA) \code{segment_date_local}
+are kept, and the dropped NA-date rows (respondents who never reached a
+question) are summarised as per-segment counts and rebuilt exactly into the
+\code{(date=NA, hour_local=NA)} day-rollup bucket. \code{consolidated} and
+\code{diagnostics} are byte-identical to the default path; only peak memory
+differs (bounded by real engagement, not by \code{(n_questions - 1) x N}),
+and \code{latency_frame} then contains only the kept real-date rows. Use it
+for very wide, high-volume campaigns whose long frame is mostly NA drop-off.}
 }
 \value{
 A list with \code{consolidated} (one row per
   (campaign_id, date, hour_local, segment, threshold_min)),
-  \code{latency_frame} (one row per respondent x segment),
-  \code{diagnostics} (counts and breakdowns per spec section 3.3), and
+  \code{latency_frame} (one row per respondent x segment; only the real-date
+  rows when \code{compact = TRUE}), \code{diagnostics} (counts and breakdowns
+  per spec section 3.3), and
   \code{meta} (algorithm_version, config_hash, run_at_utc).
 }
 \description{

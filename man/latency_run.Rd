@@ -10,6 +10,7 @@ latency_run(
   config = NULL,
   run_at = NULL,
   run_by = NULL,
+  compact = FALSE,
   ...
 )
 }
@@ -36,6 +37,12 @@ campaign in a pass shares the same \code{run_at_utc}.}
 provenance column. \code{NULL} (default) leaves the column as
 \code{NA_character_}; typically filled at write time by the step
 that persists the result.}
+
+\item{compact}{Forwarded to \code{latency_report()}. \code{FALSE} (default)
+materialises the full long frame; \code{TRUE} computes the identical
+\code{consolidated} / \code{diagnostics} without materialising it (bounded
+peak memory), returning only the real-date rows as \code{latency_frame}.
+Use for very wide, high-volume campaigns. See \code{\link{latency_report}}.}
 
 \item{...}{Forwarded to \code{latency_build_config()} when
 \code{config} is \code{NULL}. Must be empty when \code{config} is
