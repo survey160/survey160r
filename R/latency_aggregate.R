@@ -175,15 +175,17 @@ aggregate_worst_cascade <- function(bucketed, thresholds) {
 # Single-threshold cascade row builder. Extracted so aggregate_worst_cascade
 # is purely the lapply skeleton + rbind.
 cascade_chunk <- function(worst, t) {
-  campaign_id <- date <- hour_local <- worst_delta <- n_worst_over <-
-    n_respondents <- NULL
+  campaign_id <- date <- hour_local <- worst_delta <- NULL
   chunk <- worst[
     , list(n_respondents = length(worst_delta),
            n_worst_over = sum(worst_delta > t)),
     by = list(campaign_id, date, hour_local)
   ]
-  chunk[, "threshold_min" := as.integer(t)]
-  chunk[, "pct_resp_worst_gt" := safe_pct(n_worst_over, n_respondents)]
+  # set() rather than `:=` so the data.table assign stays namespace-qualified
+  # (no "no visible global function ':='" note under R CMD check).
+  data.table::set(chunk, j = "threshold_min", value = as.integer(t))
+  data.table::set(chunk, j = "pct_resp_worst_gt",
+                  value = safe_pct(chunk$n_worst_over, chunk$n_respondents))
   as.data.frame(chunk[, c(.bucket_keys, "threshold_min", "n_respondents",
                           "pct_resp_worst_gt"), with = FALSE])
 }
@@ -208,7 +210,7 @@ segment_cells_chunk <- function(bucketed, t) {
   # for debugging the latency_frame; cell-column names use the n_na_*
   # prefix family so they group together in column listings and tooltips.
   campaign_id <- date <- hour_local <- segment <- segment_index <-
-    delta_min <- respondent_index <- na_reason <- n <- n_le <- NULL
+    delta_min <- respondent_index <- na_reason <- NULL
   cells <- bucketed[, list(
     n = sum(!is.na(delta_min)),
     n_le = sum(!is.na(delta_min) & delta_min <= t),
@@ -223,8 +225,8 @@ segment_cells_chunk <- function(bucketed, t) {
     n_na_missing = sum(na_reason == "missing_endpoint", na.rm = TRUE),
     n_na_chain = sum(na_reason == "chain_break", na.rm = TRUE)
   ), by = list(campaign_id, date, hour_local, segment, segment_index)]
-  cells[, "threshold_min" := as.integer(t)]
-  cells[, "pct_le" := safe_pct(n_le, n)]
+  data.table::set(cells, j = "threshold_min", value = as.integer(t))
+  data.table::set(cells, j = "pct_le", value = safe_pct(cells$n_le, cells$n))
   as.data.frame(cells)
 }
 
