@@ -58,9 +58,16 @@ aggregate_consolidated <- function(frame, config, cfg_hash, run_at,
   bucketed$date <- if (nrow(bucketed) > 0L) bucketed$segment_date_local else
     as.Date(character(0))
 
-  totals <- aggregate_totals(bucketed)
-  cascade <- aggregate_worst_cascade(bucketed, thresholds)
-  cells <- aggregate_segment_cells(bucketed, thresholds)
+  # The per-bucket aggregations run on data.table. On the (n_questions-1) x N
+  # long frame the dplyr group_by()s did not scale -- a ~47M-row frame took
+  # >15 min and >11 GB of RSS; data.table does the identical work in seconds at
+  # a fraction of the peak memory. Convert once here; build_consolidated_scaffold
+  # and assemble_consolidated below keep operating on the data.frame `bucketed`
+  # and the small joined frames.
+  bucketed_dt <- data.table::as.data.table(bucketed)
+  totals <- aggregate_totals(bucketed_dt)
+  cascade <- aggregate_worst_cascade(bucketed_dt, thresholds)
+  cells <- aggregate_segment_cells(bucketed_dt, thresholds)
 
   # Scaffold: union of bucket keys from latency frame and summary frame.
   # Without this, hours where every respondent was filtered out (e.g.
@@ -129,11 +136,13 @@ build_consolidated_scaffold <- function(bucketed, summary_frame, config,
 # Defined as distinct respondent_index appearing in *any* segment for the
 # bucket key (matches "all in-wave respondents" per spec).
 aggregate_totals <- function(bucketed) {
-  dplyr::summarise(
-    dplyr::group_by(bucketed, .data$campaign_id, .data$date, .data$hour_local),
-    .total_resp = dplyr::n_distinct(.data$respondent_index),
-    .groups = "drop"
-  )
+  # Bare column names below are data.table (j/by) references, not free
+  # variables; NULL-bind them so R CMD check / lintr do not flag them.
+  campaign_id <- date <- hour_local <- respondent_index <- NULL
+  as.data.frame(bucketed[
+    , list(.total_resp = data.table::uniqueN(respondent_index)),
+    by = list(campaign_id, date, hour_local)
+  ])
 }
 
 # Per-bucket respondent latency cascade: for each threshold, how many
@@ -141,18 +150,23 @@ aggregate_totals <- function(bucketed) {
 # those had a *worst* Δ exceeding the threshold. This is the wave-level
 # view the historical reports show.
 aggregate_worst_cascade <- function(bucketed, thresholds) {
-  worst <- dplyr::summarise(
-    dplyr::group_by(
-      dplyr::filter(bucketed, !is.na(.data$delta_min)),
-      .data$campaign_id, .data$date, .data$hour_local,
-      .data$respondent_index
-    ),
-    worst_delta = suppressWarnings(max(.data$delta_min, na.rm = TRUE)),
-    .groups = "drop"
-  )
-  # Drop respondents whose worst is non-finite. Shouldn't happen given the
-  # filter above, but guards against dplyr edge cases that emit -Inf.
-  worst <- worst[is.finite(worst$worst_delta), , drop = FALSE]
+  campaign_id <- date <- hour_local <- respondent_index <- delta_min <-
+    worst_delta <- NULL
+  # Per-respondent worst delta within each bucket. Filtering !is.na(delta_min)
+  # in `i` means max() sees only valid deltas, so it is finite for every
+  # (non-empty) group -- no na.rm and no -Inf warning.
+  # suppressWarnings: data.table evaluates j once on an empty group to infer
+  # result types, which calls max(numeric(0)) -> "no non-missing arguments"
+  # warning + -Inf. Real (non-empty) groups have only valid deltas (the i
+  # filter), so their max is finite; the -Inf type-probe row, if any, is
+  # dropped by the is.finite() filter below. Mirrors the original na.rm max.
+  worst <- bucketed[
+    !is.na(delta_min),
+    list(worst_delta = suppressWarnings(max(delta_min))),
+    by = list(campaign_id, date, hour_local, respondent_index)
+  ]
+  # Belt-and-suspenders: drop any non-finite worst (empty-group edge).
+  worst <- worst[is.finite(worst_delta)]
 
   chunks <- lapply(thresholds, function(t) cascade_chunk(worst, t))
   do.call(rbind, chunks)
@@ -161,16 +175,17 @@ aggregate_worst_cascade <- function(bucketed, thresholds) {
 # Single-threshold cascade row builder. Extracted so aggregate_worst_cascade
 # is purely the lapply skeleton + rbind.
 cascade_chunk <- function(worst, t) {
-  chunk <- dplyr::summarise(
-    dplyr::group_by(worst, .data$campaign_id, .data$date, .data$hour_local),
-    n_respondents = dplyr::n(),
-    n_worst_over = sum(.data$worst_delta > t),
-    .groups = "drop"
-  )
-  chunk$threshold_min <- as.integer(t)
-  chunk$pct_resp_worst_gt <- safe_pct(chunk$n_worst_over, chunk$n_respondents)
-  chunk[, c(.bucket_keys, "threshold_min", "n_respondents",
-            "pct_resp_worst_gt")]
+  campaign_id <- date <- hour_local <- worst_delta <- n_worst_over <-
+    n_respondents <- NULL
+  chunk <- worst[
+    , list(n_respondents = length(worst_delta),
+           n_worst_over = sum(worst_delta > t)),
+    by = list(campaign_id, date, hour_local)
+  ]
+  chunk[, "threshold_min" := as.integer(t)]
+  chunk[, "pct_resp_worst_gt" := safe_pct(n_worst_over, n_respondents)]
+  as.data.frame(chunk[, c(.bucket_keys, "threshold_min", "n_respondents",
+                          "pct_resp_worst_gt"), with = FALSE])
 }
 
 # Per-(bucket, segment, threshold) cell rows. n is the valid-Δ count for the
@@ -192,30 +207,25 @@ segment_cells_chunk <- function(bucketed, t) {
   # R/latency_frame.R. The enum strings stay longer ("parse_failure" etc.)
   # for debugging the latency_frame; cell-column names use the n_na_*
   # prefix family so they group together in column listings and tooltips.
-  cells <- dplyr::summarise(
-    dplyr::group_by(
-      bucketed,
-      .data$campaign_id, .data$date, .data$hour_local,
-      .data$segment, .data$segment_index
+  campaign_id <- date <- hour_local <- segment <- segment_index <-
+    delta_min <- respondent_index <- na_reason <- n <- n_le <- NULL
+  cells <- bucketed[, list(
+    n = sum(!is.na(delta_min)),
+    n_le = sum(!is.na(delta_min) & delta_min <= t),
+    n_resp_over = data.table::uniqueN(
+      respondent_index[!is.na(delta_min) & delta_min > t]
     ),
-    n = sum(!is.na(.data$delta_min)),
-    n_le = sum(!is.na(.data$delta_min) & .data$delta_min <= t),
-    n_resp_over = dplyr::n_distinct(
-      .data$respondent_index[!is.na(.data$delta_min) & .data$delta_min > t]
-    ),
-    mean_delta_min = safe_mean(.data$delta_min),
-    p50_delta_min = safe_quantile(.data$delta_min, 0.50),
-    p90_delta_min = safe_quantile(.data$delta_min, 0.90),
-    p95_delta_min = safe_quantile(.data$delta_min, 0.95),
-    n_na_parse = sum(.data$na_reason == "parse_failure", na.rm = TRUE),
-    n_na_missing = sum(.data$na_reason == "missing_endpoint",
-                       na.rm = TRUE),
-    n_na_chain = sum(.data$na_reason == "chain_break", na.rm = TRUE),
-    .groups = "drop"
-  )
-  cells$threshold_min <- as.integer(t)
-  cells$pct_le <- safe_pct(cells$n_le, cells$n)
-  cells
+    mean_delta_min = safe_mean(delta_min),
+    p50_delta_min = safe_quantile(delta_min, 0.50),
+    p90_delta_min = safe_quantile(delta_min, 0.90),
+    p95_delta_min = safe_quantile(delta_min, 0.95),
+    n_na_parse = sum(na_reason == "parse_failure", na.rm = TRUE),
+    n_na_missing = sum(na_reason == "missing_endpoint", na.rm = TRUE),
+    n_na_chain = sum(na_reason == "chain_break", na.rm = TRUE)
+  ), by = list(campaign_id, date, hour_local, segment, segment_index)]
+  cells[, "threshold_min" := as.integer(t)]
+  cells[, "pct_le" := safe_pct(n_le, n)]
+  as.data.frame(cells)
 }
 
 # Left-join every aggregation onto the (bucket × segment × threshold)
