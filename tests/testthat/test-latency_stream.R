@@ -101,7 +101,8 @@ test_that(".na_date_day_rows returns a zero-row consolidated when no NA-date row
   out <- .na_date_day_rows(.empty_na_date(), fx$config, "h",
                            as.POSIXct("2026-01-01", tz = "UTC"),
                            NA_character_,
-                           empty_summary_frame(), empty_ineligible_frame(), "sms")
+                           empty_summary_frame(), empty_ineligible_frame(),
+                           empty_refusal_frame(), "sms")
   expect_equal(nrow(out), 0L)
   # Same schema as a normal consolidated frame.
   expect_true(all(c("campaign_id", "segment", "threshold_min", "n_na_missing")

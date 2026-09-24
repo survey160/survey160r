@@ -112,6 +112,7 @@ latency_report <- function(data, config, run_at = NULL, compact = FALSE) {
   # dispatched the intro to, not just those who consented.
   summary_hour <- build_summary_frame(data, config, survey_mode)
   ineligible_hour <- build_ineligible_frame(data, config)
+  refusal_hour <- build_refusal_frame(data, config)
   # date_filter, when set, restricts both views to the listed dates --
   # not just latency. The user's intent ("show me this date's data") is
   # symmetric across summary and latency.
@@ -121,9 +122,12 @@ latency_report <- function(data, config, run_at = NULL, compact = FALSE) {
                                  , drop = FALSE]
     ineligible_hour <- ineligible_hour[ineligible_hour$date %in% target_dates,
                                        , drop = FALSE]
+    refusal_hour <- refusal_hour[refusal_hour$date %in% target_dates,
+                                 , drop = FALSE]
   }
   summary_day <- collapse_summary_to_day(summary_hour)
   ineligible_day <- collapse_ineligible_to_day(ineligible_hour)
+  refusal_day <- collapse_refusal_to_day(refusal_hour)
 
   # Step 2: population filter.
   data <- apply_population_filter(data, config$filters$population)
@@ -192,6 +196,7 @@ latency_report <- function(data, config, run_at = NULL, compact = FALSE) {
                                          src_csv_hash,
                                          summary_frame = summary_hour,
                                          ineligible_frame = ineligible_hour,
+                                         refusal_frame = refusal_hour,
                                          survey_mode = survey_mode)
     hour_grain <- hour_grain[!is.na(hour_grain$hour_local), , drop = FALSE]
     invisible(gc(verbose = FALSE))
@@ -201,11 +206,13 @@ latency_report <- function(data, config, run_at = NULL, compact = FALSE) {
                                         src_csv_hash,
                                         summary_frame = summary_day,
                                         ineligible_frame = ineligible_day,
+                                        refusal_frame = refusal_day,
                                         survey_mode = survey_mode)
     # Rebuild the (date=NA, hour=NA) rows the dropped NA-date rows would have
     # produced, then re-sort the day grain to the assemble_consolidated() order.
     day_na <- .na_date_day_rows(na_date, config, cfg_hash, run_at, src_csv_hash,
-                                summary_day, ineligible_day, survey_mode)
+                                summary_day, ineligible_day, refusal_day,
+                                survey_mode)
     day_grain <- rbind(day_grain, day_na)
     day_grain <- day_grain[order(day_grain$campaign_id, day_grain$date,
                                  day_grain$hour_local, day_grain$segment_index,
@@ -225,6 +232,7 @@ latency_report <- function(data, config, run_at = NULL, compact = FALSE) {
                                          src_csv_hash,
                                          summary_frame = summary_hour,
                                          ineligible_frame = ineligible_hour,
+                                         refusal_frame = refusal_hour,
                                          survey_mode = survey_mode)
     hour_grain <- hour_grain[!is.na(hour_grain$hour_local), , drop = FALSE]
     invisible(gc(verbose = FALSE))
@@ -234,6 +242,7 @@ latency_report <- function(data, config, run_at = NULL, compact = FALSE) {
                                         src_csv_hash,
                                         summary_frame = summary_day,
                                         ineligible_frame = ineligible_day,
+                                        refusal_frame = refusal_day,
                                         survey_mode = survey_mode)
     consolidated <- rbind(hour_grain, day_grain)
 

@@ -25,7 +25,8 @@ given \code{config}: the per-question \code{scriptDate}/\code{batchDate}
 set, the population-filter columns (extracted from
 \code{config$filters$population}), the campaign-id and optional
 respondent-id columns, plus the fixed non-flow support columns
-(\code{web_complete}, \code{id.ineligible.scriptDate}). The opener
+(\code{web_complete}, \code{id.ineligible.scriptDate},
+\code{id.refusal.scriptDate}). The opener
 \code{finalText} is not fixed here: it is one of the population-filter
 columns above, so it is retained per campaign only when the population
 references it.

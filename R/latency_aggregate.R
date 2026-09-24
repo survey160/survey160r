@@ -43,10 +43,12 @@ aggregate_consolidated <- function(frame, config, cfg_hash, run_at,
                                    src_csv_hash = NA_character_,
                                    summary_frame = NULL,
                                    ineligible_frame = NULL,
+                                   refusal_frame = NULL,
                                    survey_mode = "sms") {
   project_id <- as.integer(config$project_id)
   if (is.null(summary_frame)) summary_frame <- empty_summary_frame()
   if (is.null(ineligible_frame)) ineligible_frame <- empty_ineligible_frame()
+  if (is.null(refusal_frame)) refusal_frame <- empty_refusal_frame()
   if (nrow(frame) == 0L && nrow(summary_frame) == 0L) {
     return(empty_consolidated(project_id, cfg_hash, run_at))
   }
@@ -87,6 +89,7 @@ aggregate_consolidated <- function(frame, config, cfg_hash, run_at,
                         src_csv_hash = src_csv_hash,
                         summary_frame = summary_frame,
                         ineligible_frame = ineligible_frame,
+                        refusal_frame = refusal_frame,
                         survey_mode = survey_mode)
 }
 
@@ -239,6 +242,7 @@ assemble_consolidated <- function(scaffold, cells, totals, cascade,
                                   project_id, cfg_hash, run_at,
                                   src_csv_hash,
                                   summary_frame, ineligible_frame,
+                                  refusal_frame,
                                   survey_mode = "sms") {
   # Latency cell stats. NA on scaffold rows whose bucket has no latency
   # frame entries -- the new summary-only path.
@@ -281,17 +285,23 @@ assemble_consolidated <- function(scaffold, cells, totals, cascade,
   # cleanly with the day/hour grain split.
   joined <- dplyr::left_join(joined, ineligible_frame,
                              by = c(.bucket_keys, "segment_index"))
+  # Refusal join is per (bucket, segment_index), exactly as ineligible above:
+  # n_refused denormalises across the 4 threshold rows of the same
+  # (bucket, segment_index). The same de-duplication caveat applies -- filter to
+  # ONE threshold_min before summing across segments to avoid quadruple-counting.
+  joined <- dplyr::left_join(joined, refusal_frame,
+                             by = c(.bucket_keys, "segment_index"))
 
   # Scaffold-only rows (bucket × segment × threshold combinations with
   # no matching latency cell or summary row) get 0 for every COUNT
   # column and NA for distribution columns (mean / quantile over zero
   # observations is genuinely undefined). All four summary counts plus
-  # ineligible are filled symmetrically: a bucket with no summary-frame
+  # ineligible / refused are filled symmetrically: a bucket with no summary-frame
   # row means "no respondents in this bucket" -> 0, not "unknown".
   count_cols <- c("n", "n_le", "n_resp_over",
                   "n_na_parse", "n_na_missing", "n_na_chain",
                   "n_sent", "n_engaged", "n_opted_in", "n_completed",
-                  "n_ineligible")
+                  "n_ineligible", "n_refused")
   for (col in count_cols) {
     if (col %in% names(joined)) {
       joined[[col]][is.na(joined[[col]])] <- 0L
@@ -324,6 +334,7 @@ assemble_consolidated <- function(scaffold, cells, totals, cascade,
     n_opted_in = as.integer(joined$n_opted_in),
     n_completed = as.integer(joined$n_completed),
     n_ineligible = as.integer(joined$n_ineligible),
+    n_refused = as.integer(joined$n_refused),
     algorithm_version = .algorithm_version,
     config_hash = cfg_hash,
     source_csv_hash = src_csv_hash %||% NA_character_,
@@ -370,6 +381,7 @@ empty_consolidated <- function(project_id, cfg_hash, run_at) {
     n_opted_in = integer(0),
     n_completed = integer(0),
     n_ineligible = integer(0),
+    n_refused = integer(0),
     algorithm_version = character(0),
     config_hash = character(0),
     source_csv_hash = character(0),

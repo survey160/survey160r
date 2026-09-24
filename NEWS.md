@@ -23,6 +23,15 @@
   projection carries the same Tracker dimensions as the campaign (latency) parquet.
   Enrichment columns: returned when the projection has them.
 
+## New features
+
+* **The latency `consolidated` frame gains `n_refused`, the refusal-terminal
+  count.** It is the per-`(bucket, segment_index)` sibling of `n_ineligible`,
+  counting recipients who reached the refusal terminal (`id.refusal.scriptDate`)
+  at each segment. This completes the latency funnel's terminal split
+  (refused + ineligible) and matches the disposition parquet's `refused` column
+  name. Emitted identically on both the full-frame and `compact = TRUE` paths.
+
 ## Performance
 
 * **`latency_report()` / `latency_run()` gain `compact = TRUE`, a streaming path
