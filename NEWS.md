@@ -25,6 +25,15 @@
 
 ## New features
 
+* **New `disposition_funnel()` rolls the disposition dataset up to funnel counts
+  by dimension.** Groups the per-recipient disposition rows by one or more columns
+  (`by`, default `carrier`) and -- on the day grain -- by `disposition_date`,
+  returning `n_sent` / `n_engaged` / `n_opted_in` / `n_completed` / `n_ineligible`
+  / `n_refused` per group plus the send-anchored rates. It answers "how many sends
+  / opt-ins / completes per carrier" straight from `disposition_records()` /
+  `disposition_pull()` output, and is the disposition sibling of `latency_funnel()`.
+  A `carrier` the uploaded list did not supply is kept as its own `NA` group; an
+  all-off-channel group's `n_completed` stays `NA` rather than a false `0`.
 * **The latency `consolidated` frame gains `n_refused`, the refusal-terminal
   count.** It is the per-`(bucket, segment_index)` sibling of `n_ineligible`,
   counting recipients who reached the refusal terminal (`id.refusal.scriptDate`)
