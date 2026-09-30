@@ -45,6 +45,14 @@
   out
 }
 
+# Sum a 0/1 flag column within a group, but return NA (not a false 0) when EVERY
+# value is NA -- the all-off-channel case for `completed` on t2w_external rows. A
+# group with at least one non-NA value sums to a real count (0 included). Used in
+# the data.table `j` below.
+.disposition_funnel_count <- function(v) {
+  if (all(is.na(v))) NA_integer_ else as.integer(sum(v, na.rm = TRUE))
+}
+
 #' Roll the disposition dataset up to funnel counts + rates by dimension
 #'
 #' The disposition dataset is one row per \code{(phone, campaign_id)},
@@ -150,21 +158,16 @@ disposition_funnel <- function(x, by = "carrier", grain = c("day", "all"),
     # NULL-bind them so R CMD check / lintr do not flag them.
     campaign_id <- sent <- engaged <- opted_in <- completed <-
       ineligible <- refused <- NULL
-    # Count that stays NA when EVERY value in the group is NA (an all-off-channel
-    # group's completes) rather than collapsing to a false 0; a real 0 is a group
-    # with some non-NA rows that sum to zero.
-    csum <- function(v) {
-      if (all(is.na(v))) NA_integer_ else as.integer(sum(v, na.rm = TRUE))
-    }
+    cnt <- .disposition_funnel_count
     dt <- data.table::as.data.table(data)
     agg <- dt[, list(
       campaigns    = as.integer(data.table::uniqueN(campaign_id)),
       n_sent       = as.integer(sum(sent == 1L, na.rm = TRUE)),
-      n_engaged    = csum(engaged),
-      n_opted_in   = csum(opted_in),
-      n_completed  = csum(completed),
-      n_ineligible = csum(ineligible),
-      n_refused    = csum(refused)
+      n_engaged    = cnt(engaged),
+      n_opted_in   = cnt(opted_in),
+      n_completed  = cnt(completed),
+      n_ineligible = cnt(ineligible),
+      n_refused    = cnt(refused)
     ), by = group_cols]
     out <- as.data.frame(agg, stringsAsFactors = FALSE)
   }

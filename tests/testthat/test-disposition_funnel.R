@@ -136,6 +136,20 @@ test_that("empty input returns a typed zero-row frame with the full schema", {
   expect_type(res$completion_rate, "double")
 })
 
+test_that("grain='day' equals putting disposition_date in `by` (idiom equivalence)", {
+  recs <- .funnel_records()
+  a <- disposition_funnel(recs, by = "carrier", grain = "day")
+  b <- disposition_funnel(recs, by = c("carrier", "disposition_date"), grain = "all")
+  expect_equal(a, b)
+})
+
+test_that(".disposition_funnel_count keeps NA only when every value is NA", {
+  expect_identical(.disposition_funnel_count(c(1L, 0L, NA)), 1L)   # some non-NA -> real sum
+  expect_identical(.disposition_funnel_count(c(0L, 0L)), 0L)       # genuine zero
+  expect_identical(.disposition_funnel_count(c(NA_integer_, NA_integer_)),
+                   NA_integer_)                                     # all NA -> NA, not 0
+})
+
 test_that("accepts a data.table input, empty and non-empty (base-frame semantics)", {
   dt <- data.table::as.data.table(.funnel_records())
   res <- disposition_funnel(dt, grain = "all", rates = FALSE)
