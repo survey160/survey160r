@@ -25,6 +25,23 @@
 
 ## New features
 
+* **New `disposition_funnel()` rolls the disposition dataset up to funnel counts +
+  rates by dimension.** The disposition analogue of `campaign_metrics_summary()`:
+  same `by` / `rates` / `percent` shape, a `campaigns` count, and the shared
+  `funnel_rates()` definition, over the disposition projection instead of the
+  latency one, plus the disposition-only terminal split (`n_ineligible` /
+  `n_refused`). Groups the per-recipient rows by one or more columns (`by`, default
+  `carrier`) and -- on the day grain -- by `disposition_date`, so "how many sends /
+  opt-ins / completes per carrier" is one call over `disposition_records()` /
+  `disposition_pull()` output. A `carrier` the uploaded list did not supply is kept
+  as its own `NA` group; an all-off-channel group's `n_completed` (and completion
+  rate) stays `NA` rather than a false `0`.
+* **`funnel_rates()` now also emits `opted_in_rate`** (`opted_in / sent`, the
+  funnel-anchored opt-in rate) alongside the existing `opted_in_engaged_rate`
+  (`opted_in / engaged`, opt-in conversion among the engaged). The two answer
+  different questions -- end-to-end yield per send vs conversion once a recipient
+  replies -- so both are emitted, and every consumer (`campaign_metrics_summary()`,
+  `disposition_funnel()`) inherits both. Additive: existing columns are unchanged.
 * **The latency `consolidated` frame gains `n_refused`, the refusal-terminal
   count.** It is the per-`(bucket, segment_index)` sibling of `n_ineligible`,
   counting recipients who reached the refusal terminal (`id.refusal.scriptDate`)

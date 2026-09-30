@@ -69,6 +69,31 @@ disposition_summary(records, phones = c("5551234567", "5550000000"))
 
 Note `5551234567`: its **latest** disposition is `refused` (its most recent campaign, 102, ended in a refusal) while its **best** is `completed` (campaign 101 finished the survey). In your own code, read once and reuse: `records <- disposition_records(dataset)`, then `disposition_summary(records, phones = ...)` for each list.
 
+## Roll up to funnel counts by dimension
+
+To measure the funnel across recipients (rather than screen a list), `disposition_funnel()` groups the dataset by any dimension and returns the counts plus the standard funnel rates -- the disposition analogue of `campaign_metrics_summary()`. It takes the dataset path or an already-read frame; on a frame it does no I/O, so this runs:
+
+```{r funnel_frame, eval = TRUE}
+library(survey160r)
+records <- data.frame(
+  phone       = as.character(1:5),
+  campaign_id = c(101L, 101L, 102L, 102L, 102L),
+  sent        = c(1L, 1L, 1L, 1L, 1L),
+  engaged     = c(1L, 1L, 0L, 1L, 0L),
+  opted_in    = c(1L, 0L, 0L, 1L, 0L),
+  completed   = c(1L, 0L, 0L, 0L, 0L),
+  refused     = c(0L, 1L, 0L, 0L, 0L),
+  ineligible  = c(0L, 0L, 1L, 0L, 0L),
+  carrier     = c("AT&T", "AT&T", "Verizon", "Verizon", NA),
+  disposition_date = as.Date("2026-01-10")
+)
+disposition_funnel(records, by = "carrier", grain = "all")
+```
+
+`by` takes any stored dimension -- `carrier`, `survey_mode`, `tracker_client`, `campaign_id`, ... -- or several at once. `grain = "day"` (the default) adds `disposition_date` for a daily series -- equivalently, include `disposition_date` in `by` with `grain = "all"`; `grain = "all"` on its own collapses the date axis. Each group carries the counts (`campaigns`, `n_sent` through `n_refused`) and, unless `rates = FALSE`, the shared `funnel_rates()`: `engagement_rate`, `opted_in_rate` (opt-ins / sent), `opted_in_engaged_rate` (opt-ins / engaged), and `completion_rate` -- proportions, or `0`-`100` with `percent = TRUE`. A carrier the uploaded list did not supply is its own `NA` group; an all-off-channel group's completes stay `NA`, not a false `0`.
+
+Roll up the whole projection with `disposition_funnel(dataset, by = "carrier")`, or pre-filter with `disposition_records()` first (by campaign or date) to scope it.
+
 ## What you get back
 
 `disposition_screen()` and `disposition_summary()` return one row per phone:
@@ -107,12 +132,12 @@ The counts overlap rather than partition `n_campaigns` -- a completed campaign i
 | `refused` / `ineligible` | The name-classified terminal split -- a decline / a screen-out. |
 | `error` | The raw carrier delivery-error code for the send; `NA` when the export carries no usable code. |
 | `carrier` | The recipient's mobile network, from the export's optional `misc` column; `NA` when that column is omitted or blank. |
-| `loi` / `topic` | Length of interview in minutes, and the campaign topic, from the Project Tracker. |
-| `mode` | Send channel: `sms`, `t2w`, or `t2w_external`. |
-| `registration_id` | The campaign's 10DLC registration id, from the Project Tracker. |
+| `survey_mode` | Detected send channel: `sms`, `t2w`, or `t2w_external`. |
+| `tracker_loi` / `tracker_topic` | Length of interview in minutes, and the campaign topic, from the Project Tracker. |
+| `tracker_registration_id` | The campaign's 10DLC registration id, from the Project Tracker. |
 | `disposition_date` | The number's last-send date, or `NA` when no send survives archival. |
 
-The funnel flags overlap rather than partition -- a `completed` row is also `engaged` -- so read each as a status the row reached, not an exclusive bucket. Provenance of the columns: `sent`, the funnel flags, `mode`, `error`, and `carrier` are derived from the campaign export; `loi`, `topic`, and `registration_id` come from the Project Tracker, so they are populated only for campaigns the Tracker covers and read `NA` on older campaigns that predate it. An un-enriched projection (published before a column existed, or without Tracker enrichment) simply omits that column, and `disposition_records()` returns whatever subset is present -- see `?disposition_records`.
+The funnel flags overlap rather than partition -- a `completed` row is also `engaged` -- so read each as a status the row reached, not an exclusive bucket. Provenance of the columns: `sent`, the funnel flags, `survey_mode`, `error`, and `carrier` are derived from the campaign export; the `tracker_*` dimensions (`tracker_loi`, `tracker_topic`, `tracker_registration_id`, and the rest of the Project-Tracker set -- see `?disposition_records`) come from the Tracker, so they are populated only for campaigns it covers and read `NA` on older campaigns that predate it. An un-enriched projection (published before a column existed, or without Tracker enrichment) simply omits that column, and `disposition_records()` returns whatever subset is present -- see `?disposition_records`.
 
 ## Notes
 
@@ -127,4 +152,4 @@ The funnel flags overlap rather than partition -- a `completed` row is also `eng
 
 ## See also
 
-`?disposition_screen`, `?disposition_summary`, `?disposition_records`, `?disposition_pull`. To build the dataset from a raw campaign CSV (the producer side), `?disposition_run` and `?disposition_input_columns`. For latency reports, `vignette("latency")`.
+`?disposition_screen`, `?disposition_summary`, `?disposition_records`, `?disposition_funnel`, `?disposition_pull`. For the funnel rates `disposition_funnel()` shares with the latency side, `?funnel_rates` and `?campaign_metrics_summary`. To build the dataset from a raw campaign CSV (the producer side), `?disposition_run` and `?disposition_input_columns`. For latency reports, `vignette("latency")`.

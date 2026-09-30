@@ -45,19 +45,24 @@
 #'
 #' The single definition of the Survey160 funnel rates, so every consumer
 #' computes them the same way. Given a frame carrying the summed funnel counts,
-#' appends three columns: \code{engagement_rate} (\code{engaged / sent}, a first
-#' reply), \code{opted_in_engaged_rate} (\code{opted_in / engaged}, conversion among
-#' the engaged), and \code{completion_rate} (\code{completed / sent}). A rate
-#' with a zero denominator is \code{NA} (not \code{NaN}/\code{Inf}). Used by
-#' \code{\link{campaign_metrics_summary}}, and usable on any counts frame.
+#' appends four columns: \code{engagement_rate} (\code{engaged / sent}, a first
+#' reply), \code{opted_in_rate} (\code{opted_in / sent}, opt-ins as a share of
+#' everyone sent -- the funnel-anchored rate), \code{opted_in_engaged_rate}
+#' (\code{opted_in / engaged}, opt-in conversion among the engaged), and
+#' \code{completion_rate} (\code{completed / sent}). The two opt-in rates answer
+#' different questions -- end-to-end yield per send vs conversion once a recipient
+#' replies -- so both are emitted. A rate with a zero denominator is \code{NA}
+#' (not \code{NaN}/\code{Inf}). Used by \code{\link{campaign_metrics_summary}} and
+#' \code{\link{disposition_funnel}}, and usable on any counts frame.
 #'
 #' @param x A data frame with the four count columns named by the arguments
 #'   below (defaults match \code{\link{campaign_metrics_records}}).
 #' @param sent,engaged,opted_in,completed Column names of the funnel counts.
 #' @param percent When \code{FALSE} (default) rates are proportions in
 #'   \code{[0, 1]}; \code{TRUE} scales them to \code{0-100}.
-#' @return \code{x} with \code{engagement_rate}, \code{opted_in_engaged_rate}, and
-#'   \code{completion_rate} appended (same type as \code{x}).
+#' @return \code{x} with \code{engagement_rate}, \code{opted_in_rate},
+#'   \code{opted_in_engaged_rate}, and \code{completion_rate} appended (same type
+#'   as \code{x}).
 #' @seealso \code{\link{campaign_metrics_summary}}
 #' @examples
 #' df <- data.frame(n_sent = c(1000, 500), n_engaged = c(80, 0),
@@ -75,9 +80,10 @@ funnel_rates <- function(x, sent = "n_sent", engaged = "n_engaged",
   }
   mult  <- if (isTRUE(percent)) 100 else 1
   ratio <- function(num, den) ifelse(den > 0, num / den, NA_real_)
-  x$engagement_rate    <- mult * ratio(x[[engaged]],   x[[sent]])
+  x$engagement_rate       <- mult * ratio(x[[engaged]],   x[[sent]])
+  x$opted_in_rate         <- mult * ratio(x[[opted_in]],  x[[sent]])
   x$opted_in_engaged_rate <- mult * ratio(x[[opted_in]],  x[[engaged]])
-  x$completion_rate    <- mult * ratio(x[[completed]], x[[sent]])
+  x$completion_rate       <- mult * ratio(x[[completed]], x[[sent]])
   x
 }
 
@@ -151,8 +157,8 @@ campaign_metrics_records <- function(x, dedup = TRUE) {
 #' @return A data frame, one row per \code{by} group: the \code{by} columns,
 #'   \code{campaigns} (distinct campaign count), the summed \code{n_sent},
 #'   \code{n_engaged}, \code{n_opted_in}, \code{n_completed}, and (when
-#'   \code{rates}) \code{engagement_rate}, \code{opted_in_engaged_rate},
-#'   \code{completion_rate}.
+#'   \code{rates}) \code{engagement_rate}, \code{opted_in_rate},
+#'   \code{opted_in_engaged_rate}, \code{completion_rate}.
 #' @seealso \code{\link{campaign_metrics_records}}, \code{\link{funnel_rates}}
 #' @examples
 #' \dontrun{
