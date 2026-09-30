@@ -11,12 +11,17 @@
 # projection is ~140M rows, where a dplyr group_by does not scale (see the note in
 # R/latency_aggregate.R).
 
-# Resolve `x` (an in-memory frame or a Parquet path) to an in-memory data frame,
-# projected to `want_cols` on the path read. Split out of disposition_funnel() to
-# keep its cyclomatic complexity down.
+# Resolve `x` (an in-memory frame or a Parquet path) to a BASE data frame,
+# projected to `want_cols` on the path read. Coercing to a base data.frame here
+# normalises any data.frame subclass (a `data.table` or tibble) to base `[` / `$`
+# semantics for every downstream step -- notably `.disposition_funnel_empty()`,
+# whose `data[integer(0), group_cols]` would otherwise be a data.table `j`
+# expression rather than a column select -- and keeps the return type a plain data
+# frame regardless of input. Split out of disposition_funnel() to keep its
+# cyclomatic complexity down.
 .disposition_funnel_data <- function(x, want_cols) {
   if (is.data.frame(x)) {
-    return(x)
+    return(as.data.frame(x))
   }
   if (is.character(x) && length(x) == 1L && nzchar(x)) {
     return(.disposition_read_parquet(x, columns = want_cols))

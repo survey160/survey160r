@@ -136,6 +136,20 @@ test_that("empty input returns a typed zero-row frame with the full schema", {
   expect_type(res$completion_rate, "double")
 })
 
+test_that("accepts a data.table input, empty and non-empty (base-frame semantics)", {
+  dt <- data.table::as.data.table(.funnel_records())
+  res <- disposition_funnel(dt, grain = "all", rates = FALSE)
+  expect_false(data.table::is.data.table(res))   # normalised to a base data frame
+  expect_equal(res$carrier, c("AT&T", "Verizon", NA))
+  expect_equal(res$n_sent, c(3L, 3L, 2L))
+  # empty data.table must still return the typed zero-row frame (regression:
+  # data[integer(0), group_cols] is a `j` expression on a data.table, not a select)
+  res0 <- disposition_funnel(dt[0], grain = "all")
+  expect_s3_class(res0, "data.frame")
+  expect_equal(nrow(res0), 0L)
+  expect_named(res0, c("carrier", .FUNNEL_COUNT_COLS, .FUNNEL_RATE_COLS))
+})
+
 test_that("missing a required funnel column errors", {
   recs <- .funnel_records()
   recs$opted_in <- NULL
