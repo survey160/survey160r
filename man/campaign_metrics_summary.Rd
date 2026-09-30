@@ -24,8 +24,8 @@ campaign_metrics_summary(x, by = "campaign_id", rates = TRUE, percent = FALSE)
 A data frame, one row per \code{by} group: the \code{by} columns,
   \code{campaigns} (distinct campaign count), the summed \code{n_sent},
   \code{n_engaged}, \code{n_opted_in}, \code{n_completed}, and (when
-  \code{rates}) \code{engagement_rate}, \code{opted_in_engaged_rate},
-  \code{completion_rate}.
+  \code{rates}) \code{engagement_rate}, \code{opted_in_rate},
+  \code{opted_in_engaged_rate}, \code{completion_rate}.
 }
 \description{
 Rolls the campaign-metrics cells up to summed funnel counts and the standard

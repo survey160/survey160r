@@ -43,7 +43,7 @@ test_that("summary groups by multiple dimensions", {
 
 test_that("summary rates = FALSE omits the rate columns", {
   s <- campaign_metrics_summary(raw_metrics(), by = "registration_id", rates = FALSE)
-  expect_false(any(c("engagement_rate", "opted_in_engaged_rate", "completion_rate") %in% names(s)))
+  expect_false(any(c("engagement_rate", "opted_in_rate", "opted_in_engaged_rate", "completion_rate") %in% names(s)))
 })
 
 test_that("summary errors on an unknown `by` column", {

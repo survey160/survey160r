@@ -2,9 +2,15 @@
 % Please edit documentation in R/disposition_funnel.R
 \name{disposition_funnel}
 \alias{disposition_funnel}
-\title{Roll the disposition dataset up to funnel counts by dimension}
+\title{Roll the disposition dataset up to funnel counts + rates by dimension}
 \usage{
-disposition_funnel(x, by = "carrier", grain = c("day", "all"))
+disposition_funnel(
+  x,
+  by = "carrier",
+  grain = c("day", "all"),
+  rates = TRUE,
+  percent = FALSE
+)
 }
 \arguments{
 \item{x}{Either a path to a disposition Parquet file (the read projection, e.g.
@@ -15,48 +21,59 @@ with \code{\link{disposition_records}} first when you do not want the whole
 projection.}
 
 \item{by}{Character vector of grouping column name(s). Default \code{"carrier"};
-any stored dimension works (\code{campaign_id}, \code{survey_mode},
-\code{tracker_client}, ...). Every name must be present in \code{x}.}
+any stored dimension works (\code{survey_mode}, \code{tracker_client},
+\code{tracker_topic}, ...). Every name must be present in \code{x}.}
 
 \item{grain}{One of \code{"day"} (default) or \code{"all"}. \code{"day"} adds
 \code{disposition_date} to the grouping (one row per \code{(by..., date)});
 \code{"all"} collapses the date axis (one row per \code{by...}).}
+
+\item{rates}{Append the funnel rates via \code{\link{funnel_rates}} (default
+\code{TRUE}): \code{engagement_rate}, \code{opted_in_rate},
+\code{opted_in_engaged_rate}, \code{completion_rate}.}
+
+\item{percent}{Passed to \code{\link{funnel_rates}}: proportions (default) or
+\code{0-100}.}
 }
 \value{
 A data frame, one row per group: the \code{by} column(s), then
-  \code{disposition_date} (only when \code{grain = "day"}), then \code{n_sent},
-  \code{n_engaged}, \code{n_opted_in}, \code{n_completed}, \code{n_ineligible},
-  \code{n_refused}, and the rates \code{pct_engaged}, \code{pct_opted_in},
-  \code{pct_completed} (each count / \code{n_sent} * 100, \code{NA} when
-  \code{n_sent} is 0). Sorted by the grouping columns.
+  \code{disposition_date} (only when \code{grain = "day"}), \code{campaigns}, the
+  counts \code{n_sent}, \code{n_engaged}, \code{n_opted_in}, \code{n_completed},
+  \code{n_ineligible}, \code{n_refused}, and (when \code{rates}) the four
+  \code{\link{funnel_rates}} columns. Sorted by the grouping columns.
 }
 \description{
 The disposition dataset is one row per \code{(phone, campaign_id)},
 contacted-only, with 0/1 funnel flags per recipient. \code{disposition_funnel()}
 groups those rows by one or more dimensions (\code{by}, e.g. \code{carrier}) and
 -- when \code{grain = "day"} -- by \code{disposition_date} (the recipient's
-latest activity date), returning the funnel COUNTS per group: \code{n_sent},
-\code{n_engaged}, \code{n_opted_in}, \code{n_completed}, \code{n_ineligible},
-\code{n_refused}, plus the send-anchored rates \code{pct_engaged} /
-\code{pct_opted_in} / \code{pct_completed}.
+latest activity date), returning the funnel COUNTS per group (\code{campaigns},
+\code{n_sent}, \code{n_engaged}, \code{n_opted_in}, \code{n_completed},
+\code{n_ineligible}, \code{n_refused}) and, when \code{rates = TRUE}, the
+standard funnel rates via \code{\link{funnel_rates}}.
 }
 \details{
-Because the disposition grain is already one row per recipient, "how many per
-carrier" is a straight group-and-sum -- there is no denormalised fan-out to
-collapse (contrast \code{\link{latency_funnel}}, which first reduces the latency
-consolidated table's segment x threshold repetition). \code{n_sent} is the count
-of contacted recipients in the group. A \code{carrier} the uploaded list did not
-supply is \code{NA}, kept as its own group (the "unknown carrier" bucket); this
-function does not fold carrier aliases (e.g. Metro PCS into T-Mobile) -- do that
-in the caller. Off-channel (\code{t2w_external}) completes are unknowable, so
-\code{completed} is \code{NA} on those rows; a group whose completes are
-\emph{all} \code{NA} returns \code{n_completed = NA} (not a false \code{0}),
-matching the disposition readers.
+It is the disposition analogue of \code{\link{campaign_metrics_summary}} (same
+\code{by} / \code{rates} / \code{percent} shape, a \code{campaigns} count, and
+the shared \code{\link{funnel_rates}} definition), over the disposition
+projection rather than the latency one, plus the disposition-only terminal split
+(\code{n_ineligible} / \code{n_refused}). Because the disposition grain is
+already one row per recipient, "how many per carrier" is a straight
+group-and-sum -- there is no denormalised fan-out to collapse (contrast
+\code{\link{latency_funnel}}). \code{n_sent} is the count of contacted recipients
+in the group; \code{campaigns} the distinct campaign count.
+
+A \code{carrier} the uploaded list did not supply is \code{NA}, kept as its own
+group (the "unknown carrier" bucket); this function does not fold carrier aliases
+(e.g. Metro PCS into T-Mobile) -- do that in the caller. Off-channel
+(\code{t2w_external}) completes are unknowable, so \code{completed} is \code{NA}
+on those rows; a group whose completes are \emph{all} \code{NA} returns
+\code{n_completed = NA} (and a \code{NA} completion rate), not a false \code{0}.
 }
 \examples{
 records <- data.frame(
   phone = c("5551112222", "5553334444", "5555556666", "5557778888"),
-  campaign_id = c(101L, 101L, 101L, 101L),
+  campaign_id = c(101L, 101L, 102L, 102L),
   sent = c(1L, 1L, 1L, 1L),
   engaged = c(1L, 1L, 0L, 1L),
   opted_in = c(1L, 0L, 0L, 1L),
@@ -69,10 +86,10 @@ records <- data.frame(
   stringsAsFactors = FALSE
 )
 disposition_funnel(records)                 # by carrier, per disposition_date
-disposition_funnel(records, grain = "all")  # by carrier, collapsed
+disposition_funnel(records, grain = "all", percent = TRUE)
 }
 \seealso{
-\code{\link{disposition_records}} (the raw rows this rolls up),
-  \code{\link{disposition_summary}} (the per-phone rollup),
-  \code{\link{latency_funnel}} (the latency-side sibling)
+\code{\link{campaign_metrics_summary}} (the latency-side analogue),
+  \code{\link{funnel_rates}}, \code{\link{disposition_records}},
+  \code{\link{disposition_summary}} (the per-phone rollup)
 }
