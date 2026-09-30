@@ -54,14 +54,16 @@ standard funnel rates via \code{\link{funnel_rates}}.
 }
 \details{
 It is the disposition analogue of \code{\link{campaign_metrics_summary}} (same
-\code{by} / \code{rates} / \code{percent} shape, a \code{campaigns} count, and
-the shared \code{\link{funnel_rates}} definition), over the disposition
+\code{by} / \code{rates} / \code{percent} interface, a \code{campaigns} count,
+and the shared \code{\link{funnel_rates}} definition), over the disposition
 projection rather than the latency one, plus the disposition-only terminal split
-(\code{n_ineligible} / \code{n_refused}). Because the disposition grain is
-already one row per recipient, "how many per carrier" is a straight
-group-and-sum -- there is no denormalised fan-out to collapse (contrast
-\code{\link{latency_funnel}}). \code{n_sent} is the count of contacted recipients
-in the group; \code{campaigns} the distinct campaign count.
+(\code{n_ineligible} / \code{n_refused}) and a \code{grain} switch for the
+\code{disposition_date} axis (the latency sibling instead takes the date as a
+\code{by} column). Because the disposition grain is already one row per recipient,
+"how many per carrier" is a straight group-and-sum -- there is no denormalised
+fan-out to collapse (contrast \code{\link{latency_funnel}}). The disposition
+dataset is contacted-only (\code{sent == 1}), so \code{n_sent} is the group's row
+count; \code{campaigns} is its distinct campaign count.
 
 A \code{carrier} the uploaded list did not supply is \code{NA}, kept as its own
 group (the "unknown carrier" bucket); this function does not fold carrier aliases

@@ -52,14 +52,16 @@
 #' standard funnel rates via \code{\link{funnel_rates}}.
 #'
 #' It is the disposition analogue of \code{\link{campaign_metrics_summary}} (same
-#' \code{by} / \code{rates} / \code{percent} shape, a \code{campaigns} count, and
-#' the shared \code{\link{funnel_rates}} definition), over the disposition
+#' \code{by} / \code{rates} / \code{percent} interface, a \code{campaigns} count,
+#' and the shared \code{\link{funnel_rates}} definition), over the disposition
 #' projection rather than the latency one, plus the disposition-only terminal split
-#' (\code{n_ineligible} / \code{n_refused}). Because the disposition grain is
-#' already one row per recipient, "how many per carrier" is a straight
-#' group-and-sum -- there is no denormalised fan-out to collapse (contrast
-#' \code{\link{latency_funnel}}). \code{n_sent} is the count of contacted recipients
-#' in the group; \code{campaigns} the distinct campaign count.
+#' (\code{n_ineligible} / \code{n_refused}) and a \code{grain} switch for the
+#' \code{disposition_date} axis (the latency sibling instead takes the date as a
+#' \code{by} column). Because the disposition grain is already one row per recipient,
+#' "how many per carrier" is a straight group-and-sum -- there is no denormalised
+#' fan-out to collapse (contrast \code{\link{latency_funnel}}). The disposition
+#' dataset is contacted-only (\code{sent == 1}), so \code{n_sent} is the group's row
+#' count; \code{campaigns} is its distinct campaign count.
 #'
 #' A \code{carrier} the uploaded list did not supply is \code{NA}, kept as its own
 #' group (the "unknown carrier" bucket); this function does not fold carrier aliases
@@ -164,15 +166,14 @@ disposition_funnel <- function(x, by = "carrier", grain = c("day", "all"),
 
   if (isTRUE(rates)) out <- funnel_rates(out, percent = percent)
 
-  out <- out[do.call(order, out[group_cols]), , drop = FALSE]
+  # Columns are already in canonical order -- data.table (and the empty helper)
+  # emit the group columns first, then the counts in `list()` order, and
+  # funnel_rates() appends the rates last -- so no positional re-select is needed
+  # (which also avoids a duplicate-name select if a group column shared an output
+  # name). Sort rows by the group keys with method = "radix" so the order is
+  # locale-independent, matching disposition_records().
+  ord <- do.call(order, c(as.list(out[group_cols]), list(method = "radix")))
+  out <- out[ord, , drop = FALSE]
   rownames(out) <- NULL
-  count_cols <- c("campaigns", "n_sent", "n_engaged", "n_opted_in",
-                  "n_completed", "n_ineligible", "n_refused")
-  rate_cols <- if (isTRUE(rates)) {
-    c("engagement_rate", "opted_in_rate", "opted_in_engaged_rate",
-      "completion_rate")
-  } else {
-    character(0)
-  }
-  out[, c(group_cols, count_cols, rate_cols), drop = FALSE]
+  out
 }
