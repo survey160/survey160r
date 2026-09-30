@@ -154,21 +154,26 @@ disposition_funnel <- function(x, by = "carrier", grain = c("day", "all"),
   if (nrow(data) == 0L) {
     out <- .disposition_funnel_empty(data, group_cols)
   } else {
-    # Bare column names below are data.table (j) references, not free variables;
-    # NULL-bind them so R CMD check / lintr do not flag them.
-    campaign_id <- sent <- engaged <- opted_in <- completed <-
-      ineligible <- refused <- NULL
+    # `.SD` is the data.table group subset; NULL-bind it so R CMD check / lintr do
+    # not flag the bare symbol. Reading every aggregated column from `.SD` (with
+    # `.SDcols` forcing them all in) keeps them FULL group vectors -- including a
+    # column that also appears in `by`. A bare `by`-column reference inside `j`
+    # would instead collapse to the length-1 group key, miscounting when a caller
+    # groups by a funnel flag (e.g. `by = "opted_in"`).
+    .SD <- NULL
     cnt <- .disposition_funnel_count
     dt <- data.table::as.data.table(data)
     agg <- dt[, list(
-      campaigns    = as.integer(data.table::uniqueN(campaign_id)),
-      n_sent       = as.integer(sum(sent == 1L, na.rm = TRUE)),
-      n_engaged    = cnt(engaged),
-      n_opted_in   = cnt(opted_in),
-      n_completed  = cnt(completed),
-      n_ineligible = cnt(ineligible),
-      n_refused    = cnt(refused)
-    ), by = group_cols]
+      campaigns    = as.integer(data.table::uniqueN(.SD$campaign_id)),
+      n_sent       = as.integer(sum(.SD$sent == 1L, na.rm = TRUE)),
+      n_engaged    = cnt(.SD$engaged),
+      n_opted_in   = cnt(.SD$opted_in),
+      n_completed  = cnt(.SD$completed),
+      n_ineligible = cnt(.SD$ineligible),
+      n_refused    = cnt(.SD$refused)
+    ), by = group_cols,
+    .SDcols = c("campaign_id", "sent", "engaged", "opted_in",
+                "completed", "ineligible", "refused")]
     out <- as.data.frame(agg, stringsAsFactors = FALSE)
   }
 

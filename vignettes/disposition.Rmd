@@ -90,7 +90,7 @@ records <- data.frame(
 disposition_funnel(records, by = "carrier", grain = "all")
 ```
 
-`by` takes any stored dimension -- `carrier`, `survey_mode`, `tracker_client`, `campaign_id`, ... -- or several at once. `grain = "day"` (the default) adds `disposition_date` for a daily series; `grain = "all"` collapses it (equivalently, put `disposition_date` in `by`). Each group carries the counts (`campaigns`, `n_sent` through `n_refused`) and, unless `rates = FALSE`, the shared `funnel_rates()`: `engagement_rate`, `opted_in_rate` (opt-ins / sent), `opted_in_engaged_rate` (opt-ins / engaged), and `completion_rate` -- proportions, or `0`-`100` with `percent = TRUE`. A carrier the uploaded list did not supply is its own `NA` group; an all-off-channel group's completes stay `NA`, not a false `0`.
+`by` takes any stored dimension -- `carrier`, `survey_mode`, `tracker_client`, `campaign_id`, ... -- or several at once. `grain = "day"` (the default) adds `disposition_date` for a daily series -- equivalently, include `disposition_date` in `by` with `grain = "all"`; `grain = "all"` on its own collapses the date axis. Each group carries the counts (`campaigns`, `n_sent` through `n_refused`) and, unless `rates = FALSE`, the shared `funnel_rates()`: `engagement_rate`, `opted_in_rate` (opt-ins / sent), `opted_in_engaged_rate` (opt-ins / engaged), and `completion_rate` -- proportions, or `0`-`100` with `percent = TRUE`. A carrier the uploaded list did not supply is its own `NA` group; an all-off-channel group's completes stay `NA`, not a false `0`.
 
 Roll up the whole projection with `disposition_funnel(dataset, by = "carrier")`, or pre-filter with `disposition_records()` first (by campaign or date) to scope it.
 

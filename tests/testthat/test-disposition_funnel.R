@@ -136,6 +136,19 @@ test_that("empty input returns a typed zero-row frame with the full schema", {
   expect_type(res$completion_rate, "double")
 })
 
+test_that("grouping by a funnel flag still counts the full group (not the key)", {
+  # data.table exposes a `by` column as the length-1 group key inside `j`; reading
+  # the counts from `.SD` keeps them full-group. Regression for the miscount when
+  # the aggregated column is also the grouping column.
+  res <- disposition_funnel(.funnel_records(), by = "opted_in", grain = "all",
+                            rates = FALSE)
+  expect_equal(res$opted_in, c(0L, 1L))
+  expect_equal(res$n_sent, c(5L, 3L))
+  expect_equal(res$n_opted_in, c(0L, 3L))   # the opted_in==1 group has 3 rows, not 1
+  expect_equal(res$n_completed, c(0L, 2L))
+  expect_equal(res$campaigns, c(2L, 2L))
+})
+
 test_that("grain='day' equals putting disposition_date in `by` (idiom equivalence)", {
   recs <- .funnel_records()
   a <- disposition_funnel(recs, by = "carrier", grain = "day")
