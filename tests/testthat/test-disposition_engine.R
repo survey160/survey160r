@@ -199,3 +199,13 @@ test_that("a path with a glob metacharacter is read literally, not expanded", {
     data.frame(phone = c("2015550101", "2015550199")), file.path(dir, "b*.parquet")))
   expect_equal(out$n_campaigns, c(1L, 0L))
 })
+
+test_that("a projection with none of the wanted columns errors cleanly under either engine", {
+  p <- write_disposition_parquet(data.frame(x = 1:2))
+  for (engine in c("duckdb", "nanoparquet")) {
+    expect_error(with_engine(engine, disposition_summary(p)), "missing required column")
+    expect_error(with_engine(engine, disposition_screen(data.frame(phone = "1"), p)),
+                 "missing required column")
+    expect_error(with_engine(engine, disposition_records(p)), "missing required column")
+  }
+})

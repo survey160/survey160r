@@ -352,7 +352,7 @@
   d
 }
 
-# Which engine a phone-scoped read uses. "duckdb" pushes the phone match into the
+# Which engine the disposition reads use. "duckdb" pushes a phone match into the
 # Parquet scan, so only the matching rows ever reach R: on the production
 # projection (~140M rows, ~77M distinct phones) a screen drops from ~26 GB peak /
 # minutes to well under 1 GB / seconds -- the full phone column is never
@@ -455,6 +455,12 @@
   src <- paste0("read_parquet(", DBI::dbQuoteString(con, dataset), ")")
   schema <- DBI::dbGetQuery(con, paste("DESCRIBE SELECT * FROM", src))
   cols <- intersect(columns %||% schema$column_name, schema$column_name)
+  if (length(cols) == 0L) {
+    # None of the wanted columns: a zero-column frame (SQL has no empty SELECT
+    # list), so the caller's missing-column check reports it as on nanoparquet.
+    n <- DBI::dbGetQuery(con, paste("SELECT count(*) AS n FROM", src))$n
+    return(data.frame(row.names = seq_len(n)))
+  }
   quoted <- as.character(DBI::dbQuoteIdentifier(con, cols))
   select <- function(sql) {
     d <- DBI::dbGetQuery(con, sql)
