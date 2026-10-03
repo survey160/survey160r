@@ -283,3 +283,17 @@ test_that("a stored file_row_number column falls back instead of failing the sco
   out <- with_engine("duckdb", disposition_summary(p, phones = "2015550101"))
   expect_equal(out$latest_disposition, "engaged")
 })
+
+test_that("the duckdb read gives DuckDB a spill directory it can create", {
+  skip_if_not_installed("duckdb")
+  captured <- new_capture()
+  real_connect <- DBI::dbConnect
+  local_mocked_bindings(dbConnect = function(drv, ...) {
+    con <- real_connect(drv, ...)
+    captured$temp <- DBI::dbGetQuery(con, "SELECT current_setting('temp_directory') AS t")$t
+    con
+  }, .package = "DBI")
+  with_engine("duckdb", disposition_screen(data.frame(phone = "2015550101"), .engine_fixture()))
+  expect_true(dir.exists(dirname(captured$temp)))
+  expect_false(dir.exists(captured$temp))   # cleaned up on exit
+})

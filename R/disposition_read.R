@@ -456,10 +456,17 @@
 .disposition_read_duckdb <- function(dataset, columns = NULL, phones = NULL) {
   # shared_home = FALSE (newer duckdb) only silences a note about the extension
   # directory, which this read never uses.
-  drv <- do.call(duckdb::duckdb,
-                 if ("shared_home" %in% names(formals(duckdb::duckdb))) list(shared_home = FALSE))
+  # An explicit spill directory (a fresh path under the session tempdir, which
+  # DuckDB creates on demand) keeps a query that outgrows memory working: the
+  # default under shared_home = FALSE points into a directory that does not
+  # exist, so a spill would fail.
+  spill <- tempfile("survey160r-duckdb-")
+  on.exit(unlink(spill, recursive = TRUE), add = TRUE)
+  drv <- do.call(duckdb::duckdb, c(
+    list(config = list(temp_directory = spill)),
+    if ("shared_home" %in% names(formals(duckdb::duckdb))) list(shared_home = FALSE)))
   con <- DBI::dbConnect(drv)
-  on.exit(DBI::dbDisconnect(con, shutdown = TRUE), add = TRUE)
+  on.exit(DBI::dbDisconnect(con, shutdown = TRUE), add = TRUE, after = FALSE)
   src <- paste0("read_parquet(", DBI::dbQuoteString(con, dataset), ")")
   schema <- DBI::dbGetQuery(con, paste("DESCRIBE SELECT * FROM", src))
   cols <- intersect(columns %||% schema$column_name, schema$column_name)

@@ -56,8 +56,8 @@
   used automatically), `disposition_screen()` -- and `disposition_summary()` /
   `disposition_records()` when given `phones` -- read only the sample's rows
   instead of loading the whole projection. On the production projection (~140M
-  rows) a 10k-phone screen drops from ~150 s and ~26 GB peak RAM to ~2 s and
-  ~0.6 GB; a 200k-phone screen from ~200 s to ~3 s, still under 1 GB. Results are
+  rows) a 10k-phone screen drops from ~150 s and ~26 GB peak RAM to ~2 s (~4-5 s
+  on a 4-core laptop) and ~0.6 GB; a 200k-phone screen from ~200 s to ~3 s, still under 1 GB. Results are
   identical; a 4-core, 4 GB-capped run screens 200k phones in ~6 s where the old
   code was killed for running out of memory. Without `duckdb` the readers fall back to the whole-file
   `nanoparquet` read (a phone-scoped read of a file over 100 MB says once per
