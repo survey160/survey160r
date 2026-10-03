@@ -338,7 +338,8 @@
 .disposition_read_parquet <- function(dataset, columns = .DISPOSITION_READ_COLS) {
   .disposition_check_path(dataset)
   if (.disposition_use_duckdb(dataset)) {
-    return(.disposition_read_duckdb(dataset, columns = columns))
+    d <- .disposition_read_duckdb(dataset, columns = columns)
+    if (!is.null(d)) return(d)
   }
   meta <- .disposition_parquet_meta(dataset)
   if (meta$duckdb && !is.null(columns)) {
@@ -415,7 +416,7 @@
 # production projection, ~20 GB, dominates either way.) On a large file it points
 # the caller at duckdb, once per session, since only that engine is low-memory.
 .disposition_read_nanoparquet <- function(dataset, phones, columns, check_dates) {
-  if (file.size(dataset) > 1e8) {
+  if (file.size(dataset) > 1e8 && !requireNamespace("duckdb", quietly = TRUE)) {
     rlang::inform(
       c(paste("Reading the disposition projection without duckdb loads all of it",
               "into memory (tens of GB for the full production projection)."),
@@ -444,10 +445,9 @@
 # request vector, so DuckDB streams the scan and hands R only the matched rows. A
 # scoped read returns NULL for a non-string stored phone (a numeric fixture): R's
 # as.character() formatting, which .normalize_phone relies on, has no exact SQL
-# twin, so the caller falls back to the in-R match. Rows come back in file order
-# (DuckDB's default preserve_insertion_order -- do not turn it off): the rollup
-# breaks a full tie (same phone, date, and campaign id) by input order, exactly as
-# on a nanoparquet read.
+# twin, so the caller falls back to the in-R match. Rows come back in file order:
+# a plain scan keeps it (DuckDB's default preserve_insertion_order -- do not turn
+# it off) and the scoped query sorts by file row number.
 .disposition_read_duckdb <- function(dataset, columns = NULL, phones = NULL,
                                      check_dates = FALSE) {
   con <- DBI::dbConnect(duckdb::duckdb(shared_home = FALSE))
@@ -460,6 +460,16 @@
     # list), so the caller's missing-column check reports it as on nanoparquet.
     n <- DBI::dbGetQuery(con, paste("SELECT count(*) AS n FROM", src))$n
     return(data.frame(row.names = seq_len(n)))
+  }
+  # DuckDB hands these column types to R exactly as nanoparquet does (DATE after
+  # the integer re-backing below). Anything else -- a TIMESTAMP (tzone differs),
+  # or a file whose ARROW:schema metadata lets nanoparquet restore richer R types
+  # (a factor) -- returns NULL so the caller reads with nanoparquet instead. The
+  # production projection (DuckDB-written, plain types) always stays here.
+  plain <- c("VARCHAR", "INTEGER", "BIGINT", "DOUBLE", "FLOAT", "BOOLEAN", "DATE")
+  if (!all(schema$column_type[match(cols, schema$column_name)] %in% plain) ||
+        .disposition_arrow_annotated(con, dataset)) {
+    return(NULL)
   }
   quoted <- as.character(DBI::dbQuoteIdentifier(con, cols))
   select <- function(sql) {
@@ -484,21 +494,37 @@
                           data.frame(phone = phones, stringsAsFactors = FALSE))
   # Only the wanted columns are selected at every level (never `*`), so a file
   # column that happens to share the helper name s160_digits cannot shadow it.
-  inner <- paste(c(quoted, "regexp_replace(phone, '[^0-9]', '', 'g') AS s160_digits"),
-                 collapse = ", ")
+  inner <- paste(c(quoted, "regexp_replace(phone, '[^0-9]', '', 'g') AS s160_digits",
+                   "file_row_number AS s160_row"), collapse = ", ")
   outer <- quoted
   outer[cols == "phone"] <- paste(
     "CASE WHEN s160_digits = '' THEN NULL",
     "WHEN length(s160_digits) = 11 AND starts_with(s160_digits, '1')",
     "THEN substr(s160_digits, 2) ELSE s160_digits END AS phone")
+  # A parallel semi-join does NOT keep file order (unlike a plain scan), so sort
+  # the matched rows back into it by file row number: the rollup breaks a full
+  # tie (same phone, date, and campaign id) by input order, as on nanoparquet.
+  numbered <- paste0("read_parquet(", DBI::dbQuoteString(con, dataset),
+                     ", file_row_number = true)")
   d <- select(paste0(
-    "SELECT * FROM (SELECT ", paste(outer, collapse = ", "),
-    " FROM (SELECT ", inner, " FROM ", src, ")) ",
-    "WHERE phone IN (SELECT phone FROM s160_req)"))
+    "SELECT * EXCLUDE (s160_row) FROM (SELECT ", paste(c(outer, "s160_row"), collapse = ", "),
+    " FROM (SELECT ", inner, " FROM ", numbered, ")) ",
+    "WHERE phone IN (SELECT phone FROM s160_req) ORDER BY s160_row"))
   all_na <- check_dates && "disposition_date" %in% cols &&
     DBI::dbGetQuery(con, paste0("SELECT count(*) > 0 AND count(disposition_date) = 0",
                                 " AS all_na FROM ", src))$all_na
   .disposition_tag_dates(d, check_dates, all_na)
+}
+
+# Whether the file carries ARROW:schema metadata (nanoparquet and arrow write
+# it). nanoparquet restores R types from it -- a factor, a time with a tzone --
+# that DuckDB does not, so such a file reads with nanoparquet to keep the exact
+# types. DuckDB-written files (production) carry none: one cheap footer query.
+.disposition_arrow_annotated <- function(con, dataset) {
+  keys <- DBI::dbGetQuery(con, paste0(
+    "SELECT decode(key) AS key FROM parquet_kv_metadata(",
+    DBI::dbQuoteString(con, dataset), ")"))$key
+  "ARROW:schema" %in% keys
 }
 
 # Attach the whole-dataset all-NA-date answer for .disposition_filter's warning.

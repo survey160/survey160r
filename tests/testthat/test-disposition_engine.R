@@ -5,7 +5,8 @@
 # return exactly the same frames, so most tests here run a reader under each
 # engine and compare. Fixtures use write_disposition_parquet() (helper-stubs.R).
 
-skip_if_not_installed("duckdb")
+# Tests that exercise the duckdb engine skip when duckdb is not installed; the
+# engine-agnostic ones run either way.
 
 # Run `expr` under one engine.
 with_engine <- function(engine, expr) {
@@ -40,6 +41,7 @@ with_engine <- function(engine, expr) {
 }
 
 test_that("every reader returns the same frame under both engines", {
+  skip_if_not_installed("duckdb")
   p <- .engine_fixture()
   phones <- c("2015550101", "1-201-555-0102", "2015550103", "2015550104",
               "9995550000", "", NA)
@@ -63,6 +65,7 @@ test_that("every reader returns the same frame under both engines", {
 })
 
 test_that("the scoped read matches the rollup's own phone normalization", {
+  skip_if_not_installed("duckdb")
   p <- .engine_fixture()
   out <- with_engine("duckdb", disposition_screen(
     data.frame(phone = c("+1 (201) 555-0101", "2015550102"), stringsAsFactors = FALSE), p))
@@ -107,6 +110,7 @@ test_that("the date span ignores NA dates and is a plain Date (no stray dim)", {
 })
 
 test_that("a date bound on an all-NA date column warns under either engine", {
+  skip_if_not_installed("duckdb")
   d <- rbind(.disposition_row("2015550101", 1, engaged = 1),
              .disposition_row("2015550102", 1))
   p <- write_disposition_parquet(d)
@@ -120,6 +124,7 @@ test_that("a date bound on an all-NA date column warns under either engine", {
 })
 
 test_that("a scoped read warns on all-NA dates only when the WHOLE file is undated", {
+  skip_if_not_installed("duckdb")
   # The matched phone is undated, but another row is dated: no warning, since
   # .disposition_filter judges the whole dataset, not the matched subset.
   d <- rbind(.disposition_row("2015550101", 1, engaged = 1),
@@ -132,6 +137,7 @@ test_that("a scoped read warns on all-NA dates only when the WHOLE file is undat
 })
 
 test_that("a numeric stored phone falls back to the in-R match", {
+  skip_if_not_installed("duckdb")
   d <- data.frame(phone = c(2015550101, 12015550101), campaign_id = 1:2,
                   engaged = 1L, opted_in = 0L, completed = 0L, web_complete = 0L,
                   terminated = 0L)
@@ -142,6 +148,7 @@ test_that("a numeric stored phone falls back to the in-R match", {
 })
 
 test_that("a projection without a phone column errors under either engine", {
+  skip_if_not_installed("duckdb")
   p <- write_disposition_parquet(data.frame(campaign_id = 1L, engaged = 1L))
   for (engine in c("duckdb", "nanoparquet")) {
     expect_error(with_engine(engine, disposition_screen(data.frame(phone = "1"), p)),
@@ -166,6 +173,7 @@ test_that("a DuckDB-written file with no phone column errors on the nanoparquet 
 })
 
 test_that("the engine option is validated, and auto picks duckdb when installed", {
+  skip_if_not_installed("duckdb")
   with_engine("auto", expect_equal(.disposition_engine(), "duckdb"))
   with_engine("nanoparquet", expect_equal(.disposition_engine(), "nanoparquet"))
   with_engine("duckdb", expect_equal(.disposition_engine(), "duckdb"))
@@ -182,12 +190,14 @@ test_that("without duckdb, auto falls back to nanoparquet and a forced duckdb er
 test_that("a large file on the nanoparquet engine points the caller at duckdb", {
   withr::local_options(rlib_message_verbosity = "verbose")
   p <- .engine_fixture()
-  local_mocked_bindings(file.size = function(...) 2e8, .package = "base")
+  local_mocked_bindings(file.size = function(...) 2e8,
+                        requireNamespace = function(...) FALSE, .package = "base")
   expect_message(with_engine("nanoparquet", disposition_screen(data.frame(phone = "1"), p)),
                  "install.packages")
 })
 
 test_that("a path with a glob metacharacter is read literally, not expanded", {
+  skip_if_not_installed("duckdb")
   # DuckDB's read_parquet() would expand "b*.parquet" to every match; the
   # nanoparquet read takes the path literally.
   dir <- withr::local_tempdir()
@@ -201,6 +211,7 @@ test_that("a path with a glob metacharacter is read literally, not expanded", {
 })
 
 test_that("a projection with none of the wanted columns errors cleanly under either engine", {
+  skip_if_not_installed("duckdb")
   p <- write_disposition_parquet(data.frame(x = 1:2))
   for (engine in c("duckdb", "nanoparquet")) {
     expect_error(with_engine(engine, disposition_summary(p)), "missing required column")
@@ -211,10 +222,55 @@ test_that("a projection with none of the wanted columns errors cleanly under eit
 })
 
 test_that("a stored column named like the SQL helper does not shadow the phone match", {
+  skip_if_not_installed("duckdb")
   d <- .disposition_row("2015550101", 1, engaged = 1)
   d$s160_digits <- "x"
   d$s160_phone <- "y"
   p <- write_disposition_parquet(d)
   out <- with_engine("duckdb", disposition_screen(data.frame(phone = "2015550101"), p))
   expect_equal(out$latest_disposition, "engaged")
+})
+
+test_that("a scoped duckdb read keeps file order across row groups (tie-break parity)", {
+  skip_if_not_installed("duckdb")
+  # Many row groups and full (phone, date, campaign) ties whose flags differ:
+  # latest/best pick the first such row in FILE order, so a scoped read must hand
+  # rows back in file order even though DuckDB matches them in parallel.
+  set.seed(1)
+  n <- 40000L
+  phones <- sprintf("201555%04d", sample.int(2000L, n, replace = TRUE))
+  d <- data.frame(phone = phones, campaign_id = sample(1:3, n, TRUE),
+                  engaged = sample(0:1, n, TRUE), opted_in = sample(0:1, n, TRUE),
+                  completed = 0L, web_complete = 0L, terminated = sample(0:1, n, TRUE),
+                  disposition_date = as.Date("2026-01-01"), stringsAsFactors = FALSE)
+  p <- tempfile(fileext = ".parquet")
+  nanoparquet::write_parquet(d, p, options = nanoparquet::parquet_options(
+    num_rows_per_row_group = 500L, write_arrow_metadata = FALSE))
+  req <- sprintf("201555%04d", 1:1000)
+  for (call in list(function() disposition_summary(p, phones = req),
+                    function() disposition_records(p, phones = req))) {
+    expect_identical(with_engine("duckdb", call()), with_engine("nanoparquet", call()))
+  }
+})
+
+test_that("arrow-annotated factors and timestamps are read with nanoparquet's types", {
+  skip_if_not_installed("duckdb")
+  d <- .disposition_row(c("2015550101", "2015550102"), 1:2, engaged = 1)
+  d$carrier <- factor(c("verizon", "att"), levels = c("verizon", "att"))
+  p <- tempfile(fileext = ".parquet")
+  nanoparquet::write_parquet(d, p)   # default: with ARROW:schema metadata
+  rec <- with_engine("duckdb", disposition_records(p))
+  expect_s3_class(rec$carrier, "factor")
+  expect_identical(rec, with_engine("nanoparquet", disposition_records(p)))
+  expect_identical(with_engine("duckdb", disposition_records(p, phones = "2015550101")),
+                   with_engine("nanoparquet", disposition_records(p, phones = "2015550101")))
+  d2 <- .disposition_row("2015550101", 1, engaged = 1)
+  d2$disposition_date <- as.POSIXct("2026-01-01 23:00", tz = "UTC")
+  p2 <- tempfile(fileext = ".parquet")
+  con <- DBI::dbConnect(duckdb::duckdb(shared_home = FALSE))
+  duckdb::duckdb_register(con, "d2", d2)
+  DBI::dbExecute(con, sprintf("COPY d2 TO %s (FORMAT parquet)", DBI::dbQuoteString(con, p2)))
+  DBI::dbDisconnect(con, shutdown = TRUE)
+  expect_identical(with_engine("duckdb", disposition_records(p2, phones = "2015550101")),
+                   with_engine("nanoparquet", disposition_records(p2, phones = "2015550101")))
 })

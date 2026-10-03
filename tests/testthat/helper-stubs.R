@@ -279,9 +279,15 @@ stub_gcs_list <- function(rows, env = parent.frame()) {
 # Shared by the disposition reader tests (disposition_summary/records/screen),
 # which build small per-(phone, campaign) frames and read them back through the
 # real nanoparquet path -- no arrow, no network.
+#
+# Written WITHOUT ARROW:schema metadata, like the DuckDB-written production
+# projection, so the readers take the duckdb engine when it is installed (an
+# arrow-annotated file always reads with nanoparquet; see
+# .disposition_arrow_annotated).
 write_disposition_parquet <- function(rows) {
   p <- tempfile(fileext = ".parquet")
-  nanoparquet::write_parquet(rows, p)
+  nanoparquet::write_parquet(rows, p, options = nanoparquet::parquet_options(
+    write_arrow_metadata = FALSE))
   p
 }
 
