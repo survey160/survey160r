@@ -337,8 +337,8 @@ test_that(".normalize_phone keeps its exact edge cases", {
 
 test_that("an 11-digit number without a leading 1 does not match under either engine", {
   p <- write_disposition_parquet(.disposition_row("22015550101", 1, engaged = 1))
-  for (engine in c("duckdb", "nanoparquet")) {
-    if (engine == "duckdb") skip_if_not_installed("duckdb")
+  engines <- c(if (requireNamespace("duckdb", quietly = TRUE)) "duckdb", "nanoparquet")
+  for (engine in engines) {
     out <- with_engine(engine, disposition_screen(data.frame(phone = "2015550101"), p))
     expect_equal(out$n_campaigns, 0L)
   }
