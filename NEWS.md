@@ -25,6 +25,18 @@
 
 ## New features
 
+* **A phone-scoped disposition read on the default engine now offers to install
+  `duckdb` instead of silently loading the whole projection.** When a scoped read
+  (`disposition_screen()`, or `disposition_summary()` / `disposition_records()`
+  with `phones`) hits a projection over 100 MB and `duckdb` is not installed, an
+  interactive session prompts to install it (via `rlang::check_installed()`) and a
+  non-interactive one stops with the same guidance, rather than reading the whole
+  file into memory (tens of GB). Set
+  `options(survey160r.disposition_engine = "nanoparquet")` to take the whole-file
+  read deliberately (no prompt), or install `duckdb`. Attaching the package without
+  `duckdb` (`library(survey160r)`) now prints a one-line install hint. Small files,
+  glob paths, and a pinned engine are unaffected. This replaces the previous
+  once-per-session message.
 * **New `disposition_funnel()` rolls the disposition dataset up to funnel counts +
   rates by dimension.** The disposition analogue of `campaign_metrics_summary()`:
   same `by` / `rates` / `percent` shape, a `campaigns` count, and the shared

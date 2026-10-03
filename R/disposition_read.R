@@ -407,27 +407,51 @@
 .disposition_read_scoped <- function(dataset, phones,
                                      columns = .DISPOSITION_READ_COLS) {
   .disposition_check_path(dataset)
+  .disposition_offer_duckdb(dataset)
   d <- if (.disposition_use_duckdb(dataset)) {
     .disposition_read_duckdb(dataset, columns, phones)
   }
   d %||% .disposition_match_in_r(dataset, phones, columns)
 }
 
-# Fallback for .disposition_read_scoped() (no duckdb, or a file the duckdb read
-# declines): the nanoparquet projected read, then the phone match in R. (A
-# two-phase read -- `phone` alone, then the other columns -- does not lower the
-# peak: nanoparquet's own per-read overhead on the production projection, ~20 GB,
-# dominates either way.) On a large file it points
-# the caller at duckdb, once per session, since only that engine is low-memory
-# (over 100 MB means a real projection, not a test fixture or small extract).
-.disposition_match_in_r <- function(dataset, phones, columns) {
-  if (file.size(dataset) > 1e8 && !requireNamespace("duckdb", quietly = TRUE)) {
-    rlang::inform(
-      c(paste("Reading the disposition projection without duckdb loads all of it",
-              "into memory (tens of GB for the full production projection)."),
-        i = "install.packages(\"duckdb\") for a low-memory, much faster screen."),
-      .frequency = "once", .frequency_id = "survey160r_disposition_duckdb")
+# On the default "auto" engine, a phone-scoped read of a real projection (over
+# 100 MB) needs duckdb to stay low-memory: without it the whole file is read into
+# R (tens of GB). Rather than do that silently, offer duckdb -- an interactive
+# session prompts to install it (rlang::check_installed()), a non-interactive one
+# aborts with the same guidance. The message names the escape hatch,
+# options(survey160r.disposition_engine = "nanoparquet"), for a caller that cannot
+# add duckdb and accepts the whole-file read. No offer when the engine is pinned
+# (the caller has chosen), the path is a glob (duckdb is declined anyway), the file
+# is small (a fixture or extract, not the production projection), or duckdb is
+# already installed. After an accepted install, .disposition_use_duckdb() re-resolves
+# to the duckdb path on the same call.
+.disposition_offer_duckdb <- function(dataset) {
+  if (!identical(getOption("survey160r.disposition_engine", "auto"), "auto")) {
+    return(invisible())
   }
+  if (grepl("[*?[]", dataset) || file.size(dataset) <= 1e8) return(invisible())
+  if (requireNamespace("duckdb", quietly = TRUE) &&
+        requireNamespace("DBI", quietly = TRUE)) {
+    return(invisible())
+  }
+  rlang::check_installed(
+    c("duckdb", "DBI"),
+    reason = paste(
+      "to screen the disposition projection without reading it entirely into",
+      "memory (tens of GB for the production projection). Or set",
+      "options(survey160r.disposition_engine = \"nanoparquet\") to force the",
+      "whole-file read."))
+  invisible()
+}
+
+# Fallback for .disposition_read_scoped() (engine pinned to nanoparquet, a glob
+# path, a small file, or a file the duckdb read declines): the nanoparquet
+# projected read, then the phone match in R. (A two-phase read -- `phone` alone,
+# then the other columns -- does not lower the peak: nanoparquet's own per-read
+# overhead on the production projection, ~20 GB, dominates either way.) The duckdb
+# offer for the default-engine large-file case is made upstream in
+# .disposition_offer_duckdb(), so this path stays quiet.
+.disposition_match_in_r <- function(dataset, phones, columns) {
   d <- .disposition_read_nanoparquet(dataset, columns)
   if (!"phone" %in% names(d)) return(d[0L, , drop = FALSE])
   all_na <- "disposition_date" %in% names(d) && nrow(d) > 0L &&
@@ -891,11 +915,15 @@ disposition_records <- function(dataset, phones = NULL, campaign_ids = NULL,
 #' With the \pkg{duckdb} package installed (Suggests; used automatically), the
 #' sample's phone match runs inside the Parquet scan, so only the sample's rows
 #' are read into R: screening the full production projection (over a hundred
-#' million rows) takes seconds and well under 1 GB of RAM. Without it, the
-#' projection is read whole with \pkg{nanoparquet}, which needs tens of GB.
-#' \code{options(survey160r.disposition_engine = "nanoparquet")} forces the
-#' fallback; \code{"duckdb"} errors if the package is not installed, and the
-#' default \code{"auto"} uses duckdb when installed. The DuckDB-written
+#' million rows) takes seconds and well under 1 GB of RAM. Without it, reading a
+#' large projection (over 100 MB) on the default \code{"auto"} engine would load
+#' the whole file into R (tens of GB), so survey160r instead offers \pkg{duckdb}:
+#' an interactive session prompts to install it, a non-interactive one stops with
+#' the same guidance.
+#' \code{options(survey160r.disposition_engine = "nanoparquet")} takes the
+#' whole-file \pkg{nanoparquet} read instead (no prompt); \code{"duckdb"} errors
+#' if the package is not installed, and the default \code{"auto"} uses duckdb when
+#' installed. The DuckDB-written
 #' production projection always takes the duckdb path; a few unusual files (a
 #' path with glob characters, a file written by arrow or nanoparquet, a column
 #' type outside the plain set) are read with nanoparquet. The result is identical
