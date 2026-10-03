@@ -274,3 +274,12 @@ test_that("arrow-annotated factors and timestamps are read with nanoparquet's ty
   expect_identical(with_engine("duckdb", disposition_records(p2, phones = "2015550101")),
                    with_engine("nanoparquet", disposition_records(p2, phones = "2015550101")))
 })
+
+test_that("a stored file_row_number column falls back instead of failing the scoped read", {
+  skip_if_not_installed("duckdb")
+  d <- .disposition_row("2015550101", 1, engaged = 1)
+  d$File_Row_Number <- 99L
+  p <- write_disposition_parquet(d)
+  out <- with_engine("duckdb", disposition_summary(p, phones = "2015550101"))
+  expect_equal(out$latest_disposition, "engaged")
+})

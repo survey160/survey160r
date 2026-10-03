@@ -170,6 +170,7 @@
     warning("`date_from`/`date_to` filter on `disposition_date`, which is NA for ",
             "every row here; the filter returns no rows.", call. = FALSE)
   }
+  attr(data, "all_dates_na") <- NULL
   if (!is.null(date_from)) {
     keep <- keep & !is.na(data$disposition_date) & data$disposition_date >= date_from
   }
@@ -178,10 +179,7 @@
   }
   # A scoped read usually keeps every row; skip the (multi-second at millions of
   # rows) data-frame copy then.
-  if (all(keep)) {
-    attr(data, "all_dates_na") <- NULL
-    return(data)
-  }
+  if (all(keep)) return(data)
   data[keep, , drop = FALSE]
 }
 
@@ -320,9 +318,9 @@
 }
 
 # I/O: validate the path, read the projection, then (when `columns` is given)
-# subset to those columns. Reads with duckdb when .disposition_use_duckdb() and
-# the file qualifies (see .disposition_read_duckdb); otherwise as below. `columns` = the summary read set by default; `NULL`
-# (disposition_records()) keeps every stored column.
+# subset to those columns. `columns` = the summary read set by default; `NULL`
+# keeps every stored column. Reads with duckdb when .disposition_use_duckdb() and
+# the file qualifies (see .disposition_read_duckdb), else with nanoparquet below.
 #
 # Column-project via nanoparquet's `col_select` ONLY for a writer whose null
 # encoding nanoparquet 0.5.1 decodes correctly under `col_select` -- verified for
@@ -342,6 +340,11 @@
     d <- .disposition_read_duckdb(dataset, columns = columns)
     if (!is.null(d)) return(d)
   }
+  .disposition_read_nanoparquet(dataset, columns)
+}
+
+# The nanoparquet projected read (see the col_select note above).
+.disposition_read_nanoparquet <- function(dataset, columns) {
   meta <- .disposition_parquet_meta(dataset)
   if (meta$duckdb && !is.null(columns)) {
     cols <- intersect(columns, meta$names)
@@ -398,25 +401,26 @@
 # the columns it has, so the caller's missing-column check reports it.
 #
 # The date filters' all-NA warning (.disposition_filter) is about the WHOLE
-# dataset, which this frame no longer is; with `check_dates` the whole-file answer
-# rides along as the `all_dates_na` attribute so the warning fires exactly as on a
-# full read.
+# dataset, which this frame no longer is, so the whole-file answer rides along as
+# the `all_dates_na` attribute (when the file has `disposition_date`) and the
+# warning fires exactly as on a full read.
 .disposition_read_scoped <- function(dataset, phones,
-                                     columns = .DISPOSITION_READ_COLS,
-                                     check_dates = FALSE) {
+                                     columns = .DISPOSITION_READ_COLS) {
   .disposition_check_path(dataset)
   d <- if (.disposition_use_duckdb(dataset)) {
-    .disposition_read_duckdb(dataset, columns, phones, check_dates)
+    .disposition_read_duckdb(dataset, columns, phones)
   }
-  d %||% .disposition_read_nanoparquet(dataset, phones, columns, check_dates)
+  d %||% .disposition_match_in_r(dataset, phones, columns)
 }
 
-# nanoparquet fallback for .disposition_read_scoped(): the plain projected read,
-# then the phone match in R. (A two-phase read -- `phone` alone, then the other
-# columns -- does not lower the peak: nanoparquet's own per-read overhead on the
-# production projection, ~20 GB, dominates either way.) On a large file it points
-# the caller at duckdb, once per session, since only that engine is low-memory.
-.disposition_read_nanoparquet <- function(dataset, phones, columns, check_dates) {
+# Fallback for .disposition_read_scoped() (no duckdb, or a file the duckdb read
+# declines): the nanoparquet projected read, then the phone match in R. (A
+# two-phase read -- `phone` alone, then the other columns -- does not lower the
+# peak: nanoparquet's own per-read overhead on the production projection, ~20 GB,
+# dominates either way.) On a large file it points
+# the caller at duckdb, once per session, since only that engine is low-memory
+# (over 100 MB means a real projection, not a test fixture or small extract).
+.disposition_match_in_r <- function(dataset, phones, columns) {
   if (file.size(dataset) > 1e8 && !requireNamespace("duckdb", quietly = TRUE)) {
     rlang::inform(
       c(paste("Reading the disposition projection without duckdb loads all of it",
@@ -424,14 +428,14 @@
         i = "install.packages(\"duckdb\") for a low-memory, much faster screen."),
       .frequency = "once", .frequency_id = "survey160r_disposition_duckdb")
   }
-  d <- .disposition_read_parquet(dataset, columns = columns)
+  d <- .disposition_read_nanoparquet(dataset, columns)
   if (!"phone" %in% names(d)) return(d[0L, , drop = FALSE])
-  all_na <- check_dates && "disposition_date" %in% names(d) && nrow(d) > 0L &&
+  all_na <- "disposition_date" %in% names(d) && nrow(d) > 0L &&
     all(is.na(d$disposition_date))
   d$phone <- .normalize_phone(d$phone)
   d <- d[!is.na(d$phone) & d$phone %in% phones, , drop = FALSE]
   rownames(d) <- NULL
-  .disposition_tag_dates(d, check_dates, all_na)
+  .disposition_tag_dates(d, all_na)
 }
 
 # DuckDB engine, for both reads. The schema comes from DuckDB's own footer read
@@ -449,18 +453,20 @@
 # twin, so the caller falls back to the in-R match. Rows come back in file order:
 # a plain scan keeps it (DuckDB's default preserve_insertion_order -- do not turn
 # it off) and the scoped query sorts by file row number.
-.disposition_read_duckdb <- function(dataset, columns = NULL, phones = NULL,
-                                     check_dates = FALSE) {
-  con <- DBI::dbConnect(duckdb::duckdb(shared_home = FALSE))
+.disposition_read_duckdb <- function(dataset, columns = NULL, phones = NULL) {
+  # shared_home = FALSE (newer duckdb) only silences a note about the extension
+  # directory, which this read never uses.
+  drv <- do.call(duckdb::duckdb,
+                 if ("shared_home" %in% names(formals(duckdb::duckdb))) list(shared_home = FALSE))
+  con <- DBI::dbConnect(drv)
   on.exit(DBI::dbDisconnect(con, shutdown = TRUE), add = TRUE)
   src <- paste0("read_parquet(", DBI::dbQuoteString(con, dataset), ")")
   schema <- DBI::dbGetQuery(con, paste("DESCRIBE SELECT * FROM", src))
   cols <- intersect(columns %||% schema$column_name, schema$column_name)
   if (length(cols) == 0L) {
-    # None of the wanted columns: a zero-column frame (SQL has no empty SELECT
-    # list), so the caller's missing-column check reports it as on nanoparquet.
-    n <- DBI::dbGetQuery(con, paste("SELECT count(*) AS n FROM", src))$n
-    return(data.frame(row.names = seq_len(n)))
+    # None of the wanted columns: an empty frame (SQL has no empty SELECT list),
+    # so the caller's missing-column check reports it as on nanoparquet.
+    return(data.frame())
   }
   # DuckDB hands these column types to R exactly as nanoparquet does (DATE after
   # the integer re-backing below). Anything else -- a TIMESTAMP (tzone differs),
@@ -488,7 +494,10 @@
   if (!"phone" %in% cols) {
     return(select(paste("SELECT", paste(quoted, collapse = ", "), "FROM", src, "LIMIT 0")))
   }
-  if (!identical(schema$column_type[match("phone", schema$column_name)], "VARCHAR")) {
+  # A stored column named file_row_number (any case) clashes with the row-number
+  # option the ordered query needs; such a file matches in R instead.
+  if (!identical(schema$column_type[match("phone", schema$column_name)], "VARCHAR") ||
+        "file_row_number" %in% tolower(schema$column_name)) {
     return(NULL)
   }
   duckdb::duckdb_register(con, "s160_req",
@@ -511,10 +520,11 @@
     "SELECT * EXCLUDE (s160_row) FROM (SELECT ", paste(c(outer, "s160_row"), collapse = ", "),
     " FROM (SELECT ", inner, " FROM ", numbered, ")) ",
     "WHERE phone IN (SELECT phone FROM s160_req) ORDER BY s160_row"))
-  all_na <- check_dates && "disposition_date" %in% cols &&
+  # Answered from the footer statistics, not a column scan (~0.1 s on prod).
+  all_na <- "disposition_date" %in% cols &&
     DBI::dbGetQuery(con, paste0("SELECT count(*) > 0 AND count(disposition_date) = 0",
                                 " AS all_na FROM ", src))$all_na
-  .disposition_tag_dates(d, check_dates, all_na)
+  .disposition_tag_dates(d, all_na)
 }
 
 # Whether the file carries ARROW:schema metadata (nanoparquet and arrow write
@@ -529,8 +539,8 @@
 }
 
 # Attach the whole-dataset all-NA-date answer for .disposition_filter's warning.
-.disposition_tag_dates <- function(d, check_dates, all_na) {
-  if (check_dates) attr(d, "all_dates_na") <- isTRUE(all_na)
+.disposition_tag_dates <- function(d, all_na) {
+  attr(d, "all_dates_na") <- isTRUE(all_na)
   d
 }
 
@@ -723,8 +733,7 @@ disposition_summary <- function(x, phones = NULL, campaign_ids = NULL,
     if (is.null(phones)) {
       .disposition_read_parquet(x)
     } else {
-      .disposition_read_scoped(x, .disposition_request_phones(phones),
-                               check_dates = !is.null(date_from) || !is.null(date_to))
+      .disposition_read_scoped(x, .disposition_request_phones(phones))
     }
   } else {
     stop_s160(paste("`x` must be a disposition Parquet path (a single string)",
@@ -818,8 +827,7 @@ disposition_records <- function(dataset, phones = NULL, campaign_ids = NULL,
   raw <- if (is.null(req)) {
     .disposition_read_parquet(dataset, columns = .DISPOSITION_RECORD_COLS)
   } else {
-    .disposition_read_scoped(dataset, req, columns = .DISPOSITION_RECORD_COLS,
-                             check_dates = !is.null(date_from) || !is.null(date_to))
+    .disposition_read_scoped(dataset, req, columns = .DISPOSITION_RECORD_COLS)
   }
   missing_cols <- setdiff(c("phone", "campaign_id"), names(raw))
   if (length(missing_cols) > 0L) {
@@ -918,8 +926,7 @@ disposition_screen <- function(sample, dataset, phone_col = "phone",
   # rows ever load) and the rollup, and the full vector maps rows back 1:1.
   norm <- .normalize_phone(sample[[phone_col]])
   req <- unique(norm[!is.na(norm)])
-  data <- .disposition_read_scoped(dataset, req,
-                                   check_dates = !is.null(date_from) || !is.null(date_to))
+  data <- .disposition_read_scoped(dataset, req)
   summ <- .disposition_rollup(data, phones = req, campaign_ids = campaign_ids,
                               date_from = date_from, date_to = date_to,
                               fn = "disposition_screen")

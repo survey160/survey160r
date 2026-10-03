@@ -31,7 +31,7 @@ Imports:
 Suggests:
     askpass,
     DBI,
-    duckdb,
+    duckdb (>= 1.0.0),
     testthat (>= 3.0.0),
     mockery,
     withr,
