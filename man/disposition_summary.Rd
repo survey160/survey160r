@@ -86,8 +86,16 @@ A data frame, one row per phone, columns in this order:
   \code{opted_in} -- and the campaign that reached it); and
   \code{first_disposition_date} / \code{last_disposition_date} (earliest and
   latest \code{disposition_date} across the phone's campaigns, \code{NA} when
-  none is dated). A never-contacted phone has \code{n_campaigns = 0}. Campaign
-  ids are returned as character.
+  none is dated). A never-contacted phone has \code{n_campaigns = 0} and
+  \code{campaigns = NA}; a contacted phone whose campaign ids are all
+  \code{NA} has \code{campaigns = ""}. Campaign ids are returned as character.
+
+  The counts assume the dataset's grain -- one row per \code{(phone,
+  campaign_id)} -- and count rows: if two stored rows normalize to the same
+  phone in the same campaign (e.g. \code{"5551234567"} and
+  \code{"1 555 123 4567"}), each counts, so an \code{n_*} count can exceed
+  \code{n_campaigns}. The "max campaign id" tie-break expects numeric ids (as
+  the projection stores them); non-numeric ids tie-break by row order.
 }
 \description{
 Rolls the disposition data up to \strong{one row per phone} -- each number's
