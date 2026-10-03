@@ -19,7 +19,9 @@ disposition_summary(
 \item{x}{Either a path to a disposition Parquet file (the phone-sorted read
 projection, e.g. from \code{\link{disposition_pull}}) or an in-memory
 disposition data frame (from \code{\link{disposition_records}}). A path is
-read with \pkg{nanoparquet}, projected to the summary columns; a frame must
+read projected to the summary columns (only the \code{phones} rows when
+given and \pkg{duckdb} is installed; see \code{\link{disposition_screen}},
+Memory); a frame must
 carry \code{phone}, \code{campaign_id}, \code{engaged}, \code{opted_in},
 \code{completed}, \code{web_complete}, and \code{terminated}.
 \code{refused} and \code{ineligible} (the terminal split) are optional --

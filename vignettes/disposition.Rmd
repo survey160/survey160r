@@ -51,7 +51,7 @@ Both take `phones` / `campaign_ids` filters. Phones match digit-normalized: a le
 
 ## Screen several samples
 
-Each reader call reads the whole file (nanoparquet has no predicate pushdown), so read once and summarize in memory per sample. `disposition_summary()` accepts either the dataset path or an already-read frame; on a frame it does no I/O, so this runs:
+With `duckdb` installed (see the README), pass the dataset path for each sample: `disposition_screen()` and a `phones`-scoped `disposition_summary()` / `disposition_records()` read only that sample's rows, in seconds and well under 1 GB of RAM. Without `duckdb`, each call loads the whole projection, so read once and summarize in memory per sample instead. `disposition_summary()` accepts either the dataset path or an already-read frame; on a frame it does no I/O, so this runs:
 
 ```{r summary_frame, eval = TRUE}
 library(survey160r)
@@ -67,7 +67,7 @@ records <- data.frame(
 disposition_summary(records, phones = c("5551234567", "5550000000"))
 ```
 
-Note `5551234567`: its **latest** disposition is `refused` (its most recent campaign, 102, ended in a refusal) while its **best** is `completed` (campaign 101 finished the survey). In your own code, read once and reuse: `records <- disposition_records(dataset)`, then `disposition_summary(records, phones = ...)` for each list.
+Note `5551234567`: its **latest** disposition is `refused` (its most recent campaign, 102, ended in a refusal) while its **best** is `completed` (campaign 101 finished the survey). Without `duckdb`, read once and reuse: `records <- disposition_records(dataset)`, then `disposition_summary(records, phones = ...)` for each list.
 
 ## Roll up to funnel counts by dimension
 
@@ -146,7 +146,7 @@ The funnel flags overlap rather than partition -- a `completed` row is also `eng
 - **`disposition_date` and `error` are populated.** The live producer stamps each phone's last-send date and any carrier delivery-error code, so the `date_from` / `date_to` filters and `n_error` work (prod currently spans mid-2023 to the last pipeline pass). A row with no surviving send has an `NA` `disposition_date`, which any date bound drops.
 - **Terminal split rollout.** `refused` / `ineligible` are set for the terminals the routing could name-classify; a small residual stays `terminated`. A projection produced before the split defaults them to `0`, so those rows read as plain `terminated`.
 - **Screen on the counts, not on `latest_disposition`.** `latest_disposition` / `best_disposition` are informational; a number whose most-recent campaign only reached `engaged` can still have completed an earlier one, so filter on the `n_*` counts (which see every campaign), not the latest label.
-- **Scale.** The projection is tens of millions of rows and a few hundred MB; each reader reads it whole, so pull once and summarize per sample in memory (see [Screen several samples](#screen-several-samples)).
+- **Scale.** The projection is over a hundred million rows (a few hundred MB on disk). With `duckdb` installed, a screen reads only your sample's rows -- seconds and well under 1 GB of RAM, so it runs on a laptop. Without it, every read loads the whole projection (tens of GB), so install `duckdb` or read once and summarize per sample in memory (see [Screen several samples](#screen-several-samples)). Set `options(survey160r.disposition_engine = "nanoparquet")` to force the fallback.
 - **Stale cache.** The dataset is re-published periodically; `disposition_pull(refresh = TRUE)` forces a fresh download.
 - **`env`.** `disposition_pull()` reads `"prod"` (default) or `"dev"` -- there is no `staging` tier (staging sends fold into the prod bucket), so `env = "staging"` errors; use `env = "prod"` for staging data. Run `s160_datasets()` to see every dataset's environments.
 

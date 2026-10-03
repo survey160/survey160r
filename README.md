@@ -24,7 +24,12 @@ install.packages("survey160r", repos = "https://survey160.r-universe.dev")
 # From GitHub
 install.packages("pak")  # if not already installed
 pak::pkg_install("survey160/survey160r")
+
+# Recommended: low-memory, fast disposition screening (used automatically when installed)
+install.packages("duckdb")
 ```
+
+With `duckdb` installed, `disposition_screen()` reads only your sample's rows from the projection: a screen takes seconds and well under 1 GB of RAM, so it runs on a laptop. Without it the readers fall back to loading the whole projection, which needs tens of GB.
 
 > R-universe rebuilds from `main` and can lag a fresh release by up to ~30 minutes. If a newly added function (for example `disposition_pull()`) is not found after installing from R-universe, get the latest straight from GitHub with the `pak` line above and restart R.
 

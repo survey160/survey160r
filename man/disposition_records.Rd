@@ -16,7 +16,7 @@ disposition_records(
 }
 \arguments{
 \item{dataset}{Path to a disposition Parquet file (the read projection), e.g.
-from \code{\link{disposition_pull}}. Read in full with \pkg{nanoparquet}.}
+from \code{\link{disposition_pull}}.}
 
 \item{phones}{Optional character vector of phone numbers to keep. Matched
 digit-normalized (a leading US \code{1} is dropped so 11-digit numbers match
@@ -73,10 +73,10 @@ all 27.
 \code{disposition_date} is \code{NA} for a row with no send; \code{error} is
 \code{NA} when the export carries no usable code (a clean send, or an export
 lacking the column). The
-whole projection is read into memory and filtered
-in R (nanoparquet has no predicate pushdown, like \code{\link{disposition_summary}});
 \code{phone} is digit-normalized for matching, and a stored row whose phone is
-blank or unparseable is dropped.
+blank or unparseable is dropped. With \pkg{duckdb} installed and \code{phones}
+given, only those phones' rows are read (see \code{\link{disposition_screen}},
+Memory); otherwise the whole projection is read into memory and filtered in R.
 
 Two differences from the per-phone rollup follow from the raw
 grain: a screened phone that was never contacted has \strong{no} row here

@@ -14,9 +14,10 @@
 #   disposition_records(dataset, ...)   read the Parquet, raw per-(phone, campaign) rows
 #   disposition_screen(sample, ...)     annotate a caller's sample in place
 #   disposition_pull(env, ...)          fetch the projection Parquet from GCS
-# The pure per-phone rollup core is the private .disposition_rollup(); the Parquet
-# read uses nanoparquet (tiny, zero-dependency) and, since the projection is one
-# consolidated file, a full read + in-R filter is sub-second.
+# The pure per-phone rollup core is the private .disposition_rollup(). The Parquet
+# read uses duckdb when installed (Suggests) -- a phone-scoped read pushes the
+# match into the scan, so a screen loads only the sample's rows -- and nanoparquet
+# (zero-dependency, but whole-file) otherwise; see .disposition_engine().
 
 # Columns the summary reads (the Parquet read is projected to just these).
 # `refused`/`ineligible` (survey160r 0.51.0) are optional -- a projection produced
@@ -175,6 +176,12 @@
   if (!is.null(date_to)) {
     keep <- keep & !is.na(data$disposition_date) & data$disposition_date <= date_to
   }
+  # A scoped read usually keeps every row; skip the (multi-second at millions of
+  # rows) data-frame copy then.
+  if (all(keep)) {
+    attr(data, "all_dates_na") <- NULL
+    return(data)
+  }
   data[keep, , drop = FALSE]
 }
 
@@ -187,9 +194,13 @@
 .disposition_collapse <- function(d) {
   category <- .disposition_derive_category(d)
   up <- sort(unique(d$phone), method = "radix")
-  g <- match(d$phone, up)
+  g <- data.table::chmatch(d$phone, up)
   n_groups <- length(up)
-  first_of <- function(o) o[!duplicated(g[o])]   # first row per group, groups ascending
+  # Every ordering below sorts by `g` first, so a group's rows are one run and its
+  # first/last row is a neighbor comparison (cheaper than duplicated()'s hashing).
+  run_start <- function(x) x != c(-1L, x[-length(x)])
+  run_end <- function(x) x != c(x[-1L], -1L)
+  first_of <- function(o) o[run_start(g[o])]   # first row per group, groups ascending
   # Latest campaign: max disposition_date (NA last), tie -> max campaign_id; any
   # remaining tie keeps input order (radix order is stable).
   dd_num <- as.numeric(d$disposition_date)
@@ -221,11 +232,19 @@
                  (is.na(cc[-1L]) & is.na(cc[-length(cc)]))))
   gc <- gc[!same]
   cc <- cc[!same]
-  campaigns <- character(n_groups)
+  # Join rank by rank -- one vectorized paste0() per position within a phone's
+  # list (at most a few dozen), not one paste() call per phone.
   ids <- !is.na(cc)
-  joined <- vapply(split(as.character(cc[ids]), gc[ids]), paste, character(1),
-                   collapse = ",")
-  campaigns[as.integer(names(joined))] <- joined
+  gj <- gc[ids]
+  cj <- as.character(cc[ids])
+  pos <- seq_along(gj)
+  rank <- pos - cummax(pos * run_start(gj)) + 1L
+  campaigns <- character(n_groups)
+  by_rank <- split(pos, rank)
+  for (r in seq_along(by_rank)) {
+    at <- by_rank[[r]]
+    campaigns[gj[at]] <- if (r == 1L) cj[at] else paste0(campaigns[gj[at]], ",", cj[at])
+  }
   # Per-phone min/max disposition_date, NA when the phone has no dated campaign
   # (an un-enriched projection, or every date missing).
   dated <- which(!is.na(dd_num))
@@ -251,8 +270,8 @@
     latest_campaign_id = as.character(d$campaign_id[latest]),
     best_disposition = category[best],
     best_campaign_id = as.character(d$campaign_id[best]),
-    first_disposition_date = span(od[!duplicated(g[od])]),
-    last_disposition_date = span(od[!duplicated(g[od], fromLast = TRUE)]),
+    first_disposition_date = span(od[run_start(g[od])]),
+    last_disposition_date = span(od[run_end(g[od])]),
     stringsAsFactors = FALSE
   )
 }
@@ -528,7 +547,9 @@
     summ <- summ[summ$latest_disposition %in% as.character(statuses), ,
                  drop = FALSE]
   }
-  summ <- summ[order(summ$phone), , drop = FALSE]
+  # Phones are digit strings here, so a radix (byte) sort orders them exactly as
+  # the locale sort would, in a fraction of the time on a large sample.
+  summ <- summ[order(summ$phone, method = "radix"), , drop = FALSE]
   summ <- .disposition_paginate(summ, page, page_size)
   rownames(summ) <- NULL
   summ
@@ -548,7 +569,9 @@
 #' @param x Either a path to a disposition Parquet file (the phone-sorted read
 #'   projection, e.g. from \code{\link{disposition_pull}}) or an in-memory
 #'   disposition data frame (from \code{\link{disposition_records}}). A path is
-#'   read with \pkg{nanoparquet}, projected to the summary columns; a frame must
+#'   read projected to the summary columns (only the \code{phones} rows when
+#'   given and \pkg{duckdb} is installed; see \code{\link{disposition_screen}},
+#'   Memory); a frame must
 #'   carry \code{phone}, \code{campaign_id}, \code{engaged}, \code{opted_in},
 #'   \code{completed}, \code{web_complete}, and \code{terminated}.
 #'   \code{refused} and \code{ineligible} (the terminal split) are optional --
@@ -690,10 +713,10 @@ disposition_summary <- function(x, phones = NULL, campaign_ids = NULL,
 #' \code{disposition_date} is \code{NA} for a row with no send; \code{error} is
 #' \code{NA} when the export carries no usable code (a clean send, or an export
 #' lacking the column). The
-#' whole projection is read into memory and filtered
-#' in R (nanoparquet has no predicate pushdown, like \code{\link{disposition_summary}});
 #' \code{phone} is digit-normalized for matching, and a stored row whose phone is
-#' blank or unparseable is dropped.
+#' blank or unparseable is dropped. With \pkg{duckdb} installed and \code{phones}
+#' given, only those phones' rows are read (see \code{\link{disposition_screen}},
+#' Memory); otherwise the whole projection is read into memory and filtered in R.
 #'
 #' Two differences from the per-phone rollup follow from the raw
 #' grain: a screened phone that was never contacted has \strong{no} row here
@@ -703,7 +726,7 @@ disposition_summary <- function(x, phones = NULL, campaign_ids = NULL,
 #' rollup.
 #'
 #' @param dataset Path to a disposition Parquet file (the read projection), e.g.
-#'   from \code{\link{disposition_pull}}. Read in full with \pkg{nanoparquet}.
+#'   from \code{\link{disposition_pull}}.
 #' @param phones Optional character vector of phone numbers to keep. Matched
 #'   digit-normalized (a leading US \code{1} is dropped so 11-digit numbers match
 #'   10-digit ones). \code{NULL} (default) returns every row.
@@ -789,6 +812,15 @@ disposition_records <- function(dataset, phones = NULL, campaign_ids = NULL,
 #'   \code{latest_disposition = "never_contacted"}, \code{campaigns = NA}); only a
 #'   phone that digit-normalizes to nothing (blank/unparseable) gets an
 #'   all-\code{NA} block.
+#' @section Memory:
+#' With the \pkg{duckdb} package installed (Suggests; used automatically), the
+#' sample's phone match runs inside the Parquet scan, so only the sample's rows
+#' are read into R: screening the full production projection (over a hundred
+#' million rows) takes seconds and well under 1 GB of RAM. Without it, the
+#' projection is read whole with \pkg{nanoparquet}, which needs tens of GB.
+#' \code{options(survey160r.disposition_engine = "nanoparquet")} forces the
+#' fallback (\code{"duckdb"} requires it; the default \code{"auto"} picks duckdb
+#' when installed). The result is identical either way.
 #' @seealso \code{\link{disposition_summary}}, \code{\link{disposition_records}},
 #'   \code{\link{opt_out_screen}}
 #' @examples
