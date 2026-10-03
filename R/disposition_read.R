@@ -82,7 +82,7 @@
 # precedence (later assignment wins). A t2w_external row has completed = NA, so
 # it falls through to the last known in-channel step -- never a false completed.
 .disposition_derive_category <- function(d) {
-  is1 <- function(v) !is.na(v) & v == 1L
+  is1 <- function(v) which(v == 1L)     # NA compares drop out: not set
   out <- rep("non_response", nrow(d))   # data is contacted-only (sent == 1)
   out[is1(d$engaged)] <- "engaged"
   out[is1(d$opted_in)] <- "opted_in"
@@ -218,7 +218,8 @@
   # Cumulative status counts: how many of the phone's campaigns set each flag
   # (0/1/NA; NA counts as not-set). Overlapping -- a completed campaign is also
   # engaged -- so these are "reached status X", not a partition of n_campaigns.
-  count1 <- function(x) tabulate(g[!is.na(x) & x == 1L], nbins = n_groups)
+  # (which() drops the NA comparisons, so NA counts as not-set.)
+  count1 <- function(x) tabulate(g[which(x == 1L)], nbins = n_groups)
   # A campaign carries a delivery error when `error` holds a non-blank code.
   has_error <- !is.na(d$error) & nzchar(trimws(as.character(d$error)))
   # Distinct campaigns per phone (an NA id counts once, as unique() does) and
@@ -227,9 +228,11 @@
   oc <- order(g, d$campaign_id)
   gc <- g[oc]
   cc <- d$campaign_id[oc]
+  nxt <- cc[-1L]
+  prv <- cc[-length(cc)]
+  eq <- nxt == prv
   same <- c(FALSE, gc[-1L] == gc[-length(gc)] &
-              ((cc[-1L] == cc[-length(cc)]) %in% TRUE |
-                 (is.na(cc[-1L]) & is.na(cc[-length(cc)]))))
+              ((!is.na(eq) & eq) | (is.na(nxt) & is.na(prv))))
   gc <- gc[!same]
   cc <- cc[!same]
   # Join rank by rank -- one vectorized paste0() per position within a phone's
@@ -334,7 +337,7 @@
 # NA decode.
 .disposition_read_parquet <- function(dataset, columns = .DISPOSITION_READ_COLS) {
   .disposition_check_path(dataset)
-  if (.disposition_engine() == "duckdb") {
+  if (.disposition_use_duckdb(dataset)) {
     return(.disposition_read_duckdb(dataset, columns = columns))
   }
   meta <- .disposition_parquet_meta(dataset)
@@ -376,6 +379,14 @@
   "nanoparquet"
 }
 
+# Whether to read `dataset` with duckdb: the engine says so and the path has no
+# glob metacharacter. DuckDB's read_parquet() expands `*`, `?`, and `[...]`, so a
+# literal file named e.g. "b*.parquet" would silently pull in its neighbours too;
+# such a path takes the literal-path nanoparquet read.
+.disposition_use_duckdb <- function(dataset) {
+  .disposition_engine() == "duckdb" && !grepl("[*?[]", dataset)
+}
+
 # I/O: read only the rows whose digit-normalized phone is in `phones` (already
 # normalized + deduped by .disposition_request_phones). Returns the projected
 # columns (`columns` intersected with the file's schema, in `columns` order) with
@@ -392,7 +403,7 @@
                                      columns = .DISPOSITION_READ_COLS,
                                      check_dates = FALSE) {
   .disposition_check_path(dataset)
-  d <- if (.disposition_engine() == "duckdb") {
+  d <- if (.disposition_use_duckdb(dataset)) {
     .disposition_read_duckdb(dataset, columns, phones, check_dates)
   }
   d %||% .disposition_read_nanoparquet(dataset, phones, columns, check_dates)
@@ -433,7 +444,10 @@
 # request vector, so DuckDB streams the scan and hands R only the matched rows. A
 # scoped read returns NULL for a non-string stored phone (a numeric fixture): R's
 # as.character() formatting, which .normalize_phone relies on, has no exact SQL
-# twin, so the caller falls back to the in-R match.
+# twin, so the caller falls back to the in-R match. Rows come back in file order
+# (DuckDB's default preserve_insertion_order -- do not turn it off): the rollup
+# breaks a full tie (same phone, date, and campaign id) by input order, exactly as
+# on a nanoparquet read.
 .disposition_read_duckdb <- function(dataset, columns = NULL, phones = NULL,
                                      check_dates = FALSE) {
   con <- DBI::dbConnect(duckdb::duckdb(shared_home = FALSE))

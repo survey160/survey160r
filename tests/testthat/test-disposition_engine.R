@@ -186,3 +186,16 @@ test_that("a large file on the nanoparquet engine points the caller at duckdb", 
   expect_message(with_engine("nanoparquet", disposition_screen(data.frame(phone = "1"), p)),
                  "install.packages")
 })
+
+test_that("a path with a glob metacharacter is read literally, not expanded", {
+  # DuckDB's read_parquet() would expand "b*.parquet" to every match; the
+  # nanoparquet read takes the path literally.
+  dir <- withr::local_tempdir()
+  row <- .disposition_row("2015550101", 1, engaged = 1)
+  nanoparquet::write_parquet(row, file.path(dir, "b*.parquet"))
+  nanoparquet::write_parquet(transform(row, phone = "2015550199"),
+                             file.path(dir, "bX.parquet"))
+  out <- with_engine("duckdb", disposition_screen(
+    data.frame(phone = c("2015550101", "2015550199")), file.path(dir, "b*.parquet")))
+  expect_equal(out$n_campaigns, c(1L, 0L))
+})
