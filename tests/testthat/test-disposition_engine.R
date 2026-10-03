@@ -105,6 +105,7 @@ test_that("character campaign ids sort and join like sort() does", {
 test_that("the date span ignores NA dates and is a plain Date (no stray dim)", {
   res <- disposition_summary(.engine_fixture(), phones = "2015550102")
   expect_equal(res$first_disposition_date, as.Date("2026-03-01"))
+  expect_equal(res$last_disposition_date, as.Date("2026-03-01"))
   expect_null(attr(res$first_disposition_date, "dim"))
   expect_null(attr(res$last_disposition_date, "dim"))
 })
@@ -202,9 +203,10 @@ test_that("a path with a glob metacharacter is read literally, not expanded", {
   # nanoparquet read takes the path literally.
   dir <- withr::local_tempdir()
   row <- .disposition_row("2015550101", 1, engaged = 1)
-  nanoparquet::write_parquet(row, file.path(dir, "b*.parquet"))
+  plain <- nanoparquet::parquet_options(write_arrow_metadata = FALSE)
+  nanoparquet::write_parquet(row, file.path(dir, "b*.parquet"), options = plain)
   nanoparquet::write_parquet(transform(row, phone = "2015550199"),
-                             file.path(dir, "bX.parquet"))
+                             file.path(dir, "bX.parquet"), options = plain)
   out <- with_engine("duckdb", disposition_screen(
     data.frame(phone = c("2015550101", "2015550199")), file.path(dir, "b*.parquet")))
   expect_equal(out$n_campaigns, c(1L, 0L))
@@ -236,7 +238,14 @@ test_that("a scoped duckdb read keeps file order across row groups (tie-break pa
   # Many row groups and full (phone, date, campaign) ties whose flags differ:
   # latest/best pick the first such row in FILE order, so a scoped read must hand
   # rows back in file order even though DuckDB matches them in parallel.
-  set.seed(1)
+  withr::local_seed(1)
+  # Force a parallel scan even on a 1-core runner, so a lost ORDER BY shows up.
+  real_duckdb <- duckdb::duckdb
+  local_mocked_bindings(duckdb = function(...) {
+    args <- list(...)
+    args$config$threads <- "4"
+    do.call(real_duckdb, args)
+  }, .package = "duckdb")
   n <- 40000L
   phones <- sprintf("201555%04d", sample.int(2000L, n, replace = TRUE))
   d <- data.frame(phone = phones, campaign_id = sample(1:3, n, TRUE),
@@ -296,4 +305,86 @@ test_that("the duckdb read gives DuckDB a spill directory it can create", {
   with_engine("duckdb", disposition_screen(data.frame(phone = "2015550101"), .engine_fixture()))
   expect_true(dir.exists(dirname(captured$temp)))
   expect_false(dir.exists(captured$temp))   # cleaned up on exit
+})
+
+test_that("best breaks a category + date tie by the larger campaign id", {
+  d <- rbind(.disposition_row("1", 7, engaged = 1, disposition_date = "2026-01-01"),
+             .disposition_row("1", 3, engaged = 1, disposition_date = "2026-01-01"))
+  res <- disposition_summary(d)
+  expect_equal(res$best_campaign_id, "7")
+  expect_equal(disposition_summary(d[2:1, ])$best_campaign_id, "7")
+})
+
+test_that("an undated row never outranks a dated one for latest, even before 1970", {
+  d <- rbind(.disposition_row("1", 9, engaged = 1),
+             .disposition_row("1", 2, opted_in = 1, disposition_date = "1969-12-31"))
+  expect_equal(disposition_summary(d)$latest_campaign_id, "2")
+})
+
+test_that("several NA campaign ids count once; an all-NA id list is an empty string", {
+  d <- rbind(.disposition_row("1", NA), .disposition_row("1", NA), .disposition_row("1", 5),
+             .disposition_row("2", NA))
+  res <- disposition_summary(d)
+  expect_equal(res$n_campaigns, c(2L, 1L))
+  expect_equal(res$campaigns, c("5", ""))
+})
+
+test_that(".normalize_phone keeps its exact edge cases", {
+  expect_identical(.normalize_phone("2015550101\n"), "2015550101")
+  expect_identical(.normalize_phone("22015550101"), "22015550101")
+  expect_identical(.normalize_phone(c("12015550101", "", NA)), c("2015550101", NA, NA))
+})
+
+test_that("an 11-digit number without a leading 1 does not match under either engine", {
+  p <- write_disposition_parquet(.disposition_row("22015550101", 1, engaged = 1))
+  for (engine in c("duckdb", "nanoparquet")) {
+    if (engine == "duckdb") skip_if_not_installed("duckdb")
+    out <- with_engine(engine, disposition_screen(data.frame(phone = "2015550101"), p))
+    expect_equal(out$n_campaigns, 0L)
+  }
+})
+
+test_that("scoped records/summary judge the all-NA-date warning on the whole file", {
+  skip_if_not_installed("duckdb")
+  d <- rbind(.disposition_row("2015550101", 1, engaged = 1),
+             .disposition_row("2015550102", 1, disposition_date = "2026-02-01"))
+  p <- write_disposition_parquet(d)
+  empty <- write_disposition_parquet(d[0L, ])
+  for (engine in c("duckdb", "nanoparquet")) {
+    expect_no_warning(with_engine(engine, disposition_records(
+      p, phones = "2015550101", date_from = "2026-01-01")))
+    expect_no_warning(with_engine(engine, disposition_summary(
+      p, phones = "2015550101", date_from = "2026-01-01")))
+    expect_no_warning(with_engine(engine, disposition_summary(
+      empty, phones = "2015550101", date_from = "2026-01-01")))
+  }
+})
+
+test_that("an ordinary projection stays on the duckdb path (no nanoparquet read)", {
+  skip_if_not_installed("duckdb")
+  p <- .engine_fixture()
+  local_mocked_bindings(.disposition_read_nanoparquet = function(...) stop("fallback"))
+  expect_no_error(with_engine("duckdb", disposition_summary(p)))
+  expect_no_error(with_engine("duckdb", disposition_summary(p, phones = "2015550101")))
+  expect_no_error(with_engine("duckdb", disposition_records(p, phones = "2015550101")))
+})
+
+test_that("the nanoparquet engine column-projects a DuckDB-written file", {
+  p <- .engine_fixture()
+  captured <- new_capture()
+  real_metadata <- nanoparquet::read_parquet_metadata
+  real_read <- nanoparquet::read_parquet
+  local_mocked_bindings(
+    read_parquet_metadata = function(file) {
+      m <- real_metadata(file)
+      m$file_meta_data$created_by <- "DuckDB version v1.5.2"
+      m
+    },
+    read_parquet = function(file, col_select = NULL, ...) {
+      captured$col_select <- col_select
+      real_read(file, col_select = col_select, ...)
+    },
+    .package = "nanoparquet")
+  with_engine("nanoparquet", disposition_summary(p))
+  expect_false(is.null(captured$col_select))
 })
