@@ -30,6 +30,8 @@ Imports:
     nanoparquet (>= 0.4.0)
 Suggests:
     askpass,
+    DBI,
+    duckdb,
     testthat (>= 3.0.0),
     mockery,
     withr,
