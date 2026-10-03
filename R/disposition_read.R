@@ -482,14 +482,19 @@
   }
   duckdb::duckdb_register(con, "s160_req",
                           data.frame(phone = phones, stringsAsFactors = FALSE))
-  quoted[cols == "phone"] <- "s160_phone AS phone"
+  # Only the wanted columns are selected at every level (never `*`), so a file
+  # column that happens to share the helper name s160_digits cannot shadow it.
+  inner <- paste(c(quoted, "regexp_replace(phone, '[^0-9]', '', 'g') AS s160_digits"),
+                 collapse = ", ")
+  outer <- quoted
+  outer[cols == "phone"] <- paste(
+    "CASE WHEN s160_digits = '' THEN NULL",
+    "WHEN length(s160_digits) = 11 AND starts_with(s160_digits, '1')",
+    "THEN substr(s160_digits, 2) ELSE s160_digits END AS phone")
   d <- select(paste0(
-    "SELECT ", paste(quoted, collapse = ", "), " FROM (",
-    "SELECT *, CASE WHEN s160_digits = '' THEN NULL ",
-    "WHEN length(s160_digits) = 11 AND starts_with(s160_digits, '1') ",
-    "THEN substr(s160_digits, 2) ELSE s160_digits END AS s160_phone FROM (",
-    "SELECT *, regexp_replace(phone, '[^0-9]', '', 'g') AS s160_digits FROM ",
-    src, ")) WHERE s160_phone IN (SELECT phone FROM s160_req)"))
+    "SELECT * FROM (SELECT ", paste(outer, collapse = ", "),
+    " FROM (SELECT ", inner, " FROM ", src, ")) ",
+    "WHERE phone IN (SELECT phone FROM s160_req)"))
   all_na <- check_dates && "disposition_date" %in% cols &&
     DBI::dbGetQuery(con, paste0("SELECT count(*) > 0 AND count(disposition_date) = 0",
                                 " AS all_na FROM ", src))$all_na

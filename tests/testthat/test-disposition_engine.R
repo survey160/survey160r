@@ -209,3 +209,12 @@ test_that("a projection with none of the wanted columns errors cleanly under eit
     expect_error(with_engine(engine, disposition_records(p)), "missing required column")
   }
 })
+
+test_that("a stored column named like the SQL helper does not shadow the phone match", {
+  d <- .disposition_row("2015550101", 1, engaged = 1)
+  d$s160_digits <- "x"
+  d$s160_phone <- "y"
+  p <- write_disposition_parquet(d)
+  out <- with_engine("duckdb", disposition_screen(data.frame(phone = "2015550101"), p))
+  expect_equal(out$latest_disposition, "engaged")
+})
