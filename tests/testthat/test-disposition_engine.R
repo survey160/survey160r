@@ -188,13 +188,67 @@ test_that("without duckdb, auto falls back to nanoparquet and a forced duckdb er
   with_engine("duckdb", expect_error(.disposition_engine(), "not installed"))
 })
 
-test_that("a large file on the nanoparquet engine points the caller at duckdb", {
-  withr::local_options(rlib_message_verbosity = "verbose")
+# A recorder for rlang::check_installed(), so the offer branch never tries a real
+# install: it just captures the packages asked for and the reason.
+stub_check_installed <- function(cap, env = parent.frame()) {
+  testthat::local_mocked_bindings(
+    check_installed = function(pkg, reason = NULL, ...) {
+      cap$pkg <- pkg
+      cap$reason <- reason
+      invisible()
+    }, .package = "rlang", .env = env)
+}
+
+test_that("auto + large file + no duckdb offers to install it, naming the escape hatch", {
   p <- .engine_fixture()
+  cap <- new_capture()
+  stub_check_installed(cap)
   local_mocked_bindings(file.size = function(...) 2e8,
                         requireNamespace = function(...) FALSE, .package = "base")
-  expect_message(with_engine("nanoparquet", disposition_screen(data.frame(phone = "1"), p)),
-                 "install.packages")
+  with_engine("auto", disposition_screen(data.frame(phone = "2015550101"), p))
+  expect_equal(cap$pkg, c("duckdb", "DBI"))
+  expect_match(cap$reason, "disposition_engine")
+})
+
+test_that("a pinned nanoparquet engine takes the whole-file read with no duckdb offer", {
+  p <- .engine_fixture()
+  cap <- new_capture()
+  stub_check_installed(cap)
+  local_mocked_bindings(file.size = function(...) 2e8,
+                        requireNamespace = function(...) FALSE, .package = "base")
+  with_engine("nanoparquet", disposition_screen(data.frame(phone = "2015550101"), p))
+  expect_null(cap$pkg)
+})
+
+test_that("the duckdb offer is skipped for a small file and for a glob path", {
+  p <- .engine_fixture()
+  cap <- new_capture()
+  stub_check_installed(cap)
+  # small file (real fixture size, well under 100 MB): a fixture or extract
+  local_mocked_bindings(requireNamespace = function(...) FALSE, .package = "base")
+  with_engine("auto", .disposition_offer_duckdb(p))
+  expect_null(cap$pkg)
+  # large, but a glob path -- the duckdb read is declined anyway
+  local_mocked_bindings(file.size = function(...) 2e8, .package = "base")
+  with_engine("auto", .disposition_offer_duckdb("a*.parquet"))
+  expect_null(cap$pkg)
+})
+
+test_that("no duckdb offer when duckdb is already installed", {
+  skip_if_not_installed("duckdb")
+  p <- .engine_fixture()
+  cap <- new_capture()
+  stub_check_installed(cap)
+  local_mocked_bindings(file.size = function(...) 2e8, .package = "base")
+  with_engine("auto", .disposition_offer_duckdb(p))
+  expect_null(cap$pkg)
+})
+
+test_that(".onAttach hints at duckdb only when it is not installed", {
+  local_mocked_bindings(requireNamespace = function(...) FALSE, .package = "base")
+  expect_message(.onAttach("lib", "survey160r"), "duckdb")
+  local_mocked_bindings(requireNamespace = function(...) TRUE, .package = "base")
+  expect_no_message(.onAttach("lib", "survey160r"))
 })
 
 test_that("a path with a glob metacharacter is read literally, not expanded", {
