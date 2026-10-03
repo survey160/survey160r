@@ -19,7 +19,9 @@ disposition_summary(
 \item{x}{Either a path to a disposition Parquet file (the phone-sorted read
 projection, e.g. from \code{\link{disposition_pull}}) or an in-memory
 disposition data frame (from \code{\link{disposition_records}}). A path is
-read with \pkg{nanoparquet}, projected to the summary columns; a frame must
+read projected to the summary columns (only the \code{phones} rows when
+given and \pkg{duckdb} is installed; see \code{\link{disposition_screen}},
+Memory); a frame must
 carry \code{phone}, \code{campaign_id}, \code{engaged}, \code{opted_in},
 \code{completed}, \code{web_complete}, and \code{terminated}.
 \code{refused} and \code{ineligible} (the terminal split) are optional --
@@ -84,8 +86,16 @@ A data frame, one row per phone, columns in this order:
   \code{opted_in} -- and the campaign that reached it); and
   \code{first_disposition_date} / \code{last_disposition_date} (earliest and
   latest \code{disposition_date} across the phone's campaigns, \code{NA} when
-  none is dated). A never-contacted phone has \code{n_campaigns = 0}. Campaign
-  ids are returned as character.
+  none is dated). A never-contacted phone has \code{n_campaigns = 0} and
+  \code{campaigns = NA}; a contacted phone whose campaign ids are all
+  \code{NA} has \code{campaigns = ""}. Campaign ids are returned as character.
+
+  The counts assume the dataset's grain -- one row per \code{(phone,
+  campaign_id)} -- and count rows: if two stored rows normalize to the same
+  phone in the same campaign (e.g. \code{"5551234567"} and
+  \code{"1 555 123 4567"}), each counts, so an \code{n_*} count can exceed
+  \code{n_campaigns}. The "max campaign id" tie-break expects numeric ids (as
+  the projection stores them); non-numeric ids tie-break by row order.
 }
 \description{
 Rolls the disposition data up to \strong{one row per phone} -- each number's

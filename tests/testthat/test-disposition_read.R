@@ -189,11 +189,19 @@ test_that("a DuckDB-written projection takes the fast col_select path", {
   # are nanoparquet-written, so mock the writer signature and use an
   # NA-integer-free frame (col_select reads it correctly either way); this covers
   # the col_select branch of .disposition_read_parquet.
+  # The nanoparquet engine is forced (the duckdb engine never reads via
+  # nanoparquet), and the writer signature comes from the one metadata call.
   d <- rbind(.disposition_row("2015550101", 1, engaged = 1, completed = 1),
              .disposition_row("2015550102", 1, terminated = 1))
   p <- write_disposition_parquet(d)
+  withr::local_options(survey160r.disposition_engine = "nanoparquet")
+  real_metadata <- nanoparquet::read_parquet_metadata
   local_mocked_bindings(
-    read_parquet_info = function(...) list(created_by = "DuckDB version v1.5.2"),
+    read_parquet_metadata = function(file) {
+      m <- real_metadata(file)
+      m$file_meta_data$created_by <- "DuckDB version v1.5.2"
+      m
+    },
     .package = "nanoparquet")
   res <- disposition_summary(p)
   expect_equal(nrow(res), 2L)

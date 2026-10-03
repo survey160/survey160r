@@ -15,8 +15,9 @@ disposition_funnel(
 \arguments{
 \item{x}{Either a path to a disposition Parquet file (the read projection, e.g.
 from \code{\link{disposition_pull}}) or an in-memory disposition data frame
-(from \code{\link{disposition_records}}). A path is read with \pkg{nanoparquet},
-projected to the columns this rollup needs. Pre-filter (by campaign / date)
+(from \code{\link{disposition_records}}). A path is read projected to the
+columns this rollup needs (with \pkg{duckdb} when installed, else
+\pkg{nanoparquet}). Pre-filter (by campaign / date)
 with \code{\link{disposition_records}} first when you do not want the whole
 projection.}
 

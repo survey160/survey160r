@@ -6,7 +6,7 @@ R client for Survey160 data. Reads campaign results from Google Cloud Storage, t
 
 - R 4.x, packaged for R-universe.
 - Imports: googleCloudStorageR, googleAuthR, gargle, httr, jsonlite, lubridate, digest, dplyr, rlang, lifecycle, data.table, nanoparquet.
-- Suggests: testthat (edition 3), mockery, withr, lintr, covr, askpass.
+- Suggests: testthat (edition 3), mockery, withr, lintr, covr, askpass, DBI, duckdb (the low-memory disposition read engine, used automatically when installed; see `.disposition_engine()`).
 
 ## Layout
 

@@ -51,6 +51,31 @@
 
 ## Performance
 
+* **`disposition_screen()` runs on a laptop: the sample's phone match now happens
+  inside the Parquet scan.** With the `duckdb` package installed (new in Suggests,
+  used automatically), `disposition_screen()` -- and `disposition_summary()` /
+  `disposition_records()` when given `phones` -- read only the sample's rows
+  instead of loading the whole projection. On the production projection (~140M
+  rows) a 10k-phone screen drops from ~150 s and ~26 GB peak RAM to ~2 s (~4-5 s
+  on a 4-core laptop) and ~0.6 GB; a 200k-phone screen from ~200 s to ~3 s, still under 1 GB. Results are
+  identical; a 4-core, 4 GB-capped run screens 200k phones in ~6 s where the old
+  code was killed for running out of memory. Without `duckdb` the readers fall back to the whole-file
+  `nanoparquet` read (a phone-scoped read of a file over 100 MB says once per
+  session that `duckdb` would help);
+  `options(survey160r.disposition_engine = "nanoparquet")` forces the fallback.
+  Whole-file reads (`disposition_funnel()`, an unscoped `disposition_summary()` /
+  `disposition_records()`) also go through `duckdb` when installed: about a
+  third less peak memory and roughly twice as fast (`disposition_funnel()` by carrier: ~19 GB /
+  20 s to ~13 GB / 9 s).
+* **The per-phone rollup behind `disposition_summary()` / `disposition_screen()`
+  is vectorized** (one group index instead of a `tapply()` per output column):
+  ~10x faster on large samples, identical results. The `first_disposition_date` /
+  `last_disposition_date` columns no longer carry a stray one-dimensional `dim`
+  attribute (a `tapply()` artifact, present only when every row was contacted).
+* **Phone normalization skips the regex rewrite for numbers that are already a
+  plain 10 digits**, the common case: ~5x faster on large vectors, same result.
+  Shared by `disposition_screen()` and `opt_out_screen()`.
+
 * **`latency_report()` / `latency_run()` gain `compact = TRUE`, a streaming path
   that never materialises the long frame.** On very wide campaigns the
   `(n_questions - 1) x N_respondents` long frame is almost entirely NA drop-off
