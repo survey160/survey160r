@@ -56,14 +56,16 @@
   used automatically), `disposition_screen()` -- and `disposition_summary()` /
   `disposition_records()` when given `phones` -- read only the sample's rows
   instead of loading the whole projection. On the production projection (~140M
-  rows) a 10k-phone screen drops from ~150 s and ~26 GB peak RAM to ~1.5 s and
+  rows) a 10k-phone screen drops from ~150 s and ~26 GB peak RAM to ~2 s and
   ~0.6 GB; a 200k-phone screen from ~200 s to ~3 s, still under 1 GB. Results are
-  identical. Without `duckdb` the readers fall back to the whole-file
-  `nanoparquet` read (and say once per session that `duckdb` would help);
+  identical; a 4-core, 4 GB-capped run screens 200k phones in ~6 s where the old
+  code was killed for running out of memory. Without `duckdb` the readers fall back to the whole-file
+  `nanoparquet` read (a phone-scoped read of a file over 100 MB says once per
+  session that `duckdb` would help);
   `options(survey160r.disposition_engine = "nanoparquet")` forces the fallback.
   Whole-file reads (`disposition_funnel()`, an unscoped `disposition_summary()` /
-  `disposition_records()`) also go through `duckdb` when installed: about half
-  the peak memory and twice as fast (`disposition_funnel()` by carrier: ~19 GB /
+  `disposition_records()`) also go through `duckdb` when installed: about a
+  third less peak memory and roughly twice as fast (`disposition_funnel()` by carrier: ~19 GB /
   20 s to ~13 GB / 9 s).
 * **The per-phone rollup behind `disposition_summary()` / `disposition_screen()`
   is vectorized** (one group index instead of a `tapply()` per output column):

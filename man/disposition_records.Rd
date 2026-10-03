@@ -72,7 +72,7 @@ are added by the tracker enrichment, so only the enriched projection carries
 all 27.
 \code{disposition_date} is \code{NA} for a row with no send; \code{error} is
 \code{NA} when the export carries no usable code (a clean send, or an export
-lacking the column). The
+lacking the column).
 \code{phone} is digit-normalized for matching, and a stored row whose phone is
 blank or unparseable is dropped. With \pkg{duckdb} installed and \code{phones}
 given, only those phones' rows are read (see \code{\link{disposition_screen}},

@@ -320,7 +320,8 @@
 }
 
 # I/O: validate the path, read the projection, then (when `columns` is given)
-# subset to those columns. `columns` = the summary read set by default; `NULL`
+# subset to those columns. Reads with duckdb when .disposition_use_duckdb() and
+# the file qualifies (see .disposition_read_duckdb); otherwise as below. `columns` = the summary read set by default; `NULL`
 # (disposition_records()) keeps every stored column.
 #
 # Column-project via nanoparquet's `col_select` ONLY for a writer whose null
@@ -330,7 +331,7 @@
 # integers under `col_select` on its OWN writes -- returning uninitialized memory
 # (0 / 1 / garbage, nondeterministic) instead of NA, which silently corrupts a
 # projected read of e.g. `completed` (NA on t2w_external rows). `col_select` is a
-# real memory win on the ~38M-row projection (~3.3 vs ~5.5 GB); the full read is
+# real memory win on the projection (~3.3 vs ~5.5 GB at ~38M rows); the full read is
 # the correctness fallback for fixtures / unknown writers. The intersect keeps a
 # column-short/legacy projection returning only what is present, so the rollup's
 # own missing-column guards still fire. Drop the branch once nanoparquet fixes the
@@ -437,7 +438,7 @@
 # (no nanoparquet call) and column types come back as nanoparquet would give them
 # (a DATE as an integer-backed Date). With `phones` NULL it is the plain projected
 # read behind .disposition_read_parquet() (`columns` NULL = every column) --
-# about half nanoparquet's peak memory and several times faster on the
+# about a third less peak memory than nanoparquet and ~2x faster on the
 # production projection, and immune to nanoparquet's col_select NA bug. With
 # `phones` it is .disposition_read_scoped(): the SQL normalization mirrors
 # .normalize_phone exactly (strip non-digits; blank -> NULL; an 11-digit number
@@ -771,7 +772,7 @@ disposition_summary <- function(x, phones = NULL, campaign_ids = NULL,
 #' all 27.
 #' \code{disposition_date} is \code{NA} for a row with no send; \code{error} is
 #' \code{NA} when the export carries no usable code (a clean send, or an export
-#' lacking the column). The
+#' lacking the column).
 #' \code{phone} is digit-normalized for matching, and a stored row whose phone is
 #' blank or unparseable is dropped. With \pkg{duckdb} installed and \code{phones}
 #' given, only those phones' rows are read (see \code{\link{disposition_screen}},
@@ -878,8 +879,12 @@ disposition_records <- function(dataset, phones = NULL, campaign_ids = NULL,
 #' million rows) takes seconds and well under 1 GB of RAM. Without it, the
 #' projection is read whole with \pkg{nanoparquet}, which needs tens of GB.
 #' \code{options(survey160r.disposition_engine = "nanoparquet")} forces the
-#' fallback (\code{"duckdb"} requires it; the default \code{"auto"} picks duckdb
-#' when installed). The result is identical either way.
+#' fallback; \code{"duckdb"} errors if the package is not installed, and the
+#' default \code{"auto"} uses duckdb when installed. The DuckDB-written
+#' production projection always takes the duckdb path; a few unusual files (a
+#' path with glob characters, a file written by arrow or nanoparquet, a column
+#' type outside the plain set) are read with nanoparquet. The result is identical
+#' either way.
 #' @seealso \code{\link{disposition_summary}}, \code{\link{disposition_records}},
 #'   \code{\link{opt_out_screen}}
 #' @examples

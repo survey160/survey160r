@@ -57,8 +57,12 @@ are read into R: screening the full production projection (over a hundred
 million rows) takes seconds and well under 1 GB of RAM. Without it, the
 projection is read whole with \pkg{nanoparquet}, which needs tens of GB.
 \code{options(survey160r.disposition_engine = "nanoparquet")} forces the
-fallback (\code{"duckdb"} requires it; the default \code{"auto"} picks duckdb
-when installed). The result is identical either way.
+fallback; \code{"duckdb"} errors if the package is not installed, and the
+default \code{"auto"} uses duckdb when installed. The DuckDB-written
+production projection always takes the duckdb path; a few unusual files (a
+path with glob characters, a file written by arrow or nanoparquet, a column
+type outside the plain set) are read with nanoparquet. The result is identical
+either way.
 }
 
 \examples{
