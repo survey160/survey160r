@@ -54,11 +54,15 @@ it (dropping the numbers already completed or refused). Mirrors the
 With the \pkg{duckdb} package installed (Suggests; used automatically), the
 sample's phone match runs inside the Parquet scan, so only the sample's rows
 are read into R: screening the full production projection (over a hundred
-million rows) takes seconds and well under 1 GB of RAM. Without it, the
-projection is read whole with \pkg{nanoparquet}, which needs tens of GB.
-\code{options(survey160r.disposition_engine = "nanoparquet")} forces the
-fallback; \code{"duckdb"} errors if the package is not installed, and the
-default \code{"auto"} uses duckdb when installed. The DuckDB-written
+million rows) takes seconds and well under 1 GB of RAM. Without it, reading a
+large projection (over 100 MB) on the default \code{"auto"} engine would load
+the whole file into R (tens of GB), so survey160r instead offers \pkg{duckdb}:
+an interactive session prompts to install it, a non-interactive one stops with
+the same guidance.
+\code{options(survey160r.disposition_engine = "nanoparquet")} takes the
+whole-file \pkg{nanoparquet} read instead (no prompt); \code{"duckdb"} errors
+if the package is not installed, and the default \code{"auto"} uses duckdb when
+installed. The DuckDB-written
 production projection always takes the duckdb path; a few unusual files (a
 path with glob characters, a file written by arrow or nanoparquet, a column
 type outside the plain set) are read with nanoparquet. The result is identical
