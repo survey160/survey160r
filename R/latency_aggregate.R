@@ -154,18 +154,17 @@ aggregate_worst_cascade <- function(bucketed, thresholds) {
     worst_delta <- NULL
   # Per-respondent worst delta within each bucket. Filtering !is.na(delta_min)
   # in `i` means max() sees only valid deltas, so it is finite for every
-  # (non-empty) group -- no na.rm and no -Inf warning.
-  # suppressWarnings: data.table evaluates j once on an empty group to infer
-  # result types, which calls max(numeric(0)) -> "no non-missing arguments"
-  # warning + -Inf. Real (non-empty) groups have only valid deltas (the i
-  # filter), so their max is finite; the -Inf type-probe row, if any, is
-  # dropped by the is.finite() filter below. Mirrors the original na.rm max.
+  # (non-empty) group -- no na.rm and no -Inf warning. The bare max() is
+  # GForce-optimised (computed in C across all groups at once); wrapping it,
+  # e.g. in suppressWarnings(), would force a per-group R evaluation over the
+  # ~(buckets x respondents) groups -- ~20x slower on a campaign-sized frame.
+  # An all-NA input yields zero rows here (nothing to probe), and the
+  # is.finite() filter keeps the empty-group edge belt-and-suspenders.
   worst <- bucketed[
     !is.na(delta_min),
-    list(worst_delta = suppressWarnings(max(delta_min))),
+    list(worst_delta = max(delta_min)),
     by = list(campaign_id, date, hour_local, respondent_index)
   ]
-  # Belt-and-suspenders: drop any non-finite worst (empty-group edge).
   worst <- worst[is.finite(worst_delta)]
 
   chunks <- lapply(thresholds, function(t) cascade_chunk(worst, t))

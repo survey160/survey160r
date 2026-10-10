@@ -52,6 +52,10 @@ of output-identical rounds (every change is gated on byte-identical results):
   instant (a zone's offset is a whole number of minutes, so every instant in a
   UTC minute shares its local date and hour) -- ~20x cheaper on a campaign
   column, verified identical across DST edges and half-hour zones.
+* The respondent-cascade's per-(bucket, respondent) worst delta is a bare
+  GForce `max()` (the `suppressWarnings()` wrapper forced a per-group R
+  evaluation over hundreds of thousands of groups; an all-NA input yields no
+  groups, so there was nothing to suppress).
 
 ## Breaking changes
 
