@@ -56,6 +56,9 @@ of output-identical rounds (every change is gated on byte-identical results):
   GForce `max()` (the `suppressWarnings()` wrapper forced a per-group R
   evaluation over hundreds of thousands of groups; an all-NA input yields no
   groups, so there was nothing to suppress).
+* Dedupe orders respondents with a radix sort (the id only groups rows, so
+  the locale collation it replaces could not affect the pick), and
+  `na_if_blank()` tests each character column with a single `== ""` pass.
 
 ## Breaking changes
 
