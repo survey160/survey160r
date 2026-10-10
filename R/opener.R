@@ -48,6 +48,9 @@
   ts_list <- lapply(openers, function(q) {
     .column_timestamps(data, sprintf("id.%s.%s", q, field))
   })
+  # A single question (the common, non-routed campaign) needs no coalesce;
+  # coalesce(x) is x, so this only skips the vctrs dispatch on a full column.
+  if (length(ts_list) == 1L) return(ts_list[[1L]])
   do.call(dplyr::coalesce, ts_list)
 }
 
