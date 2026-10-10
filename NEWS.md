@@ -11,6 +11,12 @@ of output-identical rounds (every change is gated on byte-identical results):
   (which pasted every row to a string: ~30% of `latency_report()` wall time and
   the single largest transient allocation). The long frame is also converted to
   a data.table in place (`setDT`) rather than deep-copied once per grain.
+* The per-(bucket, segment, threshold) latency cells are computed in ONE
+  grouped pass: the threshold-independent statistics (mean, p50/p90/p95 from a
+  single `quantile()` call, the `n_na_*` counts) once, and the per-threshold
+  `n_le` / `n_resp_over` as wide columns fanned out afterwards -- instead of
+  grouping the long frame once per threshold and recomputing the quantiles
+  four times.
 
 ## Breaking changes
 

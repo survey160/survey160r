@@ -23,22 +23,6 @@ safe_pct <- function(num, denom) {
   ifelse(!is.na(denom) & denom > 0, 100 * num / denom, NA_real_)
 }
 
-# Quantile / mean over a vector, returning NA_real_ when no non-NA values
-# exist. Wraps stats::quantile/mean for the per-cell distribution columns:
-# cells with zero valid Δ would otherwise error (quantile) or warn-and-NaN
-# (mean) and the consolidated table needs honest NA in those slots.
-safe_quantile <- function(x, prob) {
-  vals <- x[!is.na(x)]
-  if (length(vals) == 0L) return(NA_real_)
-  unname(stats::quantile(vals, probs = prob, names = FALSE))
-}
-
-safe_mean <- function(x) {
-  vals <- x[!is.na(x)]
-  if (length(vals) == 0L) return(NA_real_)
-  mean(vals)
-}
-
 aggregate_consolidated <- function(frame, config, cfg_hash, run_at,
                                    src_csv_hash = NA_character_,
                                    summary_frame = NULL,
@@ -209,11 +193,6 @@ cascade_chunk <- function(worst, t) {
 # Per-(bucket, segment, threshold) cell rows. n is the valid-Δ count for the
 # cell; pct_le and n_resp_over are derived from the same set.
 aggregate_segment_cells <- function(bucketed, thresholds) {
-  rows <- lapply(thresholds, function(t) segment_cells_chunk(bucketed, t))
-  do.call(rbind, rows)
-}
-
-segment_cells_chunk <- function(bucketed, t) {
   # mean_delta_min and the p50/p90/p95 quantiles are threshold-independent,
   # so the values emitted here are identical across the four threshold rows
   # of the same (campaign_id, date, hour_local, segment) cell. Kept inline
@@ -225,25 +204,62 @@ segment_cells_chunk <- function(bucketed, t) {
   # R/latency_frame.R. The enum strings stay longer ("parse_failure" etc.)
   # for debugging the latency_frame; cell-column names use the n_na_*
   # prefix family so they group together in column listings and tooltips.
-  campaign_id <- date <- hour_local <- segment <- segment_index <-
-    delta_min <- respondent_index <- na_reason <- NULL
-  cells <- bucketed[, list(
-    n = sum(!is.na(delta_min)),
-    n_le = sum(!is.na(delta_min) & delta_min <= t),
-    n_resp_over = data.table::uniqueN(
-      respondent_index[!is.na(delta_min) & delta_min > t]
-    ),
-    mean_delta_min = safe_mean(delta_min),
-    p50_delta_min = safe_quantile(delta_min, 0.50),
-    p90_delta_min = safe_quantile(delta_min, 0.90),
-    p95_delta_min = safe_quantile(delta_min, 0.95),
-    n_na_parse = sum(na_reason == "parse_failure", na.rm = TRUE),
-    n_na_missing = sum(na_reason == "missing_endpoint", na.rm = TRUE),
-    n_na_chain = sum(na_reason == "chain_break", na.rm = TRUE)
-  ), by = list(campaign_id, date, hour_local, segment, segment_index)]
-  data.table::set(cells, j = "threshold_min", value = as.integer(t))
-  data.table::set(cells, j = "pct_le", value = safe_pct(cells$n_le, cells$n))
-  as.data.frame(cells)
+  #
+  # ONE grouped pass computes the threshold-independent stats once and the two
+  # threshold-dependent counts (n_le, n_resp_over) for every threshold as wide
+  # columns; segment_cells_long() then fans those out to the per-threshold
+  # rows. The previous one-pass-per-threshold form grouped the long frame four
+  # times and recomputed the quantiles each time.
+  segment <- segment_index <- delta_min <- respondent_index <- na_reason <-
+    NULL
+  thresholds <- as.integer(thresholds)
+  wide <- bucketed[, {
+    valid <- !is.na(delta_min)
+    vals <- delta_min[valid]
+    resp <- respondent_index[valid]
+    n_valid <- length(vals)
+    q <- if (n_valid > 0L) {
+      stats::quantile(vals, probs = c(0.50, 0.90, 0.95), names = FALSE)
+    } else {
+      c(NA_real_, NA_real_, NA_real_)
+    }
+    out <- list(
+      n = n_valid,
+      mean_delta_min = if (n_valid > 0L) mean(vals) else NA_real_,
+      p50_delta_min = q[[1L]],
+      p90_delta_min = q[[2L]],
+      p95_delta_min = q[[3L]],
+      n_na_parse = sum(na_reason == "parse_failure", na.rm = TRUE),
+      n_na_missing = sum(na_reason == "missing_endpoint", na.rm = TRUE),
+      n_na_chain = sum(na_reason == "chain_break", na.rm = TRUE)
+    )
+    for (k in seq_along(thresholds)) {
+      over <- vals > thresholds[[k]]
+      out[[sprintf(".n_le_%d", k)]] <- n_valid - sum(over)
+      out[[sprintf(".n_resp_over_%d", k)]] <- length(unique(resp[over]))
+    }
+    out
+  }, by = c(.bucket_keys, "segment", "segment_index")]
+  segment_cells_long(wide, thresholds)
+}
+
+# Fan the wide per-cell table out to one row per (cell, threshold): the shared
+# columns repeat, the threshold-specific pair is picked from the `.n_le_<k>` /
+# `.n_resp_over_<k>` columns, and pct_le is derived.
+segment_cells_long <- function(wide, thresholds) {
+  shared <- c(.bucket_keys, "segment", "segment_index", "n",
+              "mean_delta_min", "p50_delta_min", "p90_delta_min",
+              "p95_delta_min", "n_na_parse", "n_na_missing", "n_na_chain")
+  base <- data.table::setDF(wide[, shared, with = FALSE])
+  chunks <- lapply(seq_along(thresholds), function(k) {
+    cells <- base
+    cells$n_le <- wide[[sprintf(".n_le_%d", k)]]
+    cells$n_resp_over <- wide[[sprintf(".n_resp_over_%d", k)]]
+    cells$threshold_min <- rep(thresholds[[k]], nrow(cells))
+    cells$pct_le <- safe_pct(cells$n_le, cells$n)
+    cells
+  })
+  do.call(rbind, chunks)
 }
 
 # Left-join every aggregation onto the (bucket × segment × threshold)
