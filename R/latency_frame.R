@@ -28,11 +28,22 @@ build_latency_frame <- function(data, config, parse_failed_mask = NULL) {
 
   campaign_id <- data[[campaign_col]]
   resp_idx <- seq_len(n)
+  n_seg <- length(questions) - 1L
+  n_out <- n * n_seg
 
-  segments <- vector("list", length(questions) - 1)
+  # The long frame is segment-major: segment 1's n rows, then segment 2's, ...
+  # Each column is allocated once at its final length and filled slice by
+  # slice, so the frame is never held twice (a per-segment list of sub-frames
+  # plus the bound result peaked at 2x the frame). The segment-constant
+  # columns (campaign_id, segment label, segment_index) are built by
+  # repetition below rather than filled per segment.
+  delta_out <- numeric(n_out)
+  date_out <- numeric(n_out)
+  hour_out <- integer(n_out)
+  reason_out <- character(n_out)
   prior_na <- NULL
   total_clamped <- 0L
-  for (i in seq_len(length(questions) - 1)) {
+  for (i in seq_len(n_seg)) {
     q_prior <- questions[i]
     q_next <- questions[i + 1]
     batch_prior_col <- sprintf("id.%s.batchDate", q_prior)
@@ -55,32 +66,30 @@ build_latency_frame <- function(data, config, parse_failed_mask = NULL) {
     prior_na <- .chain_break_mask(prior_na, batch_prior)
 
     local <- .local_date_hour(batch_prior, field_tz)
-    seg_date_local <- local$date
-    hour_local <- local$hour
 
     parse_fail_row <- segment_parse_fail_mask(
       parse_failed_mask, batch_prior_col, script_next_col, n
     )
-    na_reason <- classify_na_reason(delta, delta_pre, parse_fail_row)
 
-    segments[[i]] <- data.frame(
-      respondent_index = resp_idx,
-      campaign_id = campaign_id,
-      segment = sprintf("%s\u2192%s", q_prior, q_next),
-      segment_index = i,
-      delta_min = delta,
-      segment_date_local = seg_date_local,
-      hour_local = hour_local,
-      na_reason = na_reason,
-      stringsAsFactors = FALSE
-    )
+    slice <- (i - 1L) * n + resp_idx
+    delta_out[slice] <- delta
+    date_out[slice] <- unclass(local$date)
+    hour_out[slice] <- local$hour
+    reason_out[slice] <- classify_na_reason(delta, delta_pre, parse_fail_row)
   }
-  # rbindlist + setDF instead of do.call(rbind, ...): do.call(rbind) over the
-  # per-segment sub-frames is O(segments^2) in copies and dominated peak memory
-  # for wide, high-volume campaigns (a ~47M-row frame peaked ~17GB just here).
-  # rbindlist binds in one pass; setDF converts back to a plain data.frame in
-  # place (no copy), preserving the documented data.frame return contract.
-  frame <- data.table::setDF(data.table::rbindlist(segments))
+  segment_labels <- sprintf("%s\u2192%s", questions[-length(questions)],
+                            questions[-1L])
+  frame <- data.frame(
+    respondent_index = rep.int(resp_idx, n_seg),
+    campaign_id = rep.int(campaign_id, n_seg),
+    segment = rep(segment_labels, each = n),
+    segment_index = rep(seq_len(n_seg), each = n),
+    delta_min = delta_out,
+    segment_date_local = .Date(date_out),
+    hour_local = hour_out,
+    na_reason = reason_out,
+    stringsAsFactors = FALSE
+  )
   attr(frame, "n_clamped") <- total_clamped
   frame
 }
