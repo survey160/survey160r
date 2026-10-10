@@ -93,6 +93,21 @@ of output-identical rounds (every change is gated on byte-identical results):
   (`useBytes = TRUE`): the same decision without per-string encoding
   validation, for the 100M+-row projection reads.
 
+## New features
+
+* **`s160_read_csv()` and `s160_gcs_campaign_results_read()` gain
+  `timestamps = c("character", "POSIXct")`.** `"POSIXct"` decodes every
+  `id.<q>.scriptDate` / `id.<q>.batchDate` column to UTC `POSIXct` at read
+  time through `parse_campaign_timestamps()` -- 8 bytes per cell against ~60
+  for the export's strings, so a wide export takes roughly half the memory.
+  `fread` already infers a clean timestamp column as `POSIXct`; the option
+  guarantees it for a column `fread` has to keep as character (one unparseable
+  cell is enough) and for the `read.csv` fallback. Every transform accepts
+  either form and gives the same result: the parse-failure mask travels on the
+  parsed column (a `parse_failed` attribute) so `latency_report()`'s
+  `parse_failures_per_column` still counts those cells. Default
+  `"character"` is unchanged.
+
 ## Breaking changes
 
 * **Disposition record columns `loi`, `topic`, and `registration_id` are renamed

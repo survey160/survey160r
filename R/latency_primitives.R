@@ -143,10 +143,18 @@ parse_timestamps <- function(data, cols) {
     }
     raw <- data[[col]]
     if (inherits(raw, "POSIXct")) {
-      # Already parsed; normalize to UTC. No parse failures possible.
+      # Already parsed; normalize to UTC. A reader that decoded the column at
+      # read time (timestamps = "POSIXct") leaves its parse-failure mask on
+      # the column as the "parse_failed" attribute, so those cells are counted
+      # exactly as a string parse here would count them; otherwise there are
+      # no failures to report.
+      col_fail <- attr(raw, "parse_failed", exact = TRUE)
+      if (is.null(col_fail)) col_fail <- rep(FALSE, n)
+      attr(raw, "parse_failed") <- NULL
       attr(raw, "tzone") <- "UTC"
       data[[col]] <- raw
-      fail_mask[[col]] <- rep(FALSE, n)
+      failures[[col]] <- sum(col_fail)
+      fail_mask[[col]] <- col_fail
       next
     }
     raw_chr <- as.character(raw)

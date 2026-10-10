@@ -295,6 +295,36 @@ download_with_verify <- function(object_name, local_path, max_retries = 2L,
   digest::digest(file = path, algo = "sha256")
 }
 
+# Decode every id.<q>.scriptDate / id.<q>.batchDate column of a freshly read
+# export to POSIXct (UTC) in place, for the readers' `timestamps = "POSIXct"`.
+# A parsed column costs 8 bytes per cell against ~60 for the export's
+# 27-character timestamp strings, so this is the largest memory lever on a
+# wide export. The per-column parse-failure mask (non-blank, unparseable) is
+# kept on the column as the "parse_failed" attribute so latency_report()'s
+# diagnostics count those cells exactly as a string-column parse would; a
+# column with no failure carries no attribute.
+.parse_export_timestamps <- function(data) {
+  cols <- grep("^id\\..+\\.(scriptDate|batchDate)$", names(data), value = TRUE)
+  for (col in cols) {
+    raw <- data[[col]]
+    if (!is.character(raw)) next
+    parsed <- parse_campaign_timestamps(raw)
+    failed <- !is.na(raw) & nzchar(raw) & is.na(parsed)
+    if (any(failed)) attr(parsed, "parse_failed") <- failed
+    data[[col]] <- parsed
+  }
+  data
+}
+
+# Validate the readers' `timestamps` argument.
+.check_timestamps_arg <- function(timestamps, fn) {
+  if (!is.character(timestamps) || length(timestamps) != 1L ||
+        !timestamps %in% c("character", "POSIXct")) {
+    stop_s160("`timestamps` must be \"character\" or \"POSIXct\".", fn = fn)
+  }
+  timestamps
+}
+
 # Read just the raw (un-munged) header names of a CSV, without parsing the body.
 # Uses fread when available, else read.csv; `encoding` is honoured in BOTH so a
 # UTF-8/BOM file maps to the same names regardless of reader. Shared by
@@ -643,6 +673,17 @@ finish_gcs_init <- function(bucket) {
 #'   \code{result$meta}. \code{FALSE} (default) skips the extra hashing read and
 #'   returns a plain frame. (The local-file sibling is
 #'   \code{\link{s160_read_csv}}, whose \code{hash} stamps the same provenance.)
+#' @param timestamps How the export's \code{id.<q>.scriptDate} /
+#'   \code{id.<q>.batchDate} columns are returned: \code{"character"}
+#'   (default) keeps the export's strings; \code{"POSIXct"} decodes them to
+#'   UTC \code{POSIXct} at read time via \code{\link{parse_campaign_timestamps}}.
+#'   A parsed column takes 8 bytes per cell against ~60 for the strings, so
+#'   \code{"POSIXct"} roughly halves a wide export's footprint in memory; every
+#'   transform (\code{latency_run()}, \code{disposition_run()},
+#'   \code{question_funnel()}, ...) accepts either form and produces the same
+#'   result (an unparseable non-blank string is \code{NA} in the parsed column
+#'   and is still counted in \code{latency_report()}'s
+#'   \code{parse_failures_per_column}).
 #' @param ... Additional arguments forwarded to the CSV reader
 #'   (\code{data.table::fread}, or \code{utils::read.csv} when data.table is
 #'   unavailable), e.g. \code{na.strings}, \code{nrows}, \code{sep}.
@@ -664,8 +705,12 @@ s160_gcs_campaign_results_read <- function(campaign_id, filename = NULL,
                                            env = .ENV_CHOICES,
                                            bucket = NULL, columns = NULL,
                                            columns_fn = NULL,
-                                           hash = FALSE, ...) {
+                                           hash = FALSE,
+                                           timestamps = c("character", "POSIXct"),
+                                           ...) {
   campaign_id <- validate_campaign_id(campaign_id)
+  timestamps <- .check_timestamps_arg(timestamps[[1L]],
+                                      "s160_gcs_campaign_results_read")
   env <- match.arg(env)
   bucket <- .locate("campaign_results", env, bucket,
                     "s160_gcs_campaign_results_read")$bucket
@@ -747,6 +792,7 @@ s160_gcs_campaign_results_read <- function(campaign_id, filename = NULL,
 
   data <- fast_read_csv(local_path, columns = columns,
                         fn = "s160_gcs_campaign_results_read", ...)
+  if (timestamps == "POSIXct") data <- .parse_export_timestamps(data)
   # Provenance (opt-in): hash the downloaded bytes + record the canonical gs://
   # source, so latency_run()/latency_report() can surface them on result$meta.
   # Done before the on.exit() cleanup of a NULL-destdir tempfile, so the file is
@@ -861,6 +907,11 @@ s160_gcs_campaign_results_list <- function(env = .ENV_CHOICES,
 #'   \code{source_csv_hash}. Set \code{FALSE} to skip the hashing pass (a full
 #'   second read of the file) on large backfills where provenance hashing is
 #'   not needed; \code{source_csv_hash} is then \code{NA}.
+#' @param timestamps \code{"character"} (default) keeps the export's
+#'   \code{id.<q>.scriptDate} / \code{id.<q>.batchDate} strings;
+#'   \code{"POSIXct"} decodes them to UTC \code{POSIXct} at read time, which
+#'   roughly halves a wide export's footprint in memory. See the same argument
+#'   of \code{\link{s160_gcs_campaign_results_read}}.
 #' @param ... Forwarded to the CSV reader (\code{data.table::fread}, or
 #'   \code{utils::read.csv} when data.table is unavailable), e.g.
 #'   \code{na.strings}, \code{sep}. \code{stringsAsFactors} defaults to
@@ -874,14 +925,17 @@ s160_gcs_campaign_results_list <- function(env = .ENV_CHOICES,
 #' latency_run(500, data, field_timezone = "America/New_York")
 #' }
 #' @export
-s160_read_csv <- function(path, columns = NULL, hash = TRUE, ...) {
+s160_read_csv <- function(path, columns = NULL, hash = TRUE,
+                          timestamps = c("character", "POSIXct"), ...) {
   if (!file.exists(path)) {
     stop_not_found("file", path, fn = "s160_read_csv")
   }
   if (!is.logical(hash) || length(hash) != 1L || is.na(hash)) {
     stop_s160("`hash` must be a single TRUE or FALSE.", fn = "s160_read_csv")
   }
+  timestamps <- .check_timestamps_arg(timestamps[[1L]], "s160_read_csv")
   data <- fast_read_csv(path, columns = columns, fn = "s160_read_csv", ...)
+  if (timestamps == "POSIXct") data <- .parse_export_timestamps(data)
   attr(data, "source_csv_hash") <- if (hash) {
     paste0("sha256:", .file_sha256(path))
   } else {

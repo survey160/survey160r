@@ -13,6 +13,7 @@ s160_gcs_campaign_results_read(
   columns = NULL,
   columns_fn = NULL,
   hash = FALSE,
+  timestamps = c("character", "POSIXct"),
   ...
 )
 }
@@ -56,6 +57,18 @@ canonical \code{gs://} source as \code{source_csv_path}, which
 \code{result$meta}. \code{FALSE} (default) skips the extra hashing read and
 returns a plain frame. (The local-file sibling is
 \code{\link{s160_read_csv}}, whose \code{hash} stamps the same provenance.)}
+
+\item{timestamps}{How the export's \code{id.<q>.scriptDate} /
+\code{id.<q>.batchDate} columns are returned: \code{"character"}
+(default) keeps the export's strings; \code{"POSIXct"} decodes them to
+UTC \code{POSIXct} at read time via \code{\link{parse_campaign_timestamps}}.
+A parsed column takes 8 bytes per cell against ~60 for the strings, so
+\code{"POSIXct"} roughly halves a wide export's footprint in memory; every
+transform (\code{latency_run()}, \code{disposition_run()},
+\code{question_funnel()}, ...) accepts either form and produces the same
+result (an unparseable non-blank string is \code{NA} in the parsed column
+and is still counted in \code{latency_report()}'s
+\code{parse_failures_per_column}).}
 
 \item{...}{Additional arguments forwarded to the CSV reader
 (\code{data.table::fread}, or \code{utils::read.csv} when data.table is
