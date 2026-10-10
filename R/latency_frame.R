@@ -40,7 +40,7 @@ build_latency_frame <- function(data, config, parse_failed_mask = NULL) {
   delta_out <- numeric(n_out)
   date_out <- numeric(n_out)
   hour_out <- integer(n_out)
-  reason_out <- character(n_out)
+  code_out <- integer(n_out)
   prior_na <- NULL
   total_clamped <- 0L
   for (i in seq_len(n_seg)) {
@@ -52,11 +52,14 @@ build_latency_frame <- function(data, config, parse_failed_mask = NULL) {
     delta_out[slice] <- seg$delta
     date_out[slice] <- unclass(seg$date)
     hour_out[slice] <- seg$hour
-    reason_out[slice] <- seg$na_reason
+    code_out[slice] <- seg$na_code
   }
   segment_labels <- sprintf("%s\u2192%s", questions[-length(questions)],
                             questions[-1L])
-  frame <- data.frame(
+  # Assembled directly as a data.frame (the columns are already full-length
+  # and of the right type), skipping data.frame()'s per-column coercion and
+  # row-name checks over millions of rows.
+  frame <- .new_data_frame(list(
     respondent_index = rep.int(resp_idx, n_seg),
     campaign_id = rep.int(campaign_id, n_seg),
     segment = rep(segment_labels, each = n),
@@ -64,11 +67,17 @@ build_latency_frame <- function(data, config, parse_failed_mask = NULL) {
     delta_min = delta_out,
     segment_date_local = .Date(date_out),
     hour_local = hour_out,
-    na_reason = reason_out,
-    stringsAsFactors = FALSE
-  )
+    na_reason = .na_reason_levels[code_out]
+  ), n_out)
   attr(frame, "n_clamped") <- total_clamped
   frame
+}
+
+# A data.frame from a named list of equal-length columns, with the compact
+# integer row names data.frame() would give it. For columns that are already
+# the final vectors (no coercion, no recycling, no names to check).
+.new_data_frame <- function(columns, n) {
+  structure(columns, class = "data.frame", row.names = c(NA_integer_, -n))
 }
 
 # One segment's per-respondent columns, shared by build_latency_frame() and
@@ -97,7 +106,7 @@ build_latency_frame <- function(data, config, parse_failed_mask = NULL) {
     delta = delta,
     date = local$date,
     hour = local$hour,
-    na_reason = classify_na_reason(delta, cs$delta, parse_fail_row),
+    na_code = .na_reason_code(delta, cs$delta, parse_fail_row),
     n_clamped = cs$n_clamped,
     prior_na = .chain_break_mask(prior_na, batch_prior)
   )
@@ -112,16 +121,25 @@ build_latency_frame <- function(data, config, parse_failed_mask = NULL) {
 #                      invalidated the segment.
 # Returns NA_character_ on rows where delta is valid.
 classify_na_reason <- function(delta, delta_pre, parse_fail_row) {
-  out <- rep(NA_character_, length(delta))
+  .na_reason_levels[.na_reason_code(delta, delta_pre, parse_fail_row)]
+}
+
+# classify_na_reason() as an integer code into .na_reason_levels (1
+# parse_failure, 2 missing_endpoint, 3 chain_break; NA where the delta is
+# valid). The frame builders carry the code per segment and render the label
+# column once per frame -- one character indexing instead of three masked
+# string assignments per segment.
+.na_reason_code <- function(delta, delta_pre, parse_fail_row) {
+  out <- rep(NA_integer_, length(delta))
   # Work on the NA rows' indices only: the three class masks are then
   # evaluated over that subset rather than over the whole column three times.
   na_idx <- which(is.na(delta))
   if (length(na_idx) == 0L) return(out)
   parse_fail <- parse_fail_row[na_idx]
   pre_na <- is.na(delta_pre[na_idx])
-  out[na_idx[parse_fail]] <- "parse_failure"
-  out[na_idx[!parse_fail & pre_na]] <- "missing_endpoint"
-  out[na_idx[!parse_fail & !pre_na]] <- "chain_break"
+  out[na_idx[parse_fail]] <- 1L
+  out[na_idx[!parse_fail & pre_na]] <- 2L
+  out[na_idx[!parse_fail & !pre_na]] <- 3L
   out
 }
 

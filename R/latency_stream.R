@@ -54,20 +54,22 @@
     delta <- seg$delta
     seg_date_local <- seg$date
     hour_local <- seg$hour
-    na_reason <- seg$na_reason
+    na_code <- seg$na_code
 
     real <- !is.na(seg_date_local)
     if (any(real)) {
-      kept[[i]] <- data.frame(
+      n_real <- sum(real)
+      # A plain list per segment (rbindlist binds lists as it binds frames);
+      # the label column is rendered from the integer codes.
+      kept[[i]] <- list(
         respondent_index = resp_idx[real],
         campaign_id = campaign_id[real],
-        segment = sprintf("%s\u2192%s", questions[i], questions[i + 1L]),
-        segment_index = i,
+        segment = rep.int(sprintf("%s\u2192%s", questions[i], questions[i + 1L]), n_real),
+        segment_index = rep.int(i, n_real),
         delta_min = delta[real],
         segment_date_local = seg_date_local[real],
         hour_local = hour_local[real],
-        na_reason = na_reason[real],
-        stringsAsFactors = FALSE
+        na_reason = .na_reason_levels[na_code[real]]
       )
     }
     # NA-date rows -> per-(campaign) counts by reason. chain_break can never be
@@ -75,13 +77,13 @@
     nd <- !real
     if (any(nd)) {
       cid <- campaign_id[nd]
-      reason <- na_reason[nd]
+      code <- na_code[nd]
       ucid <- unique(cid)
       # One tabulate() per reason over the id's position in `ucid`, instead of
       # a full-column scan per (id, reason).
       gid <- match(cid, ucid)
-      pf <- tabulate(gid[reason == "parse_failure"], nbins = length(ucid))
-      me <- tabulate(gid[reason == "missing_endpoint"], nbins = length(ucid))
+      pf <- tabulate(gid[code == 1L], nbins = length(ucid))
+      me <- tabulate(gid[code == 2L], nbins = length(ucid))
       na_list[[i]] <- data.frame(
         campaign_id = ucid,
         na_parse = pf,
