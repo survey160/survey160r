@@ -122,6 +122,21 @@ test_that("hash = TRUE stamps sha256 + canonical gs:// provenance", {
                "gs://campaign_results/1980/1980_raw_data_download.csv")
 })
 
+test_that("timestamps = \"POSIXct\" decodes the id.* columns on the GCS read", {
+  stub_gcs_base()
+  stub_gcs_download_ok()
+  # The stubbed download carries no id.* timestamp column, so this exercises
+  # the option's plumbing (accepted, frame returned); the decode itself is
+  # covered on the local reader (test-s160_read_csv.R).
+  res <- suppressMessages(s160_gcs_campaign_results_read(1980, timestamps = "POSIXct"))
+  expect_s3_class(res, "data.frame")
+  expect_identical(res, suppressMessages(s160_gcs_campaign_results_read(1980)))
+  expect_error(
+    suppressMessages(s160_gcs_campaign_results_read(1980, timestamps = "Date")),
+    "`timestamps` must be"
+  )
+})
+
 test_that("hash = FALSE (default) returns a plain frame, no provenance attrs", {
   stub_gcs_base()
   stub_gcs_download_ok()

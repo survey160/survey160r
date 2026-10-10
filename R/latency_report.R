@@ -77,7 +77,12 @@ UNIVERSAL_THRESHOLDS_MIN <- c(1L, 3L, 5L, 10L)
 #' head(result$consolidated)
 #' @export
 latency_report <- function(data, config, run_at = NULL, compact = FALSE) {
-  latency_validate_config(config, data)
+  # latency_validate_config() in two halves around the parse: the shape and
+  # column checks first (they gate everything below), the flow-order check on
+  # the parsed columns (it would otherwise decode every timestamp a second
+  # time). Same checks, same precedence.
+  .validate_config_shape(config)
+  validate_columns_present(config, data)
 
   cfg_hash <- latency_config_hash(config)
   if (is.null(run_at)) run_at <- Sys.time()
@@ -105,12 +110,33 @@ latency_report <- function(data, config, run_at = NULL, compact = FALSE) {
   # every consolidated row so downstream consumers (Shiny) can filter.
   survey_mode <- detect_survey_mode(data)
 
+  # The population mask is evaluated ONCE here, on the raw (still character)
+  # columns, and reused by the summary frame's opted_in signal and by the
+  # population filter below -- so the expression sees exactly the values it
+  # always did, regardless of the timestamp parse that follows.
+  pop_mask <- population_filter_mask(data, config$filters$population)
+
+  # Parse the flow's timestamp columns ONCE, on the pre-filter data, with the
+  # per-column parse-failure masks. The summary / ineligible / refusal frames,
+  # the dedupe and the date filter all read these columns through
+  # .column_timestamps(), which passes an already-parsed POSIXct through -- so
+  # the export's timestamps are decoded once instead of once per consumer.
+  # The masks are row-subset in lockstep with `data` by every filter below, and
+  # parse_failures is summed from them AFTER the population filter, so the
+  # diagnostics count exactly what a post-filter parse would have.
+  ts_cols <- required_timestamp_columns(questions)
+  parsed <- parse_timestamps(data, ts_cols)
+  data <- parsed$data
+  parse_failed_mask <- parsed$parse_failed_mask
+  validate_flow_order(config, data)
+
   # Step 1: pre-filter summary metrics (spec §4). Counts sent /
   # opted_in / completed at the (campaign, date, hour_local) grain,
   # plus per-segment ineligible counts. Computed on the full pre-filter
   # population so the denominators reflect every respondent the platform
   # dispatched the intro to, not just those who consented.
-  summary_hour <- build_summary_frame(data, config, survey_mode)
+  summary_hour <- build_summary_frame(data, config, survey_mode,
+                                      population_mask = pop_mask)
   ineligible_hour <- build_ineligible_frame(data, config)
   refusal_hour <- build_refusal_frame(data, config)
   # date_filter, when set, restricts both views to the listed dates --
@@ -129,39 +155,45 @@ latency_report <- function(data, config, run_at = NULL, compact = FALSE) {
   ineligible_day <- collapse_ineligible_to_day(ineligible_hour)
   refusal_day <- collapse_refusal_to_day(refusal_hour)
 
-  # Step 2: population filter.
-  data <- apply_population_filter(data, config$filters$population)
+  # Step 2: population filter. The no-op case (an all-TRUE mask, the default
+  # with `filters.population` unset) keeps `data` as-is rather than copying it.
+  if (!isTRUE(all(pop_mask))) {
+    pair <- subset_parsed_input(data, parse_failed_mask, which(pop_mask))
+    data <- pair$data
+    parse_failed_mask <- pair$parse_failed_mask
+  }
   n_in <- nrow(data)
+  parse_failures <- vapply(parse_failed_mask, sum, integer(1))
 
-  # Step 3: parse timestamps. (Blanks were already replaced in step 0.)
-  ts_cols <- required_timestamp_columns(questions)
-  parsed <- parse_timestamps(data, ts_cols)
-  data <- parsed$data
-  parse_failures <- parsed$parse_failures
-  parse_failed_mask <- parsed$parse_failed_mask
+  # Steps 3 & 4 (dedupe, date_filter) are composed into ONE row index and
+  # applied once, projected to the columns the frame builders read (the flow
+  # timestamps + the campaign id) -- so the full-width input is copied neither
+  # per filter step nor at all: the subset holds ~half the columns. The
+  # per-segment parse_failed_mask vectors shrink in lockstep (subset_parsed_input)
+  # so segment-NA classification lines up row-for-row.
 
-  # Steps 3 & 4 drop rows from `data`; the per-segment parse_failed_mask
-  # vectors must shrink in lockstep so segment-NA classification later lines
-  # up row-for-row. subset_parsed_input() does both at once -- adding a
-  # third filter step in the future cannot forget the reindex.
-
-  # Step 3: dedupe by respondent_id (earliest intro.scriptDate wins).
-  if (!is.null(resp_id_col)) {
-    pair <- subset_parsed_input(data, parse_failed_mask,
-                                dedupe_keep_rows(data, resp_id_col))
-    data <- pair$data
-    parse_failed_mask <- pair$parse_failed_mask
+  # Step 3: dedupe by respondent_id (earliest opener scriptDate wins).
+  keep <- if (!is.null(resp_id_col)) {
+    dedupe_keep_rows(data, resp_id_col)
+  } else {
+    seq_len(nrow(data))
   }
 
-  # Step 4: optional date_filter.
+  # Step 4: optional date_filter, evaluated on the kept rows' opener send
+  # columns only (the filter reads nothing else), then composed into `keep`.
   if (!is.null(config$filters$date_filter)) {
-    pair <- subset_parsed_input(
-      data, parse_failed_mask,
-      date_filter_keep_rows(data, config$filters$date_filter, field_tz)
-    )
-    data <- pair$data
-    parse_failed_mask <- pair$parse_failed_mask
+    opener_cols <- intersect(sprintf("id.%s.scriptDate", .discover_openers(data)),
+                             names(data))
+    kept_openers <- data[keep, opener_cols, drop = FALSE]
+    keep <- keep[date_filter_keep_rows(kept_openers,
+                                       config$filters$date_filter, field_tz)]
   }
+
+  frame_cols <- unique(c(ts_cols, config$filters$campaign_id_column))
+  pair <- subset_parsed_input(data[, frame_cols, drop = FALSE],
+                              parse_failed_mask, keep)
+  data <- pair$data
+  parse_failed_mask <- pair$parse_failed_mask
 
   # Steps 5-7: build the per-(respondent, segment) frame, aggregate to
   # consolidated at TWO grains, and build diagnostics.
@@ -192,22 +224,14 @@ latency_report <- function(data, config, run_at = NULL, compact = FALSE) {
                         ls(all.names = FALSE)))
     invisible(gc(verbose = FALSE))
 
-    hour_grain <- aggregate_consolidated(frame, config, cfg_hash, run_at,
-                                         src_csv_hash,
-                                         summary_frame = summary_hour,
-                                         ineligible_frame = ineligible_hour,
-                                         refusal_frame = refusal_hour,
-                                         survey_mode = survey_mode)
-    hour_grain <- hour_grain[!is.na(hour_grain$hour_local), , drop = FALSE]
-    invisible(gc(verbose = FALSE))
-    day_frame <- frame
-    if (nrow(day_frame) > 0L) day_frame$hour_local <- NA_integer_
-    day_grain <- aggregate_consolidated(day_frame, config, cfg_hash, run_at,
-                                        src_csv_hash,
-                                        summary_frame = summary_day,
-                                        ineligible_frame = ineligible_day,
-                                        refusal_frame = refusal_day,
-                                        survey_mode = survey_mode)
+    grains <- .two_grain_consolidated(frame, config, cfg_hash, run_at,
+                                      src_csv_hash, survey_mode,
+                                      hour = list(summary_hour, ineligible_hour,
+                                                  refusal_hour),
+                                      day = list(summary_day, ineligible_day,
+                                                 refusal_day))
+    hour_grain <- grains$hour
+    day_grain <- grains$day
     # Rebuild the (date=NA, hour=NA) rows the dropped NA-date rows would have
     # produced, then re-sort the day grain to the assemble_consolidated() order.
     day_na <- .na_date_day_rows(na_date, config, cfg_hash, run_at, src_csv_hash,
@@ -228,22 +252,14 @@ latency_report <- function(data, config, run_at = NULL, compact = FALSE) {
                         ls(all.names = FALSE)))
     invisible(gc(verbose = FALSE))
 
-    hour_grain <- aggregate_consolidated(frame, config, cfg_hash, run_at,
-                                         src_csv_hash,
-                                         summary_frame = summary_hour,
-                                         ineligible_frame = ineligible_hour,
-                                         refusal_frame = refusal_hour,
-                                         survey_mode = survey_mode)
-    hour_grain <- hour_grain[!is.na(hour_grain$hour_local), , drop = FALSE]
-    invisible(gc(verbose = FALSE))
-    day_frame <- frame
-    if (nrow(day_frame) > 0L) day_frame$hour_local <- NA_integer_
-    day_grain <- aggregate_consolidated(day_frame, config, cfg_hash, run_at,
-                                        src_csv_hash,
-                                        summary_frame = summary_day,
-                                        ineligible_frame = ineligible_day,
-                                        refusal_frame = refusal_day,
-                                        survey_mode = survey_mode)
+    grains <- .two_grain_consolidated(frame, config, cfg_hash, run_at,
+                                      src_csv_hash, survey_mode,
+                                      hour = list(summary_hour, ineligible_hour,
+                                                  refusal_hour),
+                                      day = list(summary_day, ineligible_day,
+                                                 refusal_day))
+    hour_grain <- grains$hour
+    day_grain <- grains$day
     consolidated <- rbind(hour_grain, day_grain)
 
     diagnostics <- build_diagnostics(
@@ -274,4 +290,33 @@ latency_report <- function(data, config, run_at = NULL, compact = FALSE) {
     diagnostics = diagnostics,
     meta = meta
   )
+}
+
+# The two consolidated grains from one latency frame: the hour grain (hour_local
+# 0-23; the NA-hour bucket is dropped here, the day pass owns it) and the day
+# rollup (hour_local nulled on the frame, so the per-respondent cascade is
+# recomputed at day grain rather than summed from hours). `hour` / `day` are
+# the (summary, ineligible, refusal) frame triples at each grain. The gc()
+# between the passes reclaims the hour pass's transient grouped frames before
+# the day pass allocates its own (output-neutral). Shared by the full and
+# compact paths of latency_report().
+.two_grain_consolidated <- function(frame, config, cfg_hash, run_at,
+                                    src_csv_hash, survey_mode, hour, day) {
+  hour_grain <- aggregate_consolidated(frame, config, cfg_hash, run_at,
+                                       src_csv_hash,
+                                       summary_frame = hour[[1L]],
+                                       ineligible_frame = hour[[2L]],
+                                       refusal_frame = hour[[3L]],
+                                       survey_mode = survey_mode)
+  hour_grain <- hour_grain[!is.na(hour_grain$hour_local), , drop = FALSE]
+  invisible(gc(verbose = FALSE))
+  day_frame <- frame
+  if (nrow(day_frame) > 0L) day_frame$hour_local <- NA_integer_
+  day_grain <- aggregate_consolidated(day_frame, config, cfg_hash, run_at,
+                                      src_csv_hash,
+                                      summary_frame = day[[1L]],
+                                      ineligible_frame = day[[2L]],
+                                      refusal_frame = day[[3L]],
+                                      survey_mode = survey_mode)
+  list(hour = hour_grain, day = day_grain)
 }

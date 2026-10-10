@@ -44,40 +44,32 @@
   resp_idx <- seq_len(n)
   kept <- vector("list", n_seg)
   na_list <- vector("list", n_seg)
-  chain_priors <- list()
+  prior_na <- NULL
   total_clamped <- 0L
   for (i in seq_len(n_seg)) {
-    q_prior <- questions[i]
-    q_next <- questions[i + 1L]
-    batch_prior_col <- sprintf("id.%s.batchDate", q_prior)
-    script_next_col <- sprintf("id.%s.scriptDate", q_next)
-    batch_prior <- data[[batch_prior_col]]
-    script_next <- data[[script_next_col]]
-
-    cs <- compute_segment_delta(batch_prior, script_next)
-    delta_pre <- cs$delta
-    total_clamped <- total_clamped + cs$n_clamped
-    delta <- apply_chain_validity(delta_pre, chain_priors)
-    chain_priors <- c(chain_priors, list(batch_prior))
-
-    seg_date_local <- as.Date(format(batch_prior, tz = field_tz))
-    hour_local <- as.integer(format(batch_prior, format = "%H", tz = field_tz))
-    parse_fail_row <- segment_parse_fail_mask(parse_failed_mask,
-                                              batch_prior_col, script_next_col, n)
-    na_reason <- classify_na_reason(delta, delta_pre, parse_fail_row)
+    seg <- .segment_columns(data, questions, i, prior_na, field_tz,
+                            parse_failed_mask, n)
+    prior_na <- seg$prior_na
+    total_clamped <- total_clamped + seg$n_clamped
+    delta <- seg$delta
+    seg_date_local <- seg$date
+    hour_local <- seg$hour
+    na_code <- seg$na_code
 
     real <- !is.na(seg_date_local)
     if (any(real)) {
-      kept[[i]] <- data.frame(
+      n_real <- sum(real)
+      # A plain list per segment (rbindlist binds lists as it binds frames);
+      # the label column is rendered from the integer codes.
+      kept[[i]] <- list(
         respondent_index = resp_idx[real],
         campaign_id = campaign_id[real],
-        segment = sprintf("%s\u2192%s", q_prior, q_next),
-        segment_index = i,
+        segment = rep.int(sprintf("%s\u2192%s", questions[i], questions[i + 1L]), n_real),
+        segment_index = rep.int(i, n_real),
         delta_min = delta[real],
         segment_date_local = seg_date_local[real],
         hour_local = hour_local[real],
-        na_reason = na_reason[real],
-        stringsAsFactors = FALSE
+        na_reason = .na_reason_levels[na_code[real]]
       )
     }
     # NA-date rows -> per-(campaign) counts by reason. chain_break can never be
@@ -85,12 +77,13 @@
     nd <- !real
     if (any(nd)) {
       cid <- campaign_id[nd]
-      reason <- na_reason[nd]
+      code <- na_code[nd]
       ucid <- unique(cid)
-      pf <- vapply(ucid, function(cc) sum(cid == cc & reason == "parse_failure"),
-                   integer(1))
-      me <- vapply(ucid, function(cc) sum(cid == cc & reason == "missing_endpoint"),
-                   integer(1))
+      # One tabulate() per reason over the id's position in `ucid`, instead of
+      # a full-column scan per (id, reason).
+      gid <- match(cid, ucid)
+      pf <- tabulate(gid[code == 1L], nbins = length(ucid))
+      me <- tabulate(gid[code == 2L], nbins = length(ucid))
       na_list[[i]] <- data.frame(
         campaign_id = ucid,
         na_parse = pf,
@@ -209,7 +202,8 @@
     ))
   }
   valid <- !is.na(kept$delta_min)
-  used <- length(unique(kept$respondent_index[valid]))
+  worst <- .worst_delta_by_respondent(kept$respondent_index, kept$delta_min)
+  used <- length(worst)
   n_valid <- sum(valid)
   total_segments <- n_seg * n_frame
   na_segments <- total_segments - n_valid
@@ -221,9 +215,6 @@
     chain_break = sum(kept$na_reason == "chain_break", na.rm = TRUE)
   )
   if (used > 0L) {
-    r <- kept$respondent_index[valid]
-    d <- kept$delta_min[valid]
-    worst <- vapply(split(d, r), max, numeric(1))
     pct_clean <- 100 * mean(worst <= 5)
     pct_5_10 <- 100 * mean(worst > 5 & worst <= 10)
     pct_over_10 <- 100 * mean(worst > 10)

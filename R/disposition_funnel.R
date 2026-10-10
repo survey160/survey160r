@@ -45,6 +45,55 @@
   out
 }
 
+# The grouped funnel counts, in a form data.table computes in C across all
+# groups at once (GForce): every aggregate is a bare sum() / uniqueN() / .N on
+# a column, never an expression. The aggregated columns are referenced under
+# internal names (`.cid`, `.sent1`, `.engaged`, ...) so a column that also
+# appears in `by` (a caller grouping by `opted_in`) is still read as the full
+# group vector, not the length-1 group key. The "all NA -> NA" rule of
+# .disposition_funnel_count() is applied afterwards from a per-group NA count,
+# computed only for a flag column that has any NA (the off-channel
+# `completed`), so the common all-present column costs nothing extra.
+#
+# The previous form read each column through `.SD$` inside `j`, which
+# evaluated j in R per group and materialised .SD each time -- fine at
+# thousands of rows, the whole cost at the 140M-row projection.
+.disposition_funnel_counts <- function(data, group_cols) {
+  .cid <- .sent1 <- .engaged <- .opted_in <- .completed <- .ineligible <-
+    .refused <- .na <- .N <- NULL
+  flags <- c("engaged", "opted_in", "completed", "ineligible", "refused")
+  work <- data[group_cols]
+  work[[".cid"]] <- data[["campaign_id"]]
+  work[[".sent1"]] <- data[["sent"]] == 1L
+  for (f in flags) work[[paste0(".", f)]] <- data[[f]]
+  dt <- data.table::as.data.table(work)
+  agg <- dt[, list(
+    campaigns = data.table::uniqueN(.cid),
+    n_sent = sum(.sent1, na.rm = TRUE),
+    n_engaged = sum(.engaged, na.rm = TRUE),
+    n_opted_in = sum(.opted_in, na.rm = TRUE),
+    n_completed = sum(.completed, na.rm = TRUE),
+    n_ineligible = sum(.ineligible, na.rm = TRUE),
+    n_refused = sum(.refused, na.rm = TRUE),
+    .n_rows = .N
+  ), by = group_cols]
+  for (f in flags) {
+    if (!anyNA(data[[f]])) next
+    data.table::set(dt, j = ".na", value = is.na(data[[f]]))
+    n_na <- dt[, list(.n_na = sum(.na)), by = group_cols][[".n_na"]]
+    col <- paste0("n_", f)
+    data.table::set(agg, i = which(n_na == agg[[".n_rows"]]), j = col,
+                    value = NA_integer_)
+  }
+  out <- as.data.frame(agg, stringsAsFactors = FALSE)
+  out[[".n_rows"]] <- NULL
+  for (col in c("campaigns", "n_sent", "n_engaged", "n_opted_in", "n_completed",
+                "n_ineligible", "n_refused")) {
+    out[[col]] <- as.integer(out[[col]])
+  }
+  out
+}
+
 # Sum a 0/1 flag column within a group, but return NA (not a false 0) when EVERY
 # value is NA -- the all-off-channel case for `completed` on t2w_external rows. A
 # group with at least one non-NA value sums to a real count (0 included). Used in
@@ -152,30 +201,10 @@ disposition_funnel <- function(x, by = "carrier", grain = c("day", "all"),
   if (!"refused" %in% names(data)) data$refused <- rep(0L, nrow(data))
   if (!"ineligible" %in% names(data)) data$ineligible <- rep(0L, nrow(data))
 
-  if (nrow(data) == 0L) {
-    out <- .disposition_funnel_empty(data, group_cols)
+  out <- if (nrow(data) == 0L) {
+    .disposition_funnel_empty(data, group_cols)
   } else {
-    # `.SD` is the data.table group subset; NULL-bind it so R CMD check / lintr do
-    # not flag the bare symbol. Reading every aggregated column from `.SD` (with
-    # `.SDcols` forcing them all in) keeps them FULL group vectors -- including a
-    # column that also appears in `by`. A bare `by`-column reference inside `j`
-    # would instead collapse to the length-1 group key, miscounting when a caller
-    # groups by a funnel flag (e.g. `by = "opted_in"`).
-    .SD <- NULL
-    cnt <- .disposition_funnel_count
-    dt <- data.table::as.data.table(data)
-    agg <- dt[, list(
-      campaigns    = as.integer(data.table::uniqueN(.SD$campaign_id)),
-      n_sent       = as.integer(sum(.SD$sent == 1L, na.rm = TRUE)),
-      n_engaged    = cnt(.SD$engaged),
-      n_opted_in   = cnt(.SD$opted_in),
-      n_completed  = cnt(.SD$completed),
-      n_ineligible = cnt(.SD$ineligible),
-      n_refused    = cnt(.SD$refused)
-    ), by = group_cols,
-    .SDcols = c("campaign_id", "sent", "engaged", "opted_in",
-                "completed", "ineligible", "refused")]
-    out <- as.data.frame(agg, stringsAsFactors = FALSE)
+    .disposition_funnel_counts(data, group_cols)
   }
 
   if (isTRUE(rates)) out <- funnel_rates(out, percent = percent)

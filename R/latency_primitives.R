@@ -51,12 +51,28 @@ parse_campaign_timestamps <- function(x) {
   if (inherits(x, "POSIXct")) {
     return(lubridate::with_tz(x, "UTC"))
   }
-  suppressWarnings(lubridate::parse_date_time(
-    .strip_z(as.character(x)),
-    orders = .timestamp_orders,
-    tz = "UTC",
-    quiet = TRUE
-  ))
+  x <- as.character(x)
+  # Fast path: the single-order parser. It runs the same C routine as
+  # parse_date_time() for the export's "Y-m-d H:M:OS" order (so the values are
+  # bit-identical), accepts the trailing Z and an ISO "T" separator itself, and
+  # skips the per-call order training/guessing of the multi-order parser --
+  # ~70x faster on an export-sized column. A non-blank string it cannot parse
+  # is retried through the lenient multi-order parser below, so the lenient
+  # orders ("YmdHMS", slash separators, ...) keep working.
+  out <- lubridate::parse_date_time2(x, orders = "Y-m-d H:M:OS", tz = "UTC")
+  # A fully parsed column (no NA at all) has nothing to retry; skip building
+  # the three-term mask over it.
+  if (!anyNA(out)) return(out)
+  retry <- !is.na(x) & nzchar(x) & is.na(out)
+  if (any(retry)) {
+    out[retry] <- suppressWarnings(lubridate::parse_date_time(
+      .strip_z(x[retry]),
+      orders = .timestamp_orders,
+      tz = "UTC",
+      quiet = TRUE
+    ))
+  }
+  out
 }
 
 # Resolve one export column name to parsed UTC timestamps, null-safe: an absent
@@ -73,13 +89,60 @@ parse_campaign_timestamps <- function(x) {
   }
 }
 
+# Local calendar date and hour of a UTC POSIXct vector in `tz`, from ONE
+# as.POSIXlt() conversion: as.Date() of the broken-down time and its $hour
+# field. The previous as.Date(format(x, tz)) / as.integer(format(x, "%H", tz))
+# pair rendered every instant to a string twice and parsed the date back; on a
+# wide campaign that ran once per segment and dominated frame construction.
+# NA in -> NA out for both. Pure.
+#
+# The conversion is done per distinct UTC MINUTE, not per instant: a zone's
+# UTC offset is a whole number of minutes (every standard and DST offset in the
+# IANA database is; only pre-1900 local-mean-time offsets carry seconds), so
+# every instant inside one UTC minute shares its local date and hour. A
+# campaign spans a few thousand distinct minutes versus hundreds of thousands
+# of instants, and as.POSIXlt() in a named zone is the expensive step (a
+# per-element localtime lookup) -- bucketing makes it ~20x cheaper on an
+# export-sized column with identical results. NA instants bucket to NA.
+#
+# The minute keys are integers (minutes since the epoch fit comfortably), so
+# unique()/match() hash integers rather than doubles, and the calendar date
+# comes from the broken-down year/month/day by integer arithmetic
+# (.days_from_civil) rather than as.Date.POSIXlt(), which was the slowest step
+# left on the distinct minutes.
+.local_date_hour <- function(x, tz) {
+  minute <- as.integer(floor(as.numeric(x) / 60))
+  distinct <- unique(minute)
+  lt <- as.POSIXlt(.POSIXct(as.numeric(distinct) * 60, tz = "UTC"), tz = tz)
+  days <- .days_from_civil(lt$year + 1900L, lt$mon + 1L, lt$mday)
+  idx <- match(minute, distinct)
+  list(date = .Date(days[idx]), hour = lt$hour[idx])
+}
+
+# Days since 1970-01-01 of a proleptic-Gregorian civil date (vectors of year,
+# month 1-12, day 1-31; NA in -> NA out). Howard Hinnant's days_from_civil,
+# exact in integer arithmetic for every date R's Date type represents -- the
+# same number as.Date() produces for the same civil date.
+.days_from_civil <- function(year, month, day) {
+  y <- year - (month <= 2L)
+  era <- y %/% 400L
+  yoe <- y - era * 400L
+  mp <- month + ifelse(month > 2L, -3L, 9L)
+  doy <- (153L * mp + 2L) %/% 5L + day - 1L
+  doe <- yoe * 365L + yoe %/% 4L - yoe %/% 100L + doy
+  as.numeric(era * 146097L + doe - 719468L)
+}
+
 # Replace empty strings with NA on character columns. Mirrors the legacy
 # `na_if(., "")` step so downstream parsers see NA, not "".
 na_if_blank <- function(data) {
   char_cols <- vapply(data, is.character, logical(1))
   for (col in names(data)[char_cols]) {
-    blank <- !is.na(data[[col]]) & data[[col]] == ""
-    if (any(blank)) data[[col]][blank] <- NA_character_
+    # which() drops the NA comparisons, so one `== ""` pass per column is the
+    # whole test (no separate !is.na() mask), and only a column that has a
+    # blank is rewritten.
+    blank <- which(data[[col]] == "")
+    if (length(blank) > 0L) data[[col]][blank] <- NA_character_
   }
   data
 }
@@ -104,18 +167,25 @@ parse_timestamps <- function(data, cols) {
     }
     raw <- data[[col]]
     if (inherits(raw, "POSIXct")) {
-      # Already parsed; normalize to UTC. No parse failures possible.
+      # Already parsed; normalize to UTC. A reader that decoded the column at
+      # read time (timestamps = "POSIXct") leaves its parse-failure mask on
+      # the column as the "parse_failed" attribute, so those cells are counted
+      # exactly as a string parse here would count them; otherwise there are
+      # no failures to report.
+      col_fail <- attr(raw, "parse_failed", exact = TRUE)
+      if (is.null(col_fail)) col_fail <- rep(FALSE, n)
+      attr(raw, "parse_failed") <- NULL
       attr(raw, "tzone") <- "UTC"
       data[[col]] <- raw
-      fail_mask[[col]] <- rep(FALSE, n)
+      failures[[col]] <- sum(col_fail)
+      fail_mask[[col]] <- col_fail
       next
     }
-    raw_chr <- .strip_z(as.character(raw))
+    raw_chr <- as.character(raw)
     nonblank <- !is.na(raw_chr) & nzchar(raw_chr)
-    parsed <- rep(as.POSIXct(NA), length(raw_chr))
-    if (any(nonblank)) {
-      parsed[nonblank] <- parse_campaign_timestamps(raw_chr[nonblank])
-    }
+    # parse_campaign_timestamps() maps blank / NA to NA itself, so the whole
+    # column is parsed in one call (no subset-and-reassign round trip).
+    parsed <- parse_campaign_timestamps(raw_chr)
     col_fail <- nonblank & is.na(parsed)
     failures[[col]] <- sum(col_fail)
     fail_mask[[col]] <- col_fail
@@ -142,7 +212,9 @@ compute_segment_delta <- function(batch_prior, script_next) {
   if (length(batch_prior) != length(script_next)) {
     stop("`batch_prior` and `script_next` must have the same length.", call. = FALSE)
   }
-  raw <- as.numeric(difftime(script_next, batch_prior, units = "mins"))
+  # difftime(units = "mins") is exactly (unclass(t1) - unclass(t2)) / 60; done
+  # inline to skip its tz / units dispatch on an export-sized vector.
+  raw <- (as.numeric(script_next) - as.numeric(batch_prior)) / 60
   clamped <- !is.na(raw) & raw < 0
   raw[clamped] <- 0
   list(delta = raw, n_clamped = sum(clamped))
@@ -157,4 +229,12 @@ apply_chain_validity <- function(delta, chain_priors) {
   any_na <- Reduce(`|`, lapply(chain_priors, is.na))
   delta[any_na] <- NA_real_
   delta
+}
+
+# The frame builders' incremental form of apply_chain_validity(): `prior_na` is
+# the running OR of is.na() over the strictly-prior batchDates (NULL before the
+# first segment), so each segment costs one is.na() instead of re-scanning the
+# whole chain (O(segments) rather than O(segments^2) over the respondents).
+.chain_break_mask <- function(prior_na, batch_prior) {
+  if (is.null(prior_na)) is.na(batch_prior) else prior_na | is.na(batch_prior)
 }

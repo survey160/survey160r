@@ -17,6 +17,10 @@ install:
 test:
 	Rscript -e 'testthat::test_local()'
 
+# One test file, package loaded once: `make test-file FILE=tests/testthat/test-latency_run.R`
+test-file:
+	Rscript -e 'pkgload::load_all(".", quiet = TRUE); testthat::test_file("$(FILE)")'
+
 lint:
 	Rscript -e 'l <- lintr::lint_package(); if (length(l) > 0L) { print(l); quit(status = 1) }'
 
@@ -26,7 +30,14 @@ coverage:
 e2e:
 	Rscript e2e.R
 
+# Hot-path perf harness (wall time + peak R heap per workload); appends to
+# scripts/bench.jsonl. `make bench LABEL=after N=200000` to tag/scale a run.
+LABEL ?= bench
+N ?= 200000
+bench:
+	Rscript scripts/bench.R $(LABEL) $(N)
+
 clean:
 	rm -rf *.tar.gz *.Rcheck
 
-.PHONY: all verify check install test lint coverage e2e clean
+.PHONY: all verify check install test test-file lint coverage e2e bench clean

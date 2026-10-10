@@ -11,6 +11,10 @@
 #   aggregate_segment_cells()  -- per-(bucket, segment, threshold) cell rows
 #   assemble_consolidated()    -- joins, schema-shaped data.frame, sort
 
+# na_reason enum, in the order of the n_na_* cell columns (parse, missing,
+# chain). aggregate_consolidated() codes the column to this index.
+.na_reason_levels <- c("parse_failure", "missing_endpoint", "chain_break")
+
 # Grouping keys used by every aggregation in this file. Kept as a single
 # vector so a future column addition (e.g. operator_id) only edits one place.
 .bucket_keys <- c("campaign_id", "date", "hour_local")
@@ -21,22 +25,6 @@
 # diagnostics.
 safe_pct <- function(num, denom) {
   ifelse(!is.na(denom) & denom > 0, 100 * num / denom, NA_real_)
-}
-
-# Quantile / mean over a vector, returning NA_real_ when no non-NA values
-# exist. Wraps stats::quantile/mean for the per-cell distribution columns:
-# cells with zero valid Δ would otherwise error (quantile) or warn-and-NaN
-# (mean) and the consolidated table needs honest NA in those slots.
-safe_quantile <- function(x, prob) {
-  vals <- x[!is.na(x)]
-  if (length(vals) == 0L) return(NA_real_)
-  unname(stats::quantile(vals, probs = prob, names = FALSE))
-}
-
-safe_mean <- function(x) {
-  vals <- x[!is.na(x)]
-  if (length(vals) == 0L) return(NA_real_)
-  mean(vals)
 }
 
 aggregate_consolidated <- function(frame, config, cfg_hash, run_at,
@@ -66,7 +54,18 @@ aggregate_consolidated <- function(frame, config, cfg_hash, run_at,
   # a fraction of the peak memory. Convert once here; build_consolidated_scaffold
   # and assemble_consolidated below keep operating on the data.frame `bucketed`
   # and the small joined frames.
-  bucketed_data_table <- data.table::as.data.table(bucketed)
+  # setDT() converts the local shell in place instead of as.data.table()'s deep
+  # copy of every column: `bucketed` is already a fresh list shell (the `$date`
+  # assignment above), so the caller's `frame` is untouched, and every
+  # data.table call below is read-only.
+  bucketed_data_table <- data.table::setDT(bucketed)
+  # Integer code for na_reason (1 parse_failure, 2 missing_endpoint, 3
+  # chain_break, NA when the delta is valid) so the per-cell counts are one
+  # tabulate() over the group instead of three string comparisons. Added to
+  # the local shell only; `frame` is untouched.
+  data.table::set(bucketed_data_table, j = "na_code",
+                  value = match(bucketed_data_table[["na_reason"]],
+                                .na_reason_levels))
   totals <- aggregate_totals(bucketed_data_table)
   cascade <- aggregate_worst_cascade(bucketed_data_table, thresholds)
   cells <- aggregate_segment_cells(bucketed_data_table, thresholds)
@@ -79,8 +78,8 @@ aggregate_consolidated <- function(frame, config, cfg_hash, run_at,
   # pre-filter summary contract. Scaffolding from the union preserves
   # the denominator while still emitting one row per
   # (bucket, segment, threshold) for query uniformity.
-  scaffold <- build_consolidated_scaffold(bucketed, summary_frame, config,
-                                          thresholds)
+  scaffold <- build_consolidated_scaffold(bucketed_data_table, summary_frame,
+                                          config, thresholds)
 
   assemble_consolidated(scaffold, cells, totals, cascade,
                         project_id = project_id,
@@ -102,7 +101,16 @@ aggregate_consolidated <- function(frame, config, cfg_hash, run_at,
 build_consolidated_scaffold <- function(bucketed, summary_frame, config,
                                         thresholds) {
   latency_buckets <- if (nrow(bucketed) > 0L) {
-    unique(bucketed[, c("campaign_id", "date", "hour_local")])
+    # `bucketed` is the data.table built by aggregate_consolidated(). unique()
+    # on the key columns runs in data.table's radix path; unique.data.frame on
+    # the full long frame pasted every row to a string (it was ~30% of
+    # latency_report() wall time and a large transient allocation).
+    keys <- if (data.table::is.data.table(bucketed)) {
+      bucketed[, .bucket_keys, with = FALSE]
+    } else {
+      data.table::as.data.table(bucketed[, .bucket_keys])
+    }
+    data.table::setDF(unique(keys))
   } else {
     data.frame(campaign_id = integer(0),
                date = as.Date(character(0)),
@@ -157,18 +165,25 @@ aggregate_worst_cascade <- function(bucketed, thresholds) {
     worst_delta <- NULL
   # Per-respondent worst delta within each bucket. Filtering !is.na(delta_min)
   # in `i` means max() sees only valid deltas, so it is finite for every
-  # (non-empty) group -- no na.rm and no -Inf warning.
-  # suppressWarnings: data.table evaluates j once on an empty group to infer
-  # result types, which calls max(numeric(0)) -> "no non-missing arguments"
-  # warning + -Inf. Real (non-empty) groups have only valid deltas (the i
-  # filter), so their max is finite; the -Inf type-probe row, if any, is
-  # dropped by the is.finite() filter below. Mirrors the original na.rm max.
-  worst <- bucketed[
-    !is.na(delta_min),
-    list(worst_delta = suppressWarnings(max(delta_min))),
-    by = list(campaign_id, date, hour_local, respondent_index)
-  ]
-  # Belt-and-suspenders: drop any non-finite worst (empty-group edge).
+  # (non-empty) group -- no na.rm and no -Inf warning. The bare max() is
+  # GForce-optimised (computed in C across all groups at once); wrapping it,
+  # e.g. in suppressWarnings(), would force a per-group R evaluation over the
+  # ~(buckets x respondents) groups -- ~20x slower on a campaign-sized frame.
+  # With no valid delta at all the grouped form would evaluate j once on the
+  # empty table to probe its type -- max(numeric(0)) warns -- so that case
+  # builds the typed empty result directly. The is.finite() filter keeps the
+  # empty-group edge belt-and-suspenders.
+  valid <- !is.na(bucketed[["delta_min"]])
+  worst <- if (any(valid)) {
+    bucketed[
+      valid,
+      list(worst_delta = max(delta_min)),
+      by = list(campaign_id, date, hour_local, respondent_index)
+    ]
+  } else {
+    empty <- bucketed[0L, c(.bucket_keys, "respondent_index"), with = FALSE]
+    data.table::set(empty, j = "worst_delta", value = numeric(0))
+  }
   worst <- worst[is.finite(worst_delta)]
 
   chunks <- lapply(thresholds, function(t) cascade_chunk(worst, t))
@@ -196,11 +211,6 @@ cascade_chunk <- function(worst, t) {
 # Per-(bucket, segment, threshold) cell rows. n is the valid-Δ count for the
 # cell; pct_le and n_resp_over are derived from the same set.
 aggregate_segment_cells <- function(bucketed, thresholds) {
-  rows <- lapply(thresholds, function(t) segment_cells_chunk(bucketed, t))
-  do.call(rbind, rows)
-}
-
-segment_cells_chunk <- function(bucketed, t) {
   # mean_delta_min and the p50/p90/p95 quantiles are threshold-independent,
   # so the values emitted here are identical across the four threshold rows
   # of the same (campaign_id, date, hour_local, segment) cell. Kept inline
@@ -212,25 +222,73 @@ segment_cells_chunk <- function(bucketed, t) {
   # R/latency_frame.R. The enum strings stay longer ("parse_failure" etc.)
   # for debugging the latency_frame; cell-column names use the n_na_*
   # prefix family so they group together in column listings and tooltips.
-  campaign_id <- date <- hour_local <- segment <- segment_index <-
-    delta_min <- respondent_index <- na_reason <- NULL
-  cells <- bucketed[, list(
-    n = sum(!is.na(delta_min)),
-    n_le = sum(!is.na(delta_min) & delta_min <= t),
-    n_resp_over = data.table::uniqueN(
-      respondent_index[!is.na(delta_min) & delta_min > t]
-    ),
-    mean_delta_min = safe_mean(delta_min),
-    p50_delta_min = safe_quantile(delta_min, 0.50),
-    p90_delta_min = safe_quantile(delta_min, 0.90),
-    p95_delta_min = safe_quantile(delta_min, 0.95),
-    n_na_parse = sum(na_reason == "parse_failure", na.rm = TRUE),
-    n_na_missing = sum(na_reason == "missing_endpoint", na.rm = TRUE),
-    n_na_chain = sum(na_reason == "chain_break", na.rm = TRUE)
-  ), by = list(campaign_id, date, hour_local, segment, segment_index)]
-  data.table::set(cells, j = "threshold_min", value = as.integer(t))
-  data.table::set(cells, j = "pct_le", value = safe_pct(cells$n_le, cells$n))
-  as.data.frame(cells)
+  #
+  # ONE grouped pass computes the threshold-independent stats once and the two
+  # threshold-dependent counts (n_le, n_resp_over) for every threshold as wide
+  # columns; segment_cells_long() then fans those out to the per-threshold
+  # rows. The previous one-pass-per-threshold form grouped the long frame four
+  # times and recomputed the quantiles each time.
+  segment <- segment_index <- delta_min <- respondent_index <- na_code <-
+    NULL
+  thresholds <- as.integer(thresholds)
+  wide <- bucketed[, {
+    valid <- !is.na(delta_min)
+    vals <- delta_min[valid]
+    resp <- respondent_index[valid]
+    n_valid <- length(vals)
+    q <- if (n_valid > 0L) {
+      stats::quantile(vals, probs = c(0.50, 0.90, 0.95), names = FALSE)
+    } else {
+      c(NA_real_, NA_real_, NA_real_)
+    }
+    na_counts <- tabulate(na_code, nbins = 3L)
+    out <- list(
+      n = n_valid,
+      mean_delta_min = if (n_valid > 0L) mean(vals) else NA_real_,
+      p50_delta_min = q[[1L]],
+      p90_delta_min = q[[2L]],
+      p95_delta_min = q[[3L]],
+      n_na_parse = na_counts[[1L]],
+      n_na_missing = na_counts[[2L]],
+      n_na_chain = na_counts[[3L]]
+    )
+    # Thresholds ascend, so the respondents over threshold k are a superset
+    # of those over k+1: order the valid deltas descending once, count the
+    # first appearance of each respondent along that order, and the distinct
+    # respondents over t is the running count at the last delta > t -- one
+    # order() + one duplicated() per cell instead of a unique() per threshold.
+    if (n_valid > 0L) {
+      desc <- order(vals, decreasing = TRUE)
+      first_seen <- cumsum(!duplicated(resp[desc]))
+      vals_desc <- vals[desc]
+    }
+    for (k in seq_along(thresholds)) {
+      n_over <- if (n_valid > 0L) sum(vals_desc > thresholds[[k]]) else 0L
+      out[[sprintf(".n_le_%d", k)]] <- n_valid - n_over
+      out[[sprintf(".n_resp_over_%d", k)]] <- if (n_over > 0L) first_seen[[n_over]] else 0L
+    }
+    out
+  }, by = c(.bucket_keys, "segment", "segment_index")]
+  segment_cells_long(wide, thresholds)
+}
+
+# Fan the wide per-cell table out to one row per (cell, threshold): the shared
+# columns repeat, the threshold-specific pair is picked from the `.n_le_<k>` /
+# `.n_resp_over_<k>` columns, and pct_le is derived.
+segment_cells_long <- function(wide, thresholds) {
+  shared <- c(.bucket_keys, "segment", "segment_index", "n",
+              "mean_delta_min", "p50_delta_min", "p90_delta_min",
+              "p95_delta_min", "n_na_parse", "n_na_missing", "n_na_chain")
+  base <- data.table::setDF(wide[, shared, with = FALSE])
+  chunks <- lapply(seq_along(thresholds), function(k) {
+    cells <- base
+    cells$n_le <- wide[[sprintf(".n_le_%d", k)]]
+    cells$n_resp_over <- wide[[sprintf(".n_resp_over_%d", k)]]
+    cells$threshold_min <- rep(thresholds[[k]], nrow(cells))
+    cells$pct_le <- safe_pct(cells$n_le, cells$n)
+    cells
+  })
+  do.call(rbind, chunks)
 }
 
 # Left-join every aggregation onto the (bucket × segment × threshold)

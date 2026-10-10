@@ -39,7 +39,10 @@ dedupe_keep_rows <- function(data, resp_id_col) {
   if (!any(script_cols %in% names(data))) return(seq_len(n))
   intro <- .question_timestamp(data, openers, "scriptDate")
   rid <- data[[resp_id_col]]
-  ord <- order(rid, intro, na.last = TRUE)
+  # Radix: the id only groups rows (exact match), and the pick within an id is
+  # by `intro`, so the collation of ids relative to each other cannot change
+  # the result -- but a locale collation of a character id is ~25x slower.
+  ord <- order(rid, intro, na.last = TRUE, method = "radix")
   rid_sorted <- rid[ord]
   has_id_sorted <- !is.na(rid_sorted) & nzchar(as.character(rid_sorted))
   is_dup_sorted <- has_id_sorted & duplicated(rid_sorted)
@@ -55,7 +58,7 @@ date_filter_keep_rows <- function(data, date_filter, field_tz) {
   # No opener send column at all -> nothing to filter on, keep every row (as before).
   if (!any(script_cols %in% names(data))) return(seq_len(nrow(data)))
   intro <- .question_timestamp(data, openers, "scriptDate")
-  local_dates <- as.Date(format(intro, tz = field_tz))
+  local_dates <- .local_date_hour(intro, field_tz)$date
   target <- as.Date(date_filter)
   which(!is.na(local_dates) & local_dates %in% target)
 }

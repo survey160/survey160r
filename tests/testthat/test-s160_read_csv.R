@@ -103,3 +103,72 @@ test_that("s160_csv_header fallback (no data.table) returns munged names", {
   stub_no_data_table()
   expect_equal(s160_csv_header(tmp), c("id.q1.scriptDate", "campaignid"))
 })
+
+test_that(".file_sha256 matches digest and falls back to digest without tools::sha256sum", {
+  path <- test_path("fixtures", "synthetic.csv")
+  expected <- digest::digest(file = path, algo = "sha256")
+  expect_equal(survey160r:::.file_sha256(path), expected)
+  fallback <- survey160r:::.file_sha256
+  mockery::stub(fallback, "get0", NULL)
+  expect_equal(fallback(path), expected)
+})
+
+test_that("timestamps = \"POSIXct\" decodes the id.* timestamp columns at read time", {
+  fx_path <- test_path("fixtures", "synthetic.csv")
+  chr <- s160_read_csv(fx_path)
+  parsed <- s160_read_csv(fx_path, timestamps = "POSIXct")
+  ts_cols <- grep("^id\\..+\\.(scriptDate|batchDate)$", names(chr), value = TRUE)
+  expect_true(length(ts_cols) > 0L)
+  for (col in ts_cols) {
+    expect_s3_class(parsed[[col]], "POSIXct")
+    expect_equal(attr(parsed[[col]], "tzone"), "UTC")
+    expect_equal(as.numeric(parsed[[col]]),
+                 as.numeric(parse_campaign_timestamps(chr[[col]])))
+  }
+  # Non-timestamp columns and the provenance attributes are untouched.
+  other <- setdiff(names(chr), ts_cols)
+  expect_identical(parsed[other], chr[other])
+  expect_identical(attr(parsed, "source_csv_hash"), attr(chr, "source_csv_hash"))
+  expect_identical(attr(parsed, "source_csv_path"), attr(chr, "source_csv_path"))
+  # The default keeps the strings.
+  expect_identical(s160_read_csv(fx_path, timestamps = "character"), chr)
+})
+
+test_that("timestamps = \"POSIXct\" gives the same latency and disposition results, parse failures included", {
+  fx_path <- test_path("fixtures", "synthetic.csv")
+  # Inject an unparseable (non-blank) timestamp into the raw CSV text, so the
+  # reader cannot infer that column as POSIXct (fread keeps a column with any
+  # unparseable cell as character) and a parse failure is counted downstream.
+  lines <- readLines(fx_path)
+  header <- strsplit(lines[[1L]], ",", fixed = TRUE)[[1L]]
+  at <- match("id.intro.batchDate", header)
+  row2 <- strsplit(lines[[2L]], ",", fixed = TRUE)[[1L]]
+  row2[[at]] <- "not a timestamp"
+  lines[[2L]] <- paste(row2, collapse = ",")
+  tmp <- withr::local_tempfile(fileext = ".csv")
+  writeLines(lines, tmp)
+  chr <- s160_read_csv(tmp)
+  expect_type(chr$id.intro.batchDate, "character")
+  parsed <- s160_read_csv(tmp, timestamps = "POSIXct")
+  expect_identical(attr(parsed$id.intro.batchDate, "parse_failed"),
+                   c(TRUE, rep(FALSE, nrow(parsed) - 1L)))
+  run_at <- as.POSIXct("2026-01-01", tz = "UTC")
+  a <- latency_run(1L, chr, field_timezone = "America/New_York", run_at = run_at)
+  b <- latency_run(1L, parsed, field_timezone = "America/New_York", run_at = run_at)
+  expect_identical(a$consolidated, b$consolidated)
+  expect_identical(a$diagnostics, b$diagnostics)
+  expect_identical(a$latency_frame, b$latency_frame)
+  expect_equal(a$diagnostics$parse_failures_per_column[["id.intro.batchDate"]], 1L)
+  if ("phone" %in% names(chr)) {
+    expect_identical(disposition_run(1L, chr)$consolidated,
+                     disposition_run(1L, parsed)$consolidated)
+  }
+})
+
+test_that("timestamps rejects anything but character / POSIXct", {
+  fx_path <- test_path("fixtures", "synthetic.csv")
+  expect_error(s160_read_csv(fx_path, timestamps = "Date"),
+               "`timestamps` must be \"character\" or \"POSIXct\"")
+  expect_error(s160_read_csv(fx_path, timestamps = TRUE),
+               "`timestamps` must be")
+})

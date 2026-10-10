@@ -57,15 +57,31 @@
 # which makes the repair idempotent: a reversed value leaves the U+0080..U+00FF
 # band, so a second pass matches nothing.
 .fix_double_utf8_chr <- function(x) {
-  na <- is.na(x)
   x <- enc2utf8(x)
+  # Only a value that contains a Latin-1-supplement code point can carry a
+  # doubled sequence, and in a real export almost none do -- so one cheap
+  # grepl() picks the candidates and the gregexpr()/regmatches() machinery
+  # below runs on that subset only (it is ~100x the cost per value). NA is
+  # never a candidate (grepl() is FALSE on NA) and passes through unchanged.
+  candidate <- grepl("[\u0080-\u00ff]", x, perl = TRUE)
+  if (!any(candidate)) {
+    return(x)
+  }
+  # An export repeats the same doubled value across many rows (a treatment
+  # label, an employer name), so the repair runs once per DISTINCT candidate
+  # and is indexed back.
+  distinct <- unique(x[candidate])
+  x[candidate] <- .fix_double_utf8_runs(distinct)[match(x[candidate], distinct)]
+  x
+}
+
+# The run-by-run repair over a vector of candidate values (each contains at
+# least one Latin-1-supplement code point; none is NA).
+.fix_double_utf8_runs <- function(x) {
   matches <- gregexpr("[\u0080-\u00ff]+", x, perl = TRUE)
   runs <- regmatches(x, matches)
   lens <- lengths(runs)
   flat <- unlist(runs, use.names = FALSE)
-  if (length(flat) == 0L) {
-    return(x)
-  }
   decoded <- iconv(flat, from = "UTF-8", to = "latin1") # each run's code points -> its bytes
   Encoding(decoded) <- "UTF-8"                           # reinterpret those bytes as UTF-8
   reversible <- !is.na(decoded) & validUTF8(decoded)
@@ -75,7 +91,6 @@
   }
   runs[lens > 0L] <- unname(split(flat, rep.int(seq_along(runs), lens)))
   regmatches(x, matches) <- runs
-  x[na] <- NA_character_ # regmatches<- reconstructs an NA element as "NA"; restore it
   x
 }
 

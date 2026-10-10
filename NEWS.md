@@ -1,5 +1,169 @@
 # survey160r (development version)
 
+## Performance
+
+`latency_report()` / `latency_run()`, `disposition_run()`, the disposition
+readers and `utils_fix_double_utf8()` were profiled end to end on a 16 GB
+laptop budget and tuned in thirty output-identical rounds (every change is
+gated on byte-identical results). On a 200k-respondent, 12-question export
+`latency_run()` goes from ~46 s to ~3 s (peak heap 2.1 GB to 0.8 GB) and
+`disposition_run()` from ~6 s to ~0.35 s; a 1M-respondent compact run from
+~140 s / 6.5 GB RSS to ~13 s / 3.6 GB:
+
+* The consolidated scaffold's bucket set is taken with data.table `unique()`
+  on the key columns instead of `unique.data.frame()` on the whole long frame
+  (which pasted every row to a string: ~30% of `latency_report()` wall time and
+  the single largest transient allocation). The long frame is also converted to
+  a data.table in place (`setDT`) rather than deep-copied once per grain.
+* The per-(bucket, segment, threshold) latency cells are computed in ONE
+  grouped pass: the threshold-independent statistics (mean, p50/p90/p95 from a
+  single `quantile()` call, the `n_na_*` counts) once, and the per-threshold
+  `n_le` / `n_resp_over` as wide columns fanned out afterwards -- instead of
+  grouping the long frame once per threshold and recomputing the quantiles
+  four times.
+* `parse_campaign_timestamps()` parses through lubridate's single-order
+  `parse_date_time2()` for the export's `Y-m-d H:M:OS` format (same C parser,
+  bit-identical instants, ~70x faster) and only retries the strings that fail
+  through the lenient multi-order parser. Side effect, and a fix: a non-standard
+  but parseable string (an ISO `T` separator, a compact `YmdHMS`) now parses
+  the same whether it sits alone or inside a column of standard timestamps --
+  the multi-order parser's per-call order training made that data-dependent.
+  `parse_timestamps()` no longer pre-strips the `Z` (the parser accepts it) and
+  returns its columns with an explicit `tzone = "UTC"`.
+* The diagnostics' per-respondent worst delta (`respondent_summary`) is a
+  data.table GForce `max` over the valid segments instead of a dplyr
+  `group_by(respondent)` + `summarise(max(na.rm = TRUE))` evaluated per group
+  in R (it was ~40% of `latency_report()` after the aggregation fixes); the
+  compact path's `split()` + `vapply()` form shares the same helper.
+* Local bucket date and hour come from ONE `as.POSIXlt()` conversion per
+  timestamp column (`.local_date_hour()`), replacing the
+  `as.Date(format(x, tz))` + `as.integer(format(x, "%H", tz))` pair that
+  rendered every instant to a string twice -- in the latency frame builders
+  (both paths), the summary / ineligible / refusal frames, the date filter and
+  `disposition_run()`'s `disposition_date`. Segment deltas are the direct
+  numeric difference (what `difftime(units = "mins")` computes) without its
+  dispatch.
+* `latency_report()` parses the flow's timestamp columns ONCE, up front on
+  the pre-filter data, and the summary / ineligible / refusal frames, the
+  dedupe and the date filter read the parsed `POSIXct` columns through
+  `.column_timestamps()` instead of each re-decoding the strings (the export's
+  timestamps were decoded three to four times per run). The population mask
+  is likewise evaluated once, on the raw columns, and shared by the summary
+  frame's `opted_in` signal and the population filter. Parse-failure counts
+  are summed from the row-subset masks after the population filter, so the
+  diagnostics are unchanged.
+* `.local_date_hour()` converts per distinct UTC minute rather than per
+  instant (a zone's offset is a whole number of minutes, so every instant in a
+  UTC minute shares its local date and hour) -- ~20x cheaper on a campaign
+  column, verified identical across DST edges and half-hour zones.
+* The respondent-cascade's per-(bucket, respondent) worst delta is a bare
+  GForce `max()` (the `suppressWarnings()` wrapper forced a per-group R
+  evaluation over hundreds of thousands of groups; an all-NA input yields no
+  groups, so there was nothing to suppress).
+* Dedupe orders respondents with a radix sort (the id only groups rows, so
+  the locale collation it replaces could not affect the pick), and
+  `na_if_blank()` tests each character column with a single `== ""` pass.
+* `disposition_run()`'s exact-duplicate-row collapse compares only the rows
+  whose phone recurs (a duplicate row must share its phone), instead of
+  `duplicated()` over the whole wide export -- which pasted every row to a
+  string and was ~90% of the function's wall time and its largest transient
+  allocation. ~10x faster end to end on a 200k-row export.
+* The per-phone disposition collapse (`disposition_summary()` /
+  `disposition_screen()`) derives every group's first/last row position from
+  the group sizes once instead of a neighbour-comparison pass per ordering,
+  and renders campaign-id labels once per distinct id.
+* `latency_report()` composes the dedupe and date-filter row selections into
+  one index and applies it once, projected to the columns the frame builders
+  read (flow timestamps + campaign id), instead of copying the full-width
+  input once per filter step.
+* The `source_csv_hash` sha256 is computed with `tools::sha256sum()` when
+  available (R >= 4.5; the same digest, ~2x faster on an export-sized file),
+  falling back to `digest` on an older R.
+* `latency_report()` runs the config shape and column checks before the
+  parse and the flow-order check on the parsed columns, so the flow-order
+  ratio no longer decodes every timestamp a second time. Same checks, same
+  precedence; `latency_validate_config()` is unchanged.
+* Frame construction (both paths) carries a running chain-break mask
+  (one `is.na()` per segment instead of re-scanning every prior batchDate,
+  O(segments) rather than O(segments^2)), classifies NA reasons over the NA
+  rows' indices only, and the compact path counts its NA-date rows with one
+  `tabulate()` per reason.
+* The per-cell `n_na_*` counts are one `tabulate()` over an integer-coded
+  `na_reason` instead of three string comparisons per cell.
+* `build_latency_frame()` fills each column of the long frame in place,
+  slice by slice, instead of binding a per-segment list of sub-frames (the
+  frame was briefly held twice).
+* `.normalize_phone()`'s ten-digit fast-path test matches bytewise
+  (`useBytes = TRUE`): the same decision without per-string encoding
+  validation, for the 100M+-row projection reads.
+* `utils_fix_double_utf8()` tests each value with one `grepl()` for a
+  Latin-1-supplement code point and runs the run-by-run repair only on the
+  distinct candidates (~100x faster on a clean export column; a 2M-value column
+  with repeated mojibake labels goes from ~20 s to ~0.3 s). Output unchanged.
+* `latency_funnel()` de-duplicates the bucket key with data.table's
+  `duplicated()` instead of `duplicated.data.frame()` (which pastes every row
+  to a string), ~200x faster on a fleet-wide consolidated.
+* `.local_date_hour()` keys its distinct minutes as integers and derives the
+  calendar date from the broken-down time by integer arithmetic
+  (`.days_from_civil()`) instead of `as.Date.POSIXlt()` -- ~10x faster on the
+  distinct minutes, verified against `as.Date()` across two centuries and the
+  DST / half-hour zone checks.
+* The frame builders carry the NA reason as an integer code per segment and
+  render the label column once per frame; the full-path frame is assembled
+  directly from its finished columns (no `data.frame()` coercion pass over
+  millions of rows) and the compact path binds plain lists per segment.
+* Per cell, the distinct respondents over each threshold come from one
+  descending order of the valid deltas plus a running first-appearance count
+  (one `order()` + `duplicated()` per cell instead of a `unique()` per
+  threshold).
+* `.question_timestamp()` returns a single opener's column directly (no
+  `coalesce()` over one input), and `parse_campaign_timestamps()` skips the
+  retry mask on a column that parsed completely.
+* The disposition filter matches phones and campaign ids with data.table's
+  `%chin%` (~6x faster than `%in%` on the projection's phone column), and the
+  per-phone error count tests `error` with one regex instead of
+  `trimws()` + `nzchar()`.
+* `disposition_funnel()`'s grouped counts are GForce-eligible (bare `sum()` /
+  `uniqueN()` / `.N` on internally aliased columns, the all-NA rule applied
+  from a per-group NA count computed only for a column that has NAs) instead
+  of a per-group `.SD$` evaluation in R: ~3-4x faster, same output, including
+  a `by` column that is also a funnel flag.
+
+## New features
+
+* **`s160_read_csv()` and `s160_gcs_campaign_results_read()` gain
+  `timestamps = c("character", "POSIXct")`.** `"POSIXct"` decodes every
+  `id.<q>.scriptDate` / `id.<q>.batchDate` column to UTC `POSIXct` at read
+  time through `parse_campaign_timestamps()` -- 8 bytes per cell against ~60
+  for the export's strings, so a wide export takes roughly half the memory.
+  `fread` already infers a clean timestamp column as `POSIXct`; the option
+  guarantees it for a column `fread` has to keep as character (one unparseable
+  cell is enough) and for the `read.csv` fallback. Every transform accepts
+  either form and gives the same result: the parse-failure mask travels on the
+  parsed column (a `parse_failed` attribute) so `latency_report()`'s
+  `parse_failures_per_column` still counts those cells. Default
+  `"character"` is unchanged.
+
+## Internal
+
+* `build_ineligible_frame()` / `build_refusal_frame()` and their day rollups
+  share one terminal-frame builder (`.terminal_segment_frame()` /
+  `.collapse_terminal_to_day()`); the full and compact `latency_report()` paths
+  share the hour/day aggregation (`.two_grain_consolidated()`) and the
+  per-segment column computation (`.segment_columns()`); output unchanged.
+* `make test-file FILE=tests/testthat/test-<x>.R` runs one test file with the
+  package loaded once.
+* New `tests/testthat/helper-synthetic.R` (deterministic synthetic export /
+  disposition generators), `test-synthetic_parity.R` (full vs compact, string
+  vs POSIXct input, and each fast-path helper against its reference form) and
+  `scripts/bench.R` / `make bench` (hot-path wall time + peak heap harness).
+
+## Bug fixes
+
+* The respondent cascade on a frame with no valid delta at all (every
+  segment NA) builds its empty per-respondent table directly, so the grouped
+  `max()` is never probed on an empty table (which warned).
+
 ## Breaking changes
 
 * **Disposition record columns `loi`, `topic`, and `registration_id` are renamed

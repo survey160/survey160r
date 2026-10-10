@@ -4,7 +4,13 @@
 \alias{s160_read_csv}
 \title{Read a campaign CSV from a local path, hashing it for provenance}
 \usage{
-s160_read_csv(path, columns = NULL, hash = TRUE, ...)
+s160_read_csv(
+  path,
+  columns = NULL,
+  hash = TRUE,
+  timestamps = c("character", "POSIXct"),
+  ...
+)
 }
 \arguments{
 \item{path}{Path to the CSV. Recorded verbatim on
@@ -19,6 +25,12 @@ are parsed, cutting read time and memory on wide exports. \code{NULL}
 \code{source_csv_hash}. Set \code{FALSE} to skip the hashing pass (a full
 second read of the file) on large backfills where provenance hashing is
 not needed; \code{source_csv_hash} is then \code{NA}.}
+
+\item{timestamps}{\code{"character"} (default) keeps the export's
+\code{id.<q>.scriptDate} / \code{id.<q>.batchDate} strings;
+\code{"POSIXct"} decodes them to UTC \code{POSIXct} at read time, which
+roughly halves a wide export's footprint in memory. See the same argument
+of \code{\link{s160_gcs_campaign_results_read}}.}
 
 \item{...}{Forwarded to the CSV reader (\code{data.table::fread}, or
 \code{utils::read.csv} when data.table is unavailable), e.g.
