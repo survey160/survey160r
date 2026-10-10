@@ -84,6 +84,8 @@ of output-identical rounds (every change is gated on byte-identical results):
   O(segments) rather than O(segments^2)), classifies NA reasons over the NA
   rows' indices only, and the compact path counts its NA-date rows with one
   `tabulate()` per reason.
+* The per-cell `n_na_*` counts are one `tabulate()` over an integer-coded
+  `na_reason` instead of three string comparisons per cell.
 
 ## Breaking changes
 

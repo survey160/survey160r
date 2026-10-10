@@ -11,6 +11,10 @@
 #   aggregate_segment_cells()  -- per-(bucket, segment, threshold) cell rows
 #   assemble_consolidated()    -- joins, schema-shaped data.frame, sort
 
+# na_reason enum, in the order of the n_na_* cell columns (parse, missing,
+# chain). aggregate_consolidated() codes the column to this index.
+.na_reason_levels <- c("parse_failure", "missing_endpoint", "chain_break")
+
 # Grouping keys used by every aggregation in this file. Kept as a single
 # vector so a future column addition (e.g. operator_id) only edits one place.
 .bucket_keys <- c("campaign_id", "date", "hour_local")
@@ -55,6 +59,13 @@ aggregate_consolidated <- function(frame, config, cfg_hash, run_at,
   # assignment above), so the caller's `frame` is untouched, and every
   # data.table call below is read-only.
   bucketed_data_table <- data.table::setDT(bucketed)
+  # Integer code for na_reason (1 parse_failure, 2 missing_endpoint, 3
+  # chain_break, NA when the delta is valid) so the per-cell counts are one
+  # tabulate() over the group instead of three string comparisons. Added to
+  # the local shell only; `frame` is untouched.
+  data.table::set(bucketed_data_table, j = "na_code",
+                  value = match(bucketed_data_table[["na_reason"]],
+                                .na_reason_levels))
   totals <- aggregate_totals(bucketed_data_table)
   cascade <- aggregate_worst_cascade(bucketed_data_table, thresholds)
   cells <- aggregate_segment_cells(bucketed_data_table, thresholds)
@@ -209,7 +220,7 @@ aggregate_segment_cells <- function(bucketed, thresholds) {
   # columns; segment_cells_long() then fans those out to the per-threshold
   # rows. The previous one-pass-per-threshold form grouped the long frame four
   # times and recomputed the quantiles each time.
-  segment <- segment_index <- delta_min <- respondent_index <- na_reason <-
+  segment <- segment_index <- delta_min <- respondent_index <- na_code <-
     NULL
   thresholds <- as.integer(thresholds)
   wide <- bucketed[, {
@@ -222,15 +233,16 @@ aggregate_segment_cells <- function(bucketed, thresholds) {
     } else {
       c(NA_real_, NA_real_, NA_real_)
     }
+    na_counts <- tabulate(na_code, nbins = 3L)
     out <- list(
       n = n_valid,
       mean_delta_min = if (n_valid > 0L) mean(vals) else NA_real_,
       p50_delta_min = q[[1L]],
       p90_delta_min = q[[2L]],
       p95_delta_min = q[[3L]],
-      n_na_parse = sum(na_reason == "parse_failure", na.rm = TRUE),
-      n_na_missing = sum(na_reason == "missing_endpoint", na.rm = TRUE),
-      n_na_chain = sum(na_reason == "chain_break", na.rm = TRUE)
+      n_na_parse = na_counts[[1L]],
+      n_na_missing = na_counts[[2L]],
+      n_na_chain = na_counts[[3L]]
     )
     for (k in seq_along(thresholds)) {
       over <- vals > thresholds[[k]]
