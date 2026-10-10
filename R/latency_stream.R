@@ -209,7 +209,8 @@
     ))
   }
   valid <- !is.na(kept$delta_min)
-  used <- length(unique(kept$respondent_index[valid]))
+  worst <- .worst_delta_by_respondent(kept$respondent_index, kept$delta_min)
+  used <- length(worst)
   n_valid <- sum(valid)
   total_segments <- n_seg * n_frame
   na_segments <- total_segments - n_valid
@@ -221,9 +222,6 @@
     chain_break = sum(kept$na_reason == "chain_break", na.rm = TRUE)
   )
   if (used > 0L) {
-    r <- kept$respondent_index[valid]
-    d <- kept$delta_min[valid]
-    worst <- vapply(split(d, r), max, numeric(1))
     pct_clean <- 100 * mean(worst <= 5)
     pct_5_10 <- 100 * mean(worst > 5 & worst <= 10)
     pct_over_10 <- 100 * mean(worst > 10)

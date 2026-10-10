@@ -27,17 +27,17 @@ build_diagnostics <- function(frame, n_respondents_in, parse_failures,
       )
     ))
   }
-  by_resp <- dplyr::summarise(
-    dplyr::group_by(frame, .data$respondent_index),
-    has_valid = any(!is.na(.data$delta_min)),
-    max_delta = suppressWarnings(max(.data$delta_min, na.rm = TRUE)),
-    .groups = "drop"
-  )
-  used <- sum(by_resp$has_valid)
-  total_resp_observed <- nrow(by_resp)
+  valid <- !is.na(frame$delta_min)
+  # Per-respondent worst (max) valid delta, one value per respondent that has
+  # at least one valid segment -- a GForce max in data.table. The dplyr
+  # group_by/summarise this replaces evaluated `max(na.rm = TRUE)` per
+  # respondent group in R (~6 s on a 2M-row frame; this is ~0.1 s).
+  worst <- .worst_delta_by_respondent(frame$respondent_index, frame$delta_min)
+  used <- length(worst)
+  total_resp_observed <- length(unique(frame$respondent_index))
   no_valid <- total_resp_observed - used
   total_segments <- nrow(frame)
-  na_segments <- sum(is.na(frame$delta_min))
+  na_segments <- sum(!valid)
 
   # Cascade percentages are over the *measured* respondents (those with at
   # least one valid Delta), matching respondent_summary$n_respondents = used,
@@ -47,7 +47,6 @@ build_diagnostics <- function(frame, n_respondents_in, parse_failures,
   # that n_respondents * pct / 100 no longer recovers a respondent count.
   # When used == 0 the percentages are undefined -> NA (same as the empty-frame
   # path above).
-  worst <- by_resp$max_delta[by_resp$has_valid]
   if (used > 0L) {
     pct_clean <- 100 * mean(worst <= 5)
     pct_5_10 <- 100 * mean(worst > 5 & worst <= 10)
@@ -81,4 +80,17 @@ build_diagnostics <- function(frame, n_respondents_in, parse_failures,
       pct_worst_over_10 = pct_over_10
     )
   )
+}
+
+# The per-respondent worst (max) delta over the valid (non-NA) segments only:
+# one unnamed numeric per respondent with >= 1 valid delta, in no particular
+# order (every consumer reduces it with mean() / length()). Shared by
+# build_diagnostics() and the compact-path .build_diagnostics_streamed().
+.worst_delta_by_respondent <- function(respondent_index, delta_min) {
+  r <- d <- NULL
+  valid <- !is.na(delta_min)
+  if (!any(valid)) return(numeric(0))
+  per_resp <- data.table::data.table(r = respondent_index[valid],
+                                     d = delta_min[valid])
+  per_resp[, list(d = max(d)), by = r][["d"]]
 }

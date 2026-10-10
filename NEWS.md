@@ -26,6 +26,11 @@ of output-identical rounds (every change is gated on byte-identical results):
   the multi-order parser's per-call order training made that data-dependent.
   `parse_timestamps()` no longer pre-strips the `Z` (the parser accepts it) and
   returns its columns with an explicit `tzone = "UTC"`.
+* The diagnostics' per-respondent worst delta (`respondent_summary`) is a
+  data.table GForce `max` over the valid segments instead of a dplyr
+  `group_by(respondent)` + `summarise(max(na.rm = TRUE))` evaluated per group
+  in R (it was ~40% of `latency_report()` after the aggregation fixes); the
+  compact path's `split()` + `vapply()` form shares the same helper.
 
 ## Breaking changes
 
