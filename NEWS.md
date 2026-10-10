@@ -59,6 +59,11 @@ of output-identical rounds (every change is gated on byte-identical results):
 * Dedupe orders respondents with a radix sort (the id only groups rows, so
   the locale collation it replaces could not affect the pick), and
   `na_if_blank()` tests each character column with a single `== ""` pass.
+* `disposition_run()`'s exact-duplicate-row collapse compares only the rows
+  whose phone recurs (a duplicate row must share its phone), instead of
+  `duplicated()` over the whole wide export -- which pasted every row to a
+  string and was ~90% of the function's wall time and its largest transient
+  allocation. ~10x faster end to end on a 200k-row export.
 
 ## Breaking changes
 

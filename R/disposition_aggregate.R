@@ -443,7 +443,17 @@ disposition_run <- function(campaign_id, data, population = NULL,
   # downstream flag or date -- a true no-op on the disposition output. Only EXACT
   # duplicates collapse here; a duplicate phone whose rows DIFFER survives to the
   # grain guard below, so a genuine conflict is never silently merged.
-  dup_rows <- duplicated(data)
+  # Only a row whose phone recurs can be a duplicate row, so the whole-row
+  # comparison runs on just those rows: duplicated() on the full wide frame
+  # pasted every row of every column to a string (~3 s and a ~800 MB
+  # transient on a 200k x 40 export) for a check that almost always finds
+  # nothing. NA phones compare equal in both steps, as duplicated() treats them.
+  phone_raw <- data[["phone"]]
+  recurring <- phone_raw %in% phone_raw[duplicated(phone_raw)]
+  dup_rows <- logical(nrow(data))
+  if (any(recurring)) {
+    dup_rows[recurring] <- duplicated(data[recurring, , drop = FALSE])
+  }
   if (any(dup_rows)) {
     kept <- data[!dup_rows, , drop = FALSE]
     # Row-subsetting drops the source-provenance attributes `s160_read_csv`
