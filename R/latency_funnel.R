@@ -103,7 +103,11 @@ latency_funnel <- function(consolidated, grain = c("day", "hour")) {
   # key keeps a single representative -- without assuming which threshold or
   # segment values the frame carries (the anchors pass through un-summed).
   bucket_key <- c("campaign_id", "date", if (grain == "hour") "hour_local")
-  rows <- rows[!duplicated(rows[, bucket_key, drop = FALSE]), , drop = FALSE]
+  # data.table's duplicated() hashes the key columns; duplicated.data.frame
+  # pastes every row to a string (~200x slower on a fleet-wide consolidated).
+  # Both keep the first occurrence.
+  keys <- data.table::as.data.table(rows[, bucket_key, drop = FALSE])
+  rows <- rows[!duplicated(keys), , drop = FALSE]
   out <- rows[, out_cols, drop = FALSE]
 
   order_cols <- c("campaign_id", "date", if (grain == "hour") "hour_local")
