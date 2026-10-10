@@ -64,6 +64,10 @@ of output-identical rounds (every change is gated on byte-identical results):
   `duplicated()` over the whole wide export -- which pasted every row to a
   string and was ~90% of the function's wall time and its largest transient
   allocation. ~10x faster end to end on a 200k-row export.
+* The per-phone disposition collapse (`disposition_summary()` /
+  `disposition_screen()`) derives every group's first/last row position from
+  the group sizes once instead of a neighbour-comparison pass per ordering,
+  and renders campaign-id labels once per distinct id.
 
 ## Breaking changes
 

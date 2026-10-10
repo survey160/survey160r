@@ -194,25 +194,27 @@
   up <- sort(unique(d$phone), method = "radix")
   g <- data.table::chmatch(d$phone, up)
   n_groups <- length(up)
-  # Every ordering below sorts by `g` first, so a group's rows are one run and its
-  # first/last row is a neighbor comparison (cheaper than duplicated()'s hashing).
-  run_start <- function(x) x != c(-1L, x[-length(x)])
-  run_end <- function(x) x != c(x[-1L], -1L)
-  first_of <- function(o) o[run_start(g[o])]   # first row per group, groups ascending
+  # Every ordering below sorts by `g` first, so a group's rows form one run
+  # whose position depends only on the group sizes, not on the secondary keys:
+  # the first row of group k sits at (rows before k) + 1 in ANY such ordering.
+  # Computing those positions once from the group sizes replaces a
+  # neighbour-comparison pass over g[o] per ordering.
+  size <- tabulate(g, nbins = n_groups)
+  first_pos <- cumsum(size) - size + 1L
   # Latest campaign: max disposition_date (NA last), tie -> max campaign_id; any
   # remaining tie keeps input order (radix order is stable).
   dd_num <- as.numeric(d$disposition_date)
   dk <- dd_num
   dk[is.na(dk)] <- -Inf
   cid_num <- as.numeric(d$campaign_id)
-  latest <- first_of(order(g, -dk, -cid_num, method = "radix"))
+  latest <- order(g, -dk, -cid_num, method = "radix")[first_pos]
   # Best (furthest-reached) disposition across the phone's campaigns: the highest
   # funnel category any of them hit, ranked by the SAME precedence latest uses
   # (.DISPOSITION_CATEGORIES: non_response < engaged < opted_in < terminated <
   # ineligible < refused < completed < web_complete), tie -> latest date, then
   # max id, matching latest_disposition's tie-break.
   rk <- match(category, .DISPOSITION_CATEGORIES)
-  best <- first_of(order(g, -rk, -dk, -cid_num, method = "radix"))
+  best <- order(g, -rk, -dk, -cid_num, method = "radix")[first_pos]
   # Cumulative status counts: how many of the phone's campaigns set each flag
   # (0/1/NA; NA counts as not-set). Overlapping -- a completed campaign is also
   # engaged -- so these are "reached status X", not a partition of n_campaigns.
@@ -234,25 +236,37 @@
   gc <- gc[!same]
   cc <- cc[!same]
   # Join rank by rank -- one vectorized paste0() per position within a phone's
-  # list (at most a few dozen), not one paste() call per phone.
+  # list (at most a few dozen), not one paste() call per phone. The id labels
+  # are rendered once per DISTINCT id and indexed back (as.character() over
+  # millions of ids is the slow part, and there are only hundreds of ids).
   ids <- !is.na(cc)
   gj <- gc[ids]
-  cj <- as.character(cc[ids])
+  cc_ids <- cc[ids]
+  distinct_ids <- unique(cc_ids)
+  cj <- as.character(distinct_ids)[match(cc_ids, distinct_ids)]
   pos <- seq_along(gj)
-  rank <- pos - cummax(pos * run_start(gj)) + 1L
+  rank <- pos - cummax(pos * (gj != c(-1L, gj[-length(gj)]))) + 1L
   campaigns <- character(n_groups)
-  by_rank <- split(pos, rank)
-  for (r in seq_along(by_rank)) {
-    at <- by_rank[[r]]
-    campaigns[gj[at]] <- if (r == 1L) cj[at] else paste0(campaigns[gj[at]], ",", cj[at])
+  if (length(gj) > 0L) {
+    campaigns[gj[rank == 1L]] <- cj[rank == 1L]
+    for (r in seq_len(max(rank))[-1L]) {
+      at <- which(rank == r)
+      campaigns[gj[at]] <- paste0(campaigns[gj[at]], ",", cj[at])
+    }
   }
   # Per-phone min/max disposition_date, NA when the phone has no dated campaign
-  # (an un-enriched projection, or every date missing).
+  # (an un-enriched projection, or every date missing). The dated rows are
+  # ordered by (group, date); a group's first and last dated row follow from
+  # its dated-row count exactly as first_pos above.
   dated <- which(!is.na(dd_num))
   od <- dated[order(g[dated], dd_num[dated], method = "radix")]
+  size_d <- tabulate(g[dated], nbins = n_groups)
+  has_date <- size_d > 0L
+  last_d <- cumsum(size_d)[has_date]
+  first_d <- last_d - size_d[has_date] + 1L
   span <- function(pick) {
     v <- rep(NA_real_, n_groups)
-    v[g[pick]] <- dd_num[pick]
+    v[has_date] <- dd_num[od[pick]]
     as.Date(v, origin = "1970-01-01")
   }
   data.frame(
@@ -271,13 +285,11 @@
     latest_campaign_id = as.character(d$campaign_id[latest]),
     best_disposition = category[best],
     best_campaign_id = as.character(d$campaign_id[best]),
-    first_disposition_date = span(od[run_start(g[od])]),
-    last_disposition_date = span(od[run_end(g[od])]),
+    first_disposition_date = span(first_d),
+    last_disposition_date = span(last_d),
     stringsAsFactors = FALSE
   )
 }
-
-# 1-based page slice over the (phone-ordered) result. NULL page/size -> no-op.
 .disposition_paginate <- function(summ, page, page_size) {
   if (is.null(page) && is.null(page_size)) return(summ)
   ps <- if (is.null(page_size)) max(1L, nrow(summ)) else page_size
