@@ -30,7 +30,7 @@ build_latency_frame <- function(data, config, parse_failed_mask = NULL) {
   resp_idx <- seq_len(n)
 
   segments <- vector("list", length(questions) - 1)
-  chain_priors <- list()
+  prior_na <- NULL
   total_clamped <- 0L
   for (i in seq_len(length(questions) - 1)) {
     q_prior <- questions[i]
@@ -48,9 +48,11 @@ build_latency_frame <- function(data, config, parse_failed_mask = NULL) {
     # current segment's own batch_prior NA is already reflected in delta_pre
     # by compute_segment_delta(), so including it here would be redundant
     # work and would muddy the chain_break vs missing_endpoint diagnostic
-    # classification below.
-    delta <- apply_chain_validity(delta_pre, chain_priors)
-    chain_priors <- c(chain_priors, list(batch_prior))
+    # classification below. `prior_na` is the running OR of the prior
+    # batchDates' NA masks (the incremental form of apply_chain_validity()).
+    delta <- delta_pre
+    if (!is.null(prior_na)) delta[prior_na] <- NA_real_
+    prior_na <- .chain_break_mask(prior_na, batch_prior)
 
     local <- .local_date_hour(batch_prior, field_tz)
     seg_date_local <- local$date
@@ -92,11 +94,16 @@ build_latency_frame <- function(data, config, parse_failed_mask = NULL) {
 #                      invalidated the segment.
 # Returns NA_character_ on rows where delta is valid.
 classify_na_reason <- function(delta, delta_pre, parse_fail_row) {
-  is_na_post <- is.na(delta)
   out <- rep(NA_character_, length(delta))
-  out[is_na_post & parse_fail_row] <- "parse_failure"
-  out[is_na_post & !parse_fail_row & is.na(delta_pre)] <- "missing_endpoint"
-  out[is_na_post & !parse_fail_row & !is.na(delta_pre)] <- "chain_break"
+  # Work on the NA rows' indices only: the three class masks are then
+  # evaluated over that subset rather than over the whole column three times.
+  na_idx <- which(is.na(delta))
+  if (length(na_idx) == 0L) return(out)
+  parse_fail <- parse_fail_row[na_idx]
+  pre_na <- is.na(delta_pre[na_idx])
+  out[na_idx[parse_fail]] <- "parse_failure"
+  out[na_idx[!parse_fail & pre_na]] <- "missing_endpoint"
+  out[na_idx[!parse_fail & !pre_na]] <- "chain_break"
   out
 }
 

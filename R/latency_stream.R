@@ -44,7 +44,7 @@
   resp_idx <- seq_len(n)
   kept <- vector("list", n_seg)
   na_list <- vector("list", n_seg)
-  chain_priors <- list()
+  prior_na <- NULL
   total_clamped <- 0L
   for (i in seq_len(n_seg)) {
     q_prior <- questions[i]
@@ -57,8 +57,9 @@
     cs <- compute_segment_delta(batch_prior, script_next)
     delta_pre <- cs$delta
     total_clamped <- total_clamped + cs$n_clamped
-    delta <- apply_chain_validity(delta_pre, chain_priors)
-    chain_priors <- c(chain_priors, list(batch_prior))
+    delta <- delta_pre
+    if (!is.null(prior_na)) delta[prior_na] <- NA_real_
+    prior_na <- .chain_break_mask(prior_na, batch_prior)
 
     local <- .local_date_hour(batch_prior, field_tz)
     seg_date_local <- local$date
@@ -88,10 +89,11 @@
       cid <- campaign_id[nd]
       reason <- na_reason[nd]
       ucid <- unique(cid)
-      pf <- vapply(ucid, function(cc) sum(cid == cc & reason == "parse_failure"),
-                   integer(1))
-      me <- vapply(ucid, function(cc) sum(cid == cc & reason == "missing_endpoint"),
-                   integer(1))
+      # One tabulate() per reason over the id's position in `ucid`, instead of
+      # a full-column scan per (id, reason).
+      gid <- match(cid, ucid)
+      pf <- tabulate(gid[reason == "parse_failure"], nbins = length(ucid))
+      me <- tabulate(gid[reason == "missing_endpoint"], nbins = length(ucid))
       na_list[[i]] <- data.frame(
         campaign_id = ucid,
         na_parse = pf,

@@ -198,3 +198,11 @@ apply_chain_validity <- function(delta, chain_priors) {
   delta[any_na] <- NA_real_
   delta
 }
+
+# The frame builders' incremental form of apply_chain_validity(): `prior_na` is
+# the running OR of is.na() over the strictly-prior batchDates (NULL before the
+# first segment), so each segment costs one is.na() instead of re-scanning the
+# whole chain (O(segments) rather than O(segments^2) over the respondents).
+.chain_break_mask <- function(prior_na, batch_prior) {
+  if (is.null(prior_na)) is.na(batch_prior) else prior_na | is.na(batch_prior)
+}

@@ -79,6 +79,11 @@ of output-identical rounds (every change is gated on byte-identical results):
   parse and the flow-order check on the parsed columns, so the flow-order
   ratio no longer decodes every timestamp a second time. Same checks, same
   precedence; `latency_validate_config()` is unchanged.
+* Frame construction (both paths) carries a running chain-break mask
+  (one `is.na()` per segment instead of re-scanning every prior batchDate,
+  O(segments) rather than O(segments^2)), classifies NA reasons over the NA
+  rows' indices only, and the compact path counts its NA-date rows with one
+  `tabulate()` per reason.
 
 ## Breaking changes
 
