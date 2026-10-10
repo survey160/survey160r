@@ -103,3 +103,12 @@ test_that("s160_csv_header fallback (no data.table) returns munged names", {
   stub_no_data_table()
   expect_equal(s160_csv_header(tmp), c("id.q1.scriptDate", "campaignid"))
 })
+
+test_that(".file_sha256 matches digest and falls back to digest without tools::sha256sum", {
+  path <- test_path("fixtures", "synthetic.csv")
+  expected <- digest::digest(file = path, algo = "sha256")
+  expect_equal(survey160r:::.file_sha256(path), expected)
+  fallback <- survey160r:::.file_sha256
+  mockery::stub(fallback, "get0", NULL)
+  expect_equal(fallback(path), expected)
+})

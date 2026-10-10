@@ -284,6 +284,17 @@ download_with_verify <- function(object_name, local_path, max_retries = 2L,
   invisible(local_path)
 }
 
+# Hex sha256 of a file's bytes. tools::sha256sum() (R >= 4.5) hashes in C about
+# twice as fast as digest::digest(file =) on an export-sized CSV and returns the
+# same digest; digest is the fallback on an older R.
+.file_sha256 <- function(path) {
+  sha256sum <- get0("sha256sum", envir = asNamespace("tools"), inherits = FALSE)
+  if (is.function(sha256sum)) {
+    return(unname(sha256sum(path)))
+  }
+  digest::digest(file = path, algo = "sha256")
+}
+
 # Read just the raw (un-munged) header names of a CSV, without parsing the body.
 # Uses fread when available, else read.csv; `encoding` is honoured in BOTH so a
 # UTF-8/BOM file maps to the same names regardless of reader. Shared by
@@ -742,7 +753,7 @@ s160_gcs_campaign_results_read <- function(campaign_id, filename = NULL,
   # still present. `gcs_path` is gs://<bucket>/<campaign_id>/<filename>.
   if (hash) {
     attr(data, "source_csv_hash") <-
-      paste0("sha256:", digest::digest(file = local_path, algo = "sha256"))
+      paste0("sha256:", .file_sha256(local_path))
     attr(data, "source_csv_path") <- gcs_path
   }
   data
@@ -872,7 +883,7 @@ s160_read_csv <- function(path, columns = NULL, hash = TRUE, ...) {
   }
   data <- fast_read_csv(path, columns = columns, fn = "s160_read_csv", ...)
   attr(data, "source_csv_hash") <- if (hash) {
-    paste0("sha256:", digest::digest(file = path, algo = "sha256"))
+    paste0("sha256:", .file_sha256(path))
   } else {
     NA_character_
   }
