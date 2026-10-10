@@ -60,6 +60,9 @@ parse_campaign_timestamps <- function(x) {
   # is retried through the lenient multi-order parser below, so the lenient
   # orders ("YmdHMS", slash separators, ...) keep working.
   out <- lubridate::parse_date_time2(x, orders = "Y-m-d H:M:OS", tz = "UTC")
+  # A fully parsed column (no NA at all) has nothing to retry; skip building
+  # the three-term mask over it.
+  if (!anyNA(out)) return(out)
   retry <- !is.na(x) & nzchar(x) & is.na(out)
   if (any(retry)) {
     out[retry] <- suppressWarnings(lubridate::parse_date_time(
