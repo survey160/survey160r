@@ -159,28 +159,35 @@ latency_report <- function(data, config, run_at = NULL, compact = FALSE) {
   n_in <- nrow(data)
   parse_failures <- vapply(parse_failed_mask, sum, integer(1))
 
-  # Steps 3 & 4 drop rows from `data`; the per-segment parse_failed_mask
-  # vectors must shrink in lockstep so segment-NA classification later lines
-  # up row-for-row. subset_parsed_input() does both at once -- adding a
-  # third filter step in the future cannot forget the reindex.
+  # Steps 3 & 4 (dedupe, date_filter) are composed into ONE row index and
+  # applied once, projected to the columns the frame builders read (the flow
+  # timestamps + the campaign id) -- so the full-width input is copied neither
+  # per filter step nor at all: the subset holds ~half the columns. The
+  # per-segment parse_failed_mask vectors shrink in lockstep (subset_parsed_input)
+  # so segment-NA classification lines up row-for-row.
 
-  # Step 3: dedupe by respondent_id (earliest intro.scriptDate wins).
-  if (!is.null(resp_id_col)) {
-    pair <- subset_parsed_input(data, parse_failed_mask,
-                                dedupe_keep_rows(data, resp_id_col))
-    data <- pair$data
-    parse_failed_mask <- pair$parse_failed_mask
+  # Step 3: dedupe by respondent_id (earliest opener scriptDate wins).
+  keep <- if (!is.null(resp_id_col)) {
+    dedupe_keep_rows(data, resp_id_col)
+  } else {
+    seq_len(nrow(data))
   }
 
-  # Step 4: optional date_filter.
+  # Step 4: optional date_filter, evaluated on the kept rows' opener send
+  # columns only (the filter reads nothing else), then composed into `keep`.
   if (!is.null(config$filters$date_filter)) {
-    pair <- subset_parsed_input(
-      data, parse_failed_mask,
-      date_filter_keep_rows(data, config$filters$date_filter, field_tz)
-    )
-    data <- pair$data
-    parse_failed_mask <- pair$parse_failed_mask
+    opener_cols <- intersect(sprintf("id.%s.scriptDate", .discover_openers(data)),
+                             names(data))
+    kept_openers <- data[keep, opener_cols, drop = FALSE]
+    keep <- keep[date_filter_keep_rows(kept_openers,
+                                       config$filters$date_filter, field_tz)]
   }
+
+  frame_cols <- unique(c(ts_cols, config$filters$campaign_id_column))
+  pair <- subset_parsed_input(data[, frame_cols, drop = FALSE],
+                              parse_failed_mask, keep)
+  data <- pair$data
+  parse_failed_mask <- pair$parse_failed_mask
 
   # Steps 5-7: build the per-(respondent, segment) frame, aggregate to
   # consolidated at TWO grains, and build diagnostics.

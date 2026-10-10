@@ -68,6 +68,10 @@ of output-identical rounds (every change is gated on byte-identical results):
   `disposition_screen()`) derives every group's first/last row position from
   the group sizes once instead of a neighbour-comparison pass per ordering,
   and renders campaign-id labels once per distinct id.
+* `latency_report()` composes the dedupe and date-filter row selections into
+  one index and applies it once, projected to the columns the frame builders
+  read (flow timestamps + campaign id), instead of copying the full-width
+  input once per filter step.
 
 ## Breaking changes
 
