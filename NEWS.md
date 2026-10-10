@@ -119,6 +119,11 @@ of output-identical rounds (every change is gated on byte-identical results):
   `%chin%` (~6x faster than `%in%` on the projection's phone column), and the
   per-phone error count tests `error` with one regex instead of
   `trimws()` + `nzchar()`.
+* `disposition_funnel()`'s grouped counts are GForce-eligible (bare `sum()` /
+  `uniqueN()` / `.N` on internally aliased columns, the all-NA rule applied
+  from a per-group NA count computed only for a column that has NAs) instead
+  of a per-group `.SD$` evaluation in R: ~3-4x faster, same output, including
+  a `by` column that is also a funnel flag.
 
 ## New features
 
