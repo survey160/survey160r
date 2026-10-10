@@ -108,6 +108,12 @@ of output-identical rounds (every change is gated on byte-identical results):
   `parse_failures_per_column` still counts those cells. Default
   `"character"` is unchanged.
 
+## Bug fixes
+
+* The respondent cascade on a frame with no valid delta at all (every
+  segment NA) builds its empty per-respondent table directly, so the grouped
+  `max()` is never probed on an empty table (which warned).
+
 ## Breaking changes
 
 * **Disposition record columns `loi`, `topic`, and `registration_id` are renamed

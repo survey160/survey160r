@@ -153,6 +153,35 @@
                    field_timezone)$date
 }
 
+# Collapse fully-identical duplicate rows before the grain guard. A campaign
+# export can repeat a respondent's row verbatim (a re-export appended to
+# itself, an upstream merge that duplicated a batch): an exactly-duplicated row
+# carries nothing the first copy does not, so dropping it cannot change any
+# downstream flag or date -- a true no-op on the disposition output. Only EXACT
+# duplicates collapse here; a duplicate phone whose rows DIFFER survives to the
+# grain guard in disposition_run(), so a genuine conflict is never silently
+# merged.
+#
+# Only a row whose phone recurs can be a duplicate row, so the whole-row
+# comparison runs on just those rows: duplicated() on the full wide frame
+# pasted every row of every column to a string (~3 s and a ~800 MB transient
+# on a 200k x 40 export) for a check that almost always finds nothing. NA
+# phones compare equal in both steps, as duplicated() treats them.
+.collapse_duplicate_rows <- function(data) {
+  phone_raw <- data[["phone"]]
+  recurring <- phone_raw %in% phone_raw[duplicated(phone_raw)]
+  if (!any(recurring)) return(data)
+  dup_rows <- logical(nrow(data))
+  dup_rows[recurring] <- duplicated(data[recurring, , drop = FALSE])
+  if (!any(dup_rows)) return(data)
+  kept <- data[!dup_rows, , drop = FALSE]
+  # Row-subsetting drops the source-provenance attributes `s160_read_csv`
+  # stamps; carry them onto the deduped frame so `meta` still reports them.
+  attr(kept, "source_csv_hash") <- attr(data, "source_csv_hash")
+  attr(kept, "source_csv_path") <- attr(data, "source_csv_path")
+  kept
+}
+
 # Empty (0-row) disposition frame with the pinned column set + types. Lets
 # callers handle a campaign whose export has no rows without special-casing.
 empty_disposition_frame <- function() {
@@ -436,32 +465,7 @@ disposition_run <- function(campaign_id, data, population = NULL,
                 meta = .disposition_meta(data)))
   }
 
-  # Collapse fully-identical duplicate rows before the grain guard. A campaign
-  # export can repeat a respondent's row verbatim (a re-export appended to
-  # itself, an upstream merge that duplicated a batch): an exactly-duplicated row
-  # carries nothing the first copy does not, so dropping it cannot change any
-  # downstream flag or date -- a true no-op on the disposition output. Only EXACT
-  # duplicates collapse here; a duplicate phone whose rows DIFFER survives to the
-  # grain guard below, so a genuine conflict is never silently merged.
-  # Only a row whose phone recurs can be a duplicate row, so the whole-row
-  # comparison runs on just those rows: duplicated() on the full wide frame
-  # pasted every row of every column to a string (~3 s and a ~800 MB
-  # transient on a 200k x 40 export) for a check that almost always finds
-  # nothing. NA phones compare equal in both steps, as duplicated() treats them.
-  phone_raw <- data[["phone"]]
-  recurring <- phone_raw %in% phone_raw[duplicated(phone_raw)]
-  dup_rows <- logical(nrow(data))
-  if (any(recurring)) {
-    dup_rows[recurring] <- duplicated(data[recurring, , drop = FALSE])
-  }
-  if (any(dup_rows)) {
-    kept <- data[!dup_rows, , drop = FALSE]
-    # Row-subsetting drops the source-provenance attributes `s160_read_csv`
-    # stamps; carry them onto the deduped frame so `meta` still reports them.
-    attr(kept, "source_csv_hash") <- attr(data, "source_csv_hash")
-    attr(kept, "source_csv_path") <- attr(data, "source_csv_path")
-    data <- kept
-  }
+  data <- .collapse_duplicate_rows(data)
 
   phone <- as.character(data[["phone"]])
   dup_idx <- anyDuplicated(phone)

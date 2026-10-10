@@ -169,13 +169,21 @@ aggregate_worst_cascade <- function(bucketed, thresholds) {
   # GForce-optimised (computed in C across all groups at once); wrapping it,
   # e.g. in suppressWarnings(), would force a per-group R evaluation over the
   # ~(buckets x respondents) groups -- ~20x slower on a campaign-sized frame.
-  # An all-NA input yields zero rows here (nothing to probe), and the
-  # is.finite() filter keeps the empty-group edge belt-and-suspenders.
-  worst <- bucketed[
-    !is.na(delta_min),
-    list(worst_delta = max(delta_min)),
-    by = list(campaign_id, date, hour_local, respondent_index)
-  ]
+  # With no valid delta at all the grouped form would evaluate j once on the
+  # empty table to probe its type -- max(numeric(0)) warns -- so that case
+  # builds the typed empty result directly. The is.finite() filter keeps the
+  # empty-group edge belt-and-suspenders.
+  valid <- !is.na(bucketed[["delta_min"]])
+  worst <- if (any(valid)) {
+    bucketed[
+      valid,
+      list(worst_delta = max(delta_min)),
+      by = list(campaign_id, date, hour_local, respondent_index)
+    ]
+  } else {
+    empty <- bucketed[0L, c(.bucket_keys, "respondent_index"), with = FALSE]
+    data.table::set(empty, j = "worst_delta", value = numeric(0))
+  }
   worst <- worst[is.finite(worst_delta)]
 
   chunks <- lapply(thresholds, function(t) cascade_chunk(worst, t))
