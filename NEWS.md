@@ -86,6 +86,12 @@ of output-identical rounds (every change is gated on byte-identical results):
   `tabulate()` per reason.
 * The per-cell `n_na_*` counts are one `tabulate()` over an integer-coded
   `na_reason` instead of three string comparisons per cell.
+* `build_latency_frame()` fills each column of the long frame in place,
+  slice by slice, instead of binding a per-segment list of sub-frames (the
+  frame was briefly held twice).
+* `.normalize_phone()`'s ten-digit fast-path test matches bytewise
+  (`useBytes = TRUE`): the same decision without per-string encoding
+  validation, for the 100M+-row projection reads.
 
 ## Breaking changes
 

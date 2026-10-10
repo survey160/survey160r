@@ -22,7 +22,10 @@
 # result.
 .normalize_phone <- function(x) {
   x <- as.character(x)
-  dirty <- !grepl("\\A[0-9]{10}\\z", x, perl = TRUE)
+  # useBytes: the test is "exactly ten ASCII digits", which bytewise matching
+  # decides identically (a multibyte character is never a digit byte) without
+  # the per-string encoding validation -- measurably cheaper at 100M+ phones.
+  dirty <- !grepl("\\A[0-9]{10}\\z", x, perl = TRUE, useBytes = TRUE)
   if (any(dirty)) x[dirty] <- .normalize_phone_slow(x[dirty])
   x
 }
