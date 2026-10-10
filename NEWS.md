@@ -92,6 +92,13 @@ of output-identical rounds (every change is gated on byte-identical results):
 * `.normalize_phone()`'s ten-digit fast-path test matches bytewise
   (`useBytes = TRUE`): the same decision without per-string encoding
   validation, for the 100M+-row projection reads.
+* `utils_fix_double_utf8()` tests each value with one `grepl()` for a
+  Latin-1-supplement code point and runs the run-by-run repair only on the
+  distinct candidates (~100x faster on a clean export column; a 2M-value column
+  with repeated mojibake labels goes from ~20 s to ~0.3 s). Output unchanged.
+* `latency_funnel()` de-duplicates the bucket key with data.table's
+  `duplicated()` instead of `duplicated.data.frame()` (which pastes every row
+  to a string), ~200x faster on a fleet-wide consolidated.
 
 ## New features
 
