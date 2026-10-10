@@ -252,10 +252,20 @@ aggregate_segment_cells <- function(bucketed, thresholds) {
       n_na_missing = na_counts[[2L]],
       n_na_chain = na_counts[[3L]]
     )
+    # Thresholds ascend, so the respondents over threshold k are a superset
+    # of those over k+1: order the valid deltas descending once, count the
+    # first appearance of each respondent along that order, and the distinct
+    # respondents over t is the running count at the last delta > t -- one
+    # order() + one duplicated() per cell instead of a unique() per threshold.
+    if (n_valid > 0L) {
+      desc <- order(vals, decreasing = TRUE)
+      first_seen <- cumsum(!duplicated(resp[desc]))
+      vals_desc <- vals[desc]
+    }
     for (k in seq_along(thresholds)) {
-      over <- vals > thresholds[[k]]
-      out[[sprintf(".n_le_%d", k)]] <- n_valid - sum(over)
-      out[[sprintf(".n_resp_over_%d", k)]] <- length(unique(resp[over]))
+      n_over <- if (n_valid > 0L) sum(vals_desc > thresholds[[k]]) else 0L
+      out[[sprintf(".n_le_%d", k)]] <- n_valid - n_over
+      out[[sprintf(".n_resp_over_%d", k)]] <- if (n_over > 0L) first_seen[[n_over]] else 0L
     }
     out
   }, by = c(.bucket_keys, "segment", "segment_index")]

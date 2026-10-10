@@ -108,6 +108,13 @@ of output-identical rounds (every change is gated on byte-identical results):
   render the label column once per frame; the full-path frame is assembled
   directly from its finished columns (no `data.frame()` coercion pass over
   millions of rows) and the compact path binds plain lists per segment.
+* Per cell, the distinct respondents over each threshold come from one
+  descending order of the valid deltas plus a running first-appearance count
+  (one `order()` + `duplicated()` per cell instead of a `unique()` per
+  threshold).
+* `.question_timestamp()` returns a single opener's column directly (no
+  `coalesce()` over one input), and `parse_campaign_timestamps()` skips the
+  retry mask on a column that parsed completely.
 
 ## New features
 
