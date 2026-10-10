@@ -224,22 +224,14 @@ latency_report <- function(data, config, run_at = NULL, compact = FALSE) {
                         ls(all.names = FALSE)))
     invisible(gc(verbose = FALSE))
 
-    hour_grain <- aggregate_consolidated(frame, config, cfg_hash, run_at,
-                                         src_csv_hash,
-                                         summary_frame = summary_hour,
-                                         ineligible_frame = ineligible_hour,
-                                         refusal_frame = refusal_hour,
-                                         survey_mode = survey_mode)
-    hour_grain <- hour_grain[!is.na(hour_grain$hour_local), , drop = FALSE]
-    invisible(gc(verbose = FALSE))
-    day_frame <- frame
-    if (nrow(day_frame) > 0L) day_frame$hour_local <- NA_integer_
-    day_grain <- aggregate_consolidated(day_frame, config, cfg_hash, run_at,
-                                        src_csv_hash,
-                                        summary_frame = summary_day,
-                                        ineligible_frame = ineligible_day,
-                                        refusal_frame = refusal_day,
-                                        survey_mode = survey_mode)
+    grains <- .two_grain_consolidated(frame, config, cfg_hash, run_at,
+                                      src_csv_hash, survey_mode,
+                                      hour = list(summary_hour, ineligible_hour,
+                                                  refusal_hour),
+                                      day = list(summary_day, ineligible_day,
+                                                 refusal_day))
+    hour_grain <- grains$hour
+    day_grain <- grains$day
     # Rebuild the (date=NA, hour=NA) rows the dropped NA-date rows would have
     # produced, then re-sort the day grain to the assemble_consolidated() order.
     day_na <- .na_date_day_rows(na_date, config, cfg_hash, run_at, src_csv_hash,
@@ -260,22 +252,14 @@ latency_report <- function(data, config, run_at = NULL, compact = FALSE) {
                         ls(all.names = FALSE)))
     invisible(gc(verbose = FALSE))
 
-    hour_grain <- aggregate_consolidated(frame, config, cfg_hash, run_at,
-                                         src_csv_hash,
-                                         summary_frame = summary_hour,
-                                         ineligible_frame = ineligible_hour,
-                                         refusal_frame = refusal_hour,
-                                         survey_mode = survey_mode)
-    hour_grain <- hour_grain[!is.na(hour_grain$hour_local), , drop = FALSE]
-    invisible(gc(verbose = FALSE))
-    day_frame <- frame
-    if (nrow(day_frame) > 0L) day_frame$hour_local <- NA_integer_
-    day_grain <- aggregate_consolidated(day_frame, config, cfg_hash, run_at,
-                                        src_csv_hash,
-                                        summary_frame = summary_day,
-                                        ineligible_frame = ineligible_day,
-                                        refusal_frame = refusal_day,
-                                        survey_mode = survey_mode)
+    grains <- .two_grain_consolidated(frame, config, cfg_hash, run_at,
+                                      src_csv_hash, survey_mode,
+                                      hour = list(summary_hour, ineligible_hour,
+                                                  refusal_hour),
+                                      day = list(summary_day, ineligible_day,
+                                                 refusal_day))
+    hour_grain <- grains$hour
+    day_grain <- grains$day
     consolidated <- rbind(hour_grain, day_grain)
 
     diagnostics <- build_diagnostics(
@@ -306,4 +290,33 @@ latency_report <- function(data, config, run_at = NULL, compact = FALSE) {
     diagnostics = diagnostics,
     meta = meta
   )
+}
+
+# The two consolidated grains from one latency frame: the hour grain (hour_local
+# 0-23; the NA-hour bucket is dropped here, the day pass owns it) and the day
+# rollup (hour_local nulled on the frame, so the per-respondent cascade is
+# recomputed at day grain rather than summed from hours). `hour` / `day` are
+# the (summary, ineligible, refusal) frame triples at each grain. The gc()
+# between the passes reclaims the hour pass's transient grouped frames before
+# the day pass allocates its own (output-neutral). Shared by the full and
+# compact paths of latency_report().
+.two_grain_consolidated <- function(frame, config, cfg_hash, run_at,
+                                    src_csv_hash, survey_mode, hour, day) {
+  hour_grain <- aggregate_consolidated(frame, config, cfg_hash, run_at,
+                                       src_csv_hash,
+                                       summary_frame = hour[[1L]],
+                                       ineligible_frame = hour[[2L]],
+                                       refusal_frame = hour[[3L]],
+                                       survey_mode = survey_mode)
+  hour_grain <- hour_grain[!is.na(hour_grain$hour_local), , drop = FALSE]
+  invisible(gc(verbose = FALSE))
+  day_frame <- frame
+  if (nrow(day_frame) > 0L) day_frame$hour_local <- NA_integer_
+  day_grain <- aggregate_consolidated(day_frame, config, cfg_hash, run_at,
+                                      src_csv_hash,
+                                      summary_frame = day[[1L]],
+                                      ineligible_frame = day[[2L]],
+                                      refusal_frame = day[[3L]],
+                                      survey_mode = survey_mode)
+  list(hour = hour_grain, day = day_grain)
 }
