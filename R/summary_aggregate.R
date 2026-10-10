@@ -138,8 +138,9 @@ build_summary_frame <- function(data, config, survey_mode = "sms") {
   # all-zero and dropped below; the NA bucket key it gets never survives the
   # keep filter. (This is why the funnel must bucket on the send, not the
   # reply: a sent-but-never-replied recipient has no batchDate to bucket on.)
-  seg_date <- as.Date(format(send, tz = field_tz))
-  hour_local <- as.integer(format(send, format = "%H", tz = field_tz))
+  local <- .local_date_hour(send, field_tz)
+  seg_date <- local$date
+  hour_local <- local$hour
 
   long <- data.frame(
     campaign_id = campaign_id,
@@ -222,8 +223,9 @@ build_ineligible_frame <- function(data, config) {
   if (!any(valid)) return(empty_ineligible_frame())
 
   campaign_id <- as.integer(data[[campaign_col]])
-  seg_date <- as.Date(format(intro_batch, tz = field_tz))
-  hour_local <- as.integer(format(intro_batch, format = "%H", tz = field_tz))
+  local <- .local_date_hour(intro_batch, field_tz)
+  seg_date <- local$date
+  hour_local <- local$hour
   # segment_index ending at q_k = k - 1 (segment 1 ends at questions[2]).
   segment_index <- last_idx - 1L
 
@@ -340,8 +342,9 @@ build_refusal_frame <- function(data, config) {
   if (!any(valid)) return(empty_refusal_frame())
 
   campaign_id <- as.integer(data[[campaign_col]])
-  seg_date <- as.Date(format(intro_batch, tz = field_tz))
-  hour_local <- as.integer(format(intro_batch, format = "%H", tz = field_tz))
+  local <- .local_date_hour(intro_batch, field_tz)
+  seg_date <- local$date
+  hour_local <- local$hour
   # segment_index ending at q_k = k - 1 (segment 1 ends at questions[2]).
   segment_index <- last_idx - 1L
 

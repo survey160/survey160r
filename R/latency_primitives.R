@@ -86,6 +86,17 @@ parse_campaign_timestamps <- function(x) {
   }
 }
 
+# Local calendar date and hour of a UTC POSIXct vector in `tz`, from ONE
+# as.POSIXlt() conversion: as.Date() of the broken-down time and its $hour
+# field. The previous as.Date(format(x, tz)) / as.integer(format(x, "%H", tz))
+# pair rendered every instant to a string twice and parsed the date back; on a
+# wide campaign that ran once per segment and dominated frame construction.
+# NA in -> NA out for both. Pure.
+.local_date_hour <- function(x, tz) {
+  lt <- as.POSIXlt(x, tz = tz)
+  list(date = as.Date(lt), hour = lt$hour)
+}
+
 # Replace empty strings with NA on character columns. Mirrors the legacy
 # `na_if(., "")` step so downstream parsers see NA, not "".
 na_if_blank <- function(data) {
@@ -154,7 +165,9 @@ compute_segment_delta <- function(batch_prior, script_next) {
   if (length(batch_prior) != length(script_next)) {
     stop("`batch_prior` and `script_next` must have the same length.", call. = FALSE)
   }
-  raw <- as.numeric(difftime(script_next, batch_prior, units = "mins"))
+  # difftime(units = "mins") is exactly (unclass(t1) - unclass(t2)) / 60; done
+  # inline to skip its tz / units dispatch on an export-sized vector.
+  raw <- (as.numeric(script_next) - as.numeric(batch_prior)) / 60
   clamped <- !is.na(raw) & raw < 0
   raw[clamped] <- 0
   list(delta = raw, n_clamped = sum(clamped))

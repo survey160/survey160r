@@ -149,8 +149,8 @@
   # row-wise max (all-NA row -> NA, not -Inf), reduced across the columns.
   secs <- lapply(cols, function(col) as.numeric(parse_campaign_timestamps(data[[col]])))
   mx <- Reduce(function(a, b) pmax(a, b, na.rm = TRUE), secs)
-  as.Date(format(as.POSIXct(mx, origin = "1970-01-01", tz = "UTC"),
-                 tz = field_timezone))
+  .local_date_hour(as.POSIXct(mx, origin = "1970-01-01", tz = "UTC"),
+                   field_timezone)$date
 }
 
 # Empty (0-row) disposition frame with the pinned column set + types. Lets

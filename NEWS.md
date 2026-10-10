@@ -31,6 +31,14 @@ of output-identical rounds (every change is gated on byte-identical results):
   `group_by(respondent)` + `summarise(max(na.rm = TRUE))` evaluated per group
   in R (it was ~40% of `latency_report()` after the aggregation fixes); the
   compact path's `split()` + `vapply()` form shares the same helper.
+* Local bucket date and hour come from ONE `as.POSIXlt()` conversion per
+  timestamp column (`.local_date_hour()`), replacing the
+  `as.Date(format(x, tz))` + `as.integer(format(x, "%H", tz))` pair that
+  rendered every instant to a string twice -- in the latency frame builders
+  (both paths), the summary / ineligible / refusal frames, the date filter and
+  `disposition_run()`'s `disposition_date`. Segment deltas are the direct
+  numeric difference (what `difftime(units = "mins")` computes) without its
+  dispatch.
 
 ## Breaking changes
 

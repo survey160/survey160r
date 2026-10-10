@@ -60,8 +60,9 @@
     delta <- apply_chain_validity(delta_pre, chain_priors)
     chain_priors <- c(chain_priors, list(batch_prior))
 
-    seg_date_local <- as.Date(format(batch_prior, tz = field_tz))
-    hour_local <- as.integer(format(batch_prior, format = "%H", tz = field_tz))
+    local <- .local_date_hour(batch_prior, field_tz)
+    seg_date_local <- local$date
+    hour_local <- local$hour
     parse_fail_row <- segment_parse_fail_mask(parse_failed_mask,
                                               batch_prior_col, script_next_col, n)
     na_reason <- classify_na_reason(delta, delta_pre, parse_fail_row)
