@@ -130,6 +130,18 @@ latency_build_config <- function(campaign_id, data,
 #' latency_validate_config(config, data)
 #' @export
 latency_validate_config <- function(config, data) {
+  .validate_config_shape(config)
+  validate_columns_present(config, data)
+  validate_flow_order(config, data)
+  invisible(TRUE)
+}
+
+# The data-independent half of latency_validate_config(): key set, required
+# scalars, and the question list. latency_report() runs this and the column
+# check before it parses, and the flow-order check on the parsed columns after
+# -- the same three checks in the same order, without decoding every timestamp
+# a second time for the flow-order ratio.
+.validate_config_shape <- function(config) {
   unknown <- setdiff(names(config), .config_keys)
   if (length(unknown) > 0) {
     stop(sprintf("config: unknown keys: %s", paste(unknown, collapse = ", ")),
@@ -139,8 +151,6 @@ latency_validate_config <- function(config, data) {
   if (is.null(config$campaign_id)) stop("config: `campaign_id` is required.", call. = FALSE)
   if (is.null(config$field_timezone)) stop("config: `field_timezone` is required.", call. = FALSE)
   validate_questions(config$flow$questions)
-  validate_columns_present(config, data)
-  validate_flow_order(config, data)
   invisible(TRUE)
 }
 

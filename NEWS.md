@@ -72,6 +72,13 @@ of output-identical rounds (every change is gated on byte-identical results):
   one index and applies it once, projected to the columns the frame builders
   read (flow timestamps + campaign id), instead of copying the full-width
   input once per filter step.
+* The `source_csv_hash` sha256 is computed with `tools::sha256sum()` when
+  available (R >= 4.5; the same digest, ~2x faster on an export-sized file),
+  falling back to `digest` on an older R.
+* `latency_report()` runs the config shape and column checks before the
+  parse and the flow-order check on the parsed columns, so the flow-order
+  ratio no longer decodes every timestamp a second time. Same checks, same
+  precedence; `latency_validate_config()` is unchanged.
 
 ## Breaking changes
 

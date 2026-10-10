@@ -77,7 +77,12 @@ UNIVERSAL_THRESHOLDS_MIN <- c(1L, 3L, 5L, 10L)
 #' head(result$consolidated)
 #' @export
 latency_report <- function(data, config, run_at = NULL, compact = FALSE) {
-  latency_validate_config(config, data)
+  # latency_validate_config() in two halves around the parse: the shape and
+  # column checks first (they gate everything below), the flow-order check on
+  # the parsed columns (it would otherwise decode every timestamp a second
+  # time). Same checks, same precedence.
+  .validate_config_shape(config)
+  validate_columns_present(config, data)
 
   cfg_hash <- latency_config_hash(config)
   if (is.null(run_at)) run_at <- Sys.time()
@@ -123,6 +128,7 @@ latency_report <- function(data, config, run_at = NULL, compact = FALSE) {
   parsed <- parse_timestamps(data, ts_cols)
   data <- parsed$data
   parse_failed_mask <- parsed$parse_failed_mask
+  validate_flow_order(config, data)
 
   # Step 1: pre-filter summary metrics (spec §4). Counts sent /
   # opted_in / completed at the (campaign, date, hour_local) grain,
