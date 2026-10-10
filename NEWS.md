@@ -2,9 +2,13 @@
 
 ## Performance
 
-`latency_report()` / `latency_run()`, `disposition_run()` and the disposition
-readers were profiled end to end on a 16 GB laptop budget and tuned in a series
-of output-identical rounds (every change is gated on byte-identical results):
+`latency_report()` / `latency_run()`, `disposition_run()`, the disposition
+readers and `utils_fix_double_utf8()` were profiled end to end on a 16 GB
+laptop budget and tuned in thirty output-identical rounds (every change is
+gated on byte-identical results). On a 200k-respondent, 12-question export
+`latency_run()` goes from ~46 s to ~3 s (peak heap 2.1 GB to 0.8 GB) and
+`disposition_run()` from ~6 s to ~0.35 s; a 1M-respondent compact run from
+~140 s / 6.5 GB RSS to ~13 s / 3.6 GB:
 
 * The consolidated scaffold's bucket set is taken with data.table `unique()`
   on the key columns instead of `unique.data.frame()` on the whole long frame

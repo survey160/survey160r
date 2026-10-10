@@ -90,7 +90,10 @@ on 200k rows in ~0.3 s. Keep it that way:
   minute), never `format(x, tz)`.
 - **Never `duplicated()` / `unique()` a whole wide data.frame** -- it pastes every row to a
   string. Key on the column(s) that decide the answer (`.collapse_duplicate_rows()`,
-  `build_consolidated_scaffold()`).
+  `build_consolidated_scaffold()`, `latency_funnel()`).
+- **Prefilter before a regex pipeline.** A cheap `grepl()` that selects the candidate values,
+  then the heavy work on `unique()` of those (`utils_fix_double_utf8()`), beats running
+  `gregexpr()` / `regmatches()` over every value by two orders of magnitude on real exports.
 - **Memory levers for callers**: `columns = latency_input_columns(...)` /
   `disposition_input_columns(...)` to project the read, `timestamps = "POSIXct"` on the readers
   (8 bytes per cell instead of ~60), and `compact = TRUE` on `latency_run()` for wide campaigns.
