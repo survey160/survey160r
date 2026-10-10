@@ -108,6 +108,16 @@ of output-identical rounds (every change is gated on byte-identical results):
   `parse_failures_per_column` still counts those cells. Default
   `"character"` is unchanged.
 
+## Internal
+
+* `build_ineligible_frame()` / `build_refusal_frame()` and their day rollups
+  share one terminal-frame builder (`.terminal_segment_frame()` /
+  `.collapse_terminal_to_day()`); output unchanged.
+* New `tests/testthat/helper-synthetic.R` (deterministic synthetic export /
+  disposition generators), `test-synthetic_parity.R` (full vs compact, string
+  vs POSIXct input, and each fast-path helper against its reference form) and
+  `scripts/bench.R` / `make bench` (hot-path wall time + peak heap harness).
+
 ## Bug fixes
 
 * The respondent cascade on a frame with no valid delta at all (every

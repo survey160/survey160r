@@ -7,3 +7,4 @@
 .claude
 *.tar.gz
 *.Rcheck/
+scripts/bench.jsonl

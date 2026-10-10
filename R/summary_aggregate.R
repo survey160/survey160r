@@ -193,20 +193,45 @@ build_summary_frame <- function(data, config, survey_mode = "sms",
 #     end of segment k (intro->q1 = segment 1, etc.).
 # Returns zero-row frame with correct schema when no ineligibles exist.
 build_ineligible_frame <- function(data, config) {
-  if (nrow(data) == 0L) return(empty_ineligible_frame())
+  .terminal_segment_frame(data, config, "id.ineligible.scriptDate", "n_ineligible")
+}
+
+# Build the per-(campaign_id, date, hour_local, segment_index) refusal frame.
+# The refusal-terminal sibling of build_ineligible_frame(): a respondent is
+# "refused at segment_index k" when:
+#   - id.refusal.scriptDate is non-NA (terminal decline), AND
+#   - the last question in config$flow$questions they reached
+#     (had scriptDate on) is questions[k+1] -- i.e. they reached the
+#     end of segment k (intro->q1 = segment 1, etc.).
+# Keyed on the single standard id.refusal.scriptDate column, exactly as the
+# ineligible frame keys on id.ineligible.scriptDate (the disposition path's
+# refusal-family name matching is deliberately NOT used here, so the two latency
+# terminal counts share one detection style). Returns zero-row frame with
+# correct schema when no refusals exist.
+build_refusal_frame <- function(data, config) {
+  .terminal_segment_frame(data, config, "id.refusal.scriptDate", "n_refused")
+}
+
+# The one builder behind build_ineligible_frame() / build_refusal_frame(): count
+# the respondents whose terminal column `terminal_col` is set, by the
+# (campaign, date, hour) bucket of their OPENING reply and the segment_index
+# that ended at the last flow question they reached. `count_col` names the count
+# column (n_ineligible / n_refused); the empty frame carries the same schema.
+.terminal_segment_frame <- function(data, config, terminal_col, count_col) {
+  empty <- .empty_terminal_frame(count_col)
+  if (nrow(data) == 0L) return(empty)
   campaign_col <- config$filters$campaign_id_column
   field_tz <- config$field_timezone
   questions <- config$flow$questions
 
-  inelig_col <- "id.ineligible.scriptDate"
-  if (!inelig_col %in% names(data)) return(empty_ineligible_frame())
-  inelig_ts <- parse_campaign_timestamps(data[[inelig_col]])
+  if (!terminal_col %in% names(data)) return(empty)
+  terminal_ts <- parse_campaign_timestamps(data[[terminal_col]])
   # Anchor on the OPENING question set's reply (coalesced), not a hardcoded
   # id.intro.batchDate, so a bilingual campaign's routed cohort is bucketed.
   intro_batch <- .question_timestamp(data, .opening_questions(questions), "batchDate")
 
-  is_ineligible <- !is.na(inelig_ts) & !is.na(intro_batch)
-  if (!any(is_ineligible)) return(empty_ineligible_frame())
+  is_terminal <- !is.na(terminal_ts) & !is.na(intro_batch)
+  if (!any(is_terminal)) return(empty)
 
   # Pre-parse the scriptDate columns the last-reached computation needs;
   # store on a copy so we don't mutate the caller's data. POSIXct
@@ -220,38 +245,37 @@ build_ineligible_frame <- function(data, config) {
   last_idx <- last_reached_question_index(data, questions)
 
   # last_idx of 1 = only intro reached. Edge: no preceding segment, so
-  # no segment_index applies; drop these from the ineligible count.
-  valid <- is_ineligible & !is.na(last_idx) & last_idx >= 2L
-  if (!any(valid)) return(empty_ineligible_frame())
+  # no segment_index applies; drop these from the count.
+  valid <- is_terminal & !is.na(last_idx) & last_idx >= 2L
+  if (!any(valid)) return(empty)
 
   campaign_id <- as.integer(data[[campaign_col]])
   local <- .local_date_hour(intro_batch, field_tz)
-  seg_date <- local$date
-  hour_local <- local$hour
   # segment_index ending at q_k = k - 1 (segment 1 ends at questions[2]).
   segment_index <- last_idx - 1L
 
   long <- data.frame(
     campaign_id = campaign_id[valid],
-    date = seg_date[valid],
-    hour_local = hour_local[valid],
+    date = local$date[valid],
+    hour_local = local$hour[valid],
     segment_index = as.integer(segment_index[valid]),
     stringsAsFactors = FALSE
   )
   agg <- dplyr::summarise(
     dplyr::group_by(long, .data$campaign_id, .data$date, .data$hour_local,
                     .data$segment_index),
-    n_ineligible = dplyr::n(),
+    n = dplyr::n(),
     .groups = "drop"
   )
-  data.frame(
+  out <- data.frame(
     campaign_id = as.integer(agg$campaign_id),
     date = agg$date,
     hour_local = as.integer(agg$hour_local),
     segment_index = as.integer(agg$segment_index),
-    n_ineligible = as.integer(agg$n_ineligible),
     stringsAsFactors = FALSE
   )
+  out[[count_col]] <- as.integer(agg$n)
+  out
 }
 
 # Collapse an hourly summary frame to day grain (hour_local = NA). The
@@ -282,113 +306,31 @@ collapse_summary_to_day <- function(summary_frame) {
 }
 
 collapse_ineligible_to_day <- function(ineligible_frame) {
-  if (nrow(ineligible_frame) == 0L) return(empty_ineligible_frame())
-  agg <- dplyr::summarise(
-    dplyr::group_by(ineligible_frame, .data$campaign_id, .data$date,
-                    .data$segment_index),
-    n_ineligible = sum(.data$n_ineligible),
-    .groups = "drop"
-  )
-  data.frame(
-    campaign_id = as.integer(agg$campaign_id),
-    date = agg$date,
-    hour_local = NA_integer_,
-    segment_index = as.integer(agg$segment_index),
-    n_ineligible = as.integer(agg$n_ineligible),
-    stringsAsFactors = FALSE
-  )
-}
-
-# Build the per-(campaign_id, date, hour_local, segment_index) refusal frame.
-# The refusal-terminal sibling of build_ineligible_frame(): a respondent is
-# "refused at segment_index k" when:
-#   - id.refusal.scriptDate is non-NA (terminal decline), AND
-#   - the last question in config$flow$questions they reached
-#     (had scriptDate on) is questions[k+1] -- i.e. they reached the
-#     end of segment k (intro->q1 = segment 1, etc.).
-# Keyed on the single standard id.refusal.scriptDate column, exactly as the
-# ineligible frame keys on id.ineligible.scriptDate (the disposition path's
-# refusal-family name matching is deliberately NOT used here, so the two latency
-# terminal counts share one detection style). Returns zero-row frame with
-# correct schema when no refusals exist.
-build_refusal_frame <- function(data, config) {
-  if (nrow(data) == 0L) return(empty_refusal_frame())
-  campaign_col <- config$filters$campaign_id_column
-  field_tz <- config$field_timezone
-  questions <- config$flow$questions
-
-  refusal_timestamp_column <- "id.refusal.scriptDate"
-  if (!refusal_timestamp_column %in% names(data)) return(empty_refusal_frame())
-  refusal_timestamp <- parse_campaign_timestamps(data[[refusal_timestamp_column]])
-  # Anchor on the OPENING question set's reply (coalesced), not a hardcoded
-  # id.intro.batchDate, so a bilingual campaign's routed cohort is bucketed.
-  intro_batch <- .question_timestamp(data, .opening_questions(questions), "batchDate")
-
-  is_refusal <- !is.na(refusal_timestamp) & !is.na(intro_batch)
-  if (!any(is_refusal)) return(empty_refusal_frame())
-
-  # Pre-parse the scriptDate columns the last-reached computation needs;
-  # store on a copy so we don't mutate the caller's data. POSIXct
-  # already-parsed columns pass through cleanly.
-  for (q in questions) {
-    col <- sprintf("id.%s.scriptDate", q)
-    if (col %in% names(data) && !inherits(data[[col]], "POSIXct")) {
-      data[[col]] <- parse_campaign_timestamps(data[[col]])
-    }
-  }
-  last_idx <- last_reached_question_index(data, questions)
-
-  # last_idx of 1 = only intro reached. Edge: no preceding segment, so
-  # no segment_index applies; drop these from the refusal count.
-  valid <- is_refusal & !is.na(last_idx) & last_idx >= 2L
-  if (!any(valid)) return(empty_refusal_frame())
-
-  campaign_id <- as.integer(data[[campaign_col]])
-  local <- .local_date_hour(intro_batch, field_tz)
-  seg_date <- local$date
-  hour_local <- local$hour
-  # segment_index ending at q_k = k - 1 (segment 1 ends at questions[2]).
-  segment_index <- last_idx - 1L
-
-  long <- data.frame(
-    campaign_id = campaign_id[valid],
-    date = seg_date[valid],
-    hour_local = hour_local[valid],
-    segment_index = as.integer(segment_index[valid]),
-    stringsAsFactors = FALSE
-  )
-  agg <- dplyr::summarise(
-    dplyr::group_by(long, .data$campaign_id, .data$date, .data$hour_local,
-                    .data$segment_index),
-    n_refused = dplyr::n(),
-    .groups = "drop"
-  )
-  data.frame(
-    campaign_id = as.integer(agg$campaign_id),
-    date = agg$date,
-    hour_local = as.integer(agg$hour_local),
-    segment_index = as.integer(agg$segment_index),
-    n_refused = as.integer(agg$n_refused),
-    stringsAsFactors = FALSE
-  )
+  .collapse_terminal_to_day(ineligible_frame, "n_ineligible")
 }
 
 collapse_refusal_to_day <- function(refusal_frame) {
-  if (nrow(refusal_frame) == 0L) return(empty_refusal_frame())
+  .collapse_terminal_to_day(refusal_frame, "n_refused")
+}
+
+# Day rollup of a terminal frame: sum `count_col` per (campaign_id, date,
+# segment_index), hour_local = NA.
+.collapse_terminal_to_day <- function(frame, count_col) {
+  if (nrow(frame) == 0L) return(.empty_terminal_frame(count_col))
   agg <- dplyr::summarise(
-    dplyr::group_by(refusal_frame, .data$campaign_id, .data$date,
-                    .data$segment_index),
-    n_refused = sum(.data$n_refused),
+    dplyr::group_by(frame, .data$campaign_id, .data$date, .data$segment_index),
+    n = sum(.data[[count_col]]),
     .groups = "drop"
   )
-  data.frame(
+  out <- data.frame(
     campaign_id = as.integer(agg$campaign_id),
     date = agg$date,
     hour_local = NA_integer_,
     segment_index = as.integer(agg$segment_index),
-    n_refused = as.integer(agg$n_refused),
     stringsAsFactors = FALSE
   )
+  out[[count_col]] <- as.integer(agg$n)
+  out
 }
 
 empty_summary_frame <- function() {
@@ -404,24 +346,20 @@ empty_summary_frame <- function() {
   )
 }
 
-empty_ineligible_frame <- function() {
-  data.frame(
-    campaign_id = integer(0),
-    date = as.Date(character(0)),
-    hour_local = integer(0),
-    segment_index = integer(0),
-    n_ineligible = integer(0),
-    stringsAsFactors = FALSE
-  )
-}
+empty_ineligible_frame <- function() .empty_terminal_frame("n_ineligible")
 
-empty_refusal_frame <- function() {
-  data.frame(
+empty_refusal_frame <- function() .empty_terminal_frame("n_refused")
+
+# Zero-row terminal frame with the pinned (bucket, segment_index, count)
+# schema; `count_col` is n_ineligible or n_refused.
+.empty_terminal_frame <- function(count_col) {
+  out <- data.frame(
     campaign_id = integer(0),
     date = as.Date(character(0)),
     hour_local = integer(0),
     segment_index = integer(0),
-    n_refused = integer(0),
     stringsAsFactors = FALSE
   )
+  out[[count_col]] <- integer(0)
+  out
 }

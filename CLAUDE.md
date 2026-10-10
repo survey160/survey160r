@@ -66,6 +66,35 @@ Secondary conventions:
 
 After any change under `R/`, run `make verify` -- it loads the package once and runs `testthat::test_package()` + `lintr::lint_package()` + `covr::package_coverage()` in a single R session. Prefer this over ad-hoc `Rscript -e '...'` calls; it is the canonical pre-commit gate and is ~3x faster than three cold R startups. For a heavier release-time gate, `make check` runs the full `R CMD check`.
 
+## Performance
+
+The transforms are sized for a 16 GB laptop: a 1M-respondent x 12-question export (string
+timestamps) runs `latency_run()` in ~14 s with a ~3.8 GB RSS high-water mark; `disposition_run()`
+on 200k rows in ~0.3 s. Keep it that way:
+
+- **Measure before and after.** `make bench` (`scripts/bench.R`) times the hot paths and reports
+  each workload's peak R-heap allocation; tag runs with `LABEL=` and compare `scripts/bench.jsonl`.
+  Rprof inflates data.table internals -- for a data.table-heavy stage, time the stage directly.
+- **Gate on identical output.** A perf change is output-neutral by construction: run the full
+  and compact latency paths, `disposition_run()` and `disposition_summary()` on a synthetic
+  campaign before and after and compare with `identical()` (`test-synthetic_parity.R` holds the
+  standing checks; `helper-synthetic.R` generates the data).
+- **data.table `j` must stay GForce-eligible** in the big grouped passes (`aggregate_*` in
+  `R/latency_aggregate.R`): bare `max()` / `sum()` / `uniqueN()` / `.N`. Wrapping one (e.g. in
+  `suppressWarnings()`) silently falls back to a per-group R evaluation, 20x+ slower. Handle the
+  empty-table edge outside the grouped call instead.
+- **Decode each timestamp column once.** `latency_report()` parses the flow columns up front and
+  every consumer reads them through `.column_timestamps()` (POSIXct passes through). New code
+  that needs a timestamp should take the parsed column, not re-parse the string.
+- **Local date/hour** go through `.local_date_hour()` (one `as.POSIXlt()` per distinct UTC
+  minute), never `format(x, tz)`.
+- **Never `duplicated()` / `unique()` a whole wide data.frame** -- it pastes every row to a
+  string. Key on the column(s) that decide the answer (`.collapse_duplicate_rows()`,
+  `build_consolidated_scaffold()`).
+- **Memory levers for callers**: `columns = latency_input_columns(...)` /
+  `disposition_input_columns(...)` to project the read, `timestamps = "POSIXct"` on the readers
+  (8 bytes per cell instead of ~60), and `compact = TRUE` on `latency_run()` for wide campaigns.
+
 ## Reference
 
 - Campaign pipeline spec: `../r-scripts/campaign_scripts.md` (lives outside this repo, in the meta-workspace; covers the latency view today, will gain a summary metrics view in a follow-up).

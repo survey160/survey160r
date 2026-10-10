@@ -9,6 +9,7 @@ tests/
 ├── testthat.R                  # entry point: library(survey160r) + test_check()
 └── testthat/
     ├── helper-stubs.R          # shared helpers, auto-loaded before all tests
+    ├── helper-synthetic.R      # synthetic export / disposition generators (also used by scripts/bench.R)
     ├── fixtures/
     │   ├── synthetic.csv             # canonical Survey160 v2 CSV (4 rows, 1 campaign, 1 day)
     │   ├── synthetic_parity.csv      # 8-question, 6-respondent legacy-parity input
@@ -82,6 +83,20 @@ minimal_synthetic_data(           # programmatic builder; no file I/O
   with_rows = TRUE                # FALSE -> column-only frame
 )
 ```
+
+### Synthetic generators (helper-synthetic.R)
+
+```r
+synthetic_export(n = 2000L, n_questions = 6L, bilingual = FALSE)  # string-form export, drop-off,
+                                                                  # blank replies, parse failures
+synthetic_parse_timestamps(export)   # the POSIXct form a reader (timestamps = "POSIXct") returns
+synthetic_disposition(n_rows, n_phones)  # (phone, campaign_id) projection with 0/1 flags + dates
+```
+
+Deterministic for a seed. Use them for property / parity tests that need a campaign larger than the
+fixtures (`test-synthetic_parity.R`: full vs compact, string vs POSIXct input, fast-path helpers
+vs their reference forms). `scripts/bench.R` sources this file for the perf harness, so keep the
+generators dependency-free and fast.
 
 The `mutate` hook is how you trigger negative paths (drop a column, perturb a value) without copying the CSV. `minimal_synthetic_data()` is preferred when a test only needs a column-shape or one synthetic row -- it has no fixture file dependency.
 

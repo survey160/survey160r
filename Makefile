@@ -26,7 +26,14 @@ coverage:
 e2e:
 	Rscript e2e.R
 
+# Hot-path perf harness (wall time + peak R heap per workload); appends to
+# scripts/bench.jsonl. `make bench LABEL=after N=200000` to tag/scale a run.
+LABEL ?= bench
+N ?= 200000
+bench:
+	Rscript scripts/bench.R $(LABEL) $(N)
+
 clean:
 	rm -rf *.tar.gz *.Rcheck
 
-.PHONY: all verify check install test lint coverage e2e clean
+.PHONY: all verify check install test lint coverage e2e bench clean
