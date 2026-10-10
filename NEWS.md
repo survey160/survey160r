@@ -39,6 +39,15 @@ of output-identical rounds (every change is gated on byte-identical results):
   `disposition_run()`'s `disposition_date`. Segment deltas are the direct
   numeric difference (what `difftime(units = "mins")` computes) without its
   dispatch.
+* `latency_report()` parses the flow's timestamp columns ONCE, up front on
+  the pre-filter data, and the summary / ineligible / refusal frames, the
+  dedupe and the date filter read the parsed `POSIXct` columns through
+  `.column_timestamps()` instead of each re-decoding the strings (the export's
+  timestamps were decoded three to four times per run). The population mask
+  is likewise evaluated once, on the raw columns, and shared by the summary
+  frame's `opted_in` signal and the population filter. Parse-failure counts
+  are summed from the row-subset masks after the population filter, so the
+  diagnostics are unchanged.
 
 ## Breaking changes
 

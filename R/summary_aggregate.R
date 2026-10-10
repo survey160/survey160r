@@ -74,7 +74,8 @@ has_personalized_close_link <- function(data) {
 # completes on id.close.scriptDate; "t2w" on the web_complete callback;
 # "t2w_external" is not computable (n_completed nulled to NA downstream, since
 # the SMS close is just the external survey link sent to every consenter).
-build_summary_frame <- function(data, config, survey_mode = "sms") {
+build_summary_frame <- function(data, config, survey_mode = "sms",
+                                population_mask = NULL) {
   if (nrow(data) == 0L) return(empty_summary_frame())
   campaign_col <- config$filters$campaign_id_column
   field_tz <- config$field_timezone
@@ -93,7 +94,8 @@ build_summary_frame <- function(data, config, survey_mode = "sms") {
   # date/hour; the masks are summed into the n_sent / n_engaged / n_opted_in /
   # n_completed counts at the summarise() below (schema-version 6).
   masks <- .funnel_masks(data, openers, config$flow$questions,
-                         config$filters$population)
+                         config$filters$population,
+                         population_mask = population_mask)
   send <- masks$send
   sent <- masks$sent
   engaged <- masks$engaged

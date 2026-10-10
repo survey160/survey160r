@@ -215,12 +215,19 @@
 # opted_in (a completion is an opt-in), so the reported opted_in is >= completed
 # in every mode; that fold lives in the consumers because completion is
 # mode-dependent (computed there), not in this routing/population mask.
-.funnel_masks <- function(data, openers, questions, population = NULL) {
+# `population_mask`: an optional pre-evaluated logical of the `population`
+# filter (length nrow(data)); latency_report() passes the mask it already
+# computed on the raw columns so the expression is evaluated once per run.
+# Ignored when `population` is NULL (routing-based opt-in).
+.funnel_masks <- function(data, openers, questions, population = NULL,
+                          population_mask = NULL) {
   send <- .question_timestamp(data, openers, "scriptDate")
   reply <- .question_timestamp(data, openers, "batchDate")
   sent <- !is.na(send)
   opted <- if (is.null(population)) {
     .reached_continuation(data, questions)
+  } else if (!is.null(population_mask)) {
+    population_mask
   } else {
     .population_mask(data, population)
   }

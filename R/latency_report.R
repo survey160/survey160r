@@ -105,12 +105,32 @@ latency_report <- function(data, config, run_at = NULL, compact = FALSE) {
   # every consolidated row so downstream consumers (Shiny) can filter.
   survey_mode <- detect_survey_mode(data)
 
+  # The population mask is evaluated ONCE here, on the raw (still character)
+  # columns, and reused by the summary frame's opted_in signal and by the
+  # population filter below -- so the expression sees exactly the values it
+  # always did, regardless of the timestamp parse that follows.
+  pop_mask <- population_filter_mask(data, config$filters$population)
+
+  # Parse the flow's timestamp columns ONCE, on the pre-filter data, with the
+  # per-column parse-failure masks. The summary / ineligible / refusal frames,
+  # the dedupe and the date filter all read these columns through
+  # .column_timestamps(), which passes an already-parsed POSIXct through -- so
+  # the export's timestamps are decoded once instead of once per consumer.
+  # The masks are row-subset in lockstep with `data` by every filter below, and
+  # parse_failures is summed from them AFTER the population filter, so the
+  # diagnostics count exactly what a post-filter parse would have.
+  ts_cols <- required_timestamp_columns(questions)
+  parsed <- parse_timestamps(data, ts_cols)
+  data <- parsed$data
+  parse_failed_mask <- parsed$parse_failed_mask
+
   # Step 1: pre-filter summary metrics (spec §4). Counts sent /
   # opted_in / completed at the (campaign, date, hour_local) grain,
   # plus per-segment ineligible counts. Computed on the full pre-filter
   # population so the denominators reflect every respondent the platform
   # dispatched the intro to, not just those who consented.
-  summary_hour <- build_summary_frame(data, config, survey_mode)
+  summary_hour <- build_summary_frame(data, config, survey_mode,
+                                      population_mask = pop_mask)
   ineligible_hour <- build_ineligible_frame(data, config)
   refusal_hour <- build_refusal_frame(data, config)
   # date_filter, when set, restricts both views to the listed dates --
@@ -129,16 +149,15 @@ latency_report <- function(data, config, run_at = NULL, compact = FALSE) {
   ineligible_day <- collapse_ineligible_to_day(ineligible_hour)
   refusal_day <- collapse_refusal_to_day(refusal_hour)
 
-  # Step 2: population filter.
-  data <- apply_population_filter(data, config$filters$population)
+  # Step 2: population filter. The no-op case (an all-TRUE mask, the default
+  # with `filters.population` unset) keeps `data` as-is rather than copying it.
+  if (!isTRUE(all(pop_mask))) {
+    pair <- subset_parsed_input(data, parse_failed_mask, which(pop_mask))
+    data <- pair$data
+    parse_failed_mask <- pair$parse_failed_mask
+  }
   n_in <- nrow(data)
-
-  # Step 3: parse timestamps. (Blanks were already replaced in step 0.)
-  ts_cols <- required_timestamp_columns(questions)
-  parsed <- parse_timestamps(data, ts_cols)
-  data <- parsed$data
-  parse_failures <- parsed$parse_failures
-  parse_failed_mask <- parsed$parse_failed_mask
+  parse_failures <- vapply(parse_failed_mask, sum, integer(1))
 
   # Steps 3 & 4 drop rows from `data`; the per-segment parse_failed_mask
   # vectors must shrink in lockstep so segment-NA classification later lines
