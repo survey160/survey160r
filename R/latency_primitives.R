@@ -101,12 +101,33 @@ parse_campaign_timestamps <- function(x) {
 # of instants, and as.POSIXlt() in a named zone is the expensive step (a
 # per-element localtime lookup) -- bucketing makes it ~20x cheaper on an
 # export-sized column with identical results. NA instants bucket to NA.
+#
+# The minute keys are integers (minutes since the epoch fit comfortably), so
+# unique()/match() hash integers rather than doubles, and the calendar date
+# comes from the broken-down year/month/day by integer arithmetic
+# (.days_from_civil) rather than as.Date.POSIXlt(), which was the slowest step
+# left on the distinct minutes.
 .local_date_hour <- function(x, tz) {
-  minute <- floor(as.numeric(x) / 60)
+  minute <- as.integer(floor(as.numeric(x) / 60))
   distinct <- unique(minute)
-  lt <- as.POSIXlt(.POSIXct(distinct * 60, tz = "UTC"), tz = tz)
+  lt <- as.POSIXlt(.POSIXct(as.numeric(distinct) * 60, tz = "UTC"), tz = tz)
+  days <- .days_from_civil(lt$year + 1900L, lt$mon + 1L, lt$mday)
   idx <- match(minute, distinct)
-  list(date = as.Date(lt)[idx], hour = lt$hour[idx])
+  list(date = .Date(days[idx]), hour = lt$hour[idx])
+}
+
+# Days since 1970-01-01 of a proleptic-Gregorian civil date (vectors of year,
+# month 1-12, day 1-31; NA in -> NA out). Howard Hinnant's days_from_civil,
+# exact in integer arithmetic for every date R's Date type represents -- the
+# same number as.Date() produces for the same civil date.
+.days_from_civil <- function(year, month, day) {
+  y <- year - (month <= 2L)
+  era <- y %/% 400L
+  yoe <- y - era * 400L
+  mp <- month + ifelse(month > 2L, -3L, 9L)
+  doy <- (153L * mp + 2L) %/% 5L + day - 1L
+  doe <- yoe * 365L + yoe %/% 4L - yoe %/% 100L + doy
+  as.numeric(era * 146097L + doe - 719468L)
 }
 
 # Replace empty strings with NA on character columns. Mirrors the legacy

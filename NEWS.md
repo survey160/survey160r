@@ -99,6 +99,15 @@ of output-identical rounds (every change is gated on byte-identical results):
 * `latency_funnel()` de-duplicates the bucket key with data.table's
   `duplicated()` instead of `duplicated.data.frame()` (which pastes every row
   to a string), ~200x faster on a fleet-wide consolidated.
+* `.local_date_hour()` keys its distinct minutes as integers and derives the
+  calendar date from the broken-down time by integer arithmetic
+  (`.days_from_civil()`) instead of `as.Date.POSIXlt()` -- ~10x faster on the
+  distinct minutes, verified against `as.Date()` across two centuries and the
+  DST / half-hour zone checks.
+* The frame builders carry the NA reason as an integer code per segment and
+  render the label column once per frame; the full-path frame is assembled
+  directly from its finished columns (no `data.frame()` coercion pass over
+  millions of rows) and the compact path binds plain lists per segment.
 
 ## New features
 

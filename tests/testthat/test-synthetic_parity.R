@@ -175,3 +175,23 @@ test_that("the synthetic generators produce a well-formed export and projection"
   expect_lte(length(unique(d$phone)), 100L)
   expect_true(all(is.na(d$completed[d$campaign_id == 1001L])))
 })
+
+test_that("classify_na_reason labels are the .na_reason_levels of the integer codes", {
+  delta <- c(1, NA, NA, NA, 2)
+  delta_pre <- c(1, NA, 3, NA, 2)
+  parse_fail <- c(FALSE, FALSE, FALSE, TRUE, FALSE)
+  expect_identical(survey160r:::classify_na_reason(delta, delta_pre, parse_fail),
+                   c(NA, "missing_endpoint", "chain_break", "parse_failure", NA))
+  expect_identical(survey160r:::.na_reason_code(delta, delta_pre, parse_fail),
+                   c(NA, 2L, 3L, 1L, NA))
+  expect_identical(survey160r:::classify_na_reason(c(1, 2), c(1, 2), c(FALSE, FALSE)),
+                   c(NA_character_, NA_character_))
+})
+
+test_that(".days_from_civil matches as.Date over a wide range of civil dates", {
+  dates <- seq(as.Date("1899-12-30"), as.Date("2101-03-01"), by = "day")
+  lt <- as.POSIXlt(dates)
+  days <- survey160r:::.days_from_civil(lt$year + 1900L, lt$mon + 1L, lt$mday)
+  expect_identical(days, as.numeric(dates))
+  expect_true(is.na(survey160r:::.days_from_civil(NA_integer_, 1L, 1L)))
+})
