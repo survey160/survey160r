@@ -93,6 +93,21 @@ question_funnel(data, c("intro", "q1", "q2", "close"))
 
 It returns one row per question with `n_reached` and `pct_reached` (share of the first stage). Underneath, `question_timestamps(data, "close")` reads and parses one question's timestamp column, and `parse_campaign_timestamps()` decodes the export's timestamp strings directly -- both operate on the raw export data frame.
 
+## Large exports
+
+A wide, high-volume campaign fits a laptop with three levers, all output-identical to the default read and run:
+
+```r
+header <- s160_csv_header(path)
+config <- latency_build_config(1234, header, field_timezone = "America/New_York")
+data <- s160_read_csv(path,
+                      columns = latency_input_columns(config, available = header),  # read only the columns the report uses
+                      timestamps = "POSIXct")                                       # decode timestamps at read time (8 bytes per cell, not ~60)
+result <- latency_run(1234, data, config = config, compact = TRUE)                  # never materialise the full respondent x segment frame
+```
+
+`columns` projects the read to the timestamp, population and campaign-id columns the report needs. `timestamps = "POSIXct"` guarantees compact timestamp columns even where a stray unparseable cell would otherwise keep a column as text (an unparseable cell is still counted in `diagnostics$parse_failures_per_column`). `compact = TRUE` computes the same `consolidated` and `diagnostics` segment by segment, keeping only the rows with a real send date, so peak memory follows real engagement rather than `(questions - 1) x respondents`; `latency_frame` then holds just those rows. A 1M-respondent, 12-question export runs in about 15 seconds within 4 GB.
+
 ## Notes
 
 - `latency_run()` composes `latency_build_config()` + `latency_report()`; reach for the pieces only when you need to inspect or override the config.
