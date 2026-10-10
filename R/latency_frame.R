@@ -44,38 +44,15 @@ build_latency_frame <- function(data, config, parse_failed_mask = NULL) {
   prior_na <- NULL
   total_clamped <- 0L
   for (i in seq_len(n_seg)) {
-    q_prior <- questions[i]
-    q_next <- questions[i + 1]
-    batch_prior_col <- sprintf("id.%s.batchDate", q_prior)
-    script_next_col <- sprintf("id.%s.scriptDate", q_next)
-    batch_prior <- data[[batch_prior_col]]
-    script_next <- data[[script_next_col]]
-
-    cs <- compute_segment_delta(batch_prior, script_next)
-    delta_pre <- cs$delta
-    total_clamped <- total_clamped + cs$n_clamped
-
-    # Apply chain validity using only *strictly prior* batchDates -- the
-    # current segment's own batch_prior NA is already reflected in delta_pre
-    # by compute_segment_delta(), so including it here would be redundant
-    # work and would muddy the chain_break vs missing_endpoint diagnostic
-    # classification below. `prior_na` is the running OR of the prior
-    # batchDates' NA masks (the incremental form of apply_chain_validity()).
-    delta <- delta_pre
-    if (!is.null(prior_na)) delta[prior_na] <- NA_real_
-    prior_na <- .chain_break_mask(prior_na, batch_prior)
-
-    local <- .local_date_hour(batch_prior, field_tz)
-
-    parse_fail_row <- segment_parse_fail_mask(
-      parse_failed_mask, batch_prior_col, script_next_col, n
-    )
-
+    seg <- .segment_columns(data, questions, i, prior_na, field_tz,
+                            parse_failed_mask, n)
+    prior_na <- seg$prior_na
+    total_clamped <- total_clamped + seg$n_clamped
     slice <- (i - 1L) * n + resp_idx
-    delta_out[slice] <- delta
-    date_out[slice] <- unclass(local$date)
-    hour_out[slice] <- local$hour
-    reason_out[slice] <- classify_na_reason(delta, delta_pre, parse_fail_row)
+    delta_out[slice] <- seg$delta
+    date_out[slice] <- unclass(seg$date)
+    hour_out[slice] <- seg$hour
+    reason_out[slice] <- seg$na_reason
   }
   segment_labels <- sprintf("%s\u2192%s", questions[-length(questions)],
                             questions[-1L])
@@ -92,6 +69,38 @@ build_latency_frame <- function(data, config, parse_failed_mask = NULL) {
   )
   attr(frame, "n_clamped") <- total_clamped
   frame
+}
+
+# One segment's per-respondent columns, shared by build_latency_frame() and
+# the compact .stream_latency_frame(): the clamped delta (NA where a strictly
+# prior batchDate was NA -- `prior_na` is the running chain-break mask, NULL
+# before the first segment), the local bucket date/hour of the segment's
+# batch_prior, the NA-reason classification, the clamp count, and the chain
+# mask carried into the next segment.
+#
+# Chain validity uses only *strictly prior* batchDates: the current segment's
+# own batch_prior NA is already reflected in the delta by
+# compute_segment_delta(), so including it would be redundant work and would
+# muddy the chain_break vs missing_endpoint classification.
+.segment_columns <- function(data, questions, i, prior_na, field_tz,
+                             parse_failed_mask, n) {
+  batch_prior_col <- sprintf("id.%s.batchDate", questions[i])
+  script_next_col <- sprintf("id.%s.scriptDate", questions[i + 1L])
+  batch_prior <- data[[batch_prior_col]]
+  cs <- compute_segment_delta(batch_prior, data[[script_next_col]])
+  delta <- cs$delta
+  if (!is.null(prior_na)) delta[prior_na] <- NA_real_
+  local <- .local_date_hour(batch_prior, field_tz)
+  parse_fail_row <- segment_parse_fail_mask(parse_failed_mask, batch_prior_col,
+                                            script_next_col, n)
+  list(
+    delta = delta,
+    date = local$date,
+    hour = local$hour,
+    na_reason = classify_na_reason(delta, cs$delta, parse_fail_row),
+    n_clamped = cs$n_clamped,
+    prior_na = .chain_break_mask(prior_na, batch_prior)
+  )
 }
 
 # Classify why a segment's Δ is NA. Precedence (most actionable first):

@@ -25,7 +25,8 @@ tests/
 
 `make check` runs the full `R CMD check` (used at release time).
 
-When iterating on a single file, run interactively after `pkgload::load_all()`:
+When iterating on a single file, `make test-file FILE=tests/testthat/test-latency_run.R` (one
+R session, package loaded once), or interactively after `pkgload::load_all()`:
 
 ```r
 pkgload::load_all()

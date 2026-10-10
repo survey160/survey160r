@@ -47,33 +47,21 @@
   prior_na <- NULL
   total_clamped <- 0L
   for (i in seq_len(n_seg)) {
-    q_prior <- questions[i]
-    q_next <- questions[i + 1L]
-    batch_prior_col <- sprintf("id.%s.batchDate", q_prior)
-    script_next_col <- sprintf("id.%s.scriptDate", q_next)
-    batch_prior <- data[[batch_prior_col]]
-    script_next <- data[[script_next_col]]
-
-    cs <- compute_segment_delta(batch_prior, script_next)
-    delta_pre <- cs$delta
-    total_clamped <- total_clamped + cs$n_clamped
-    delta <- delta_pre
-    if (!is.null(prior_na)) delta[prior_na] <- NA_real_
-    prior_na <- .chain_break_mask(prior_na, batch_prior)
-
-    local <- .local_date_hour(batch_prior, field_tz)
-    seg_date_local <- local$date
-    hour_local <- local$hour
-    parse_fail_row <- segment_parse_fail_mask(parse_failed_mask,
-                                              batch_prior_col, script_next_col, n)
-    na_reason <- classify_na_reason(delta, delta_pre, parse_fail_row)
+    seg <- .segment_columns(data, questions, i, prior_na, field_tz,
+                            parse_failed_mask, n)
+    prior_na <- seg$prior_na
+    total_clamped <- total_clamped + seg$n_clamped
+    delta <- seg$delta
+    seg_date_local <- seg$date
+    hour_local <- seg$hour
+    na_reason <- seg$na_reason
 
     real <- !is.na(seg_date_local)
     if (any(real)) {
       kept[[i]] <- data.frame(
         respondent_index = resp_idx[real],
         campaign_id = campaign_id[real],
-        segment = sprintf("%s\u2192%s", q_prior, q_next),
+        segment = sprintf("%s\u2192%s", questions[i], questions[i + 1L]),
         segment_index = i,
         delta_min = delta[real],
         segment_date_local = seg_date_local[real],

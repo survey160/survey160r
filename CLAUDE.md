@@ -64,7 +64,7 @@ Secondary conventions:
 
 ## Verifying changes
 
-After any change under `R/`, run `make verify` -- it loads the package once and runs `testthat::test_package()` + `lintr::lint_package()` + `covr::package_coverage()` in a single R session. Prefer this over ad-hoc `Rscript -e '...'` calls; it is the canonical pre-commit gate and is ~3x faster than three cold R startups. For a heavier release-time gate, `make check` runs the full `R CMD check`.
+After any change under `R/`, run `make verify` -- it loads the package once and runs `testthat::test_package()` + `lintr::lint_package()` + `covr::package_coverage()` in a single R session. Prefer this over ad-hoc `Rscript -e '...'` calls; it is the canonical pre-commit gate and is ~3x faster than three cold R startups. For a heavier release-time gate, `make check` runs the full `R CMD check`. While iterating on one module, `make test-file FILE=tests/testthat/test-<module>.R` runs just that file; finish with `make verify`. `make bench` times the hot paths (see Performance).
 
 ## Performance
 

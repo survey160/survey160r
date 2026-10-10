@@ -159,3 +159,19 @@ test_that("disposition_summary on a synthetic projection matches a per-phone rec
     expect_equal(s$latest_campaign_id, as.character(latest$campaign_id), info = p)
   }
 })
+
+test_that("the synthetic generators produce a well-formed export and projection", {
+  export <- synthetic_export(n = 300L, n_questions = 4L, bilingual = TRUE)
+  expect_equal(nrow(export), 300L)
+  expect_false(anyDuplicated(export$phone) > 0L)
+  expect_true(all(grepl("^[0-9]{10}$", export$phone)))
+  expect_setequal(latency_discover_questions(export), c("intro", "q1", "q2", "close", "intro_sp"))
+  ts <- parse_campaign_timestamps(export$id.intro.scriptDate)
+  expect_equal(sum(is.na(ts)), sum(export$id.intro.scriptDate == ""))
+  expect_true(any(export$id.q1.scriptDate == "not a timestamp"))
+  expect_identical(synthetic_export(n = 50L), synthetic_export(n = 50L))
+  d <- synthetic_disposition(n_rows = 500L, n_phones = 100L)
+  expect_equal(nrow(d), 500L)
+  expect_lte(length(unique(d$phone)), 100L)
+  expect_true(all(is.na(d$completed[d$campaign_id == 1001L])))
+})

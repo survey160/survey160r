@@ -113,8 +113,8 @@ of output-identical rounds (every change is gated on byte-identical results):
 * `build_ineligible_frame()` / `build_refusal_frame()` and their day rollups
   share one terminal-frame builder (`.terminal_segment_frame()` /
   `.collapse_terminal_to_day()`); the full and compact `latency_report()` paths
-  share the hour/day aggregation (`.two_grain_consolidated()`); output
-  unchanged.
+  share the hour/day aggregation (`.two_grain_consolidated()`) and the
+  per-segment column computation (`.segment_columns()`); output unchanged.
 * `make test-file FILE=tests/testthat/test-<x>.R` runs one test file with the
   package loaded once.
 * New `tests/testthat/helper-synthetic.R` (deterministic synthetic export /
