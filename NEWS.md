@@ -17,6 +17,15 @@ of output-identical rounds (every change is gated on byte-identical results):
   `n_le` / `n_resp_over` as wide columns fanned out afterwards -- instead of
   grouping the long frame once per threshold and recomputing the quantiles
   four times.
+* `parse_campaign_timestamps()` parses through lubridate's single-order
+  `parse_date_time2()` for the export's `Y-m-d H:M:OS` format (same C parser,
+  bit-identical instants, ~70x faster) and only retries the strings that fail
+  through the lenient multi-order parser. Side effect, and a fix: a non-standard
+  but parseable string (an ISO `T` separator, a compact `YmdHMS`) now parses
+  the same whether it sits alone or inside a column of standard timestamps --
+  the multi-order parser's per-call order training made that data-dependent.
+  `parse_timestamps()` no longer pre-strips the `Z` (the parser accepts it) and
+  returns its columns with an explicit `tzone = "UTC"`.
 
 ## Breaking changes
 
