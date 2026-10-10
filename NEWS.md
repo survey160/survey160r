@@ -115,6 +115,10 @@ of output-identical rounds (every change is gated on byte-identical results):
 * `.question_timestamp()` returns a single opener's column directly (no
   `coalesce()` over one input), and `parse_campaign_timestamps()` skips the
   retry mask on a column that parsed completely.
+* The disposition filter matches phones and campaign ids with data.table's
+  `%chin%` (~6x faster than `%in%` on the projection's phone column), and the
+  per-phone error count tests `error` with one regex instead of
+  `trimws()` + `nzchar()`.
 
 ## New features
 
