@@ -66,7 +66,11 @@ aggregate_consolidated <- function(frame, config, cfg_hash, run_at,
   # a fraction of the peak memory. Convert once here; build_consolidated_scaffold
   # and assemble_consolidated below keep operating on the data.frame `bucketed`
   # and the small joined frames.
-  bucketed_data_table <- data.table::as.data.table(bucketed)
+  # setDT() converts the local shell in place instead of as.data.table()'s deep
+  # copy of every column: `bucketed` is already a fresh list shell (the `$date`
+  # assignment above), so the caller's `frame` is untouched, and every
+  # data.table call below is read-only.
+  bucketed_data_table <- data.table::setDT(bucketed)
   totals <- aggregate_totals(bucketed_data_table)
   cascade <- aggregate_worst_cascade(bucketed_data_table, thresholds)
   cells <- aggregate_segment_cells(bucketed_data_table, thresholds)
@@ -79,8 +83,8 @@ aggregate_consolidated <- function(frame, config, cfg_hash, run_at,
   # pre-filter summary contract. Scaffolding from the union preserves
   # the denominator while still emitting one row per
   # (bucket, segment, threshold) for query uniformity.
-  scaffold <- build_consolidated_scaffold(bucketed, summary_frame, config,
-                                          thresholds)
+  scaffold <- build_consolidated_scaffold(bucketed_data_table, summary_frame,
+                                          config, thresholds)
 
   assemble_consolidated(scaffold, cells, totals, cascade,
                         project_id = project_id,
@@ -102,7 +106,16 @@ aggregate_consolidated <- function(frame, config, cfg_hash, run_at,
 build_consolidated_scaffold <- function(bucketed, summary_frame, config,
                                         thresholds) {
   latency_buckets <- if (nrow(bucketed) > 0L) {
-    unique(bucketed[, c("campaign_id", "date", "hour_local")])
+    # `bucketed` is the data.table built by aggregate_consolidated(). unique()
+    # on the key columns runs in data.table's radix path; unique.data.frame on
+    # the full long frame pasted every row to a string (it was ~30% of
+    # latency_report() wall time and a large transient allocation).
+    keys <- if (data.table::is.data.table(bucketed)) {
+      bucketed[, .bucket_keys, with = FALSE]
+    } else {
+      data.table::as.data.table(bucketed[, .bucket_keys])
+    }
+    data.table::setDF(unique(keys))
   } else {
     data.frame(campaign_id = integer(0),
                date = as.Date(character(0)),

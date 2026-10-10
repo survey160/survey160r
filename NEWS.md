@@ -1,5 +1,17 @@
 # survey160r (development version)
 
+## Performance
+
+`latency_report()` / `latency_run()`, `disposition_run()` and the disposition
+readers were profiled end to end on a 16 GB laptop budget and tuned in a series
+of output-identical rounds (every change is gated on byte-identical results):
+
+* The consolidated scaffold's bucket set is taken with data.table `unique()`
+  on the key columns instead of `unique.data.frame()` on the whole long frame
+  (which pasted every row to a string: ~30% of `latency_report()` wall time and
+  the single largest transient allocation). The long frame is also converted to
+  a data.table in place (`setDT`) rather than deep-copied once per grain.
+
 ## Breaking changes
 
 * **Disposition record columns `loi`, `topic`, and `registration_id` are renamed
