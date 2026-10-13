@@ -493,6 +493,10 @@ test_that("disposition_funnel falls back to the in-R grouping when the scan cann
   pb <- write_disposition_parquet(transform(base, engaged = engaged == 1L))
   expect_null(with_engine("duckdb", .disposition_funnel_duckdb(pb, "carrier")))
   same(pb, grain = "all")
+  # A DOUBLE flag (a NaN R skips, a fractional sum) -> declined, grouped in R.
+  pd <- write_disposition_parquet(transform(base, engaged = c(NaN, 0.1, 0.9)))
+  expect_null(with_engine("duckdb", .disposition_funnel_duckdb(pd, "carrier")))
+  same(pd, grain = "all")
   # A zero-row file -> declined, so the typed empty frame comes from the R path.
   pe <- write_disposition_parquet(base[0L, ])
   expect_null(with_engine("duckdb", .disposition_funnel_duckdb(pe, "carrier")))

@@ -211,4 +211,14 @@ test_that(".join_campaign_ids joins each phone's ids, with or without the \\001 
                    c("x\001,y", "y"))
   expect_identical(survey160r:::.join_campaign_ids(integer(0), integer(0), character(0), 2L),
                    c("", ""))
+  # Joined in whole-phone chunks past the byte budget: the same lists.
+  gj <- rep(1:6, c(3L, 1L, 4L, 2L, 1L, 5L))
+  at <- rep_len(c(1L, 2L, 3L), length(gj))
+  labels <- c("101", "2002", "30003")
+  whole <- survey160r:::.join_campaign_ids(gj, at, labels, 7L)
+  for (budget in c(1, 7, 20, 40)) {
+    expect_identical(survey160r:::.join_campaign_ids(gj, at, labels, 7L,
+                                                     chunk_bytes = budget), whole)
+  }
+  expect_identical(whole[[1L]], "101,2002,30003")
 })

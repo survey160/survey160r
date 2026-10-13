@@ -681,14 +681,29 @@
 # phone's list comes out of two C-level passes (~4x faster than joining rank by
 # rank at a million phones). A label that itself contains \001 would split
 # wrongly, so that (character-id) case takes the rank-by-rank join instead.
-.join_campaign_ids <- function(gj, at, labels, n_groups) {
+# An R string holds at most 2^31 - 1 bytes, so the tokens are joined in chunks
+# of whole phones of at most about `chunk_bytes` each (one chunk below ~1 GB,
+# i.e. a few hundred million ids).
+.join_campaign_ids <- function(gj, at, labels, n_groups, chunk_bytes = 2^30) {
   campaigns <- character(n_groups)
   if (length(gj) == 0L) return(campaigns)
   last <- c(gj[-1L] != gj[-length(gj)], TRUE)
   if (!any(grepl("\001", labels, fixed = TRUE))) {
     tokens <- c(paste0(labels, ","), paste0(labels, "\001"))
-    joined <- paste(tokens[at + length(labels) * last], collapse = "")
-    campaigns[gj[last]] <- strsplit(joined, "\001", fixed = TRUE)[[1L]]
+    pick <- at + length(labels) * last
+    size <- as.numeric(nchar(tokens, type = "bytes"))
+    stops <- length(pick)
+    if (sum(size * tabulate(pick, length(tokens))) > chunk_bytes) {
+      ends <- which(last)
+      part <- (cumsum(size[pick])[ends] - 1) %/% chunk_bytes
+      stops <- ends[c(part[-1L] != part[-length(part)], TRUE)]
+    }
+    starts <- c(1L, stops[-length(stops)] + 1L)
+    for (i in seq_along(stops)) {
+      rows <- starts[[i]]:stops[[i]]
+      joined <- paste(tokens[pick[rows]], collapse = "")
+      campaigns[gj[rows][last[rows]]] <- strsplit(joined, "\001", fixed = TRUE)[[1L]]
+    }
     return(campaigns)
   }
   cj <- labels[at]

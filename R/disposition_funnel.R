@@ -105,7 +105,7 @@
 # them (.disposition_duckdb_select), so the caller's sort and funnel_rates() run
 # unchanged. Returns NULL -- the caller reads the file and groups in R instead --
 # whenever duckdb is not the engine, a needed column is missing (so the R path
-# raises its usual error), a column is not a plain type, a flag is not numeric, a
+# raises its usual error), a column is not a plain type, a flag is not an integer, a
 # group column shadows a count name, or the file has no rows (the typed empty
 # frame comes from the R path).
 .disposition_funnel_duckdb <- function(dataset, group_cols) {
@@ -122,7 +122,11 @@
       return(NULL)
     }
     used <- intersect(unique(c(group_cols, "campaign_id", flags)), present)
-    numeric <- c("INTEGER", "BIGINT", "DOUBLE", "FLOAT")
+    # Integer flags only: SUM over a DOUBLE differs from R's sum(na.rm = TRUE)
+    # -- a NaN poisons the group instead of being skipped, and DuckDB's plain
+    # double sum can land just under a whole number that R's long-double sum
+    # reaches -- so a DOUBLE/FLOAT flag is grouped in R.
+    numeric <- c("INTEGER", "BIGINT")
     flag_types <- schema$column_type[match(intersect(flags, present), present)]
     if (!.disposition_duckdb_plain(con, dataset, schema, used) ||
           !all(flag_types %in% numeric)) {

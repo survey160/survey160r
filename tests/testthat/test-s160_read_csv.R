@@ -136,6 +136,12 @@ test_that(".file_sha256_native reads the tool's digest line or declines", {
   mockery::stub(native, "system2", function(...) stop("spawn failed"))
   expect_null(native(odd))
   expect_null(survey160r:::.file_sha256_native(file.path(dir, "missing.csv")))
+  # A relative name starting with "-" is the file, not an option or stdin.
+  for (name in c("-", "-b")) {
+    writeLines(name, file.path(dir, name))
+    expect_equal(withr::with_dir(dir, survey160r:::.file_sha256_native(name)),
+                 digest::digest(file = file.path(dir, name), algo = "sha256"))
+  }
 })
 
 test_that("timestamps = \"POSIXct\" decodes the id.* timestamp columns at read time", {
