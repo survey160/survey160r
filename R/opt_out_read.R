@@ -47,7 +47,13 @@
 # never match a sample row meaningfully), and a phone listed twice keeps its
 # first occurrence -- the snapshot is already deduped upstream, so this is a
 # defensive guard, not a reconciliation.
-.opt_out_lookup <- function(data, fn) {
+#
+# `phones` (normalized, no NA) narrows the lookup to the numbers a screen will
+# match: the list's other rows can never be looked up, so they are dropped
+# BEFORE the duplicate check -- which then runs over the matching handful
+# instead of every listed phone (a phone's first occurrence among its own rows
+# is its first occurrence in the list, so the kept row is the same).
+.opt_out_lookup <- function(data, fn, phones = NULL) {
   if (!"phone" %in% names(data)) {
     stop_s160("input is missing required column(s): phone", fn = fn)
   }
@@ -56,6 +62,11 @@
     data$date_added
   } else {
     rep(NA, nrow(data))
+  }
+  if (!is.null(phones)) {
+    rows <- which(data.table::`%chin%`(phone, phones))
+    phone <- phone[rows]
+    date_added <- date_added[rows]
   }
   keep <- !is.na(phone) & !duplicated(phone)
   data.frame(phone = phone[keep], date_added = date_added[keep],
@@ -110,8 +121,9 @@ opt_out_screen <- function(sample, dataset, phone_col = "phone") {
                       paste(clash, collapse = ", ")),
               fn = "opt_out_screen")
   }
-  lst <- .opt_out_lookup(.opt_out_read_parquet(dataset), fn = "opt_out_screen")
   norm <- .normalize_phone(sample[[phone_col]])
+  lst <- .opt_out_lookup(.opt_out_read_parquet(dataset), fn = "opt_out_screen",
+                         phones = unique(norm[!is.na(norm)]))
   idx <- match(norm, lst$phone)
   opted <- !is.na(idx)
   opted[is.na(norm)] <- NA # blank/unparseable phone -> unknown, not FALSE

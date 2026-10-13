@@ -108,3 +108,17 @@ test_that(".opt_out_lookup requires a phone column", {
   expect_error(.opt_out_lookup(data.frame(x = 1), fn = "opt_out_screen"),
                "missing required column")
 })
+
+test_that(".opt_out_lookup narrowed to the screened phones keeps the same first rows", {
+  d <- data.frame(phone = c("2015550101", "12015550102", "2015550101", "", NA,
+                            "(201) 555-0103", "2015550102"),
+                  date_added = as.Date("2026-01-01") + 0:6, stringsAsFactors = FALSE)
+  full <- .opt_out_lookup(d, fn = "opt_out_screen")
+  phones <- c("2015550101", "2015550102", "9995550000")
+  narrow <- .opt_out_lookup(d, fn = "opt_out_screen", phones = phones)
+  expected <- full[full$phone %in% phones, , drop = FALSE]
+  rownames(expected) <- NULL
+  expect_identical(narrow, expected)
+  expect_identical(narrow$date_added, as.Date("2026-01-01") + 0:1)
+  expect_identical(nrow(.opt_out_lookup(d, fn = "opt_out_screen", phones = character(0))), 0L)
+})
