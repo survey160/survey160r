@@ -568,3 +568,21 @@ test_that("the scan pre-filter keeps the whole-file all-NA-date warning and skip
                    character(0))
   expect_identical(.disposition_scan_where(con, schema, NULL), character(0))
 })
+
+test_that("the scoped read matches short and dirty phones on both scan forms", {
+  skip_if_not_installed("duckdb")
+  d <- data.frame(phone = c("555-0101", "5550101", "2015550101", "12015550101",
+                            "201.555.0101", "20155501010"),
+                  campaign_id = 1:6, sent = 1L, engaged = 0L, opted_in = 0L,
+                  completed = 0L, web_complete = 0L, terminated = 0L,
+                  stringsAsFactors = FALSE)
+  p <- write_disposition_parquet(d)
+  # All-ten-digit requests take the stored-value semi-join + normalized rest;
+  # a short request takes the all-normalized scan.
+  for (phones in list("2015550101", c("2015550101", "5550101"), "20155501010")) {
+    expect_identical(with_engine("duckdb", disposition_records(p, phones = phones)),
+                     with_engine("nanoparquet", disposition_records(p, phones = phones)))
+  }
+  expect_identical(with_engine("duckdb", disposition_records(p, phones = "2015550101"))$campaign_id,
+                   3:5)
+})
