@@ -495,12 +495,68 @@
 # a plain scan keeps it (DuckDB's default preserve_insertion_order -- do not turn
 # it off) and the scoped query sorts by file row number.
 .disposition_read_duckdb <- function(dataset, columns = NULL, phones = NULL) {
-  # shared_home = FALSE (newer duckdb) only silences a note about the extension
-  # directory, which this read never uses.
-  # An explicit spill directory (a fresh path under the session tempdir, which
-  # DuckDB creates on demand) keeps a query that outgrows memory working: the
-  # default under shared_home = FALSE points into a directory that does not
-  # exist, so a spill would fail.
+  .disposition_with_duckdb(dataset, function(con, src, schema) {
+    cols <- intersect(columns %||% schema$column_name, schema$column_name)
+    if (length(cols) == 0L) {
+      # None of the wanted columns: an empty frame (SQL has no empty SELECT list),
+      # so the caller's missing-column check reports it as on nanoparquet.
+      return(data.frame())
+    }
+    if (!.disposition_duckdb_plain(con, dataset, schema, cols)) return(NULL)
+    quoted <- as.character(DBI::dbQuoteIdentifier(con, cols))
+    if (is.null(phones)) {
+      return(.disposition_duckdb_select(
+        con, paste("SELECT", paste(quoted, collapse = ", "), "FROM", src)))
+    }
+    if (!"phone" %in% cols) {
+      return(.disposition_duckdb_select(
+        con, paste("SELECT", paste(quoted, collapse = ", "), "FROM", src, "LIMIT 0")))
+    }
+    # A stored column named file_row_number (any case) clashes with the row-number
+    # option the ordered query needs; such a file matches in R instead.
+    if (!identical(schema$column_type[match("phone", schema$column_name)], "VARCHAR") ||
+          "file_row_number" %in% tolower(schema$column_name)) {
+      return(NULL)
+    }
+    duckdb::duckdb_register(con, "s160_req",
+                            data.frame(phone = phones, stringsAsFactors = FALSE))
+    # Only the wanted columns are selected at every level (never `*`), so a file
+    # column that happens to share the helper name s160_digits cannot shadow it.
+    inner <- paste(c(quoted, "regexp_replace(phone, '[^0-9]', '', 'g') AS s160_digits",
+                     "file_row_number AS s160_row"), collapse = ", ")
+    outer <- quoted
+    outer[cols == "phone"] <- paste(
+      "CASE WHEN s160_digits = '' THEN NULL",
+      "WHEN length(s160_digits) = 11 AND starts_with(s160_digits, '1')",
+      "THEN substr(s160_digits, 2) ELSE s160_digits END AS phone")
+    # A parallel semi-join does NOT keep file order (unlike a plain scan), so sort
+    # the matched rows back into it by file row number: the rollup breaks a full
+    # tie (same phone, date, and campaign id) by input order, as on nanoparquet.
+    numbered <- paste0("read_parquet(", DBI::dbQuoteString(con, dataset),
+                       ", file_row_number = true)")
+    d <- .disposition_duckdb_select(con, paste0(
+      "SELECT * EXCLUDE (s160_row) FROM (SELECT ", paste(c(outer, "s160_row"), collapse = ", "),
+      " FROM (SELECT ", inner, " FROM ", numbered, ")) ",
+      "WHERE phone IN (SELECT phone FROM s160_req) ORDER BY s160_row"))
+    # Answered from the footer statistics, not a column scan (~0.1 s on prod).
+    all_na <- "disposition_date" %in% cols &&
+      DBI::dbGetQuery(con, paste0("SELECT count(*) > 0 AND count(disposition_date) = 0",
+                                  " AS all_na FROM ", src))$all_na
+    .disposition_tag_dates(d, all_na)
+  })
+}
+
+# Open a DuckDB connection, describe `dataset`, and call
+# `fn(con, src, schema)` -- `src` the quoted read_parquet() source, `schema` its
+# DESCRIBE frame -- closing the connection on the way out. Shared by the reads
+# above and disposition_funnel()'s in-scan aggregation.
+#
+# shared_home = FALSE (newer duckdb) only silences a note about the extension
+# directory, which these reads never use. An explicit spill directory (a fresh
+# path under the session tempdir, which DuckDB creates on demand) keeps a query
+# that outgrows memory working: the default under shared_home = FALSE points into
+# a directory that does not exist, so a spill would fail.
+.disposition_with_duckdb <- function(dataset, fn) {
   spill <- tempfile("survey160r-duckdb-")
   on.exit(unlink(spill, recursive = TRUE), add = TRUE)
   drv <- do.call(duckdb::duckdb, c(
@@ -510,69 +566,29 @@
   on.exit(DBI::dbDisconnect(con, shutdown = TRUE), add = TRUE, after = FALSE)
   src <- paste0("read_parquet(", DBI::dbQuoteString(con, dataset), ")")
   schema <- DBI::dbGetQuery(con, paste("DESCRIBE SELECT * FROM", src))
-  cols <- intersect(columns %||% schema$column_name, schema$column_name)
-  if (length(cols) == 0L) {
-    # None of the wanted columns: an empty frame (SQL has no empty SELECT list),
-    # so the caller's missing-column check reports it as on nanoparquet.
-    return(data.frame())
-  }
-  # DuckDB hands these column types to R exactly as nanoparquet does (DATE after
-  # the integer re-backing below). Anything else -- a TIMESTAMP (tzone differs),
-  # or a file whose ARROW:schema metadata lets nanoparquet restore richer R types
-  # (a factor) -- returns NULL so the caller reads with nanoparquet instead. The
-  # production projection (DuckDB-written, plain types) always stays here.
+  fn(con, src, schema)
+}
+
+# Whether DuckDB hands `cols` to R exactly as nanoparquet does (DATE after the
+# integer re-backing in .disposition_duckdb_select). Anything else -- a TIMESTAMP
+# (tzone differs), or a file whose ARROW:schema metadata lets nanoparquet restore
+# richer R types (a factor) -- is FALSE, so the caller reads with nanoparquet
+# instead. The production projection (DuckDB-written, plain types) is TRUE.
+.disposition_duckdb_plain <- function(con, dataset, schema, cols) {
   plain <- c("VARCHAR", "INTEGER", "BIGINT", "DOUBLE", "FLOAT", "BOOLEAN", "DATE")
-  if (!all(schema$column_type[match(cols, schema$column_name)] %in% plain) ||
-        .disposition_arrow_annotated(con, dataset)) {
-    return(NULL)
-  }
-  quoted <- as.character(DBI::dbQuoteIdentifier(con, cols))
-  select <- function(sql) {
-    d <- DBI::dbGetQuery(con, sql)
-    for (col in names(d)) {
-      if (inherits(d[[col]], "Date")) {
-        d[[col]] <- structure(as.integer(unclass(d[[col]])), class = "Date")
-      }
+  all(schema$column_type[match(cols, schema$column_name)] %in% plain) &&
+    !.disposition_arrow_annotated(con, dataset)
+}
+
+# Run `sql` and re-back any Date column as integer, as nanoparquet returns it.
+.disposition_duckdb_select <- function(con, sql) {
+  d <- DBI::dbGetQuery(con, sql)
+  for (col in names(d)) {
+    if (inherits(d[[col]], "Date")) {
+      d[[col]] <- structure(as.integer(unclass(d[[col]])), class = "Date")
     }
-    d
   }
-  if (is.null(phones)) {
-    return(select(paste("SELECT", paste(quoted, collapse = ", "), "FROM", src)))
-  }
-  if (!"phone" %in% cols) {
-    return(select(paste("SELECT", paste(quoted, collapse = ", "), "FROM", src, "LIMIT 0")))
-  }
-  # A stored column named file_row_number (any case) clashes with the row-number
-  # option the ordered query needs; such a file matches in R instead.
-  if (!identical(schema$column_type[match("phone", schema$column_name)], "VARCHAR") ||
-        "file_row_number" %in% tolower(schema$column_name)) {
-    return(NULL)
-  }
-  duckdb::duckdb_register(con, "s160_req",
-                          data.frame(phone = phones, stringsAsFactors = FALSE))
-  # Only the wanted columns are selected at every level (never `*`), so a file
-  # column that happens to share the helper name s160_digits cannot shadow it.
-  inner <- paste(c(quoted, "regexp_replace(phone, '[^0-9]', '', 'g') AS s160_digits",
-                   "file_row_number AS s160_row"), collapse = ", ")
-  outer <- quoted
-  outer[cols == "phone"] <- paste(
-    "CASE WHEN s160_digits = '' THEN NULL",
-    "WHEN length(s160_digits) = 11 AND starts_with(s160_digits, '1')",
-    "THEN substr(s160_digits, 2) ELSE s160_digits END AS phone")
-  # A parallel semi-join does NOT keep file order (unlike a plain scan), so sort
-  # the matched rows back into it by file row number: the rollup breaks a full
-  # tie (same phone, date, and campaign id) by input order, as on nanoparquet.
-  numbered <- paste0("read_parquet(", DBI::dbQuoteString(con, dataset),
-                     ", file_row_number = true)")
-  d <- select(paste0(
-    "SELECT * EXCLUDE (s160_row) FROM (SELECT ", paste(c(outer, "s160_row"), collapse = ", "),
-    " FROM (SELECT ", inner, " FROM ", numbered, ")) ",
-    "WHERE phone IN (SELECT phone FROM s160_req) ORDER BY s160_row"))
-  # Answered from the footer statistics, not a column scan (~0.1 s on prod).
-  all_na <- "disposition_date" %in% cols &&
-    DBI::dbGetQuery(con, paste0("SELECT count(*) > 0 AND count(disposition_date) = 0",
-                                " AS all_na FROM ", src))$all_na
-  .disposition_tag_dates(d, all_na)
+  d
 }
 
 # Whether the file carries ARROW:schema metadata (nanoparquet and arrow write

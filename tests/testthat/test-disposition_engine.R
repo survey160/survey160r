@@ -442,3 +442,64 @@ test_that("the nanoparquet engine column-projects a DuckDB-written file", {
   with_engine("nanoparquet", disposition_summary(p))
   expect_false(is.null(captured$col_select))
 })
+
+test_that("disposition_funnel's in-scan aggregation matches the in-R grouping", {
+  skip_if_not_installed("duckdb")
+  p <- .engine_fixture()
+  # The fixture has an NA campaign id (counted as one more distinct value), an
+  # all-NA `completed` group, NA carriers, a double group column, and NA dates.
+  expect_false(is.null(with_engine("duckdb", .disposition_funnel_duckdb(p, "carrier"))))
+  calls <- list(
+    function() disposition_funnel(p),
+    function() disposition_funnel(p, by = c("carrier", "completed"), grain = "all"),
+    function() disposition_funnel(p, by = "tracker_loi", percent = TRUE),
+    function() disposition_funnel(p, by = c("campaign_id", "survey_mode"), rates = FALSE),
+    function() disposition_funnel(p, by = "opted_in", grain = "all")
+  )
+  for (call in calls) {
+    expect_identical(with_engine("duckdb", call()), with_engine("nanoparquet", call()))
+  }
+  # ...and the frame form of the same rows groups identically.
+  records <- as.data.frame(nanoparquet::read_parquet(p))
+  expect_identical(with_engine("duckdb", disposition_funnel(p, by = "carrier")),
+                   disposition_funnel(records, by = "carrier"))
+})
+
+test_that("disposition_funnel falls back to the in-R grouping when the scan cannot", {
+  skip_if_not_installed("duckdb")
+  base <- data.frame(phone = c("1", "2", "3"), campaign_id = c(1L, 1L, 2L), sent = 1L,
+                     engaged = c(1L, 0L, 1L), opted_in = 0L, completed = c(NA, 0L, 1L),
+                     carrier = c("a", "a", NA), n_sent = 1L,
+                     disposition_date = as.Date("2026-03-01"), stringsAsFactors = FALSE)
+  both <- function(path, ...) {
+    list(with_engine("duckdb", disposition_funnel(path, ...)),
+         with_engine("nanoparquet", disposition_funnel(path, ...)))
+  }
+  same <- function(path, ...) {
+    r <- both(path, ...)
+    expect_identical(r[[1]], r[[2]])
+  }
+  # No refused / ineligible columns: the scan defaults them to 0 like the R path.
+  p <- write_disposition_parquet(base)
+  expect_false(is.null(with_engine("duckdb", .disposition_funnel_duckdb(p, "carrier"))))
+  same(p, grain = "all")
+  # A group column named like a count -> declined, grouped in R.
+  expect_null(with_engine("duckdb", .disposition_funnel_duckdb(p, "n_sent")))
+  # A missing column -> declined, so the R path raises its usual error.
+  expect_null(with_engine("duckdb", .disposition_funnel_duckdb(p, "survey_mode")))
+  expect_error(with_engine("duckdb", disposition_funnel(p, by = "survey_mode")),
+               "missing required column")
+  # A non-numeric flag column -> declined.
+  pb <- write_disposition_parquet(transform(base, engaged = engaged == 1L))
+  expect_null(with_engine("duckdb", .disposition_funnel_duckdb(pb, "carrier")))
+  same(pb, grain = "all")
+  # A zero-row file -> declined, so the typed empty frame comes from the R path.
+  pe <- write_disposition_parquet(base[0L, ])
+  expect_null(with_engine("duckdb", .disposition_funnel_duckdb(pe, "carrier")))
+  same(pe)
+  # A non-plain column type (TIMESTAMP) -> declined.
+  pt <- write_disposition_parquet(transform(base, at = as.POSIXct("2026-03-01", tz = "UTC")))
+  expect_null(with_engine("duckdb", .disposition_funnel_duckdb(pt, "at")))
+  # The nanoparquet engine never takes the scan.
+  expect_null(with_engine("nanoparquet", .disposition_funnel_duckdb(p, "carrier")))
+})
