@@ -29,7 +29,7 @@ pak::pkg_install("survey160/survey160r")
 install.packages("duckdb")
 ```
 
-With `duckdb` installed, `disposition_screen()` reads only your sample's rows from the projection: a screen takes seconds and well under 1 GB of RAM, so it runs on a laptop. Without it the readers fall back to loading the whole projection, which needs tens of GB.
+With `duckdb` installed, `disposition_screen()` reads only your sample's rows from the projection, a campaign- or date-filtered `disposition_records()` / `disposition_summary()` reads only the matching rows, and `disposition_funnel()` groups inside the scan: each takes seconds and a GB or two of RAM at most, so it runs on a laptop. Without it the readers fall back to loading the whole projection, which needs tens of GB.
 
 > R-universe rebuilds from `main` and can lag a fresh release by up to ~30 minutes. If a newly added function (for example `disposition_pull()`) is not found after installing from R-universe, get the latest straight from GitHub with the `pak` line above and restart R.
 
