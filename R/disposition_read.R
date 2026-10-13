@@ -240,25 +240,15 @@
               ((!is.na(eq) & eq) | (is.na(nxt) & is.na(prv))))
   gc <- gc[!same]
   cc <- cc[!same]
-  # Join rank by rank -- one vectorized paste0() per position within a phone's
-  # list (at most a few dozen), not one paste() call per phone. The id labels
-  # are rendered once per DISTINCT id and indexed back (as.character() over
-  # millions of ids is the slow part, and there are only hundreds of ids).
+  # The id labels are rendered once per DISTINCT id and indexed back
+  # (as.character() over millions of ids is the slow part, and there are only
+  # hundreds of ids).
   ids <- !is.na(cc)
   gj <- gc[ids]
   cc_ids <- cc[ids]
   distinct_ids <- unique(cc_ids)
-  cj <- as.character(distinct_ids)[match(cc_ids, distinct_ids)]
-  pos <- seq_along(gj)
-  rank <- pos - cummax(pos * (gj != c(-1L, gj[-length(gj)]))) + 1L
-  campaigns <- character(n_groups)
-  if (length(gj) > 0L) {
-    campaigns[gj[rank == 1L]] <- cj[rank == 1L]
-    for (r in seq_len(max(rank))[-1L]) {
-      at <- which(rank == r)
-      campaigns[gj[at]] <- paste0(campaigns[gj[at]], ",", cj[at])
-    }
-  }
+  campaigns <- .join_campaign_ids(gj, match(cc_ids, distinct_ids),
+                                  as.character(distinct_ids), n_groups)
   # Per-phone min/max disposition_date, NA when the phone has no dated campaign
   # (an un-enriched projection, or every date missing). The dated rows are
   # ordered by (group, date); a group's first and last dated row follow from
@@ -663,6 +653,35 @@
 .disposition_tag_dates <- function(d, all_na) {
   attr(d, "all_dates_na") <- isTRUE(all_na)
   d
+}
+
+# Comma-join each phone's sorted, distinct campaign ids: `gj` is the phone group
+# of each id (grouped runs, in order), `at` indexes the id's label in `labels`.
+# Each id becomes one token -- its label plus "," or, for a phone's last id, a
+# \001 terminator -- built once per distinct (label, terminator) pair; the
+# tokens are joined into one string and split on the terminator, so every
+# phone's list comes out of two C-level passes (~4x faster than joining rank by
+# rank at a million phones). A label that itself contains \001 would split
+# wrongly, so that (character-id) case takes the rank-by-rank join instead.
+.join_campaign_ids <- function(gj, at, labels, n_groups) {
+  campaigns <- character(n_groups)
+  if (length(gj) == 0L) return(campaigns)
+  last <- c(gj[-1L] != gj[-length(gj)], TRUE)
+  if (!any(grepl("\001", labels, fixed = TRUE))) {
+    tokens <- c(paste0(labels, ","), paste0(labels, "\001"))
+    joined <- paste(tokens[at + length(labels) * last], collapse = "")
+    campaigns[gj[last]] <- strsplit(joined, "\001", fixed = TRUE)[[1L]]
+    return(campaigns)
+  }
+  cj <- labels[at]
+  pos <- seq_along(gj)
+  rank <- pos - cummax(pos * (gj != c(-1L, gj[-length(gj)]))) + 1L
+  campaigns[gj[rank == 1L]] <- cj[rank == 1L]
+  for (r in seq_len(max(rank))[-1L]) {
+    idx <- which(rank == r)
+    campaigns[gj[idx]] <- paste0(campaigns[gj[idx]], ",", cj[idx])
+  }
+  campaigns
 }
 
 # Pure per-phone rollup core, shared by disposition_summary() (public; path or
