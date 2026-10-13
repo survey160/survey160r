@@ -503,3 +503,68 @@ test_that("disposition_funnel falls back to the in-R grouping when the scan cann
   # The nanoparquet engine never takes the scan.
   expect_null(with_engine("nanoparquet", .disposition_funnel_duckdb(p, "carrier")))
 })
+
+test_that("campaign / date filters pre-filtered in the scan match the in-R filter", {
+  skip_if_not_installed("duckdb")
+  p <- .engine_fixture()
+  phones <- c("2015550101", "2015550102", "2015550103", "2015550104")
+  sample <- data.frame(phone = phones, stringsAsFactors = FALSE)
+  filters <- list(
+    list(campaign_ids = 10L),
+    list(campaign_ids = c(10, 12)),            # numeric ids, matched as text
+    list(campaign_ids = c("11", "99")),
+    list(campaign_ids = c(10L, NA)),           # NA id: R matches the NA row -> not pushed
+    list(campaign_ids = integer(0)),
+    list(date_from = "2026-03-02"),
+    list(date_to = as.Date("2026-03-01") + 0.5),  # fractional Date: widened, R decides
+    list(date_from = as.POSIXct("2026-03-01 12:00", tz = "UTC"), date_to = "2026-03-06"),
+    list(campaign_ids = 10:11, date_from = "2026-03-01", date_to = "2026-03-01"),
+    list(date_from = "2030-01-01"),            # nothing in range
+    list(date_from = as.Date(-1e6))            # no SQL literal for the bound -> R only
+  )
+  for (f in filters) {
+    calls <- list(
+      function() do.call(disposition_records, c(list(p), f)),
+      function() do.call(disposition_records, c(list(p, phones = phones), f)),
+      function() do.call(disposition_summary, c(list(p), f)),
+      function() do.call(disposition_summary, c(list(p, phones = phones), f)),
+      function() do.call(disposition_screen, c(list(sample, p), f))
+    )
+    for (call in calls) {
+      expect_identical(with_engine("duckdb", call()), with_engine("nanoparquet", call()))
+    }
+  }
+})
+
+test_that("the scan pre-filter keeps the whole-file all-NA-date warning and skips odd files", {
+  skip_if_not_installed("duckdb")
+  base <- data.frame(phone = c("2015550101", "2015550102"), campaign_id = c(1L, 2L),
+                     sent = 1L, engaged = 0L, opted_in = 0L, completed = 0L,
+                     web_complete = 0L, terminated = 0L,
+                     disposition_date = as.Date(c(NA, NA)), stringsAsFactors = FALSE)
+  p <- write_disposition_parquet(base)
+  for (engine in c("duckdb", "nanoparquet")) {
+    expect_warning(with_engine(engine, disposition_records(p, campaign_ids = 1L,
+                                                           date_from = "2026-01-01")),
+                   "NA for every row")
+  }
+  # A stored file_row_number column, a BIGINT-free double id, and a non-DATE date
+  # column are read unfiltered (no predicate), still with the same answer.
+  odd <- list(transform(base, file_row_number = 1:2),
+              transform(base, campaign_id = c(1, 2)),
+              transform(base, disposition_date = c("2026-01-01", "2026-01-02")))
+  for (d in odd) {
+    po <- write_disposition_parquet(d)
+    expect_identical(
+      with_engine("duckdb", disposition_records(po, campaign_ids = 1)),
+      with_engine("nanoparquet", disposition_records(po, campaign_ids = 1)))
+  }
+  con <- DBI::dbConnect(duckdb::duckdb())
+  on.exit(DBI::dbDisconnect(con, shutdown = TRUE))
+  schema <- data.frame(column_name = c("campaign_id", "disposition_date"),
+                       column_type = c("DOUBLE", "VARCHAR"))
+  expect_identical(.disposition_scan_where(con, schema, list(campaign_ids = 1,
+                                                            date_from = "2026-01-01")),
+                   character(0))
+  expect_identical(.disposition_scan_where(con, schema, NULL), character(0))
+})

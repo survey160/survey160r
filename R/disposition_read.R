@@ -351,10 +351,11 @@
 # column-short/legacy projection returning only what is present, so the rollup's
 # own missing-column guards still fire. Drop the branch once nanoparquet fixes the
 # NA decode.
-.disposition_read_parquet <- function(dataset, columns = .DISPOSITION_READ_COLS) {
+.disposition_read_parquet <- function(dataset, columns = .DISPOSITION_READ_COLS,
+                                      filters = NULL) {
   .disposition_check_path(dataset)
   if (.disposition_use_duckdb(dataset)) {
-    d <- .disposition_read_duckdb(dataset, columns = columns)
+    d <- .disposition_read_duckdb(dataset, columns = columns, filters = filters)
     if (!is.null(d)) return(d)
   }
   .disposition_read_nanoparquet(dataset, columns)
@@ -422,11 +423,12 @@
 # the `all_dates_na` attribute (when the file has `disposition_date`) and the
 # warning fires exactly as on a full read.
 .disposition_read_scoped <- function(dataset, phones,
-                                     columns = .DISPOSITION_READ_COLS) {
+                                     columns = .DISPOSITION_READ_COLS,
+                                     filters = NULL) {
   .disposition_check_path(dataset)
   .disposition_offer_duckdb(dataset)
   d <- if (.disposition_use_duckdb(dataset)) {
-    .disposition_read_duckdb(dataset, columns, phones)
+    .disposition_read_duckdb(dataset, columns, phones, filters)
   }
   d %||% .disposition_match_in_r(dataset, phones, columns)
 }
@@ -494,7 +496,8 @@
 # twin, so the caller falls back to the in-R match. Rows come back in file order:
 # a plain scan keeps it (DuckDB's default preserve_insertion_order -- do not turn
 # it off) and the scoped query sorts by file row number.
-.disposition_read_duckdb <- function(dataset, columns = NULL, phones = NULL) {
+.disposition_read_duckdb <- function(dataset, columns = NULL, phones = NULL,
+                                     filters = NULL) {
   .disposition_with_duckdb(dataset, function(con, src, schema) {
     cols <- intersect(columns %||% schema$column_name, schema$column_name)
     if (length(cols) == 0L) {
@@ -504,18 +507,39 @@
     }
     if (!.disposition_duckdb_plain(con, dataset, schema, cols)) return(NULL)
     quoted <- as.character(DBI::dbQuoteIdentifier(con, cols))
+    # A stored column named file_row_number (any case) clashes with the row-number
+    # option the ordered queries need: such a file is read unfiltered (and a
+    # phone-scoped read matches in R instead).
+    numbered_ok <- !"file_row_number" %in% tolower(schema$column_name)
+    where <- if (numbered_ok) .disposition_scan_where(con, schema, filters)
+    numbered <- paste0("read_parquet(", DBI::dbQuoteString(con, dataset),
+                       ", file_row_number = true)")
+    # Answered from the footer statistics, not a column scan (~0.1 s on prod).
+    all_na <- function() {
+      "disposition_date" %in% cols &&
+        DBI::dbGetQuery(con, paste0("SELECT count(*) > 0 AND count(disposition_date) = 0",
+                                    " AS all_na FROM ", src))$all_na
+    }
     if (is.null(phones)) {
-      return(.disposition_duckdb_select(
-        con, paste("SELECT", paste(quoted, collapse = ", "), "FROM", src)))
+      if (length(where) == 0L) {
+        return(.disposition_duckdb_select(
+          con, paste("SELECT", paste(quoted, collapse = ", "), "FROM", src)))
+      }
+      # Filtered rows come back in file order (sorted by file row number, as
+      # the scoped read below), carrying the whole-file all-NA-date answer.
+      d <- .disposition_duckdb_select(con, paste0(
+        "SELECT * EXCLUDE (s160_row) FROM (SELECT ",
+        paste(c(quoted, "file_row_number AS s160_row"), collapse = ", "),
+        " FROM ", numbered, " WHERE ", paste(where, collapse = " AND "),
+        ") ORDER BY s160_row"))
+      return(.disposition_tag_dates(d, all_na()))
     }
     if (!"phone" %in% cols) {
       return(.disposition_duckdb_select(
         con, paste("SELECT", paste(quoted, collapse = ", "), "FROM", src, "LIMIT 0")))
     }
-    # A stored column named file_row_number (any case) clashes with the row-number
-    # option the ordered query needs; such a file matches in R instead.
     if (!identical(schema$column_type[match("phone", schema$column_name)], "VARCHAR") ||
-          "file_row_number" %in% tolower(schema$column_name)) {
+          !numbered_ok) {
       return(NULL)
     }
     duckdb::duckdb_register(con, "s160_req",
@@ -532,18 +556,51 @@
     # A parallel semi-join does NOT keep file order (unlike a plain scan), so sort
     # the matched rows back into it by file row number: the rollup breaks a full
     # tie (same phone, date, and campaign id) by input order, as on nanoparquet.
-    numbered <- paste0("read_parquet(", DBI::dbQuoteString(con, dataset),
-                       ", file_row_number = true)")
+    scan <- paste0(" FROM ", numbered,
+                   if (length(where)) paste0(" WHERE ", paste(where, collapse = " AND ")))
     d <- .disposition_duckdb_select(con, paste0(
       "SELECT * EXCLUDE (s160_row) FROM (SELECT ", paste(c(outer, "s160_row"), collapse = ", "),
-      " FROM (SELECT ", inner, " FROM ", numbered, ")) ",
+      " FROM (SELECT ", inner, scan, ")) ",
       "WHERE phone IN (SELECT phone FROM s160_req) ORDER BY s160_row"))
-    # Answered from the footer statistics, not a column scan (~0.1 s on prod).
-    all_na <- "disposition_date" %in% cols &&
-      DBI::dbGetQuery(con, paste0("SELECT count(*) > 0 AND count(disposition_date) = 0",
-                                  " AS all_na FROM ", src))$all_na
-    .disposition_tag_dates(d, all_na)
+    .disposition_tag_dates(d, all_na())
   })
+}
+
+# The campaign / date pre-filter for a filtered read, as SQL predicates on the
+# stored columns (character(0) = none). `filters` holds the caller's raw
+# campaign_ids / date_from / date_to (NULL = no pre-filter). It is a pre-filter
+# only: every row it drops is one .disposition_filter() drops anyway, and that R
+# filter still runs on what comes back -- so a predicate is emitted only where
+# it can only be looser than the R test. The campaign match compares the stored
+# id's text to as.character(campaign_ids) like .disposition_filter, so it is
+# pushed only for an INTEGER column (whose SQL text equals R's) and ids with no
+# NA (R matches an NA id; SQL IN never does). A date bound is pushed only for a
+# DATE column and a bound that parses (an invalid one errors in R as before),
+# widened to whole days. Without these the filtered read held the whole
+# projection in R (~141M rows) to keep one campaign or one week.
+.disposition_scan_where <- function(con, schema, filters) {
+  type_of <- function(col) schema$column_type[match(col, schema$column_name)]
+  where <- character(0)
+  ids <- if (!is.null(filters$campaign_ids)) as.character(filters$campaign_ids)
+  if (!is.null(ids) && !anyNA(ids) && identical(type_of("campaign_id"), "INTEGER")) {
+    duckdb::duckdb_register(con, "s160_cids",
+                            data.frame(id = unique(ids), stringsAsFactors = FALSE))
+    where <- c(where, paste(DBI::dbQuoteIdentifier(con, "campaign_id"),
+                            "::VARCHAR IN (SELECT id FROM s160_cids)"))
+  }
+  if (identical(type_of("disposition_date"), "DATE")) {
+    date_col <- as.character(DBI::dbQuoteIdentifier(con, "disposition_date"))
+    bound <- function(x, name, round, op) {
+      d <- tryCatch(.disposition_date_bound(x, name), error = function(e) NULL)
+      # Outside years 1-9999 there is no 'YYYY-MM-DD' literal; leave it to R.
+      if (is.null(d) || !is.finite(unclass(d)) ||
+            unclass(d) < -719162 || unclass(d) > 2932896) return(NULL)
+      sprintf("%s %s DATE '%s'", date_col, op, format(as.Date(round(unclass(d)))))
+    }
+    where <- c(where, bound(filters$date_from, "date_from", floor, ">="),
+               bound(filters$date_to, "date_to", ceiling, "<="))
+  }
+  where
 }
 
 # Open a DuckDB connection, describe `dataset`, and call
@@ -793,11 +850,15 @@ disposition_summary <- function(x, phones = NULL, campaign_ids = NULL,
   data <- if (is.data.frame(x)) {
     x
   } else if (is.character(x) && length(x) == 1L && nzchar(x)) {
-    # A phone list scopes the read itself, so only those phones' rows load.
+    # A phone list scopes the read itself, so only those phones' rows load; the
+    # campaign / date filters pre-filter the scan (duckdb engine).
+    filters <- list(campaign_ids = campaign_ids, date_from = date_from,
+                    date_to = date_to)
     if (is.null(phones)) {
-      .disposition_read_parquet(x)
+      .disposition_read_parquet(x, filters = filters)
     } else {
-      .disposition_read_scoped(x, .disposition_request_phones(phones))
+      .disposition_read_scoped(x, .disposition_request_phones(phones),
+                               filters = filters)
     }
   } else {
     stop_s160(paste("`x` must be a disposition Parquet path (a single string)",
@@ -847,9 +908,12 @@ disposition_summary <- function(x, phones = NULL, campaign_ids = NULL,
 #' \code{NA} when the export carries no usable code (a clean send, or an export
 #' lacking the column).
 #' \code{phone} is digit-normalized for matching, and a stored row whose phone is
-#' blank or unparseable is dropped. With \pkg{duckdb} installed and \code{phones}
-#' given, only those phones' rows are read (see \code{\link{disposition_screen}},
-#' Memory); otherwise the whole projection is read into memory and filtered in R.
+#' blank or unparseable is dropped. With \pkg{duckdb} installed, \code{phones},
+#' \code{campaign_ids}, \code{date_from} and \code{date_to} all filter inside the
+#' Parquet scan, so only the matching rows are read (one campaign of the
+#' production projection in seconds and under 2 GB; see
+#' \code{\link{disposition_screen}}, Memory); otherwise the whole projection is
+#' read into memory and filtered in R (tens of GB).
 #'
 #' Two differences from the per-phone rollup follow from the raw
 #' grain: a screened phone that was never contacted has \strong{no} row here
@@ -888,10 +952,13 @@ disposition_records <- function(dataset, phones = NULL, campaign_ids = NULL,
   date_to <- .disposition_date_bound(date_to, "date_to")
   req <- .disposition_request_phones(phones)
 
+  filters <- list(campaign_ids = campaign_ids, date_from = date_from, date_to = date_to)
   raw <- if (is.null(req)) {
-    .disposition_read_parquet(dataset, columns = .DISPOSITION_RECORD_COLS)
+    .disposition_read_parquet(dataset, columns = .DISPOSITION_RECORD_COLS,
+                              filters = filters)
   } else {
-    .disposition_read_scoped(dataset, req, columns = .DISPOSITION_RECORD_COLS)
+    .disposition_read_scoped(dataset, req, columns = .DISPOSITION_RECORD_COLS,
+                             filters = filters)
   }
   missing_cols <- setdiff(c("phone", "campaign_id"), names(raw))
   if (length(missing_cols) > 0L) {
@@ -994,7 +1061,8 @@ disposition_screen <- function(sample, dataset, phone_col = "phone",
   # rows ever load) and the rollup, and the full vector maps rows back 1:1.
   norm <- .normalize_phone(sample[[phone_col]])
   req <- unique(norm[!is.na(norm)])
-  data <- .disposition_read_scoped(dataset, req)
+  data <- .disposition_read_scoped(dataset, req, filters = list(
+    campaign_ids = campaign_ids, date_from = date_from, date_to = date_to))
   summ <- .disposition_rollup(data, phones = req, campaign_ids = campaign_ids,
                               date_from = date_from, date_to = date_to,
                               fn = "disposition_screen")
