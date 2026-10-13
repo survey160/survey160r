@@ -104,13 +104,38 @@ test_that("s160_csv_header fallback (no data.table) returns munged names", {
   expect_equal(s160_csv_header(tmp), c("id.q1.scriptDate", "campaignid"))
 })
 
-test_that(".file_sha256 matches digest and falls back to digest without tools::sha256sum", {
+test_that(".file_sha256 matches digest on every path: sha256sum, tools, digest", {
   path <- test_path("fixtures", "synthetic.csv")
   expected <- digest::digest(file = path, algo = "sha256")
   expect_equal(survey160r:::.file_sha256(path), expected)
-  fallback <- survey160r:::.file_sha256
-  mockery::stub(fallback, "get0", NULL)
-  expect_equal(fallback(path), expected)
+  # No system sha256sum -> tools::sha256sum, then (no tools) digest.
+  in_r <- survey160r:::.file_sha256
+  mockery::stub(in_r, ".file_sha256_native", NULL)
+  expect_equal(in_r(path), expected)
+  mockery::stub(in_r, "get0", NULL)
+  expect_equal(in_r(path), expected)
+})
+
+test_that(".file_sha256_native reads the tool's digest line or declines", {
+  skip_if(!nzchar(Sys.which("sha256sum")), "no system sha256sum")
+  dir <- withr::local_tempdir()
+  odd <- file.path(dir, "a b\\c 'q'.csv")   # space, backslash, quote: escaped output
+  writeLines("x,y", odd)
+  expect_equal(survey160r:::.file_sha256_native(odd),
+               digest::digest(file = odd, algo = "sha256"))
+  native <- survey160r:::.file_sha256_native
+  mockery::stub(native, "Sys.which", "")
+  expect_null(native(odd))
+  native <- survey160r:::.file_sha256_native
+  mockery::stub(native, "system2", structure(character(0), status = 1L))
+  expect_null(native(odd))
+  native <- survey160r:::.file_sha256_native
+  mockery::stub(native, "system2", "not a digest")
+  expect_null(native(odd))
+  native <- survey160r:::.file_sha256_native
+  mockery::stub(native, "system2", function(...) stop("spawn failed"))
+  expect_null(native(odd))
+  expect_null(survey160r:::.file_sha256_native(file.path(dir, "missing.csv")))
 })
 
 test_that("timestamps = \"POSIXct\" decodes the id.* timestamp columns at read time", {
