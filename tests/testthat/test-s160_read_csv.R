@@ -104,13 +104,60 @@ test_that("s160_csv_header fallback (no data.table) returns munged names", {
   expect_equal(s160_csv_header(tmp), c("id.q1.scriptDate", "campaignid"))
 })
 
-test_that(".file_sha256 matches digest and falls back to digest without tools::sha256sum", {
+test_that(".file_sha256 matches digest on every path: sha256sum, tools, digest", {
   path <- test_path("fixtures", "synthetic.csv")
   expected <- digest::digest(file = path, algo = "sha256")
   expect_equal(survey160r:::.file_sha256(path), expected)
-  fallback <- survey160r:::.file_sha256
-  mockery::stub(fallback, "get0", NULL)
-  expect_equal(fallback(path), expected)
+  # No system sha256sum -> tools::sha256sum, then (no tools) digest.
+  in_r <- survey160r:::.file_sha256
+  mockery::stub(in_r, ".file_sha256_native", NULL)
+  expect_equal(in_r(path), expected)
+  mockery::stub(in_r, "get0", NULL)
+  expect_equal(in_r(path), expected)
+})
+
+test_that(".file_sha256_native parses the tool's digest line or declines (mocked tool)", {
+  hex <- strrep("ab", 32L)
+  native <- function(out) {
+    f <- survey160r:::.file_sha256_native
+    mockery::stub(f, "Sys.which", "/usr/bin/sha256sum")
+    mockery::stub(f, "system2", out)
+    f
+  }
+  expect_equal(native(paste0(hex, "  a.csv"))("a.csv"), hex)
+  expect_equal(native(paste0("\\", hex, "  a\\nb.csv"))("a\nb.csv"), hex)  # escaped name
+  expect_null(native(structure(character(0), status = 1L))("a.csv"))
+  expect_null(native("not a digest")("a.csv"))
+  expect_null(native(function(...) stop("spawn failed"))("a.csv"))
+  no_tool <- survey160r:::.file_sha256_native
+  mockery::stub(no_tool, "Sys.which", "")
+  expect_null(no_tool("a.csv"))
+  # A relative name starting with "-" reaches the tool as "./-...", never as an
+  # option or (for "-") standard input.
+  seen <- NULL
+  f <- native(function(cmd, args, ...) {
+    seen <<- args
+    paste0(hex, "  x")
+  })
+  for (name in c("-", "-b")) {
+    f(name)
+    expect_identical(seen, shQuote(paste0("./", name)))
+  }
+})
+
+test_that(".file_sha256_native matches digest with the real tool", {
+  skip_if(!nzchar(Sys.which("sha256sum")), "no system sha256sum")
+  dir <- withr::local_tempdir()
+  odd <- file.path(dir, "a b\\c 'q'.csv")   # space, backslash, quote: escaped output
+  writeLines("x,y", odd)
+  expect_equal(survey160r:::.file_sha256_native(odd),
+               digest::digest(file = odd, algo = "sha256"))
+  expect_null(survey160r:::.file_sha256_native(file.path(dir, "missing.csv")))
+  for (name in c("-", "-b")) {
+    writeLines(name, file.path(dir, name))
+    expect_equal(withr::with_dir(dir, survey160r:::.file_sha256_native(name)),
+                 digest::digest(file = file.path(dir, name), algo = "sha256"))
+  }
 })
 
 test_that("timestamps = \"POSIXct\" decodes the id.* timestamp columns at read time", {

@@ -74,9 +74,12 @@ all 27.
 \code{NA} when the export carries no usable code (a clean send, or an export
 lacking the column).
 \code{phone} is digit-normalized for matching, and a stored row whose phone is
-blank or unparseable is dropped. With \pkg{duckdb} installed and \code{phones}
-given, only those phones' rows are read (see \code{\link{disposition_screen}},
-Memory); otherwise the whole projection is read into memory and filtered in R.
+blank or unparseable is dropped. With \pkg{duckdb} installed, \code{phones},
+\code{campaign_ids}, \code{date_from} and \code{date_to} all filter inside the
+Parquet scan, so only the matching rows are read (one campaign of the
+production projection in seconds and under 2 GB; see
+\code{\link{disposition_screen}}, Memory); otherwise the whole projection is
+read into memory and filtered in R (tens of GB).
 
 Two differences from the per-phone rollup follow from the raw
 grain: a screened phone that was never contacted has \strong{no} row here

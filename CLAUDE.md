@@ -94,6 +94,12 @@ on 200k rows in ~0.3 s. Keep it that way:
 - **Prefilter before a regex pipeline.** A cheap `grepl()` that selects the candidate values,
   then the heavy work on `unique()` of those (`utils_fix_double_utf8()`), beats running
   `gregexpr()` / `regmatches()` over every value by two orders of magnitude on real exports.
+- **Push disposition work into the DuckDB scan.** A Parquet-path reader must not pull the
+  ~141M-row projection into R to filter or group it (that peaks at 16-50 GB): the phone match,
+  `campaign_ids` / date bounds (`.disposition_scan_where()`, a pre-filter only -- the R filter
+  still decides) and `disposition_funnel()`'s GROUP BY (`.disposition_funnel_duckdb()`) all run
+  in SQL, with the in-R path kept as the fallback. Verify against the nanoparquet engine
+  (`test-disposition_engine.R` compares every reader under both).
 - **Memory levers for callers**: `columns = latency_input_columns(...)` /
   `disposition_input_columns(...)` to project the read, `timestamps = "POSIXct"` on the readers
   (8 bytes per cell instead of ~60), and `compact = TRUE` on `latency_run()` for wide campaigns.

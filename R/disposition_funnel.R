@@ -94,12 +94,96 @@
   out
 }
 
+# The same counts as .disposition_funnel_counts(), computed inside the DuckDB
+# scan of a Parquet path, so R only ever holds the grouped result. Reading the
+# production projection (~140M rows) into R to group it peaked near 16 GB; the
+# in-scan GROUP BY stays well under 1 GB. Every aggregate mirrors the R form:
+# `campaigns` counts a missing campaign_id as one more distinct value (as
+# uniqueN() does), `n_sent` is the count of `sent = 1`, and a flag's SUM is NULL
+# -- NA -- exactly when every value in the group is missing (the all-off-channel
+# `completed` rule). Group columns come back typed as the projected read gives
+# them (.disposition_duckdb_select), so the caller's sort and funnel_rates() run
+# unchanged. Returns NULL -- the caller reads the file and groups in R instead --
+# whenever duckdb is not the engine, a needed column is missing (so the R path
+# raises its usual error), a column is not a plain type, a flag is not an integer, a
+# group column shadows a count name, or the file has no rows (the typed empty
+# frame comes from the R path).
+.disposition_funnel_duckdb <- function(dataset, group_cols) {
+  .disposition_check_path(dataset)
+  if (!.disposition_use_duckdb(dataset)) return(NULL)
+  counts <- c("campaigns", "n_sent", "n_engaged", "n_opted_in", "n_completed",
+              "n_ineligible", "n_refused")
+  if (any(group_cols %in% counts)) return(NULL)
+  .disposition_with_duckdb(dataset, function(con, src, schema) {
+    flags <- c("sent", "engaged", "opted_in", "completed", "ineligible", "refused")
+    optional <- c("ineligible", "refused")
+    present <- schema$column_name
+    if (!all(c(group_cols, "campaign_id", setdiff(flags, optional)) %in% present)) {
+      return(NULL)
+    }
+    used <- intersect(unique(c(group_cols, "campaign_id", flags)), present)
+    # Integer flags only: SUM over a DOUBLE differs from R's sum(na.rm = TRUE)
+    # -- a NaN poisons the group instead of being skipped, and DuckDB's plain
+    # double sum can land just under a whole number that R's long-double sum
+    # reaches -- so a DOUBLE/FLOAT flag is grouped in R.
+    numeric <- c("INTEGER", "BIGINT")
+    flag_types <- schema$column_type[match(intersect(flags, present), present)]
+    if (!.disposition_duckdb_plain(con, dataset, schema, used) ||
+          !all(flag_types %in% numeric)) {
+      return(NULL)
+    }
+    q <- function(x) as.character(DBI::dbQuoteIdentifier(con, x))
+    flag_sum <- function(f) {
+      if (f %in% present) sprintf("SUM(%s)", q(f)) else "0"
+    }
+    cid <- q("campaign_id")
+    groups <- paste(q(group_cols), collapse = ", ")
+    out <- .disposition_duckdb_select(con, paste0(
+      "SELECT ", groups, ", ",
+      "COUNT(DISTINCT ", cid, ") + CAST(COUNT(*) > COUNT(", cid, ") AS INTEGER) AS campaigns, ",
+      "COUNT(*) FILTER (WHERE ", q("sent"), " = 1) AS n_sent, ",
+      flag_sum("engaged"), " AS n_engaged, ",
+      flag_sum("opted_in"), " AS n_opted_in, ",
+      flag_sum("completed"), " AS n_completed, ",
+      flag_sum("ineligible"), " AS n_ineligible, ",
+      flag_sum("refused"), " AS n_refused ",
+      "FROM ", src, " GROUP BY ", groups))
+    if (nrow(out) == 0L) return(NULL)
+    for (col in counts) out[[col]] <- as.integer(out[[col]])
+    out
+  })
+}
+
 # Sum a 0/1 flag column within a group, but return NA (not a false 0) when EVERY
 # value is NA -- the all-off-channel case for `completed` on t2w_external rows. A
 # group with at least one non-NA value sums to a real count (0 included). Used in
 # the data.table `j` below.
 .disposition_funnel_count <- function(v) {
   if (all(is.na(v))) NA_integer_ else as.integer(sum(v, na.rm = TRUE))
+}
+
+# Read `x` (a frame, or a path the in-scan aggregation declined) and group it in
+# R: the missing-column check, the optional terminal-split defaults, then the
+# counts (or the typed empty frame).
+.disposition_funnel_in_r <- function(x, group_cols, want_cols, need_funnel) {
+  data <- .disposition_funnel_data(x, want_cols)
+
+  missing_cols <- setdiff(c(group_cols, "campaign_id", need_funnel), names(data))
+  if (length(missing_cols) > 0L) {
+    stop_s160(sprintf("input is missing required column(s): %s",
+                      paste(missing_cols, collapse = ", ")),
+              fn = "disposition_funnel")
+  }
+  # refused / ineligible (the terminal split) are optional: a projection produced
+  # before survey160r 0.51.0 lacks them -> default 0 (matches the disposition rollup).
+  if (!"refused" %in% names(data)) data$refused <- rep(0L, nrow(data))
+  if (!"ineligible" %in% names(data)) data$ineligible <- rep(0L, nrow(data))
+
+  if (nrow(data) == 0L) {
+    .disposition_funnel_empty(data, group_cols)
+  } else {
+    .disposition_funnel_counts(data, group_cols)
+  }
 }
 
 #' Roll the disposition dataset up to funnel counts + rates by dimension
@@ -134,9 +218,11 @@
 #'
 #' @param x Either a path to a disposition Parquet file (the read projection, e.g.
 #'   from \code{\link{disposition_pull}}) or an in-memory disposition data frame
-#'   (from \code{\link{disposition_records}}). A path is read projected to the
-#'   columns this rollup needs (with \pkg{duckdb} when installed, else
-#'   \pkg{nanoparquet}). Pre-filter (by campaign / date)
+#'   (from \code{\link{disposition_records}}). With \pkg{duckdb} installed a
+#'   path is grouped inside the Parquet scan, so only the result reaches R (the
+#'   production projection in under a second and well under 1 GB); otherwise it
+#'   is read with \pkg{nanoparquet}, projected to the columns this rollup needs,
+#'   and grouped in R (tens of GB for the production projection). Pre-filter (by campaign / date)
 #'   with \code{\link{disposition_records}} first when you do not want the whole
 #'   projection.
 #' @param by Character vector of grouping column name(s). Default \code{"carrier"};
@@ -188,24 +274,12 @@ disposition_funnel <- function(x, by = "carrier", grain = c("day", "all"),
   want_cols <- unique(c(group_cols, "campaign_id", need_funnel,
                         "refused", "ineligible"))
 
-  data <- .disposition_funnel_data(x, want_cols)
-
-  missing_cols <- setdiff(c(group_cols, "campaign_id", need_funnel), names(data))
-  if (length(missing_cols) > 0L) {
-    stop_s160(sprintf("input is missing required column(s): %s",
-                      paste(missing_cols, collapse = ", ")),
-              fn = "disposition_funnel")
+  # A Parquet path is grouped inside the DuckDB scan when it can be; otherwise
+  # (no duckdb, an in-memory frame, an unusual file) it is read and grouped in R.
+  out <- if (is.character(x) && length(x) == 1L && nzchar(x)) {
+    .disposition_funnel_duckdb(x, group_cols)
   }
-  # refused / ineligible (the terminal split) are optional: a projection produced
-  # before survey160r 0.51.0 lacks them -> default 0 (matches the disposition rollup).
-  if (!"refused" %in% names(data)) data$refused <- rep(0L, nrow(data))
-  if (!"ineligible" %in% names(data)) data$ineligible <- rep(0L, nrow(data))
-
-  out <- if (nrow(data) == 0L) {
-    .disposition_funnel_empty(data, group_cols)
-  } else {
-    .disposition_funnel_counts(data, group_cols)
-  }
+  if (is.null(out)) out <- .disposition_funnel_in_r(x, group_cols, want_cols, need_funnel)
 
   if (isTRUE(rates)) out <- funnel_rates(out, percent = percent)
 

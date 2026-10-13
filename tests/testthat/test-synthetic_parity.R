@@ -195,3 +195,30 @@ test_that(".days_from_civil matches as.Date over a wide range of civil dates", {
   expect_identical(days, as.numeric(dates))
   expect_true(is.na(survey160r:::.days_from_civil(NA_integer_, 1L, 1L)))
 })
+
+test_that(".join_campaign_ids joins each phone's ids, with or without the \\001 fast path", {
+  # gj: phone group per id (grouped runs); at: label index. Phone 2 has no ids.
+  expect_identical(survey160r:::.join_campaign_ids(c(1L, 1L, 3L), c(1L, 2L, 1L),
+                                                   c("10", "11"), 3L),
+                   c("10,11", "", "10"))
+  # Blank and comma-bearing (character) labels survive the split.
+  expect_identical(survey160r:::.join_campaign_ids(c(1L, 2L, 2L), c(1L, 1L, 2L),
+                                                   c("", "a,b"), 2L),
+                   c("", ",a,b"))
+  # A label holding the \001 terminator takes the rank-by-rank join.
+  expect_identical(survey160r:::.join_campaign_ids(c(1L, 1L, 2L), c(1L, 2L, 2L),
+                                                   c("x\001", "y"), 2L),
+                   c("x\001,y", "y"))
+  expect_identical(survey160r:::.join_campaign_ids(integer(0), integer(0), character(0), 2L),
+                   c("", ""))
+  # Joined in whole-phone chunks past the byte budget: the same lists.
+  gj <- rep(1:6, c(3L, 1L, 4L, 2L, 1L, 5L))
+  at <- rep_len(c(1L, 2L, 3L), length(gj))
+  labels <- c("101", "2002", "30003")
+  whole <- survey160r:::.join_campaign_ids(gj, at, labels, 7L)
+  for (budget in c(1, 7, 20, 40)) {
+    expect_identical(survey160r:::.join_campaign_ids(gj, at, labels, 7L,
+                                                     chunk_bytes = budget), whole)
+  }
+  expect_identical(whole[[1L]], "101,2002,30003")
+})

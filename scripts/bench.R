@@ -59,3 +59,18 @@ sample_phones <- sample(disposition$phone, min(50000L, nrow(disposition)))
 measure("disposition_summary_phones", disposition_summary(disposition, phones = sample_phones))
 measure("disposition_funnel", disposition_funnel(disposition))
 measure("normalize_phone", .normalize_phone(disposition$phone))
+
+# Parquet-path readers (duckdb engine): the projection written as production
+# writes it (DuckDB COPY), so the in-scan funnel / filters / screen run.
+if (requireNamespace("duckdb", quietly = TRUE)) {
+  pq <- tempfile(fileext = ".parquet")
+  con <- DBI::dbConnect(duckdb::duckdb())
+  duckdb::duckdb_register(con, "d", disposition)
+  invisible(DBI::dbExecute(con, sprintf("COPY (SELECT * FROM d) TO '%s' (FORMAT parquet)", pq)))
+  DBI::dbDisconnect(con, shutdown = TRUE)
+  measure("funnel_parquet", disposition_funnel(pq))
+  measure("records_one_campaign", disposition_records(pq, campaign_ids = 1001L))
+  measure("screen_parquet", disposition_screen(data.frame(phone = sample_phones), pq))
+  unlink(pq)
+}
+
