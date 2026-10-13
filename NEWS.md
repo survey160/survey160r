@@ -1,5 +1,30 @@
 # survey160r (development version)
 
+## Performance: the disposition readers on a 16 GB laptop
+
+The Parquet-path readers now push their work into the DuckDB scan (when
+duckdb is installed), so only the result reaches R. Outputs are identical to
+the previous version (checked on the production projection, ~141M rows):
+
+* `disposition_funnel(path)` groups and counts inside the scan: 12 s / ~16 GB
+  peak on the production projection -> 0.6 s / ~0.1 GB. It previously could not
+  run on a 16 GB laptop. An in-memory frame, the nanoparquet engine, or an
+  unusual file still groups in R.
+* `disposition_records()`, `disposition_summary()` and `disposition_screen()`
+  apply `campaign_ids` / `date_from` / `date_to` inside the scan as well as the
+  phone match. One campaign's records went from 189 s / 46 GB to 3 s / 1.6 GB
+  (`disposition_summary()`: 115 s / 22 GB -> 3.3 s / 0.8 GB). The R filter still
+  runs on the returned rows, so the pre-filter only ever drops rows it would.
+* A phone screen whose requested numbers are all ten digits semi-joins on the
+  stored phone and normalizes only the other-length rows (~25% faster read).
+* The per-phone rollup joins each phone's campaign list in one pass
+  (in-memory 3M-row summary 2.8 s -> 2.0 s).
+* `opt_out_screen()` narrows the opt-out list to the screened numbers before
+  de-duplicating it (5M-row list: 3.7 s -> 2.2 s).
+* The `source_csv_hash` provenance digest uses the system `sha256sum` when it is
+  on the PATH (~6x faster than hashing in R, same digest), so
+  `s160_read_csv(hash = TRUE)` costs little more than the read.
+
 ## Performance
 
 `latency_report()` / `latency_run()`, `disposition_run()`, the disposition
