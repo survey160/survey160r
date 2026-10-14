@@ -97,7 +97,7 @@ test_that("best_disposition ranks refused > ineligible; records + statuses expos
   expect_equal(nrow(disposition_summary(d, statuses = "refused")), 0L)  # latest is ineligible
   # disposition_records surfaces the two columns as stored
   rec <- disposition_records(write_disposition_parquet(d))
-  expect_true(all(c("refused", "ineligible") %in% names(rec)))
+  expect_contains(names(rec), c("refused", "ineligible"))
   expect_equal(rec$refused, c(1L, 0L))
   expect_equal(rec$ineligible, c(0L, 1L))
 })
@@ -108,7 +108,7 @@ test_that("a pre-split projection defaults n_refused / n_ineligible to 0", {
   # and the two new count columns are present and 0 (backward-compat).
   res <- disposition_summary(write_disposition_parquet(rbind(
     .disposition_row("1", 1, terminated = 1, disposition_date = "2026-03-01"))))
-  expect_true(all(c("n_refused", "n_ineligible") %in% names(res)))
+  expect_contains(names(res), c("n_refused", "n_ineligible"))
   expect_equal(res$n_refused, 0L)
   expect_equal(res$n_ineligible, 0L)
   expect_equal(res$latest_disposition, "terminated")
@@ -163,7 +163,7 @@ test_that("n_error is read from a projection PATH carrying an error column", {
     terminated = 0L, error = c("30007", NA),
     disposition_date = as.Date("2026-01-01"), stringsAsFactors = FALSE)
   p <- write_disposition_parquet(d)
-  expect_true("error" %in% nanoparquet::read_parquet_schema(p)$name)
+  expect_contains(nanoparquet::read_parquet_schema(p)$name, "error")
   expect_equal(disposition_summary(p)$n_error, 1L)
 })
 

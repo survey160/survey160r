@@ -30,7 +30,7 @@ test_that("day grain returns one row per (campaign, date) with true anchors", {
 test_that("hour grain returns one row per hour, ordered, with hour_local", {
   fh <- latency_funnel(.funnel_con(), grain = "hour")
 
-  expect_true("hour_local" %in% names(fh))
+  expect_contains(names(fh), "hour_local")
   expect_equal(nrow(fh), 3L)
   expect_equal(fh$hour_local, c(15L, 16L, 17L))
   expect_equal(fh$n_sent, c(1L, 1L, 2L))
@@ -128,7 +128,7 @@ test_that("an empty consolidated yields an empty, correctly typed funnel", {
 
   eh <- latency_funnel(con[0, , drop = FALSE], grain = "hour")
   expect_equal(nrow(eh), 0L)
-  expect_true("hour_local" %in% names(eh))
+  expect_contains(names(eh), "hour_local")
 })
 
 test_that("a grain with no rows in the frame yields an empty funnel", {

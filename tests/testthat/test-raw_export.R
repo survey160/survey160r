@@ -48,7 +48,7 @@ test_that("s160_read_csv reads the raw shape: munged names, repeated headers, ty
   expect_type(d$status, "character")
   expect_true(any(grepl("^[0-9]+$", d$status)) && any(d$status == "terminated"))
   # A quoted "NA" in a character column is text to fread; all-"NA" is NA.
-  expect_true("NA" %in% d$error_code)
+  expect_contains(d$error_code, "NA")
   expect_true(all(is.na(d$deactivationDate)))
 })
 

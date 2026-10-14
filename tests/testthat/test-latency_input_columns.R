@@ -18,8 +18,8 @@ test_that("latency_input_columns covers timestamps + support + id columns", {
   expect_true(all(c("id.intro.finalText", "web_complete",
                     "id.ineligible.scriptDate") %in% cols))
   # Population-filter column (from `id.intro.finalText == "Yes"`) + id columns.
-  expect_true("campaignid" %in% cols)
-  expect_true("userid" %in% cols)        # respondent_id_column in synthetic_config
+  expect_contains(cols, "campaignid")
+  expect_contains(cols, "userid")        # respondent_id_column in synthetic_config
   expect_false(anyDuplicated(cols) > 0)
 })
 
@@ -36,7 +36,7 @@ test_that("latency_input_columns retains close-message Text columns only via `av
   # detect_survey_mode can still tell t2w_external from sms), but a non-close
   # *.scriptText column is not.
   cols <- latency_input_columns(cfg, available = header)
-  expect_true(all(c("id.close.scriptText", "id.closeB.batchText") %in% cols))
+  expect_contains(cols, c("id.close.scriptText", "id.closeB.batchText"))
   expect_false("id.other.scriptText" %in% cols)
 })
 
@@ -46,8 +46,8 @@ test_that("latency_input_columns picks up a custom population column", {
 
   cols <- latency_input_columns(cfg)
 
-  expect_true("consent_flag" %in% cols)
-  expect_true("id.intro.finalText" %in% cols)
+  expect_contains(cols, "consent_flag")
+  expect_contains(cols, "id.intro.finalText")
 })
 
 test_that("latency_input_columns omits respondent id when unset, handles empty population", {
@@ -63,7 +63,7 @@ test_that("latency_input_columns omits respondent id when unset, handles empty p
   # is population-derived (not a hardcoded support column), so it is not retained
   # when the population references nothing.
   expect_false("id.intro.finalText" %in% cols)
-  expect_true("web_complete" %in% cols)
+  expect_contains(cols, "web_complete")
 })
 
 test_that("projection read yields identical latency_run output to a full read", {
@@ -142,7 +142,7 @@ test_that("projection retains a trailing opener's batchDate (all-opener flow)", 
   )
   cfg <- latency_build_config(1L, d, field_timezone = "America/New_York")
   cols <- latency_input_columns(cfg, names(d))
-  expect_true("id.intro_sp.batchDate" %in% cols)   # the trailing opener's reply
+  expect_contains(cols, "id.intro_sp.batchDate")   # the trailing opener's reply
 
   full <- build_summary_frame(d, cfg, survey_mode = "sms")
   proj <- build_summary_frame(d[, intersect(cols, names(d)), drop = FALSE],

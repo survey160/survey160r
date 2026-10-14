@@ -410,7 +410,7 @@ test_that("latency_report stamps survey_mode on every consolidated row", {
 
   # sms (default): no web_complete column.
   cons_sms <- latency_report(load_synthetic_data(), cfg, run_at)$consolidated
-  expect_true("survey_mode" %in% names(cons_sms))
+  expect_contains(names(cons_sms), "survey_mode")
   expect_equal(unique(cons_sms$survey_mode), "sms")
   expect_true(all(cons_sms[is.na(cons_sms$hour_local), ]$n_completed == 3L))
 

@@ -86,7 +86,7 @@ test_that("adc = TRUE authenticates via Application Default Credentials", {
   )
   expect_no_warning(suppressMessages(s160_gcs_init(adc = TRUE)))
   expect_true(captured$authed)
-  expect_true("token" %in% names(captured$args))   # authed with a token, not email
+  expect_contains(names(captured$args), "token")   # authed with a token, not email
   expect_match(captured$scopes, "cloud-platform")
   expect_null(captured$bucket)
 })

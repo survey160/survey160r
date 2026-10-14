@@ -16,7 +16,7 @@
 test_that("question_timestamps parses a question's scriptDate column", {
   ts <- question_timestamps(.mk_export(), "intro")
   expect_s3_class(ts, "POSIXct")
-  expect_equal(length(ts), 3L)
+  expect_length(ts, 3L)
   expect_true(all(!is.na(ts)))
   expect_equal(attr(ts, "tzone"), "UTC")
 })

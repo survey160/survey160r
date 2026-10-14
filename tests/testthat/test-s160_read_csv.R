@@ -75,7 +75,7 @@ test_that("s160_csv_header makes colliding munged names unique", {
   hdr <- s160_csv_header(tmp)
   expect_length(hdr, 3L)
   expect_false(anyDuplicated(hdr) > 0L)
-  expect_true("campaignid" %in% hdr)
+  expect_contains(hdr, "campaignid")
   expect_true(all(grepl("^id\\.q1\\.scriptDate", hdr[1:2])))
 })
 
