@@ -119,7 +119,7 @@ test_that("every tier s160_datasets advertises actually resolves", {
 test_that("s160_config returns the bundled environment config", {
   cfg <- s160_config()
   expect_type(cfg, "list")
-  expect_true(cfg$schema_version == 1)
+  expect_equal(cfg$schema_version, 1)
   expect_setequal(names(cfg$environments), c("prod", "staging", "dev"))
   expect_equal(cfg$environments$prod$api_url, "https://api.survey160.com")
   expect_equal(cfg$environments$dev$api_url, "https://dev-api.survey160.com")
@@ -131,11 +131,12 @@ test_that("s160_config returns the bundled environment config", {
 })
 
 test_that("s160_config(refresh = TRUE) drops the cache and reloads", {
+  withr::defer(survey160r:::s160_config(refresh = TRUE))  # never leak the sentinel
   s160_config()  # ensure the cache is populated
   cache <- survey160r:::.config_cache          # same env, mutate in place
   cache$value <- list(schema_version = "sentinel")
   expect_equal(s160_config()$schema_version, "sentinel")       # cache is honored
-  expect_true(s160_config(refresh = TRUE)$schema_version == 1)  # reloaded fresh
+  expect_equal(s160_config(refresh = TRUE)$schema_version, 1)  # reloaded fresh
 })
 
 test_that("dataset_object returns the object path, or NULL", {

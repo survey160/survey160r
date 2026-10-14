@@ -37,14 +37,15 @@ testthat::test_file("tests/testthat/test-latency_run.R")
 
 ## Mocking
 
-The suite uses `testthat::local_mocked_bindings()` (testthat 3.x) for almost everything. `mockery::stub` is retained in two `test-s160_gcs_init.R` spots where `local_mocked_bindings` can't reach: (1) `system.file` -- the base-namespace lookup happens before the rebind takes effect; (2) forcing `interactive() == TRUE` inside `covr::package_coverage()`'s non-interactive subprocess. `interactive() == FALSE` mocks via `local_mocked_bindings(.package = "base")` work fine elsewhere. New tests should always default to `local_mocked_bindings`.
+The suite uses `testthat::local_mocked_bindings()` (testthat 3.x) for almost everything. `mockery::stub` is retained where `local_mocked_bindings` can't reach or would be too broad: in `test-s160_gcs_init.R`, (1) `system.file` -- the base-namespace lookup happens before the rebind takes effect -- and (2) forcing `interactive() == TRUE` inside `covr::package_coverage()`'s non-interactive subprocess; and in `test-gcs_pull_cached.R` / `test-s160_read_csv.R` / `test-resolve_dataset.R`, to stub a base or other-package call (`file.rename`, `file.copy`, `tools::R_user_dir`, ...) inside one function only, where a global base rebind would leak into testthat itself. `interactive() == FALSE` mocks via `local_mocked_bindings(.package = "base")` work fine elsewhere. New tests should always default to `local_mocked_bindings`.
 
 `local_mocked_bindings()` rebinds within the calling test's `local()` scope and auto-restores on exit. When wrapping it in a helper, **always pass `.env = parent.frame()`** so the mock applies in the caller's scope, not the helper's:
 
 ```r
-stub_campaign_list <- function(ids, env = parent.frame()) {
+stub_gcs_base <- function(env = parent.frame()) {
   testthat::local_mocked_bindings(
-    s160_gcs_campaign_results_list = function(bucket = NULL) ids,
+    check_gcs_ready = function() NULL,
+    validate_campaign_id = function(id) as.character(id),
     .env = env
   )
 }
@@ -68,10 +69,8 @@ Prefer a capture env over `<<-` to a free variable — it survives `local_mocked
 
 | Helper | Purpose |
 |---|---|
-| `stub_gcs_base()` | `check_gcs_ready` + `validate_campaign_id` + `gcs_get_global_bucket` no-ops |
+| `stub_gcs_base()` | `check_gcs_ready` + `validate_campaign_id` no-ops |
 | `stub_gcs_download_ok(capture)` | `gcs_get_object` answers the `meta = TRUE` size probe and writes a minimal CSV |
-| `stub_campaign_list(ids)` | mocks `s160_gcs_campaign_results_list` |
-| `gcs_status(name, updated, size)` | builds the list returned by `s160_gcs_*_status` (`updated` accepts an ISO string or POSIXct) |
 
 ### Fixture loaders
 
@@ -128,7 +127,7 @@ duckdb). Every Parquet-path disposition reader must keep that parity.
 
 - **Latency runner tests**: `latency_run()` is now source-agnostic -- it takes caller-supplied `data`. Tests pass a `load_synthetic_data()` frame directly; no I/O boundary to stub. Don't mock `latency_report` unless you specifically need to capture the config it was called with (see `test-latency_run.R`'s "forwards `...` overrides" case).
 - **Reader tests**: `s160_gcs_campaign_results_read` uses `stub_gcs_base()` + `stub_gcs_download_ok()`. `s160_read_csv` reads real files via `tempfile()`.
-- **Times are UTC**: tests pass POSIXct stamps with `tz = "UTC"` explicitly. `gcs_status()` parses character `updated` as UTC.
+- **Times are UTC**: tests pass POSIXct stamps with `tz = "UTC"` explicitly.
 - **Don't share fixture data across tests by file mutation**: each test loads its own copy via `load_synthetic_data()`. The fixture file is read-only.
 - **`# nocov start` / `# nocov end`** is only used for paths that require interactive auth or a live network (e.g. the OAuth bootstrap in `R/s160_gcs.R`). Document the integration test or manual run that exercises them.
 - **Test file names**: `test-<module>.R` matching `R/<module>.R` where possible. Cross-cutting suites (`test-latency_coverage.R`, `test-day_rollup_equivalence.R`, `test-latency_parity_legacy.R`, `test-pull_wrappers.R`) are named after the property under test.

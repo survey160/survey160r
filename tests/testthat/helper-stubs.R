@@ -165,23 +165,6 @@ minimal_synthetic_data <- function(questions = c("intro", "q1", "close"),
   as.data.frame(values, stringsAsFactors = FALSE)
 }
 
-# Build a GCS object-status list as returned by s160_gcs_*_status helpers.
-# `updated` accepts a POSIXct or an ISO-ish string parsed as UTC.
-gcs_status <- function(name = "obj.csv",
-                       updated = "2026-01-01 00:00:00",
-                       size = 1L) {
-  if (is.character(updated)) updated <- as.POSIXct(updated, tz = "UTC")
-  list(name = name, updated = updated, size = size)
-}
-
-# Stub s160_gcs_campaign_results_list to return `ids`.
-stub_campaign_list <- function(ids, env = parent.frame()) {
-  testthat::local_mocked_bindings(
-    s160_gcs_campaign_results_list = function(bucket = NULL) ids,
-    .env = env
-  )
-}
-
 # --- s160_api helpers -----------------------------------------------------
 
 # Seed the package-private API auth env so check_api_ready() passes. Tears
