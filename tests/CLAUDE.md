@@ -10,10 +10,12 @@ tests/
 └── testthat/
     ├── helper-stubs.R          # shared helpers, auto-loaded before all tests
     ├── helper-synthetic.R      # synthetic export / disposition generators (also used by scripts/bench.R)
+    ├── helper-raw-export.R     # synthetic RAW export file (production byte shape) + writer
     ├── fixtures/
     │   ├── synthetic.csv             # canonical Survey160 v2 CSV (4 rows, 1 campaign, 1 day)
     │   ├── synthetic_parity.csv      # 8-question, 6-respondent legacy-parity input
-    │   └── synthetic_cross_hour.csv  # 4 respondents straddling an hour boundary (day-rollup tests)
+    │   ├── synthetic_cross_hour.csv  # 4 respondents straddling an hour boundary (day-rollup tests)
+    │   └── raw_export.csv            # 30-row raw export in the production byte shape (generated)
     └── test-<module>.R         # one file per R/<module>.R (mostly)
 ```
 
@@ -75,6 +77,7 @@ Prefer a capture env over `<<-` to a free variable — it survives `local_mocked
 
 ```r
 synthetic_config()                # latency config matching synthetic.csv
+synthetic_fixture()               # list(data = synthetic.csv via read.csv, config = synthetic_config())
 load_synthetic_data()             # CSV + source_csv_hash/source_csv_path attrs
 load_synthetic_data(mutate = \(d) { d$id.intro.finalText <- NULL; d })
 load_synthetic_parity()           # 8-question, 6-respondent legacy-parity input
@@ -98,6 +101,26 @@ Deterministic for a seed. Use them for property / parity tests that need a campa
 fixtures (`test-synthetic_parity.R`: full vs compact, string vs POSIXct input, fast-path helpers
 vs their reference forms). `scripts/bench.R` sources this file for the perf harness, so keep the
 generators dependency-free and fast.
+
+### Raw exports (helper-raw-export.R)
+
+```r
+lines <- synthetic_raw_export(n = 40L, n_body = 2L, seed = 1L)  # file lines, header first
+path  <- write_raw_export(lines, eol = "\r\n")                 # byte-exact write (LF default)
+```
+
+The bytes a real `<id>_raw_data_download.csv` holds, modeled on a profile of the historical
+export corpus (no real values): every field quoted, bracket headers, `phone` / `userid` repeated
+after the flow, `status` mixing words and carrier codes, `"None"` / `"NA"` tokens, trimmed
+fractional seconds, multilingual text with an embedded line break. Use it for anything that must
+go through the CSV readers (`test-raw_export.R`). `fixtures/raw_export.csv` is
+`synthetic_raw_export(n = 30L, seed = 1L)`; a test fails if the two drift.
+
+### Disposition engines
+
+`with_engine("duckdb" | "nanoparquet", expr)` runs a reader under one engine;
+`expect_engine_parity(expr)` asserts both engines return the identical value (skips without
+duckdb). Every Parquet-path disposition reader must keep that parity.
 
 The `mutate` hook is how you trigger negative paths (drop a column, perturb a value) without copying the CSV. `minimal_synthetic_data()` is preferred when a test only needs a column-shape or one synthetic row -- it has no fixture file dependency.
 
