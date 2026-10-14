@@ -102,187 +102,103 @@ test_that("collapse_summary_to_day: empty frame in -> empty frame out", {
   expect_equal(nrow(collapse_summary_to_day(empty_summary_frame())), 0L)
 })
 
-test_that("build_ineligible_frame: per-segment counts", {
-  cfg <- synthetic_config()
-  # Inline 3-respondent frame: r1 ineligible after q1, r2 ineligible after q2,
-  # r3 not ineligible. Bucketed by intro.batchDate at hour 16 EST.
-  d <- data.frame(
-    campaignid = c(1L, 1L, 1L),
-    userid = c("r1", "r2", "r3"),
-    id.intro.finalText = c("Yes", "Yes", "Yes"),
-    id.intro.scriptDate = rep("2026-01-26 21:00:00.000000Z", 3),
-    id.intro.batchDate = rep("2026-01-26 21:00:30.000000Z", 3),
-    id.q1.scriptDate = rep("2026-01-26 21:01:00.000000Z", 3),
-    id.q1.batchDate = c("",                                       # r1 stops here
-                       "2026-01-26 21:01:30.000000Z",
-                       "2026-01-26 21:01:30.000000Z"),
-    id.q2.scriptDate = c("",
-                         "2026-01-26 21:02:00.000000Z",
-                         "2026-01-26 21:02:00.000000Z"),
-    id.q2.batchDate = c("", "", "2026-01-26 21:02:30.000000Z"),
-    id.close.scriptDate = c("", "", "2026-01-26 21:03:00.000000Z"),
-    id.ineligible.scriptDate = c("2026-01-26 21:01:05.000000Z",
-                                 "2026-01-26 21:02:05.000000Z",
-                                 ""),
-    stringsAsFactors = FALSE
-  )
-  inelig <- build_ineligible_frame(d, cfg)
-  # r1 last reached = q1 (index 2 in questions), segment_index = 1 (intro->q1)
-  # r2 last reached = q2 (index 3), segment_index = 2 (q1->q2)
-  expect_setequal(inelig$segment_index, c(1L, 2L))
-  expect_equal(inelig$n_ineligible[inelig$segment_index == 1L], 1L)
-  expect_equal(inelig$n_ineligible[inelig$segment_index == 2L], 1L)
-})
+# The refusal and ineligible terminals share one shape: a per-segment count of
+# respondents sent the terminal question, keyed by the last flow question they
+# reached. Each case runs against both.
+terminal_cases <- list(
+  ineligible = list(build = build_ineligible_frame, collapse = collapse_ineligible_to_day,
+                    empty = empty_ineligible_frame, count = "n_ineligible"),
+  refusal = list(build = build_refusal_frame, collapse = collapse_refusal_to_day,
+                 empty = empty_refusal_frame, count = "n_refused")
+)
 
-test_that("build_ineligible_frame: zero rows / no inelig column / no inelig values", {
-  cfg <- synthetic_config()
-  # zero rows
-  expect_equal(nrow(build_ineligible_frame(
-    minimal_synthetic_data(with_rows = FALSE), cfg
-  )), 0L)
-  # column missing entirely
-  d_no_col <- load_synthetic_data(mutate = function(d) {
-    d$id.ineligible.scriptDate <- NULL
-    d
+for (terminal in names(terminal_cases)) {
+  tc <- terminal_cases[[terminal]]
+  terminal_col <- sprintf("id.%s.scriptDate", terminal)
+
+  test_that(sprintf("build_%s_frame: per-segment counts", terminal), {
+    cfg <- synthetic_config()
+    # Inline 3-respondent frame: r1 sent the terminal after q1, r2 after q2,
+    # r3 never. Bucketed by intro.batchDate at hour 16 EST.
+    d <- data.frame(
+      campaignid = c(1L, 1L, 1L),
+      userid = c("r1", "r2", "r3"),
+      id.intro.finalText = c("Yes", "Yes", "Yes"),
+      id.intro.scriptDate = rep("2026-01-26 21:00:00.000000Z", 3),
+      id.intro.batchDate = rep("2026-01-26 21:00:30.000000Z", 3),
+      id.q1.scriptDate = rep("2026-01-26 21:01:00.000000Z", 3),
+      id.q1.batchDate = c("",                                       # r1 stops here
+                         "2026-01-26 21:01:30.000000Z",
+                         "2026-01-26 21:01:30.000000Z"),
+      id.q2.scriptDate = c("",
+                           "2026-01-26 21:02:00.000000Z",
+                           "2026-01-26 21:02:00.000000Z"),
+      id.q2.batchDate = c("", "", "2026-01-26 21:02:30.000000Z"),
+      id.close.scriptDate = c("", "", "2026-01-26 21:03:00.000000Z"),
+      stringsAsFactors = FALSE
+    )
+    d[[terminal_col]] <- c("2026-01-26 21:01:05.000000Z", "2026-01-26 21:02:05.000000Z", "")
+    out <- tc$build(d, cfg)
+    # r1 last reached = q1 (index 2 in questions), segment_index = 1 (intro->q1)
+    # r2 last reached = q2 (index 3), segment_index = 2 (q1->q2)
+    expect_setequal(out$segment_index, c(1L, 2L))
+    expect_identical(out[[tc$count]][order(out$segment_index)], c(1L, 1L))
   })
-  expect_equal(nrow(build_ineligible_frame(d_no_col, cfg)), 0L)
-  # column present but all blank
-  d_all_blank <- load_synthetic_data(mutate = function(d) {
-    d$id.ineligible.scriptDate <- ""
-    d
+
+  test_that(sprintf("build_%s_frame: zero rows / no %s column / no %s values",
+                    terminal, terminal, terminal), {
+    cfg <- synthetic_config()
+    expect_identical(nrow(tc$build(minimal_synthetic_data(with_rows = FALSE), cfg)), 0L)
+    d_no_col <- load_synthetic_data(mutate = function(d) {
+      d[[terminal_col]] <- NULL
+      d
+    })
+    expect_identical(nrow(tc$build(d_no_col, cfg)), 0L)
+    d_all_blank <- load_synthetic_data(mutate = function(d) {
+      d[[terminal_col]] <- ""
+      d
+    })
+    expect_identical(nrow(tc$build(d_all_blank, cfg)), 0L)
   })
-  expect_equal(nrow(build_ineligible_frame(d_all_blank, cfg)), 0L)
-})
 
-test_that("build_ineligible_frame: respondent who only reached intro is dropped", {
-  cfg <- synthetic_config()
-  d <- data.frame(
-    campaignid = 1L,
-    userid = "r1",
-    id.intro.finalText = "Yes",
-    id.intro.scriptDate = "2026-01-26 21:00:00.000000Z",
-    id.intro.batchDate = "2026-01-26 21:00:30.000000Z",
-    id.q1.scriptDate = "",  # never reached q1
-    id.q1.batchDate = "",
-    id.q2.scriptDate = "",
-    id.q2.batchDate = "",
-    id.close.scriptDate = "",
-    id.ineligible.scriptDate = "2026-01-26 21:00:45.000000Z",
-    stringsAsFactors = FALSE
-  )
-  expect_equal(nrow(build_ineligible_frame(d, cfg)), 0L)
-})
-
-test_that("collapse_ineligible_to_day: sums hourly per (campaign, date, segment)", {
-  hourly <- data.frame(
-    campaign_id = c(1L, 1L, 1L),
-    date = as.Date(c("2026-01-26", "2026-01-26", "2026-01-26")),
-    hour_local = c(15L, 16L, 16L),
-    segment_index = c(1L, 1L, 2L),
-    n_ineligible = c(2L, 3L, 5L),
-    stringsAsFactors = FALSE
-  )
-  day <- collapse_ineligible_to_day(hourly)
-  expect_setequal(day$segment_index, c(1L, 2L))
-  expect_equal(day$n_ineligible[day$segment_index == 1L], 5L)
-  expect_equal(day$n_ineligible[day$segment_index == 2L], 5L)
-  expect_true(all(is.na(day$hour_local)))
-})
-
-test_that("collapse_ineligible_to_day: empty frame in -> empty frame out", {
-  expect_equal(nrow(collapse_ineligible_to_day(empty_ineligible_frame())), 0L)
-})
-
-test_that("build_refusal_frame: per-segment counts", {
-  cfg <- synthetic_config()
-  # Inline 3-respondent frame: r1 refused after q1, r2 refused after q2,
-  # r3 not refused. Bucketed by intro.batchDate at hour 16 EST.
-  d <- data.frame(
-    campaignid = c(1L, 1L, 1L),
-    userid = c("r1", "r2", "r3"),
-    id.intro.finalText = c("Yes", "Yes", "Yes"),
-    id.intro.scriptDate = rep("2026-01-26 21:00:00.000000Z", 3),
-    id.intro.batchDate = rep("2026-01-26 21:00:30.000000Z", 3),
-    id.q1.scriptDate = rep("2026-01-26 21:01:00.000000Z", 3),
-    id.q1.batchDate = c("",                                       # r1 stops here
-                       "2026-01-26 21:01:30.000000Z",
-                       "2026-01-26 21:01:30.000000Z"),
-    id.q2.scriptDate = c("",
-                         "2026-01-26 21:02:00.000000Z",
-                         "2026-01-26 21:02:00.000000Z"),
-    id.q2.batchDate = c("", "", "2026-01-26 21:02:30.000000Z"),
-    id.close.scriptDate = c("", "", "2026-01-26 21:03:00.000000Z"),
-    id.refusal.scriptDate = c("2026-01-26 21:01:05.000000Z",
-                              "2026-01-26 21:02:05.000000Z",
-                              ""),
-    stringsAsFactors = FALSE
-  )
-  refused <- build_refusal_frame(d, cfg)
-  # r1 last reached = q1 (index 2 in questions), segment_index = 1 (intro->q1)
-  # r2 last reached = q2 (index 3), segment_index = 2 (q1->q2)
-  expect_setequal(refused$segment_index, c(1L, 2L))
-  expect_equal(refused$n_refused[refused$segment_index == 1L], 1L)
-  expect_equal(refused$n_refused[refused$segment_index == 2L], 1L)
-})
-
-test_that("build_refusal_frame: zero rows / no refusal column / no refusal values", {
-  cfg <- synthetic_config()
-  # zero rows
-  expect_equal(nrow(build_refusal_frame(
-    minimal_synthetic_data(with_rows = FALSE), cfg
-  )), 0L)
-  # column missing entirely
-  d_no_col <- load_synthetic_data(mutate = function(d) {
-    d$id.refusal.scriptDate <- NULL
-    d
+  test_that(sprintf("build_%s_frame: respondent who only reached intro is dropped", terminal), {
+    cfg <- synthetic_config()
+    d <- data.frame(
+      campaignid = 1L,
+      userid = "r1",
+      id.intro.finalText = "Yes",
+      id.intro.scriptDate = "2026-01-26 21:00:00.000000Z",
+      id.intro.batchDate = "2026-01-26 21:00:30.000000Z",
+      id.q1.scriptDate = "",  # never reached q1
+      id.q1.batchDate = "",
+      id.q2.scriptDate = "",
+      id.q2.batchDate = "",
+      id.close.scriptDate = "",
+      stringsAsFactors = FALSE
+    )
+    d[[terminal_col]] <- "2026-01-26 21:00:45.000000Z"
+    expect_identical(nrow(tc$build(d, cfg)), 0L)
   })
-  expect_equal(nrow(build_refusal_frame(d_no_col, cfg)), 0L)
-  # column present but all blank
-  d_all_blank <- load_synthetic_data(mutate = function(d) {
-    d$id.refusal.scriptDate <- ""
-    d
+
+  test_that(sprintf("collapse_%s_to_day: sums hourly per (campaign, date, segment)", terminal), {
+    hourly <- data.frame(
+      campaign_id = c(1L, 1L, 1L),
+      date = as.Date(c("2026-01-26", "2026-01-26", "2026-01-26")),
+      hour_local = c(15L, 16L, 16L),
+      segment_index = c(1L, 1L, 2L),
+      stringsAsFactors = FALSE
+    )
+    hourly[[tc$count]] <- c(2L, 3L, 5L)
+    day <- tc$collapse(hourly)
+    expect_setequal(day$segment_index, c(1L, 2L))
+    expect_identical(day[[tc$count]][order(day$segment_index)], c(5L, 5L))
+    expect_true(all(is.na(day$hour_local)))
   })
-  expect_equal(nrow(build_refusal_frame(d_all_blank, cfg)), 0L)
-})
 
-test_that("build_refusal_frame: respondent who only reached intro is dropped", {
-  cfg <- synthetic_config()
-  d <- data.frame(
-    campaignid = 1L,
-    userid = "r1",
-    id.intro.finalText = "Yes",
-    id.intro.scriptDate = "2026-01-26 21:00:00.000000Z",
-    id.intro.batchDate = "2026-01-26 21:00:30.000000Z",
-    id.q1.scriptDate = "",  # never reached q1
-    id.q1.batchDate = "",
-    id.q2.scriptDate = "",
-    id.q2.batchDate = "",
-    id.close.scriptDate = "",
-    id.refusal.scriptDate = "2026-01-26 21:00:45.000000Z",
-    stringsAsFactors = FALSE
-  )
-  expect_equal(nrow(build_refusal_frame(d, cfg)), 0L)
-})
-
-test_that("collapse_refusal_to_day: sums hourly per (campaign, date, segment)", {
-  hourly <- data.frame(
-    campaign_id = c(1L, 1L, 1L),
-    date = as.Date(c("2026-01-26", "2026-01-26", "2026-01-26")),
-    hour_local = c(15L, 16L, 16L),
-    segment_index = c(1L, 1L, 2L),
-    n_refused = c(2L, 3L, 5L),
-    stringsAsFactors = FALSE
-  )
-  day <- collapse_refusal_to_day(hourly)
-  expect_setequal(day$segment_index, c(1L, 2L))
-  expect_equal(day$n_refused[day$segment_index == 1L], 5L)
-  expect_equal(day$n_refused[day$segment_index == 2L], 5L)
-  expect_true(all(is.na(day$hour_local)))
-})
-
-test_that("collapse_refusal_to_day: empty frame in -> empty frame out", {
-  expect_equal(nrow(collapse_refusal_to_day(empty_refusal_frame())), 0L)
-})
+  test_that(sprintf("collapse_%s_to_day: empty frame in -> empty frame out", terminal), {
+    expect_identical(nrow(tc$collapse(tc$empty())), 0L)
+  })
+}
 
 test_that("population_filter_mask: NULL / empty expr returns all-TRUE", {
   d <- load_synthetic_data()
