@@ -71,6 +71,8 @@ Prefer a capture env over `<<-` to a free variable — it survives `local_mocked
 |---|---|
 | `stub_gcs_base()` | `check_gcs_ready` + `validate_campaign_id` no-ops |
 | `stub_gcs_download_ok(capture)` | `gcs_get_object` answers the `meta = TRUE` size probe and writes a minimal CSV |
+| `written_size(lines)` | bytes `writeLines(lines)` puts on disk -- the size a metadata probe should report |
+| `stub_no_sleep(capture)` | mocks `Sys.sleep`; records the waits in `capture$waits` |
 
 ### Fixture loaders
 
@@ -122,6 +124,8 @@ go through the CSV readers (`test-raw_export.R`). `fixtures/raw_export.csv` is
 `with_engine("duckdb" | "nanoparquet", expr)` runs a reader under one engine;
 `expect_engine_parity(expr)` asserts both engines return the identical value (skips without
 duckdb). Every Parquet-path disposition reader must keep that parity.
+`stub_duckdb_created_by()` makes nanoparquet report a DuckDB `created_by`, so the nanoparquet
+engine takes its DuckDB-written-file path on a fixture it wrote itself.
 
 ## Conventions
 

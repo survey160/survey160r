@@ -140,7 +140,7 @@ test_that("a numeric stored phone falls back to the in-R match", {
   p <- write_disposition_parquet(d)
   res <- with_engine("duckdb", disposition_summary(p, phones = "2015550101"))
   expect_equal(res$n_campaigns, 2L)
-  expect_identical(res, with_engine("nanoparquet", disposition_summary(p, phones = "2015550101")))
+  expect_engine_parity(disposition_summary(p, phones = "2015550101"))
 })
 
 test_that("a projection without a phone column errors under either engine", {
@@ -156,14 +156,7 @@ test_that("a projection without a phone column errors under either engine", {
 
 test_that("a DuckDB-written file with no phone column errors on the nanoparquet engine", {
   p <- write_disposition_parquet(data.frame(campaign_id = 1L, engaged = 1L))
-  real_metadata <- nanoparquet::read_parquet_metadata
-  local_mocked_bindings(
-    read_parquet_metadata = function(file) {
-      m <- real_metadata(file)
-      m$file_meta_data$created_by <- "DuckDB version v1.5.2"
-      m
-    },
-    .package = "nanoparquet")
+  stub_duckdb_created_by()
   expect_error(with_engine("nanoparquet", disposition_screen(data.frame(phone = "1"), p)),
                "missing required column")
 })
@@ -419,21 +412,16 @@ test_that("an ordinary projection stays on the duckdb path (no nanoparquet read)
 test_that("the nanoparquet engine column-projects a DuckDB-written file", {
   p <- .engine_fixture()
   captured <- new_capture()
-  real_metadata <- nanoparquet::read_parquet_metadata
+  stub_duckdb_created_by()
   real_read <- nanoparquet::read_parquet
   local_mocked_bindings(
-    read_parquet_metadata = function(file) {
-      m <- real_metadata(file)
-      m$file_meta_data$created_by <- "DuckDB version v1.5.2"
-      m
-    },
     read_parquet = function(file, col_select = NULL, ...) {
       captured$col_select <- col_select
       real_read(file, col_select = col_select, ...)
     },
     .package = "nanoparquet")
   with_engine("nanoparquet", disposition_summary(p))
-  expect_false(is.null(captured$col_select))
+  expect_type(captured$col_select, "character")  # projected by name
 })
 
 test_that("disposition_funnel's in-scan aggregation matches the in-R grouping", {
@@ -464,18 +452,10 @@ test_that("disposition_funnel falls back to the in-R grouping when the scan cann
                      engaged = c(1L, 0L, 1L), opted_in = 0L, completed = c(NA, 0L, 1L),
                      carrier = c("a", "a", NA), n_sent = 1L,
                      disposition_date = as.Date("2026-03-01"), stringsAsFactors = FALSE)
-  both <- function(path, ...) {
-    list(with_engine("duckdb", disposition_funnel(path, ...)),
-         with_engine("nanoparquet", disposition_funnel(path, ...)))
-  }
-  same <- function(path, ...) {
-    r <- both(path, ...)
-    expect_identical(r[[1]], r[[2]])
-  }
   # No refused / ineligible columns: the scan defaults them to 0 like the R path.
   p <- write_disposition_parquet(base)
   expect_false(is.null(with_engine("duckdb", .disposition_funnel_duckdb(p, "carrier"))))
-  same(p, grain = "all")
+  expect_engine_parity(disposition_funnel(p, grain = "all"))
   # A group column named like a count -> declined, grouped in R.
   expect_null(with_engine("duckdb", .disposition_funnel_duckdb(p, "n_sent")))
   # A missing column -> declined, so the R path raises its usual error.
@@ -485,15 +465,15 @@ test_that("disposition_funnel falls back to the in-R grouping when the scan cann
   # A non-numeric flag column -> declined.
   pb <- write_disposition_parquet(transform(base, engaged = engaged == 1L))
   expect_null(with_engine("duckdb", .disposition_funnel_duckdb(pb, "carrier")))
-  same(pb, grain = "all")
+  expect_engine_parity(disposition_funnel(pb, grain = "all"))
   # A DOUBLE flag (a NaN R skips, a fractional sum) -> declined, grouped in R.
   pd <- write_disposition_parquet(transform(base, engaged = c(NaN, 0.1, 0.9)))
   expect_null(with_engine("duckdb", .disposition_funnel_duckdb(pd, "carrier")))
-  same(pd, grain = "all")
+  expect_engine_parity(disposition_funnel(pd, grain = "all"))
   # A zero-row file -> declined, so the typed empty frame comes from the R path.
   pe <- write_disposition_parquet(base[0L, ])
   expect_null(with_engine("duckdb", .disposition_funnel_duckdb(pe, "carrier")))
-  same(pe)
+  expect_engine_parity(disposition_funnel(pe))
   # A non-plain column type (TIMESTAMP) -> declined.
   pt <- write_disposition_parquet(transform(base, at = as.POSIXct("2026-03-01", tz = "UTC")))
   expect_null(with_engine("duckdb", .disposition_funnel_duckdb(pt, "at")))
@@ -552,12 +532,10 @@ test_that("the scan pre-filter keeps the whole-file all-NA-date warning and skip
               transform(base, disposition_date = c("2026-01-01", "2026-01-02")))
   for (d in odd) {
     po <- write_disposition_parquet(d)
-    expect_identical(
-      with_engine("duckdb", disposition_records(po, campaign_ids = 1)),
-      with_engine("nanoparquet", disposition_records(po, campaign_ids = 1)))
+    expect_engine_parity(disposition_records(po, campaign_ids = 1))
   }
   con <- DBI::dbConnect(duckdb::duckdb())
-  on.exit(DBI::dbDisconnect(con, shutdown = TRUE))
+  withr::defer(DBI::dbDisconnect(con, shutdown = TRUE))
   schema <- data.frame(column_name = c("campaign_id", "disposition_date"),
                        column_type = c("DOUBLE", "VARCHAR"))
   expect_identical(.disposition_scan_where(con, schema, list(campaign_ids = 1,

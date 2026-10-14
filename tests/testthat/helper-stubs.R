@@ -365,6 +365,20 @@ with_engine <- function(engine, expr) {
   withr::with_options(list(survey160r.disposition_engine = engine), expr)
 }
 
+# Make every Parquet file report a DuckDB `created_by`, so the nanoparquet
+# engine takes its DuckDB-written-file path (column projection) on a fixture
+# nanoparquet itself wrote.
+stub_duckdb_created_by <- function(env = parent.frame()) {
+  real_metadata <- nanoparquet::read_parquet_metadata
+  testthat::local_mocked_bindings(
+    read_parquet_metadata = function(file) {
+      m <- real_metadata(file)
+      m$file_meta_data$created_by <- "DuckDB version v1.5.2"
+      m
+    },
+    .package = "nanoparquet", .env = env)
+}
+
 # Expect `expr` to give the identical value under the duckdb and nanoparquet
 # engines -- the contract every Parquet-path disposition reader keeps. Skips
 # when duckdb is not installed.
