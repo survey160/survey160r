@@ -131,7 +131,7 @@ duckdb). Every Parquet-path disposition reader must keep that parity.
 - **Times are UTC**: tests pass POSIXct stamps with `tz = "UTC"` explicitly. `gcs_status()` parses character `updated` as UTC.
 - **Don't share fixture data across tests by file mutation**: each test loads its own copy via `load_synthetic_data()`. The fixture file is read-only.
 - **`# nocov start` / `# nocov end`** is only used for paths that require interactive auth or a live network (e.g. the OAuth bootstrap in `R/s160_gcs.R`). Document the integration test or manual run that exercises them.
-- **Test file names**: `test-<module>.R` matching `R/<module>.R` where possible. Cross-cutting suites (`test-latency_coverage.R`, `test-day_rollup_equivalence.R`, `test-latency_parity_legacy.R`) are named after the property under test.
+- **Test file names**: `test-<module>.R` matching `R/<module>.R` where possible. Cross-cutting suites (`test-latency_coverage.R`, `test-day_rollup_equivalence.R`, `test-latency_parity_legacy.R`, `test-pull_wrappers.R`) are named after the property under test.
 
 ## Adding a new test file
 
