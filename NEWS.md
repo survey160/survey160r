@@ -1,5 +1,23 @@
 # survey160r (development version)
 
+## Bug fixes
+
+* `disposition_run()` no longer counts a literal `"NA"` in an export's
+  `error_code` column as a delivery-error code. Some historical exports write
+  `"NA"` (quoted) for "no error", and the CSV reader keeps a quoted `"NA"` as
+  text in a character column, so those records reported `error = "NA"` and
+  inflated `n_error`. It now maps to `NA`, like a blank or `"None"`.
+
+## Tests: real-shape raw exports
+
+* A synthetic raw-export generator (`helper-raw-export.R`) and a committed
+  fixture (`fixtures/raw_export.csv`) reproduce the byte-level shape of the
+  historical export corpus: quoted fields, duplicated `phone` / `userid`
+  headers, CRLF files, multilingual text with embedded line breaks, numeric
+  carrier codes in `status`, `"None"` / `"NA"` tokens, and trimmed fractional
+  seconds. New end-to-end tests run the readers, `latency_run()` and
+  `disposition_run()` on it.
+
 ## Performance: the disposition readers on a 16 GB laptop
 
 The Parquet-path readers now push their work into the DuckDB scan (when

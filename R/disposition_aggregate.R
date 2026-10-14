@@ -91,8 +91,10 @@
 # integer, an all-blank column (a campaign with no errors -- the common case)
 # logical, only a column carrying "None"/alpha stays character -- so as.character()
 # re-renders it. Real 4-5 digit carrier codes have no leading zeros, so the
-# string is stable. Blank / whitespace / "None" / a reader-supplied NA all
-# normalize to NA, so `error` is NA whenever the export carries no usable code.
+# string is stable. Blank / whitespace / "None" / a literal "NA" (some exports
+# write it, quoted, and fread keeps a quoted "NA" as text in a character column)
+# / a reader-supplied NA all normalize to NA, so `error` is NA whenever the
+# export carries no usable code.
 # Null-safe (column absent -> all NA), mirroring the masks.
 .disposition_error <- function(data) {
   ec <- data[["error_code"]]
@@ -102,7 +104,7 @@
   ec <- trimws(as.character(ec))
   # is.na() leads so the logical index never itself contains NA (a NA index
   # would be a silent no-op here, correct but fragile); a reader NA stays NA.
-  ec[is.na(ec) | ec == "" | ec == "None"] <- NA_character_
+  ec[is.na(ec) | ec == "" | ec == "None" | ec == "NA"] <- NA_character_
   ec
 }
 
