@@ -74,8 +74,10 @@ synthetic_raw_export <- function(n = 40L, n_body = 2L, seed = 1L,
   cell <- matrix("", n, length(questions) * length(fields))
   colnames(cell) <- paste0("id[", rep(questions, each = length(fields)), "]",
                            rep(fields, length(questions)))
+  frame <- environment()
   put <- function(q, field, rows, value) {
-    cell[rows, sprintf("id[%s]%s", q, field)] <<- value
+    cell[rows, sprintf("id[%s]%s", q, field)] <- value
+    assign("cell", cell, envir = frame)
   }
   at <- base
   put("intro", "scriptDate", TRUE, ts(at))
