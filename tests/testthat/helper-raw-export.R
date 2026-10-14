@@ -111,9 +111,10 @@ synthetic_raw_export <- function(n = 40L, n_body = 2L, seed = 1L,
   terminal("refusal", answer == "no")
   terminal("ineligible", answer == "screen")
   put("close", "finalType", walk, "closed")
-  if (embedded_newline && n >= 3L) {
-    # One reply spans two lines inside its quotes, as a few exports do.
-    put("intro", "batchText", 3L, "Yes\nplease")
+  yes_reply <- which(answer == "yes")
+  if (embedded_newline && length(yes_reply) > 0L) {
+    # One "Yes" reply spans two lines inside its quotes, as a few exports do.
+    put("intro", "batchText", yes_reply[[1L]], "Yes\nplease")
   }
   if (na_timestamps > 0) {
     blank <- which(!replied)

@@ -88,6 +88,8 @@ minimal_synthetic_data(           # programmatic builder; no file I/O
 )
 ```
 
+The `mutate` hook is how you trigger negative paths (drop a column, perturb a value) without copying the CSV. `minimal_synthetic_data()` is preferred when a test only needs a column-shape or one synthetic row -- it has no fixture file dependency.
+
 ### Synthetic generators (helper-synthetic.R)
 
 ```r
@@ -121,8 +123,6 @@ go through the CSV readers (`test-raw_export.R`). `fixtures/raw_export.csv` is
 `with_engine("duckdb" | "nanoparquet", expr)` runs a reader under one engine;
 `expect_engine_parity(expr)` asserts both engines return the identical value (skips without
 duckdb). Every Parquet-path disposition reader must keep that parity.
-
-The `mutate` hook is how you trigger negative paths (drop a column, perturb a value) without copying the CSV. `minimal_synthetic_data()` is preferred when a test only needs a column-shape or one synthetic row -- it has no fixture file dependency.
 
 ## Conventions
 

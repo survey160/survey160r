@@ -54,7 +54,12 @@ test_that("s160_read_csv reads the raw shape: munged names, repeated headers, ty
 
 test_that("multilingual text and an embedded line break survive the read", {
   d <- s160_read_csv(raw_fixture())
-  expect_identical(d$id.intro.batchText[[3L]], "Yes\nplease")
+  multiline <- which(grepl("\n", d$id.intro.batchText, fixed = TRUE))
+  expect_length(multiline, 1L)
+  expect_identical(d$id.intro.batchText[[multiline]], "Yes\nplease")
+  # It is a real reply: stamped, with the intro's final answer.
+  expect_true(stamped(d$id.intro.batchDate[[multiline]]))
+  expect_identical(d$id.intro.finalText[[multiline]], "Yes")
   close_text <- d$id.close.scriptText[nzchar(d$id.close.scriptText)][[1L]]
   expect_identical(Encoding(close_text), "UTF-8")
   expect_match(close_text, "回覆", fixed = TRUE)
