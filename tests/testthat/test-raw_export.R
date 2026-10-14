@@ -107,7 +107,7 @@ test_that("latency_run ignores where the non-flow columns sit", {
   # relative order); every other column may sit anywhere.
   d <- s160_read_csv(raw_fixture())
   flow <- grep("^id\\.", names(d))
-  set.seed(9)
+  withr::local_seed(9)
   other <- sample(setdiff(seq_along(d), flow))
   shuffled <- d[, c(other[1:5], flow, other[-(1:5)]), drop = FALSE]
   attributes(shuffled)[c("source_csv_hash", "source_csv_path")] <-

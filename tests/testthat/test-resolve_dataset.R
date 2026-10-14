@@ -50,7 +50,7 @@ test_that("resolve_dataset's staging hint fires only for a missing staging tier"
   msg <- tryCatch(survey160r:::resolve_dataset("x", "dev"),
                   error = function(e) conditionMessage(e))
   expect_match(msg, "x.*no dev tier.*prod")
-  expect_false(grepl("aggregated into prod", msg))
+  expect_no_match(msg, "aggregated into prod")
 })
 
 test_that("resolve_dataset errors on an unknown dataset", {

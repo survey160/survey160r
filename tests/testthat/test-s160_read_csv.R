@@ -8,7 +8,7 @@ test_that("s160_read_csv stamps source_csv_hash and source_csv_path", {
 
   expect_s3_class(data, "data.frame")
   expect_equal(nrow(data), 2L)
-  expect_true(grepl("^sha256:", attr(data, "source_csv_hash")))
+  expect_match(attr(data, "source_csv_hash"), "^sha256:")
   expect_equal(attr(data, "source_csv_path"), tmp)
   # stringsAsFactors defaults to FALSE.
   expect_type(data$a, "integer")
@@ -39,7 +39,7 @@ test_that("s160_read_csv result is consumable by latency_run downstream", {
   data <- s160_read_csv(fx_path)
   result <- latency_run(campaign_id = 1, data = data)
   expect_equal(result$meta$source_csv_path, fx_path)
-  expect_true(grepl("^sha256:", result$meta$source_csv_hash))
+  expect_match(result$meta$source_csv_hash, "^sha256:")
 })
 
 test_that("s160_read_csv hash = FALSE skips the hashing pass", {

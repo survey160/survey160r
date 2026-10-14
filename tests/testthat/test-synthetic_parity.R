@@ -60,7 +60,7 @@ test_that("a population filter and a date filter give the same answer on both la
 })
 
 test_that(".local_date_hour matches the format()-based conversion across zones and DST edges", {
-  set.seed(3)
+  withr::local_seed(3)
   x <- as.POSIXct("2026-01-01", tz = "UTC") + stats::runif(5000, 0, 400 * 86400)
   x[sample(5000, 50)] <- NA
   # Exact DST transition instants for America/New_York (2026-03-08 / 2026-11-01).
@@ -75,7 +75,7 @@ test_that(".local_date_hour matches the format()-based conversion across zones a
 })
 
 test_that(".chain_break_mask reproduces apply_chain_validity segment by segment", {
-  set.seed(9)
+  withr::local_seed(9)
   n <- 200L
   priors <- lapply(1:5, function(i) {
     p <- as.POSIXct("2026-03-01", tz = "UTC") + stats::runif(n, 0, 3600)

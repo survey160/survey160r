@@ -38,7 +38,7 @@ synthetic_raw_export <- function(n = 40L, n_body = 2L, seed = 1L,
                                  eol = "\n", na_timestamps = 0,
                                  embedded_newline = TRUE,
                                  extra_questions = character(0)) {
-  set.seed(seed)
+  withr::local_seed(seed)  # same draws as set.seed(), caller RNG restored
   body <- if (n_body > 0L) sprintf("q%d", seq_len(n_body)) else character(0)
   questions <- c("intro", body, extra_questions, "refusal", "ineligible", "close")
   fields <- c("scriptDate", "scriptText", "scriptAgentUserId", "batchDate",
