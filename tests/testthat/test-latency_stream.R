@@ -3,11 +3,6 @@
 # full-frame path, so most tests assert that parity; the tail exercises the
 # helper edge branches directly for full coverage.
 
-.load_synthetic_stream <- function() {
-  data <- read.csv(test_path("fixtures/synthetic.csv"), stringsAsFactors = FALSE)
-  list(data = data, config = synthetic_config())
-}
-
 .expect_compact_parity <- function(data, config, run_at) {
   full <- latency_report(data, config, run_at = run_at, compact = FALSE)
   comp <- latency_report(data, config, run_at = run_at, compact = TRUE)
@@ -21,7 +16,7 @@
 }
 
 test_that("compact path is byte-identical to the full path (synthetic fixture)", {
-  fx <- .load_synthetic_stream()
+  fx <- synthetic_fixture()
   .expect_compact_parity(fx$data, fx$config, as.POSIXct("2026-01-01", tz = "UTC"))
 })
 
@@ -45,7 +40,7 @@ test_that("compact parity holds with a heavy NA-date bucket (all drop at intro)"
 })
 
 test_that("compact parity holds when every batchDate is NA (kept frame empty)", {
-  fx <- .load_synthetic_stream()
+  fx <- synthetic_fixture()
   # Null every batchDate so every segment's prior endpoint is NA -> all rows are
   # NA-date, the kept frame is empty, and diagnostics take the used == 0 branch;
   # the full path lands on the same values.
@@ -58,19 +53,19 @@ test_that("compact parity holds when every batchDate is NA (kept frame empty)", 
 })
 
 test_that("compact parity holds with a parse failure at the intro batchDate", {
-  fx <- .load_synthetic_stream()
+  fx <- synthetic_fixture()
   fx$data$id.intro.batchDate[1] <- "not-a-timestamp"
   .expect_compact_parity(fx$data, fx$config, as.POSIXct("2026-01-01", tz = "UTC"))
 })
 
 test_that("compact parity holds on empty input", {
-  fx <- .load_synthetic_stream()
+  fx <- synthetic_fixture()
   .expect_compact_parity(fx$data[0, , drop = FALSE], fx$config,
                          as.POSIXct("2026-01-01", tz = "UTC"))
 })
 
 test_that("latency_run forwards compact to latency_report", {
-  fx <- .load_synthetic_stream()
+  fx <- synthetic_fixture()
   run_at <- as.POSIXct("2026-01-01", tz = "UTC")
   full <- latency_run(1L, fx$data, config = fx$config, run_at = run_at)
   comp <- latency_run(1L, fx$data, config = fx$config, run_at = run_at,
@@ -83,7 +78,7 @@ test_that("latency_run forwards compact to latency_report", {
 })
 
 test_that(".stream_latency_frame short-circuits on no segments / no rows", {
-  fx <- .load_synthetic_stream()
+  fx <- synthetic_fixture()
   one_q <- fx$config
   one_q$flow$questions <- fx$config$flow$questions[1]
   s0 <- .stream_latency_frame(fx$data, one_q, NULL)
@@ -97,7 +92,7 @@ test_that(".stream_latency_frame short-circuits on no segments / no rows", {
 })
 
 test_that(".na_date_day_rows returns a zero-row consolidated when no NA-date rows", {
-  fx <- .load_synthetic_stream()
+  fx <- synthetic_fixture()
   out <- .na_date_day_rows(.empty_na_date(), fx$config, "h",
                            as.POSIXct("2026-01-01", tz = "UTC"),
                            NA_character_,

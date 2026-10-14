@@ -8,11 +8,6 @@
 # Tests that exercise the duckdb engine skip when duckdb is not installed; the
 # engine-agnostic ones run either way.
 
-# Run `expr` under one engine.
-with_engine <- function(engine, expr) {
-  withr::with_options(list(survey160r.disposition_engine = engine), expr)
-}
-
 # A fixture exercising every rollup edge: phone formats (11-digit, punctuated,
 # blank, NA), an NA campaign id, a duplicate row, NA flags and dates, blank and
 # real error codes, and the full record schema.
@@ -60,7 +55,7 @@ test_that("every reader returns the same frame under both engines", {
     function() disposition_funnel(p, by = "carrier")
   )
   for (call in calls) {
-    expect_identical(with_engine("duckdb", call()), with_engine("nanoparquet", call()))
+    expect_engine_parity(call())
   }
 })
 
@@ -312,7 +307,7 @@ test_that("a scoped duckdb read keeps file order across row groups (tie-break pa
   req <- sprintf("201555%04d", 1:1000)
   for (call in list(function() disposition_summary(p, phones = req),
                     function() disposition_records(p, phones = req))) {
-    expect_identical(with_engine("duckdb", call()), with_engine("nanoparquet", call()))
+    expect_engine_parity(call())
   }
 })
 
@@ -325,8 +320,7 @@ test_that("arrow-annotated factors and timestamps are read with nanoparquet's ty
   rec <- with_engine("duckdb", disposition_records(p))
   expect_s3_class(rec$carrier, "factor")
   expect_identical(rec, with_engine("nanoparquet", disposition_records(p)))
-  expect_identical(with_engine("duckdb", disposition_records(p, phones = "2015550101")),
-                   with_engine("nanoparquet", disposition_records(p, phones = "2015550101")))
+  expect_engine_parity(disposition_records(p, phones = "2015550101"))
   d2 <- .disposition_row("2015550101", 1, engaged = 1)
   d2$disposition_date <- as.POSIXct("2026-01-01 23:00", tz = "UTC")
   p2 <- tempfile(fileext = ".parquet")
@@ -334,8 +328,7 @@ test_that("arrow-annotated factors and timestamps are read with nanoparquet's ty
   duckdb::duckdb_register(con, "d2", d2)
   DBI::dbExecute(con, sprintf("COPY d2 TO %s (FORMAT parquet)", DBI::dbQuoteString(con, p2)))
   DBI::dbDisconnect(con, shutdown = TRUE)
-  expect_identical(with_engine("duckdb", disposition_records(p2, phones = "2015550101")),
-                   with_engine("nanoparquet", disposition_records(p2, phones = "2015550101")))
+  expect_engine_parity(disposition_records(p2, phones = "2015550101"))
 })
 
 test_that("a stored file_row_number column falls back instead of failing the scoped read", {
@@ -457,7 +450,7 @@ test_that("disposition_funnel's in-scan aggregation matches the in-R grouping", 
     function() disposition_funnel(p, by = "opted_in", grain = "all")
   )
   for (call in calls) {
-    expect_identical(with_engine("duckdb", call()), with_engine("nanoparquet", call()))
+    expect_engine_parity(call())
   }
   # ...and the frame form of the same rows groups identically.
   records <- as.data.frame(nanoparquet::read_parquet(p))
@@ -535,7 +528,7 @@ test_that("campaign / date filters pre-filtered in the scan match the in-R filte
       function() do.call(disposition_screen, c(list(sample, p), f))
     )
     for (call in calls) {
-      expect_identical(with_engine("duckdb", call()), with_engine("nanoparquet", call()))
+      expect_engine_parity(call())
     }
   }
 })
@@ -584,8 +577,7 @@ test_that("the scoped read matches short and dirty phones on both scan forms", {
   # All-ten-digit requests take the stored-value semi-join + normalized rest;
   # a short request takes the all-normalized scan.
   for (phones in list("2015550101", c("2015550101", "5550101"), "20155501010")) {
-    expect_identical(with_engine("duckdb", disposition_records(p, phones = phones)),
-                     with_engine("nanoparquet", disposition_records(p, phones = phones)))
+    expect_engine_parity(disposition_records(p, phones = phones))
   }
   expect_identical(with_engine("duckdb", disposition_records(p, phones = "2015550101"))$campaign_id,
                    3:5)

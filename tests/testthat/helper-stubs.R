@@ -108,6 +108,14 @@ load_synthetic_data <- function(
   d
 }
 
+# synthetic.csv as read.csv returns it (blank cells stay "", no provenance
+# attributes) plus its latency config -- the (data, config) pair the pure
+# latency_report() tests start from.
+synthetic_fixture <- function() {
+  data <- read.csv(testthat::test_path("fixtures/synthetic.csv"), stringsAsFactors = FALSE)
+  list(data = data, config = synthetic_config())
+}
+
 # Load the 8-question parity fixture used by test-latency_parity_legacy.R.
 # Six respondents, one day, designed so each cascade bucket has exactly one
 # respondent. Returns a plain data frame (no GCS attrs) -- the parity tests
@@ -361,4 +369,22 @@ write_opt_out_parquet <- function(rows) {
     disposition_date = as.Date(disposition_date),
     stringsAsFactors = FALSE
   )
+}
+
+# --- Disposition read engines ------------------------------------------------
+
+# Run `expr` under one disposition read engine ("duckdb" or "nanoparquet").
+with_engine <- function(engine, expr) {
+  withr::with_options(list(survey160r.disposition_engine = engine), expr)
+}
+
+# Expect `expr` to give the identical value under the duckdb and nanoparquet
+# engines -- the contract every Parquet-path disposition reader keeps. Skips
+# when duckdb is not installed.
+expect_engine_parity <- function(expr, env = parent.frame()) {
+  testthat::skip_if_not_installed("duckdb")
+  expr <- substitute(expr)
+  duck <- with_engine("duckdb", eval(expr, env))
+  nano <- with_engine("nanoparquet", eval(expr, env))
+  testthat::expect_identical(duck, nano)
 }
