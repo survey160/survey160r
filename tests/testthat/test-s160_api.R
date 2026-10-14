@@ -279,34 +279,27 @@ test_that("check_api_ready errors when not authenticated", {
 
 # --- s160_api_request ---------------------------------------------------------
 
-test_that("request refreshes JWT when older than 8 minutes", {
-  stub_api_base()
-  env <- .api_env()
-  env$auth_time <- Sys.time() - 600  # 10 min ago
-
-  auth_called <- FALSE
-  local_mocked_bindings(
-    api_do_auth = function(conn, base_url, userid, api_key) {
-      auth_called <<- TRUE
-      conn$jwt <- "refreshed-jwt"
+# The JWT is refreshed once it is older than 480 s (`if (elapsed > 480)` in
+# R/s160_api.R). 481 s / 470 s pin both sides of the threshold against
+# off-by-one drift; 600 s and a fresh token are the well-clear cases.
+for (case in list(list(age = 600, refresh = TRUE), list(age = 481, refresh = TRUE),
+                  list(age = 470, refresh = FALSE), list(age = 0, refresh = FALSE))) {
+  test_that(sprintf("request %s the JWT when it is %ds old",
+                    if (case$refresh) "refreshes" else "keeps", case$age), {
+    stub_api_base()
+    api <- .api_env()
+    api$auth_time <- Sys.time() - case$age
+    seen <- new_capture()
+    seen$auth <- FALSE
+    local_mocked_bindings(api_do_auth = function(conn, ...) {
+      seen$auth <- TRUE
       conn$auth_time <- Sys.time()
-    }
-  )
-  stub_httr_response(body = list(ok = TRUE))
-
-  survey160r:::s160_api_request("GET", "/test")
-  expect_true(auth_called)
-})
-
-test_that("request does not refresh JWT when fresh", {
-  stub_api_base()
-  auth_called <- FALSE
-  local_mocked_bindings(api_do_auth = function(...) auth_called <<- TRUE)
-  stub_httr_response(body = list(ok = TRUE))
-
-  survey160r:::s160_api_request("GET", "/test")
-  expect_false(auth_called)
-})
+    })
+    stub_httr_response(body = list(ok = TRUE))
+    survey160r:::s160_api_request("GET", "/test")
+    expect_identical(seen$auth, case$refresh)
+  })
+}
 
 test_that("request refresh reuses the connection's stored credentials", {
   # The refresh must re-auth with the creds that authenticated THIS connection
@@ -372,38 +365,6 @@ test_that("refresh on a captured connection uses its creds, default untouched", 
   expect_equal(seen$api_key, "prod-key")
   expect_equal(env$userid, "stg-u")       # default (staging) left untouched
   expect_equal(env$jwt, "stg-jwt")
-})
-
-test_that("request refreshes JWT just past the 480-second threshold", {
-  # Threshold lives in R/s160_api.R: `if (elapsed > 480) refresh`. Pinning a
-  # test at 481s (just over) guards against off-by-one drift; the 600s test
-  # above only proves the "well past" path.
-  stub_api_base()
-  env <- .api_env()
-  env$auth_time <- Sys.time() - 481
-
-  auth_called <- FALSE
-  local_mocked_bindings(api_do_auth = function(conn, ...) {
-    auth_called <<- TRUE
-    conn$auth_time <- Sys.time()
-  })
-  stub_httr_response(body = list(ok = TRUE))
-
-  survey160r:::s160_api_request("GET", "/test")
-  expect_true(auth_called)
-})
-
-test_that("request does NOT refresh when auth is just inside the threshold", {
-  stub_api_base()
-  env <- .api_env()
-  env$auth_time <- Sys.time() - 470  # 10s of slack below 480
-
-  auth_called <- FALSE
-  local_mocked_bindings(api_do_auth = function(...) auth_called <<- TRUE)
-  stub_httr_response(body = list(ok = TRUE))
-
-  survey160r:::s160_api_request("GET", "/test")
-  expect_false(auth_called)
 })
 
 test_that("request raises error on HTTP failure", {
@@ -506,13 +467,15 @@ test_that("request recovers when a network error is followed by success", {
 
 test_that("results triggers export and returns data frame after GCS update", {
   stub_api_base()
+  stub_no_sleep()  # the poll loop counts its own elapsed time
   stub_gcs_base()
 
-  poll_count <- 0
+  polls <- new_capture()
+  polls$n <- 0
   local_mocked_bindings(
     get_gcs_file_updated = function(campaign_id, filename, ...) {
-      poll_count <<- poll_count + 1
-      if (poll_count <= 1) "2024-01-01T00:00:00Z" else "2024-01-01T01:00:00Z"
+      polls$n <- polls$n + 1
+      if (polls$n <= 1) "2024-01-01T00:00:00Z" else "2024-01-01T01:00:00Z"
     },
     s160_api_request = function(method, path, body = NULL, ...) {
       list(status = "processing")
@@ -529,13 +492,15 @@ test_that("results triggers export and returns data frame after GCS update", {
 
 test_that("results works when no prior export exists (baseline is NULL)", {
   stub_api_base()
+  stub_no_sleep()  # the poll loop counts its own elapsed time
   stub_gcs_base()
 
-  poll_count <- 0
+  polls <- new_capture()
+  polls$n <- 0
   local_mocked_bindings(
     get_gcs_file_updated = function(campaign_id, filename, ...) {
-      poll_count <<- poll_count + 1
-      if (poll_count <= 1) NULL else "2024-01-01T01:00:00Z"
+      polls$n <- polls$n + 1
+      if (polls$n <= 1) NULL else "2024-01-01T01:00:00Z"
     },
     s160_api_request = function(method, path, body = NULL, ...) {
       list(status = "processing")
@@ -551,11 +516,13 @@ test_that("results works when no prior export exists (baseline is NULL)", {
 
 test_that("results propagates the trigger error before polling starts", {
   stub_api_base()
+  stub_no_sleep()  # the poll loop counts its own elapsed time
   stub_gcs_base()
-  poll_called <- FALSE
+  polls <- new_capture()
+  polls$called <- FALSE
   local_mocked_bindings(
     get_gcs_file_updated = function(campaign_id, filename, ...) {
-      poll_called <<- TRUE
+      polls$called <- TRUE
       "2024-01-01T00:00:00Z"
     },
     s160_api_request = function(method, path, body = NULL, ...) {
@@ -570,11 +537,12 @@ test_that("results propagates the trigger error before polling starts", {
   )
   # get_gcs_file_updated is called once for the baseline before the trigger,
   # but never again -- the polling loop must not run.
-  expect_true(poll_called)
+  expect_true(polls$called)
 })
 
 test_that("results times out when GCS never updates", {
   stub_api_base()
+  stub_no_sleep()  # the poll loop counts its own elapsed time
   stub_gcs_base()
 
   local_mocked_bindings(
@@ -626,6 +594,7 @@ test_that("results errors on invalid poll_interval", {
 
 test_that("results targets the connection's environment for poll and read", {
   stub_gcs_base()
+  stub_no_sleep()
   conn <- new.env(parent = emptyenv())
   conn$jwt <- "jwt"
   conn$base_url <- "https://staging-api.survey160.com"
@@ -634,12 +603,13 @@ test_that("results targets the connection's environment for poll and read", {
   conn$env <- "staging"
 
   seen <- new_capture()
-  poll_count <- 0
+  polls <- new_capture()
+  polls$n <- 0
   local_mocked_bindings(
     get_gcs_file_updated = function(campaign_id, filename, env = NULL) {
       seen$poll_env <- env
-      poll_count <<- poll_count + 1
-      if (poll_count <= 1) "t0" else "t1"
+      polls$n <- polls$n + 1
+      if (polls$n <= 1) "t0" else "t1"
     },
     s160_api_request = function(method, path, body = NULL, conn = NULL) {
       seen$req_userid <- body$userid
@@ -797,44 +767,24 @@ test_that("campaign_get treats NULL fields as NA", {
   expect_true(is.na(df$archive_scheduled_date))
 })
 
-test_that("campaign_get maps 400 not-found to clear error", {
-  stub_api_base()
-  local_mocked_bindings(
-    s160_api_request = function(method, path, body = NULL, ...) {
-      survey160r:::stop_http_error(
-        400L, "API error (GET /campaigns/9999): Bad Request"
-      )
-    }
-  )
-
-  expect_error(s160_api_campaign_get(9999), "campaign not found: 9999")
-})
-
-test_that("campaign_get maps 404 to clear error", {
-  stub_api_base()
-  local_mocked_bindings(
-    s160_api_request = function(method, path, body = NULL, ...) {
-      survey160r:::stop_http_error(
-        404L, "API error (GET /campaigns/9999): Not Found"
-      )
-    }
-  )
-
-  expect_error(s160_api_campaign_get(9999), "campaign not found: 9999")
-})
-
-test_that("campaign_get propagates non-not-found errors unchanged", {
-  stub_api_base()
-  local_mocked_bindings(
-    s160_api_request = function(method, path, body = NULL, ...) {
-      survey160r:::stop_http_error(
-        500L, "API error (GET /campaigns/1): Internal Server Error"
-      )
-    }
-  )
-
-  expect_error(s160_api_campaign_get(1), "Internal Server Error")
-})
+# 400 and 404 both mean "no such campaign" and get a clear message; any other
+# HTTP error propagates unchanged.
+for (case in list(list(status = 400L, text = "Bad Request", want = "campaign not found: 9999"),
+                  list(status = 404L, text = "Not Found", want = "campaign not found: 9999"),
+                  list(status = 500L, text = "Internal Server Error",
+                       want = "Internal Server Error"))) {
+  test_that(sprintf("campaign_get maps HTTP %d to the right error", case$status), {
+    stub_api_base()
+    local_mocked_bindings(
+      s160_api_request = function(method, path, body = NULL, ...) {
+        survey160r:::stop_http_error(
+          case$status, sprintf("API error (GET /campaigns/9999): %s", case$text)
+        )
+      }
+    )
+    expect_error(s160_api_campaign_get(9999), case$want, fixed = TRUE)
+  })
+}
 
 test_that("campaign_get errors on success=false response", {
   stub_api_base()
