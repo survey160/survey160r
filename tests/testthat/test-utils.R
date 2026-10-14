@@ -84,7 +84,7 @@ test_that("is idempotent -- a second pass changes nothing", {
 test_that("is vectorized and preserves NA, empty strings, and names", {
   vec <- c(a = MOJI_ENDASH, b = NA_character_, c = "", d = CLEAN_EACUTE)
   out <- fix(vec)
-  expect_equal(length(out), 4L)
+  expect_length(out, 4L)
   expect_equal(names(out), c("a", "b", "c", "d"))
   expect_equal(out[["a"]], CLEAN_ENDASH)
   expect_true(is.na(out[["b"]]))

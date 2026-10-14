@@ -19,7 +19,7 @@ synthetic_export <- function(n = 2000L, n_questions = 6L, seed = 42L,
                              drop_off = 0.8, blank_reply = 0.05,
                              garbage = 0.005, start = "2026-03-01 14:00:00",
                              span_days = 5) {
-  set.seed(seed)
+  local_rng_seed(seed)
   stopifnot(n_questions >= 2L)
   questions <- c("intro", sprintf("q%d", seq_len(n_questions - 2L)), "close")
   base <- as.POSIXct(start, tz = "UTC") + stats::runif(n, 0, span_days * 86400)
@@ -82,7 +82,7 @@ synthetic_parse_timestamps <- function(d) {
 # over `n_phones` distinct phones, with 0/1 funnel flags, an NA-completed
 # campaign (the t2w_external case), a carrier dimension and dates.
 synthetic_disposition <- function(n_rows = 5000L, n_phones = 2000L, seed = 7L) {
-  set.seed(seed)
+  local_rng_seed(seed)
   phones <- sprintf("%010.0f", 2e9 + sample(7.99e9, n_phones))
   d <- data.frame(
     phone = phones[sample(n_phones, n_rows, replace = TRUE)],
@@ -102,4 +102,20 @@ synthetic_disposition <- function(n_rows = 5000L, n_phones = 2000L, seed = 7L) {
   )
   d$completed[d$campaign_id == 1001L] <- NA_integer_
   d
+}
+
+# set.seed(seed) for the calling generator, restoring the caller's RNG state
+# when that generator returns -- what withr::local_seed() does, without the
+# dependency (scripts/bench.R sources this file). Same draws as set.seed().
+local_rng_seed <- function(seed, env = parent.frame()) {
+  old <- get0(".Random.seed", envir = globalenv(), inherits = FALSE)
+  restore <- function() {
+    if (is.null(old)) {
+      rm(".Random.seed", envir = globalenv())
+    } else {
+      assign(".Random.seed", old, envir = globalenv())
+    }
+  }
+  do.call(on.exit, list(as.call(list(restore)), add = TRUE), envir = env)
+  set.seed(seed)
 }

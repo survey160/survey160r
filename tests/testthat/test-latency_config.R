@@ -19,29 +19,28 @@
 # adds a `userid` column; this test's minimal_config does not declare a
 # respondent_id_column, so the extra column is harmless (validate_config
 # only checks required columns are present, not that none are extra).
-.minimal_data <- function() minimal_synthetic_data()
 
 test_that("validate_config accepts a minimal valid config", {
-  expect_invisible(latency_validate_config(.minimal_config(), .minimal_data()))
+  expect_invisible(latency_validate_config(.minimal_config(), minimal_synthetic_data()))
 })
 
 test_that("validate_config rejects unknown top-level keys", {
   cfg <- .minimal_config(list(weird_key = 1))
-  expect_error(latency_validate_config(cfg, .minimal_data()),
+  expect_error(latency_validate_config(cfg, minimal_synthetic_data()),
                "unknown keys")
 })
 
 test_that("validate_config requires project_id, campaign_id, field_timezone", {
   expect_error(latency_validate_config(.minimal_config(list(project_id = NULL)),
-                               .minimal_data()), "project_id")
+                               minimal_synthetic_data()), "project_id")
   expect_error(latency_validate_config(.minimal_config(list(campaign_id = NULL)),
-                               .minimal_data()), "campaign_id")
+                               minimal_synthetic_data()), "campaign_id")
   expect_error(latency_validate_config(.minimal_config(list(field_timezone = NULL)),
-                               .minimal_data()), "field_timezone")
+                               minimal_synthetic_data()), "field_timezone")
 })
 
 test_that("validate_config rejects empty / single-question / dup / terminal flow", {
-  d <- .minimal_data()
+  d <- minimal_synthetic_data()
   expect_error(
     latency_validate_config(.minimal_config(list(flow = list(questions = character(0)))), d),
     "non-empty"
@@ -63,14 +62,14 @@ test_that("validate_config rejects empty / single-question / dup / terminal flow
 })
 
 test_that("validate_config rejects missing required columns", {
-  d <- .minimal_data()
+  d <- minimal_synthetic_data()
   d$id.q1.batchDate <- NULL
   expect_error(latency_validate_config(.minimal_config(), d),
                "Required columns missing")
 })
 
 test_that("validate_config rejects mis-ordered flow (script before batch)", {
-  d <- .minimal_data()
+  d <- minimal_synthetic_data()
   # Swap so q1.scriptDate < intro.batchDate (= negative diff)
   d$id.q1.scriptDate <- "2026-01-26 20:00:00.000000Z"
   d$id.intro.batchDate <- "2026-01-26 21:00:00.000000Z"

@@ -1,17 +1,33 @@
 # Coverage for R/latency_report.R: the pure latency_report() function.
 # Uses the synthetic fixture under tests/testthat/fixtures/.
 
-.load_synthetic <- function() {
-  csv_path <- test_path("fixtures/synthetic.csv")
-  data <- read.csv(csv_path, stringsAsFactors = FALSE, na.strings = c(""))
-  # read.csv translates NA to NA, but we want empty strings in the original
-  # cells to test na_if_blank end-to-end. Reread without na.strings.
-  data <- read.csv(csv_path, stringsAsFactors = FALSE)
-  list(data = data, config = synthetic_config())
+# The unperturbed synthetic-fixture report, computed once per file: most tests
+# only read it (latency_report() is pure; nothing here inspects run_at).
+.base <- new_capture()
+base_report <- function() {
+  if (is.null(.base$report)) {
+    fx <- synthetic_fixture()
+    .base$report <- latency_report(fx$data, fx$config)
+  }
+  .base$report
+}
+
+# The consolidated row(s) for one cell; `hour = NA` selects the day rollup.
+report_cell <- function(cons, segment, hour = NA, threshold = 1L) {
+  at_hour <- if (is.na(hour)) is.na(cons$hour_local) else
+    !is.na(cons$hour_local) & cons$hour_local == hour
+  cons[at_hour & cons$segment == segment & cons$threshold_min == threshold, ]
+}
+
+# Every NA segment is attributed to exactly one reason.
+expect_na_reasons_conserved <- function(result) {
+  reasons <- result$diagnostics$n_segments_na_by_reason
+  expect_equal(reasons$parse_failure + reasons$missing_endpoint + reasons$chain_break,
+               result$diagnostics$n_segments_na)
 }
 
 test_that("latency_report honors an explicit run_at override", {
-  fx <- .load_synthetic()
+  fx <- synthetic_fixture()
   fixed <- as.POSIXct("2026-01-01 12:00:00", tz = "UTC")
   out <- latency_report(fx$data, fx$config, run_at = fixed)
   expect_equal(out$meta$run_at_utc, fixed)
@@ -23,7 +39,7 @@ test_that("latency_report tolerates an all-NA wave batchDate column", {
   # chain-validity check cascades, so every downstream segment loses every
   # respondent. The report must still return a well-formed result frame
   # (correct schema, all-NA percentages) instead of crashing.
-  fx <- .load_synthetic()
+  fx <- synthetic_fixture()
   fx$data$id.intro.batchDate <- NA_character_
   out <- latency_report(fx$data, fx$config)
   cons <- out$consolidated
@@ -37,7 +53,7 @@ test_that("latency_report tolerates an all-NA wave batchDate column", {
 })
 
 test_that("latency_report is deterministic on identical inputs", {
-  fx <- .load_synthetic()
+  fx <- synthetic_fixture()
   r1 <- latency_report(fx$data, fx$config)
   r2 <- latency_report(fx$data, fx$config)
   # Strip run_at_utc (clock-dependent) before comparison.
@@ -51,15 +67,13 @@ test_that("latency_report is deterministic on identical inputs", {
 })
 
 test_that("latency_report drops respondents excluded by population_filter", {
-  fx <- .load_synthetic()
-  result <- latency_report(fx$data, fx$config)
+  result <- base_report()
   # 4 rows in CSV; 1 has finalText="No". Should yield 3 respondents in.
   expect_equal(result$diagnostics$n_respondents_in, 3L)
 })
 
 test_that("latency_report consolidated has hour and day rollup rows", {
-  fx <- .load_synthetic()
-  result <- latency_report(fx$data, fx$config)
+  result <- base_report()
   cons <- result$consolidated
 
   # Fixture: 3 respondents (r1, r2, r3) with intro.batchDate at distinct
@@ -105,8 +119,7 @@ test_that("latency_report consolidated has hour and day rollup rows", {
 })
 
 test_that("hour-rollup of pct_le matches the day rows in the same output", {
-  fx <- .load_synthetic()
-  result <- latency_report(fx$data, fx$config)
+  result <- base_report()
   cons <- result$consolidated
   hour_rows <- cons[!is.na(cons$hour_local), ]
   day_rows  <- cons[is.na(cons$hour_local), ]
@@ -130,8 +143,7 @@ test_that("hour-rollup of pct_le matches the day rows in the same output", {
 })
 
 test_that("cascade columns are present and per-hour-respondent", {
-  fx <- .load_synthetic()
-  result <- latency_report(fx$data, fx$config)
+  result <- base_report()
   cons <- result$consolidated
   hour_rows <- cons[!is.na(cons$hour_local), ]
   day_rows  <- cons[is.na(cons$hour_local), ]
@@ -157,7 +169,7 @@ test_that("cascade columns are present and per-hour-respondent", {
 })
 
 test_that("latency_report dedupes by respondent_id keeping earliest intro", {
-  fx <- .load_synthetic()
+  fx <- synthetic_fixture()
   # Add a duplicate of r1 with a later intro.scriptDate (should be dropped).
   data <- fx$data
   dup <- data[data$userid == "r1", ]
@@ -170,7 +182,7 @@ test_that("latency_report dedupes by respondent_id keeping earliest intro", {
 })
 
 test_that("latency_report preserves summary metrics when no respondents pass filter", {
-  fx <- .load_synthetic()
+  fx <- synthetic_fixture()
   data <- fx$data
   data$id.intro.finalText <- "No"
   result <- latency_report(data, fx$config)
@@ -197,8 +209,7 @@ test_that("latency_report preserves summary metrics when no respondents pass fil
 })
 
 test_that("latency_report emits both hour rows (0-23) and a day rollup row (NA) per cell", {
-  fx <- .load_synthetic()
-  cons <- latency_report(fx$data, fx$config)$consolidated
+  cons <- base_report()$consolidated
   expect_true(any(!is.na(cons$hour_local)),
               info = "expect at least one hour row")
   expect_true(any(is.na(cons$hour_local)),
@@ -208,7 +219,7 @@ test_that("latency_report emits both hour rows (0-23) and a day rollup row (NA) 
 })
 
 test_that("latency_report's date_filter restricts to listed dates", {
-  fx <- .load_synthetic()
+  fx <- synthetic_fixture()
   cfg <- fx$config
   cfg$filters$date_filter <- as.Date("2099-01-01")
   result <- latency_report(fx$data, cfg)
@@ -216,14 +227,14 @@ test_that("latency_report's date_filter restricts to listed dates", {
 })
 
 test_that("latency_report errors on invalid population_filter", {
-  fx <- .load_synthetic()
+  fx <- synthetic_fixture()
   cfg <- fx$config
   cfg$filters$population <- "this is not valid R syntax !!!"
   expect_error(latency_report(fx$data, cfg), "filters.population")
 })
 
 test_that("latency_report threads source_csv_hash from input attribute to consolidated and meta", {
-  fx <- .load_synthetic()
+  fx <- synthetic_fixture()
   data <- fx$data
   attr(data, "source_csv_hash") <- "sha256:fixture-from-attr"
   attr(data, "source_csv_path") <- "gs://b/1/1_raw_data_download.csv"
@@ -236,15 +247,14 @@ test_that("latency_report threads source_csv_hash from input attribute to consol
 })
 
 test_that("latency_report leaves source_csv_hash NA when no input attribute", {
-  fx <- .load_synthetic()
-  result <- latency_report(fx$data, fx$config)
+  result <- base_report()
   expect_true(all(is.na(result$consolidated$source_csv_hash)))
   expect_true(is.na(result$meta$source_csv_hash))
   expect_true(is.na(result$meta$source_csv_path))
 })
 
 test_that("diagnostics na_by_reason: parse_failure counted on garbage timestamps", {
-  fx <- .load_synthetic()
+  fx <- synthetic_fixture()
   data <- fx$data
   # Corrupt one batchDate cell with non-blank garbage on r1's q1 segment.
   data$id.q1.batchDate[data$userid == "r1"] <- "not-a-date"
@@ -252,13 +262,11 @@ test_that("diagnostics na_by_reason: parse_failure counted on garbage timestamps
   reasons <- result$diagnostics$n_segments_na_by_reason
   # The q1->q2 segment for r1 should be classified parse_failure.
   expect_gte(reasons$parse_failure, 1L)
-  # Conservation: sums of all reasons == total NA segments.
-  total <- reasons$parse_failure + reasons$missing_endpoint + reasons$chain_break
-  expect_equal(total, result$diagnostics$n_segments_na)
+  expect_na_reasons_conserved(result)
 })
 
 test_that("diagnostics na_by_reason: missing_endpoint counted on blank batchDate", {
-  fx <- .load_synthetic()
+  fx <- synthetic_fixture()
   data <- fx$data
   # Blank out r2's q1.batchDate. Both endpoint cells were originally valid, so
   # this is a legitimate "respondent didn't advance" miss, not a parse failure.
@@ -267,12 +275,11 @@ test_that("diagnostics na_by_reason: missing_endpoint counted on blank batchDate
   reasons <- result$diagnostics$n_segments_na_by_reason
   expect_gte(reasons$missing_endpoint, 1L)
   expect_equal(reasons$parse_failure, 0L)
-  total <- reasons$parse_failure + reasons$missing_endpoint + reasons$chain_break
-  expect_equal(total, result$diagnostics$n_segments_na)
+  expect_na_reasons_conserved(result)
 })
 
 test_that("diagnostics na_by_reason: chain_break counted when a prior batchDate is NA", {
-  fx <- .load_synthetic()
+  fx <- synthetic_fixture()
   data <- fx$data
   # Blank intro.batchDate for r1. Subsequent segments q1->q2 and q2->close keep
   # both endpoints valid, but chain validity nukes them because a prior
@@ -284,12 +291,11 @@ test_that("diagnostics na_by_reason: chain_break counted when a prior batchDate 
   expect_gte(reasons$chain_break, 1L)
   expect_gte(reasons$missing_endpoint, 1L)
   expect_equal(reasons$parse_failure, 0L)
-  total <- reasons$parse_failure + reasons$missing_endpoint + reasons$chain_break
-  expect_equal(total, result$diagnostics$n_segments_na)
+  expect_na_reasons_conserved(result)
 })
 
 test_that("latency_report negative-clamp counter is exposed in diagnostics", {
-  fx <- .load_synthetic()
+  fx <- synthetic_fixture()
   data <- fx$data
   # Force a negative on r1's q1->q2: set q2.scriptDate before q1.batchDate.
   # Scale carefully so flow_order check still passes (we only need <10% bad).
@@ -301,8 +307,7 @@ test_that("latency_report negative-clamp counter is exposed in diagnostics", {
 })
 
 test_that("latency_report consolidated carries the new distribution and NA-reason columns", {
-  fx <- .load_synthetic()
-  cons <- latency_report(fx$data, fx$config)$consolidated
+  cons <- base_report()$consolidated
   expect_true(all(c("mean_delta_min", "p50_delta_min", "p90_delta_min",
                     "p95_delta_min", "n_na_parse", "n_na_missing",
                     "n_na_chain") %in% names(cons)))
@@ -321,8 +326,7 @@ test_that("distribution columns are threshold-independent within a cell", {
   # the Δ vector, not of any threshold. Guards against a future refactor
   # accidentally folding the quantile call inside a threshold-dependent
   # filter.
-  fx <- .load_synthetic()
-  cons <- latency_report(fx$data, fx$config)$consolidated
+  cons <- base_report()$consolidated
   per_cell <- dplyr::summarise(
     dplyr::group_by(cons, .data$date, .data$hour_local, .data$segment),
     distinct_p50 = dplyr::n_distinct(.data$p50_delta_min),
@@ -341,12 +345,8 @@ test_that("single-respondent cell has p50 == p95 == mean equal to the Δ", {
   # value -- the respondent's Δ for that segment. Hour 21 ET corresponds
   # to r1's intro->q1 batch_prior; intro.batchDate=21:00:30 -> q1.scriptDate
   # =21:00:40, Δ = 10s = 1/6 min.
-  fx <- .load_synthetic()
-  cons <- latency_report(fx$data, fx$config)$consolidated
-  r1_intro_q1 <- cons[!is.na(cons$hour_local) &
-                        cons$hour_local == 16L &
-                        cons$segment == "intro→q1" &
-                        cons$threshold_min == 1L, ]
+  cons <- base_report()$consolidated
+  r1_intro_q1 <- report_cell(cons, "intro→q1", hour = 16L)
   expect_equal(nrow(r1_intro_q1), 1L)
   expected <- 10 / 60
   expect_equal(r1_intro_q1$mean_delta_min, expected, tolerance = 1e-9)
@@ -358,11 +358,8 @@ test_that("day rollup quantiles span the full Δ distribution across hours", {
   # The day rollup row aggregates every respondent's segment Δs for the
   # day, so p95 should be the largest Δ in the segment (or close to it).
   # For q1->q2: r1=0.5min, r3≈0.5min, r2=4min. p95 should be ~4min.
-  fx <- .load_synthetic()
-  cons <- latency_report(fx$data, fx$config)$consolidated
-  day_q1q2 <- cons[is.na(cons$hour_local) &
-                     cons$segment == "q1→q2" &
-                     cons$threshold_min == 1L, ]
+  cons <- base_report()$consolidated
+  day_q1q2 <- report_cell(cons, "q1→q2")
   expect_equal(nrow(day_q1q2), 1L)
   expect_equal(day_q1q2$p95_delta_min, 4, tolerance = 0.5)
   # Mean over the three Δs (~0.5, ~0.5, 4) is between p50 and p95.
@@ -378,7 +375,7 @@ test_that("n_na_parse counts parse failures in the matching cell only", {
   # hour_local IS NA partition of q1->q2 -- the day-rollup row (the hour
   # pass drops its own NA-hour rows so the unknown-time bucket is not
   # double-counted; see the grain-uniqueness test below).
-  fx <- .load_synthetic()
+  fx <- synthetic_fixture()
   data <- fx$data
   data$id.q1.batchDate[data$userid == "r1"] <- "not-a-date"
   cons <- latency_report(data, fx$config)$consolidated
@@ -388,10 +385,7 @@ test_that("n_na_parse counts parse failures in the matching cell only", {
   expect_equal(sum(q1q2_t1$n_na_chain), 0L)
   # The unaffected hour cells for other respondents still record zero
   # parse failures.
-  r2_cell <- cons[!is.na(cons$hour_local) &
-                    cons$hour_local == 17L &
-                    cons$segment == "q1→q2" &
-                    cons$threshold_min == 1L, ]
+  r2_cell <- report_cell(cons, "q1→q2", hour = 17L)
   expect_equal(nrow(r2_cell), 1L)
   expect_equal(r2_cell$n_na_parse, 0L)
 })
@@ -400,7 +394,7 @@ test_that("n_na_missing counts blank-endpoint NAs in the matching cell", {
   # Blank r2's q1.batchDate. Affected segment: q1->q2. The blanked
   # batch_prior nukes hour_local for that segment row, so the
   # missing_endpoint count lands in the hour_local IS NA partition.
-  fx <- .load_synthetic()
+  fx <- synthetic_fixture()
   data <- fx$data
   data$id.q1.batchDate[data$userid == "r2"] <- ""
   cons <- latency_report(data, fx$config)$consolidated
@@ -409,10 +403,7 @@ test_that("n_na_missing counts blank-endpoint NAs in the matching cell", {
   expect_equal(sum(q1q2_t1$n_na_parse), 0L)
   expect_equal(sum(q1q2_t1$n_na_chain), 0L)
   # r1's cell (hour 16 ET) is unaffected.
-  r1_cell <- cons[!is.na(cons$hour_local) &
-                    cons$hour_local == 16L &
-                    cons$segment == "q1→q2" &
-                    cons$threshold_min == 1L, ]
+  r1_cell <- report_cell(cons, "q1→q2", hour = 16L)
   expect_equal(nrow(r1_cell), 1L)
   expect_equal(r1_cell$n_na_missing, 0L)
 })
@@ -423,14 +414,11 @@ test_that("n_na_chain counts chain-break NAs on segments after an NA prior batch
   # downstream q1->q2 / q2->close segments become chain_break (their own
   # endpoints are clean but a strictly-prior batchDate is NA). Check the
   # chain_break cell for q1->q2.
-  fx <- .load_synthetic()
+  fx <- synthetic_fixture()
   data <- fx$data
   data$id.intro.batchDate[data$userid == "r1"] <- ""
   cons <- latency_report(data, fx$config)$consolidated
-  cell <- cons[!is.na(cons$hour_local) &
-                 cons$hour_local == 16L &
-                 cons$segment == "q1→q2" &
-                 cons$threshold_min == 1L, ]
+  cell <- report_cell(cons, "q1→q2", hour = 16L)
   expect_equal(nrow(cell), 1L)
   expect_gte(cell$n_na_chain, 1L)
   expect_equal(cell$n_na_parse, 0L)
@@ -444,7 +432,7 @@ test_that("consolidated grain is unique when a segment drops off mid-flow", {
   # (campaign, date=NA, hour_local=NA, segment, threshold) key, so a naive
   # rbind double-counts it. The (hour=NULL) unknown-time bucket belongs to the
   # day partition only; the consolidated grain must stay unique.
-  fx <- .load_synthetic()
+  fx <- synthetic_fixture()
   data <- fx$data
   data$id.q1.batchDate[data$userid == "r2"] <- ""  # r2 drops off before q1
   cons <- latency_report(data, fx$config)$consolidated
@@ -465,7 +453,7 @@ test_that("consolidated grain is unique when a segment drops off mid-flow", {
 })
 
 test_that("consolidated declares the new columns with the right types when latency is empty", {
-  fx <- .load_synthetic()
+  fx <- synthetic_fixture()
   data <- fx$data
   data$id.intro.finalText <- "No"
   cons <- latency_report(data, fx$config)$consolidated

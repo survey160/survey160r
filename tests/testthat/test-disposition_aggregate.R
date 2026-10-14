@@ -32,7 +32,7 @@ test_that("sms campaign: per-respondent flags and mode", {
                       "terminated", "survey_mode", "error", "carrier",
                       "disposition_date"))
   expect_equal(res$phone, c("+15550101", "+15550102", "+15550103"))
-  expect_true(is.integer(res$campaign_id))
+  expect_type(res$campaign_id, "integer")
   expect_equal(res$campaign_id, rep(1234L, 3L))
   expect_equal(res$sent,      c(1L, 1L, 0L))
   expect_equal(res$engaged,      c(1L, 1L, 0L))
@@ -52,7 +52,7 @@ test_that("error: raw carrier code passes through; blank/None/whitespace -> NA",
     error_code          = c("4720", "", "None", "  4753  ", "9902")
   )
   res <- disposition_run(1234, d, contacted_only = FALSE)$consolidated
-  expect_true(is.character(res$error))
+  expect_type(res$error, "character")
   # string passthrough; whitespace trimmed; blank / "None" -> NA
   expect_equal(res$error, c("4720", NA, NA, "4753", "9902"))
 })
@@ -77,7 +77,7 @@ test_that("error: reader-inferred integer / all-NA logical error_code coerce to 
     error_code          = c(NA, NA)                          # logical all-NA column
   )
   res <- disposition_run(1234, d_lgl, contacted_only = FALSE)$consolidated
-  expect_true(is.character(res$error))
+  expect_type(res$error, "character")
   expect_true(all(is.na(res$error)))
 })
 
@@ -89,7 +89,7 @@ test_that("carrier: recipient mobile carrier passes through; blank/whitespace ->
     carrier             = c("AT&T", "Verizon", "", "  T-Mobile  ", "Other")
   )
   res <- disposition_run(1234, d, contacted_only = FALSE)$consolidated
-  expect_true(is.character(res$carrier))
+  expect_type(res$carrier, "character")
   # verbatim passthrough; whitespace trimmed; blank -> NA; "Other" kept as-is
   expect_equal(res$carrier, c("AT&T", "Verizon", NA, "T-Mobile", "Other"))
 })
@@ -103,7 +103,7 @@ test_that("carrier: absent misc column -> all NA; header case is ignored", {
     id.intro.finalText  = rep("Yes", 2)
   )
   res_absent <- disposition_run(1234, d_absent, contacted_only = FALSE)$consolidated
-  expect_true(is.character(res_absent$carrier))
+  expect_type(res_absent$carrier, "character")
   expect_true(all(is.na(res_absent$carrier)))
 
   # A differently-cased header ("Carrier") is matched case-insensitively.
@@ -217,7 +217,7 @@ test_that("projection preserves a reply-only NON-standard refusal (online_refusa
     id.online_refusal.batchDate  = c(TS, "")    # p1 refused via reply only
   )
   keep <- disposition_input_columns(available = names(full))
-  expect_true("id.online_refusal.batchDate" %in% keep)     # the terminal batchDate is projected
+  expect_contains(keep, "id.online_refusal.batchDate")     # the terminal batchDate is projected
   projected <- full[, intersect(keep, names(full)), drop = FALSE]
   full_res <- disposition_run(1234, full, contacted_only = FALSE)
   expect_equal(disposition_run(1234, projected, contacted_only = FALSE), full_res)
@@ -360,9 +360,9 @@ test_that("zero-row input returns the empty disposition frame", {
                       "completed", "web_complete", "refused", "ineligible",
                       "terminated", "survey_mode", "error", "carrier",
                       "disposition_date"))
-  expect_true(is.integer(res$sent))
-  expect_true(is.character(res$phone))
-  expect_true(is.character(res$error))   # empty-frame error type matches the live path
+  expect_type(res$sent, "integer")
+  expect_type(res$phone, "character")
+  expect_type(res$error, "character")   # empty-frame error type matches the live path
 })
 
 test_that("opted_in is null-safe when no continuation step is present", {
@@ -542,9 +542,9 @@ test_that("contacted_only with no contacted rows yields a typed zero-row frame",
                       "completed", "web_complete", "refused", "ineligible",
                       "terminated", "survey_mode", "error", "carrier",
                       "disposition_date"))
-  expect_true(is.integer(res$sent))
-  expect_true(is.character(res$phone))
-  expect_true(is.character(res$error))   # empty-frame error type matches the live path
+  expect_type(res$sent, "integer")
+  expect_type(res$phone, "character")
+  expect_type(res$error, "character")   # empty-frame error type matches the live path
 })
 
 test_that("contacted_only keeps t2w_external contacted rows (completed = NA)", {
@@ -603,7 +603,7 @@ test_that("disposition_input_columns: retains close-message Text cols from `avai
   header <- c("phone", "id.close.scriptText", "id.closeB.batchText",
               "id.intro.scriptText", "userid")
   cols <- disposition_input_columns(available = header)
-  expect_true(all(c("id.close.scriptText", "id.closeB.batchText") %in% cols))
+  expect_contains(cols, c("id.close.scriptText", "id.closeB.batchText"))
   expect_false("id.intro.scriptText" %in% cols)  # not a close-message Text col
   expect_false("userid" %in% cols)
 })
@@ -611,13 +611,13 @@ test_that("disposition_input_columns: retains close-message Text cols from `avai
 test_that("disposition_input_columns: retains a case-variant carrier from `available`", {
   header <- c("phone", "id.intro.scriptDate", "Carrier", "userid")
   cols <- disposition_input_columns(available = header)
-  expect_true("Carrier" %in% cols)               # matched case-insensitively, actual name kept
+  expect_contains(cols, "Carrier")               # matched case-insensitively, actual name kept
   expect_false("userid" %in% cols)
 })
 
 test_that("disposition_input_columns: a custom population adds its columns", {
   cols <- disposition_input_columns(population = "some_flag == 1")
-  expect_true("some_flag" %in% cols)
+  expect_contains(cols, "some_flag")
   expect_false("id.intro.finalText" %in% cols)   # default population not used
 })
 
@@ -637,7 +637,7 @@ test_that("disposition_input_columns: projected read matches a full read", {
     status = c("completed", "open")               # ignored by disposition_run
   )
   keep <- disposition_input_columns(available = names(full))
-  expect_true("error_code" %in% intersect(keep, names(full)))  # projection keeps it
+  expect_contains(intersect(keep, names(full)), "error_code")  # projection keeps it
   projected <- full[, intersect(keep, names(full)), drop = FALSE]
   full_res <- disposition_run(1234, full, contacted_only = FALSE)
   expect_equal(disposition_run(1234, projected, contacted_only = FALSE), full_res)
@@ -659,7 +659,7 @@ test_that("routing opt-in survives an `available` projection for a body-only rea
     id.close.scriptDate = c("", TS, "")    # only r2 reached the close
   )
   keep <- disposition_input_columns(available = names(full))
-  expect_true("id.q1.scriptDate" %in% keep)   # the body timestamp is projected
+  expect_contains(keep, "id.q1.scriptDate")   # the body timestamp is projected
   projected <- full[, intersect(keep, names(full)), drop = FALSE]
   full_res <- disposition_run(1234, full, contacted_only = FALSE)
   expect_equal(disposition_run(1234, projected, contacted_only = FALSE), full_res)
@@ -682,7 +682,7 @@ test_that("disposition_run returns a list of consolidated + meta", {
   )
   res <- disposition_run(1234, d)
   expect_named(res, c("consolidated", "meta"))
-  expect_true(is.data.frame(res$consolidated))
+  expect_s3_class(res$consolidated, "data.frame")
   expect_named(res$meta, c("source_csv_hash", "source_csv_path"))
 })
 
@@ -807,7 +807,7 @@ test_that("disposition_input_columns discovers a non-intro opener from `availabl
   header <- c("phone", "id.FIRSTNET.scriptDate", "id.FIRSTNET.batchDate",
               "id.FIRSTNET.finalText", "id.close.scriptDate", "userid")
   cols <- disposition_input_columns(available = header)
-  expect_true(all(c("id.FIRSTNET.scriptDate", "id.FIRSTNET.batchDate") %in% cols))
+  expect_contains(cols, c("id.FIRSTNET.scriptDate", "id.FIRSTNET.batchDate"))
   expect_false("id.FIRSTNET.finalText" %in% cols)  # routing opt-in reads no finalText
   # The opener columns lead, so a reordered projection keeps the opener before a
   # later question (close) -- otherwise latency_discover_questions() would pick
@@ -920,7 +920,7 @@ test_that("disposition_date is NA (Date) when the input carries no scriptDate co
 test_that("empty disposition frame carries a Date disposition_date column", {
   res <- disposition_run(1, disp_frame(phone = character(0)))$consolidated
   expect_equal(nrow(res), 0L)
-  expect_true("disposition_date" %in% names(res))
+  expect_contains(names(res), "disposition_date")
   expect_s3_class(res$disposition_date, "Date")
 })
 

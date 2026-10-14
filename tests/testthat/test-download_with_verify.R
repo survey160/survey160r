@@ -5,8 +5,7 @@
 # retry behavior (needs per-attempt logic, kept inline).
 
 test_that("download succeeds when file size matches object metadata", {
-  tmp <- tempfile(fileext = ".csv")
-  on.exit(unlink(tmp), add = TRUE)
+  tmp <- withr::local_tempfile(fileext = ".csv")
   stub_gcs_download_ok()
 
   download_with_verify("100/data.csv", tmp)
@@ -14,8 +13,7 @@ test_that("download succeeds when file size matches object metadata", {
 })
 
 test_that("download skips verification when object metadata is unavailable", {
-  tmp <- tempfile(fileext = ".csv")
-  on.exit(unlink(tmp), add = TRUE)
+  tmp <- withr::local_tempfile(fileext = ".csv")
   # Metadata fetch fails (e.g. permissions / transient error) -> skip, with a
   # message rather than silently.
   stub_gcs_download_ok(fail_meta = "403 Forbidden")
@@ -31,8 +29,7 @@ test_that("download skips verification when metadata size is non-numeric", {
   # Defensive: if any code path ever hands back a formatted size string like
   # "483.3 Kb", as.numeric() yields NA -- treat as unknown size and skip the
   # comparison rather than crashing the compare.
-  tmp <- tempfile(fileext = ".csv")
-  on.exit(unlink(tmp), add = TRUE)
+  tmp <- withr::local_tempfile(fileext = ".csv")
   stub_gcs_download_ok(size_override = "483.3 Kb")
 
   expect_message(
@@ -47,8 +44,7 @@ test_that("download skips size verification for a Content-Encoded (gzip) object"
   # download, so the saved file (decompressed) is larger than meta$size (the
   # compressed byte count). A byte-for-byte check would then always fail --
   # encoded objects must skip it and trust the (HTTP-verified) download.
-  tmp <- tempfile(fileext = ".csv")
-  on.exit(unlink(tmp), add = TRUE)
+  tmp <- withr::local_tempfile(fileext = ".csv")
   local_mocked_bindings(
     gcs_get_object = function(object_name, saveToDisk = NULL, meta = FALSE, ...) { # nolint object_name_linter
       if (isTRUE(meta)) {
@@ -71,7 +67,7 @@ test_that("download skips size verification for a Content-Encoded (gzip) object"
 })
 
 test_that("download errors when file not written to disk", {
-  tmp <- tempfile(fileext = ".csv")
+  tmp <- withr::local_tempfile(fileext = ".csv")
   stub_gcs_download_ok(skip_write = TRUE)
 
   expect_error(
@@ -97,12 +93,11 @@ meta_or_download <- function(expected_size, on_download) {
 }
 
 test_that("download with max_retries = 0 fails on the first mismatch without retrying", {
-  tmp <- tempfile(fileext = ".csv")
-  on.exit(unlink(tmp), add = TRUE)
+  tmp <- withr::local_tempfile(fileext = ".csv")
   captured <- new_capture()
   captured$attempts <- 0L
 
-  local_mocked_bindings(Sys.sleep = function(...) NULL, .package = "base")
+  stub_no_sleep()
   local_mocked_bindings(
     gcs_get_object = meta_or_download(999999L, function(saveToDisk) {
       captured$attempts <- captured$attempts + 1L
@@ -119,12 +114,11 @@ test_that("download with max_retries = 0 fails on the first mismatch without ret
 })
 
 test_that("download retries on size mismatch then fails", {
-  tmp <- tempfile(fileext = ".csv")
-  on.exit(unlink(tmp), add = TRUE)
+  tmp <- withr::local_tempfile(fileext = ".csv")
   captured <- new_capture()
   captured$attempts <- 0L
 
-  local_mocked_bindings(Sys.sleep = function(...) NULL, .package = "base")
+  stub_no_sleep()
   local_mocked_bindings(
     gcs_get_object = meta_or_download(999999L, function(saveToDisk) {
       captured$attempts <- captured$attempts + 1L
@@ -142,16 +136,12 @@ test_that("download retries on size mismatch then fails", {
 
 test_that("download retries then succeeds on second attempt", {
   csv_content <- c("a,b", "1,2")
-  tmp <- tempfile(fileext = ".csv")
-  on.exit(unlink(tmp), add = TRUE)
-  size_probe <- tempfile()
-  writeLines(csv_content, size_probe)
-  expected_size <- file.info(size_probe)$size
-  unlink(size_probe)
+  tmp <- withr::local_tempfile(fileext = ".csv")
+  expected_size <- written_size(csv_content)
   captured <- new_capture()
   captured$attempts <- 0L
 
-  local_mocked_bindings(Sys.sleep = function(...) NULL, .package = "base")
+  stub_no_sleep()
   local_mocked_bindings(
     gcs_get_object = meta_or_download(expected_size, function(saveToDisk) {
       captured$attempts <- captured$attempts + 1L
@@ -176,8 +166,7 @@ test_that("progress = TRUE wraps the download in an httr progress bar", {
   # httr::with_config(httr::progress(), ...). The real httr calls run over the
   # stub with no network request, so no bar prints, but the branch is exercised
   # and the file still lands.
-  tmp <- tempfile(fileext = ".csv")
-  on.exit(unlink(tmp), add = TRUE)
+  tmp <- withr::local_tempfile(fileext = ".csv")
   stub_gcs_download_ok()
 
   download_with_verify("100/data.csv", tmp, progress = TRUE)

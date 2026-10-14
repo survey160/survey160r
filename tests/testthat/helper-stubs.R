@@ -42,6 +42,14 @@ stub_gcs_base <- function(env = parent.frame()) {
   )
 }
 
+# Bytes writeLines(lines, path) puts on disk (platform line endings included) --
+# the size a GCS metadata probe should report for that content.
+written_size <- function(lines) {
+  probe <- withr::local_tempfile()
+  writeLines(lines, probe)
+  file.info(probe)$size
+}
+
 # Stub a GCS download for tests of download_with_verify() and its callers.
 # download_with_verify() reads the authoritative object size from
 # gcs_get_object(meta = TRUE); this stub answers both that metadata call and
@@ -67,11 +75,7 @@ stub_gcs_download_ok <- function(capture_env = NULL,
                                  fail_meta = NULL,
                                  skip_write = FALSE,
                                  env = parent.frame()) {
-  size_probe <- tempfile()
-  writeLines(content, size_probe)
-  real_size <- file.info(size_probe)$size
-  unlink(size_probe)
-  reported_size <- if (is.null(size_override)) real_size else size_override
+  reported_size <- if (is.null(size_override)) written_size(content) else size_override
   testthat::local_mocked_bindings(
     gcs_get_object = function(object_name, saveToDisk = NULL, meta = FALSE, ...) { # nolint object_name_linter
       if (isTRUE(meta)) {
@@ -89,8 +93,8 @@ stub_gcs_download_ok <- function(capture_env = NULL,
 
 # --- latency_run helpers --------------------------------------------------
 
-# Capture env for mock-recorded values. Use `<<-` or `env$field <- ...` from
-# inside a mock body; read fields back after the call under test returns.
+# Capture env for mock-recorded values. Assign `env$field <- ...` from inside a
+# mock body (not `<<-`); read fields back after the call under test returns.
 new_capture <- function() new.env(parent = emptyenv())
 
 # Load the shared synthetic CSV with the source_csv_hash/path attributes
@@ -106,6 +110,14 @@ load_synthetic_data <- function(
   attr(d, "source_csv_hash") <- source_csv_hash
   attr(d, "source_csv_path") <- source_csv_path
   d
+}
+
+# synthetic.csv as read.csv returns it (blank cells stay "", no provenance
+# attributes) plus its latency config -- the (data, config) pair the pure
+# latency_report() tests start from.
+synthetic_fixture <- function() {
+  data <- read.csv(testthat::test_path("fixtures/synthetic.csv"), stringsAsFactors = FALSE)
+  list(data = data, config = synthetic_config())
 }
 
 # Load the 8-question parity fixture used by test-latency_parity_legacy.R.
@@ -155,23 +167,6 @@ minimal_synthetic_data <- function(questions = c("intro", "q1", "close"),
     }
   }
   as.data.frame(values, stringsAsFactors = FALSE)
-}
-
-# Build a GCS object-status list as returned by s160_gcs_*_status helpers.
-# `updated` accepts a POSIXct or an ISO-ish string parsed as UTC.
-gcs_status <- function(name = "obj.csv",
-                       updated = "2026-01-01 00:00:00",
-                       size = 1L) {
-  if (is.character(updated)) updated <- as.POSIXct(updated, tz = "UTC")
-  list(name = name, updated = updated, size = size)
-}
-
-# Stub s160_gcs_campaign_results_list to return `ids`.
-stub_campaign_list <- function(ids, env = parent.frame()) {
-  testthat::local_mocked_bindings(
-    s160_gcs_campaign_results_list = function(bucket = NULL) ids,
-    .env = env
-  )
 }
 
 # --- s160_api helpers -----------------------------------------------------
@@ -361,4 +356,36 @@ write_opt_out_parquet <- function(rows) {
     disposition_date = as.Date(disposition_date),
     stringsAsFactors = FALSE
   )
+}
+
+# --- Disposition read engines ------------------------------------------------
+
+# Run `expr` under one disposition read engine ("duckdb" or "nanoparquet").
+with_engine <- function(engine, expr) {
+  withr::with_options(list(survey160r.disposition_engine = engine), expr)
+}
+
+# Make every Parquet file report a DuckDB `created_by`, so the nanoparquet
+# engine takes its DuckDB-written-file path (column projection) on a fixture
+# nanoparquet itself wrote.
+stub_duckdb_created_by <- function(env = parent.frame()) {
+  real_metadata <- nanoparquet::read_parquet_metadata
+  testthat::local_mocked_bindings(
+    read_parquet_metadata = function(file) {
+      m <- real_metadata(file)
+      m$file_meta_data$created_by <- "DuckDB version v1.5.2"
+      m
+    },
+    .package = "nanoparquet", .env = env)
+}
+
+# Expect `expr` to give the identical value under the duckdb and nanoparquet
+# engines -- the contract every Parquet-path disposition reader keeps. Skips
+# when duckdb is not installed.
+expect_engine_parity <- function(expr, env = parent.frame()) {
+  testthat::skip_if_not_installed("duckdb")
+  expr <- substitute(expr)
+  duck <- with_engine("duckdb", eval(expr, env))
+  nano <- with_engine("nanoparquet", eval(expr, env))
+  testthat::expect_identical(duck, nano)
 }

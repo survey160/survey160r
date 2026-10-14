@@ -117,7 +117,7 @@ test_that("hash = TRUE stamps sha256 + canonical gs:// provenance", {
   stub_gcs_base()
   stub_gcs_download_ok()
   res <- suppressMessages(s160_gcs_campaign_results_read(1980, hash = TRUE))
-  expect_true(grepl("^sha256:", attr(res, "source_csv_hash")))
+  expect_match(attr(res, "source_csv_hash"), "^sha256:")
   expect_equal(attr(res, "source_csv_path"),
                "gs://campaign_results/1980/1980_raw_data_download.csv")
 })

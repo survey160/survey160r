@@ -10,7 +10,7 @@ test_that("latency_run wires build_config -> report and returns result", {
   )
 
   expect_type(result, "list")
-  expect_true(all(c("consolidated", "diagnostics", "meta") %in% names(result)))
+  expect_contains(names(result), c("consolidated", "diagnostics", "meta"))
   expect_equal(result$meta$source_csv_hash, "sha256:fixture")
   expect_equal(result$meta$source_csv_path,
                "gs://campaign_results/1/1_raw_data_download.csv")
