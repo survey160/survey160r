@@ -2,9 +2,7 @@
 # s160_gcs_campaign_results_read(hash = TRUE) -- reads + stamps the same provenance attrs.
 
 test_that("s160_read_csv stamps source_csv_hash and source_csv_path", {
-  tmp <- tempfile(fileext = ".csv")
-  writeLines(c("a,b", "1,2", "3,4"), tmp)
-  on.exit(unlink(tmp), add = TRUE)
+  tmp <- withr::local_tempfile(lines = c("a,b", "1,2", "3,4"), fileext = ".csv")
 
   data <- s160_read_csv(tmp)
 
@@ -24,9 +22,7 @@ test_that("s160_read_csv errors when the file is missing", {
 })
 
 test_that("s160_read_csv forwards `...` to read.csv (e.g., sep)", {
-  tmp <- tempfile(fileext = ".tsv")
-  writeLines(c("a\tb", "1\t2"), tmp)
-  on.exit(unlink(tmp), add = TRUE)
+  tmp <- withr::local_tempfile(lines = c("a\tb", "1\t2"), fileext = ".tsv")
 
   data <- s160_read_csv(tmp, sep = "\t")
 
@@ -47,8 +43,7 @@ test_that("s160_read_csv result is consumable by latency_run downstream", {
 })
 
 test_that("s160_read_csv hash = FALSE skips the hashing pass", {
-  tmp <- withr::local_tempfile(fileext = ".csv")
-  writeLines(c("a,b", "1,2"), tmp)
+  tmp <- withr::local_tempfile(lines = c("a,b", "1,2"), fileext = ".csv")
 
   data <- s160_read_csv(tmp, hash = FALSE)
 
@@ -57,8 +52,7 @@ test_that("s160_read_csv hash = FALSE skips the hashing pass", {
 })
 
 test_that("s160_read_csv rejects a non-scalar-logical hash", {
-  tmp <- withr::local_tempfile(fileext = ".csv")
-  writeLines(c("a,b", "1,2"), tmp)
+  tmp <- withr::local_tempfile(lines = c("a,b", "1,2"), fileext = ".csv")
 
   expect_error(s160_read_csv(tmp, hash = "FALSE"), "single TRUE or FALSE")
   expect_error(s160_read_csv(tmp, hash = c(TRUE, FALSE)), "single TRUE or FALSE")
@@ -80,8 +74,7 @@ test_that("s160_csv_header makes colliding munged names unique", {
 })
 
 test_that("s160_read_csv columns = projects to the requested columns", {
-  tmp <- withr::local_tempfile(fileext = ".csv")
-  writeLines(c("campaignid,extra,userid", "5,junk,7"), tmp)
+  tmp <- withr::local_tempfile(lines = c("campaignid,extra,userid", "5,junk,7"), fileext = ".csv")
 
   data <- s160_read_csv(tmp, columns = c("campaignid", "userid"))
 
@@ -89,16 +82,14 @@ test_that("s160_read_csv columns = projects to the requested columns", {
 })
 
 test_that("s160_csv_header returns munged names and errors on missing file", {
-  tmp <- withr::local_tempfile(fileext = ".csv")
-  writeLines(c("id[q1]scriptDate,campaignid", "2026-01-01,5"), tmp)
+  tmp <- withr::local_tempfile(lines = c("id[q1]scriptDate,campaignid", "2026-01-01,5"), fileext = ".csv")
 
   expect_equal(s160_csv_header(tmp), c("id.q1.scriptDate", "campaignid"))
   expect_error(s160_csv_header("/no/such/file.csv"), "file not found")
 })
 
 test_that("s160_csv_header fallback (no data.table) returns munged names", {
-  tmp <- withr::local_tempfile(fileext = ".csv")
-  writeLines(c("id[q1]scriptDate,campaignid", "2026-01-01,5"), tmp)
+  tmp <- withr::local_tempfile(lines = c("id[q1]scriptDate,campaignid", "2026-01-01,5"), fileext = ".csv")
 
   stub_no_data_table()
   expect_equal(s160_csv_header(tmp), c("id.q1.scriptDate", "campaignid"))
@@ -192,8 +183,7 @@ test_that("timestamps = \"POSIXct\" gives the same latency and disposition resul
   row2 <- strsplit(lines[[2L]], ",", fixed = TRUE)[[1L]]
   row2[[at]] <- "not a timestamp"
   lines[[2L]] <- paste(row2, collapse = ",")
-  tmp <- withr::local_tempfile(fileext = ".csv")
-  writeLines(lines, tmp)
+  tmp <- withr::local_tempfile(lines = lines, fileext = ".csv")
   chr <- s160_read_csv(tmp)
   expect_type(chr$id.intro.batchDate, "character")
   parsed <- s160_read_csv(tmp, timestamps = "POSIXct")
@@ -206,10 +196,6 @@ test_that("timestamps = \"POSIXct\" gives the same latency and disposition resul
   expect_identical(a$diagnostics, b$diagnostics)
   expect_identical(a$latency_frame, b$latency_frame)
   expect_equal(a$diagnostics$parse_failures_per_column[["id.intro.batchDate"]], 1L)
-  if ("phone" %in% names(chr)) {
-    expect_identical(disposition_run(1L, chr)$consolidated,
-                     disposition_run(1L, parsed)$consolidated)
-  }
 })
 
 test_that("timestamps rejects anything but character / POSIXct", {

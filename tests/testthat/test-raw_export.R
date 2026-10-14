@@ -95,6 +95,8 @@ test_that("latency_run on the raw shape: no parse failures, same result for any 
   p <- latency(s160_read_csv(raw_fixture(), timestamps = "POSIXct"))
   expect_identical(p$consolidated, r$consolidated)
   expect_identical(p$latency_frame, r$latency_frame)
+  expect_identical(disposition_run(1980L, s160_read_csv(raw_fixture(), timestamps = "POSIXct")),
+                   disposition_run(1980L, d))
   crlf <- write_raw_export(synthetic_raw_export(n = 30L, seed = 1L), eol = "\r\n")
   expect_identical(without_source(latency(s160_read_csv(crlf))$consolidated),
                    without_source(r$consolidated))
