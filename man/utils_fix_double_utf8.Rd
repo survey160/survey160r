@@ -2,7 +2,7 @@
 % Please edit documentation in R/utils.R
 \name{utils_fix_double_utf8}
 \alias{utils_fix_double_utf8}
-\title{Detect or repair double-encoded UTF-8 (mojibake) in export text}
+\title{Detect or repair double-encoded UTF-8 in export text}
 \usage{
 utils_fix_double_utf8(x, apply = FALSE, quiet = FALSE)
 }

@@ -129,7 +129,7 @@
   invisible(NULL)
 }
 
-#' Detect or repair double-encoded UTF-8 (mojibake) in export text
+#' Detect or repair double-encoded UTF-8 in export text
 #'
 #' Reverses a double UTF-8 encoding in which a value's original UTF-8 bytes were
 #' mis-read as Latin-1 (ISO-8859-1) and re-encoded to UTF-8 -- so an en dash
