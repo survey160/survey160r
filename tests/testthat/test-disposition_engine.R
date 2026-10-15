@@ -241,6 +241,7 @@ test_that(".onAttach hints at duckdb only when it is not installed", {
 
 test_that("a path with a glob metacharacter is read literally, not expanded", {
   skip_if_not_installed("duckdb")
+  skip_on_os("windows")   # "*" is not a legal Windows file name character
   # DuckDB's read_parquet() would expand "b*.parquet" to every match; the
   # nanoparquet read takes the path literally.
   dir <- withr::local_tempdir()
