@@ -138,6 +138,7 @@ test_that(".file_sha256_native parses the tool's digest line or declines (mocked
 
 test_that(".file_sha256_native matches digest with the real tool", {
   skip_if(!nzchar(Sys.which("sha256sum")), "no system sha256sum")
+  skip_on_os("windows")   # backslash is a path separator there, not a name character
   dir <- withr::local_tempdir()
   odd <- file.path(dir, "a b\\c 'q'.csv")   # space, backslash, quote: escaped output
   writeLines("x,y", odd)
