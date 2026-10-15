@@ -2,7 +2,7 @@
 % Please edit documentation in R/latency_run.R
 \name{latency_run}
 \alias{latency_run}
-\title{Run the latency report for one campaign}
+\title{Build the config and run the latency report for one campaign}
 \usage{
 latency_run(
   campaign_id,

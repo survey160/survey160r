@@ -2,7 +2,7 @@
 % Please edit documentation in R/latency_primitives.R
 \name{parse_campaign_timestamps}
 \alias{parse_campaign_timestamps}
-\title{Parse Survey160 campaign-export timestamps}
+\title{Parse campaign-export timestamps}
 \usage{
 parse_campaign_timestamps(x)
 }

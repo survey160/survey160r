@@ -2,7 +2,7 @@
 % Please edit documentation in R/disposition_read.R
 \name{disposition_screen}
 \alias{disposition_screen}
-\title{Screen a sample against the disposition dataset (annotate in place)}
+\title{Screen a sample against the disposition dataset}
 \usage{
 disposition_screen(
   sample,

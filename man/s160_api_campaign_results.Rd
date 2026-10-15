@@ -2,7 +2,7 @@
 % Please edit documentation in R/s160_api.R
 \name{s160_api_campaign_results}
 \alias{s160_api_campaign_results}
-\title{Download campaign results via API}
+\title{Trigger a fresh campaign export and read it}
 \usage{
 s160_api_campaign_results(
   campaign_id,

@@ -2,7 +2,7 @@
 % Please edit documentation in R/campaign_metrics_aggregate.R
 \name{campaign_metrics_summary}
 \alias{campaign_metrics_summary}
-\title{Summarize campaign metrics to funnel counts + rates by dimension}
+\title{Summarize campaign metrics to funnel counts and rates by dimension}
 \usage{
 campaign_metrics_summary(x, by = "campaign_id", rates = TRUE, percent = FALSE)
 }

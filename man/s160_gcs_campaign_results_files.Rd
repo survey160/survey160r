@@ -2,7 +2,7 @@
 % Please edit documentation in R/s160_gcs.R
 \name{s160_gcs_campaign_results_files}
 \alias{s160_gcs_campaign_results_files}
-\title{List files in a campaign's GCS folder}
+\title{List the files in a campaign's Cloud Storage folder}
 \usage{
 s160_gcs_campaign_results_files(campaign_id, env = .ENV_CHOICES, bucket = NULL)
 }

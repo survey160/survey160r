@@ -790,7 +790,7 @@
   summ
 }
 
-#' Summarize the disposition dataset for a phone list (one row per phone)
+#' Summarize the disposition dataset to one row per phone
 #'
 #' Rolls the disposition data up to \strong{one row per phone} -- each number's
 #' cross-campaign status counts, date span, and latest/best disposition. Pass either the
@@ -923,7 +923,7 @@ disposition_summary <- function(x, phones = NULL, campaign_ids = NULL,
                       fn = "disposition_summary")
 }
 
-#' Read the raw disposition records (one row per phone + campaign)
+#' Read the disposition records, one row per phone and campaign
 #'
 #' Reads the disposition Parquet projection and returns its rows \strong{as
 #' stored} -- one row per \code{(phone, campaign_id)}, carrying the full
@@ -1033,7 +1033,7 @@ disposition_records <- function(dataset, phones = NULL, campaign_ids = NULL,
   d
 }
 
-#' Screen a sample against the disposition dataset (annotate in place)
+#' Screen a sample against the disposition dataset
 #'
 #' Takes a sample data frame (a phone column plus
 #' whatever else -- strata, quota cells, ...) and returns it \strong{unchanged
@@ -1123,7 +1123,7 @@ disposition_screen <- function(sample, dataset, phone_col = "phone",
   sample
 }
 
-#' Download the disposition projection from GCS
+#' Download the disposition dataset from Cloud Storage
 #'
 #' Pulls the phone-sorted disposition projection
 #' (\code{disposition_all.parquet}) from the environment's

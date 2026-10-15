@@ -2,7 +2,7 @@
 % Please edit documentation in R/latency_config.R
 \name{latency_build_config}
 \alias{latency_build_config}
-\title{Build a latency config from a campaign id and its CSV}
+\title{Build a latency config from a campaign export}
 \usage{
 latency_build_config(
   campaign_id,

@@ -1,5 +1,19 @@
 # survey160r (development version)
 
+## Documentation
+
+* The package help page (`?survey160r`) is now listed in the manual's help
+  index (it was marked internal) and groups every exported function by task:
+  first-time setup, campaign exports, latency, disposition, opt-out, campaign
+  metrics, and utilities. A test keeps it complete.
+* Help-page titles follow one style -- an imperative verb, "Cloud Storage"
+  rather than "GCS", "and" rather than "+", and no parenthetical asides -- so
+  the alphabetical help index reads as a list of tasks.
+* The package `Description` covers the whole surface (disposition, opt-out and
+  campaign metrics), not only latency.
+* The three articles share one structure: task sections, then "What you get
+  back", "Notes" and "See also", each linking the other two articles.
+
 ## Bug fixes
 
 * `disposition_run()` no longer counts a literal `"NA"` in an export's

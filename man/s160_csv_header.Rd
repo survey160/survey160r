@@ -2,7 +2,7 @@
 % Please edit documentation in R/s160_gcs.R
 \name{s160_csv_header}
 \alias{s160_csv_header}
-\title{Read just the header (column names) of a CSV}
+\title{Read the column names of a campaign export}
 \usage{
 s160_csv_header(path, encoding = "UTF-8")
 }

@@ -2,7 +2,7 @@
 % Please edit documentation in R/campaign_metrics_read.R
 \name{campaign_metrics_pull}
 \alias{campaign_metrics_pull}
-\title{Download the consolidated campaign-metrics projection from Cloud Storage}
+\title{Download the campaign-metrics projection from Cloud Storage}
 \usage{
 campaign_metrics_pull(
   env = .ENV_CHOICES,

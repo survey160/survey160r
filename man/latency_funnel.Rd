@@ -2,7 +2,7 @@
 % Please edit documentation in R/latency_funnel.R
 \name{latency_funnel}
 \alias{latency_funnel}
-\title{Reduce a consolidated latency table to the funnel counts}
+\title{Reduce a latency report to funnel counts}
 \usage{
 latency_funnel(consolidated, grain = c("day", "hour"))
 }

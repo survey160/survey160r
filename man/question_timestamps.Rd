@@ -2,7 +2,7 @@
 % Please edit documentation in R/question.R
 \name{question_timestamps}
 \alias{question_timestamps}
-\title{Read a question's timestamps from a campaign export}
+\title{Read one question's timestamps from a campaign export}
 \usage{
 question_timestamps(data, question, field = "scriptDate")
 }

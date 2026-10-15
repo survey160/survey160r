@@ -186,7 +186,7 @@
   }
 }
 
-#' Roll the disposition dataset up to funnel counts + rates by dimension
+#' Summarize the disposition dataset to funnel counts and rates by dimension
 #'
 #' The disposition dataset is one row per \code{(phone, campaign_id)},
 #' contacted-only, with 0/1 funnel flags per recipient. \code{disposition_funnel()}

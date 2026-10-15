@@ -2,7 +2,7 @@
 % Please edit documentation in R/opt_out_read.R
 \name{opt_out_screen}
 \alias{opt_out_screen}
-\title{Screen a sample against the opt-out list (annotate in place)}
+\title{Screen a sample against the opt-out list}
 \usage{
 opt_out_screen(sample, dataset, phone_col = "phone")
 }

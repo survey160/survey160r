@@ -2,7 +2,7 @@
 % Please edit documentation in R/disposition_read.R
 \name{disposition_pull}
 \alias{disposition_pull}
-\title{Download the disposition projection from GCS}
+\title{Download the disposition dataset from Cloud Storage}
 \usage{
 disposition_pull(
   env = .ENV_CHOICES,

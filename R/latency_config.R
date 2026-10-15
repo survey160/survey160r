@@ -16,7 +16,7 @@
 .terminal_states <- c("refusal", "ineligible")
 
 
-#' Discover the question flow from CSV column names
+#' Discover the question flow from export column names
 #'
 #' Scans the column names of an in-memory CSV data frame (as returned by
 #' \code{read.csv} / \code{s160_gcs_campaign_results_read}) for \code{id.<q>.scriptDate}
@@ -46,7 +46,7 @@ latency_discover_questions <- function(data) {
   qs[!qs %in% .terminal_states]
 }
 
-#' Build a latency config from a campaign id and its CSV
+#' Build a latency config from a campaign export
 #'
 #' Pure function. Derives \code{flow.questions} from the CSV column names
 #' via \code{latency_discover_questions()} and assembles the rest of the
@@ -106,7 +106,7 @@ latency_build_config <- function(campaign_id, data,
   )
 }
 
-#' Validate a latency config against a data frame
+#' Validate a latency config against a campaign export
 #'
 #' Implements the fail-fast checks from spec section 2.4. Aborts with a named error
 #' on the first failing rule.
@@ -232,7 +232,7 @@ validate_columns_present <- function(config, data) {
 # has_personalized_close_link() in summary_aggregate.R.
 .report_support_patterns <- "^id\\.close[A-Za-z0-9_]*\\.(script|batch)Text$"
 
-#' CSV columns the latency report reads for a given config
+#' List the export columns the latency report reads
 #'
 #' Returns the (dot-form) column names \code{latency_report()} touches for a
 #' given \code{config}: the per-question \code{scriptDate}/\code{batchDate}
@@ -324,7 +324,7 @@ validate_flow_order <- function(config, data) {
   invisible(TRUE)
 }
 
-#' Stable hash of a config
+#' Hash a latency config
 #'
 #' Hashes a canonical form of the config so the same logical config always
 #' produces the same hash even across different YAML serializations.

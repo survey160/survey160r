@@ -2,7 +2,7 @@
 % Please edit documentation in R/s160_gcs.R
 \name{s160_gcs_campaign_results_status}
 \alias{s160_gcs_campaign_results_status}
-\title{Check campaign results export status}
+\title{Check a campaign export's update time and size}
 \usage{
 s160_gcs_campaign_results_status(
   campaign_id,

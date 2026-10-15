@@ -2,7 +2,7 @@
 % Please edit documentation in R/latency_config.R
 \name{latency_input_columns}
 \alias{latency_input_columns}
-\title{CSV columns the latency report reads for a given config}
+\title{List the export columns the latency report reads}
 \usage{
 latency_input_columns(config, available = NULL)
 }

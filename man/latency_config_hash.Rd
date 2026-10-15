@@ -2,7 +2,7 @@
 % Please edit documentation in R/latency_config.R
 \name{latency_config_hash}
 \alias{latency_config_hash}
-\title{Stable hash of a config}
+\title{Hash a latency config}
 \usage{
 latency_config_hash(config)
 }

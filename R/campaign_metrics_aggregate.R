@@ -137,7 +137,7 @@ campaign_metrics_records <- function(x, dedup = TRUE) {
   d
 }
 
-#' Summarize campaign metrics to funnel counts + rates by dimension
+#' Summarize campaign metrics to funnel counts and rates by dimension
 #'
 #' Rolls the campaign-metrics cells up to summed funnel counts and the standard
 #' funnel rates, grouped by any project dimension(s). Reads and de-duplicates

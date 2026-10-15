@@ -4,7 +4,7 @@
 # the GCS source path, or bring your own data frame from anywhere
 # (Dropbox, local disk, S3, an email attachment).
 
-#' Run the latency report for one campaign
+#' Build the config and run the latency report for one campaign
 #'
 #' User-facing one-campaign runner. Given an in-memory campaign CSV
 #' (already read by the caller), (optionally) builds the report config

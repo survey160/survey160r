@@ -456,7 +456,7 @@ fast_read_csv <- function(path, columns = NULL, encoding = "UTF-8",
 
 # --- Exported functions ------------------------------------------------------
 
-#' The Survey160 environment configuration
+#' Read the Survey160 environment configuration
 #'
 #' Returns the configuration survey160r uses to reach Survey160's backends: the
 #' environments, each one's API base URL, and the datasets (with their GCS
@@ -659,7 +659,7 @@ finish_gcs_init <- function(bucket) {
   invisible(NULL)
 }
 
-#' Read campaign results CSV from GCS into a data frame
+#' Read a campaign export from Cloud Storage
 #'
 #' Downloads the CSV from GCS and reads it into R. By default, the file is
 #' downloaded to a temporary location and cleaned up automatically. Set
@@ -831,7 +831,7 @@ s160_gcs_campaign_results_read <- function(campaign_id, filename = NULL,
   data
 }
 
-#' List files in a campaign's GCS folder
+#' List the files in a campaign's Cloud Storage folder
 #'
 #' Returns the file names inside a campaign's folder in the results bucket.
 #' Returns \code{character(0)} with a message if the campaign has no files.
@@ -873,7 +873,7 @@ s160_gcs_campaign_results_files <- function(campaign_id,
   sub(prefix, "", objects$name, fixed = TRUE)
 }
 
-#' List all campaign IDs in the current bucket
+#' List the campaign ids in the campaign-results bucket
 #'
 #' Returns a sorted character vector of campaign IDs (top-level folder names)
 #' in the results bucket. Objects at the bucket root (not inside a folder) are
@@ -912,7 +912,7 @@ s160_gcs_campaign_results_list <- function(env = .ENV_CHOICES,
   sort(campaign_ids)
 }
 
-#' Read a campaign CSV from a local path, hashing it for provenance
+#' Read a campaign export from a local file
 #'
 #' Local-source sibling of \code{s160_gcs_campaign_results_read()} (with
 #' \code{hash = TRUE}). Reads the CSV
@@ -971,7 +971,7 @@ s160_read_csv <- function(path, columns = NULL, hash = TRUE,
   data
 }
 
-#' Read just the header (column names) of a CSV
+#' Read the column names of a campaign export
 #'
 #' Peeks the first line of a CSV and returns its column names in the same
 #' \code{make.names()}-munged (dot-form) form the readers produce, without
@@ -998,7 +998,7 @@ s160_csv_header <- function(path, encoding = "UTF-8") {
   make.names(read_header_raw(path, encoding = encoding), unique = TRUE)
 }
 
-#' Check campaign results export status
+#' Check a campaign export's update time and size
 #'
 #' Returns GCS file metadata for the campaign's export file without
 #' triggering a new export. Requires GCS auth (\code{s160_gcs_init}).

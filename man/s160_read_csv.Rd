@@ -2,7 +2,7 @@
 % Please edit documentation in R/s160_gcs.R
 \name{s160_read_csv}
 \alias{s160_read_csv}
-\title{Read a campaign CSV from a local path, hashing it for provenance}
+\title{Read a campaign export from a local file}
 \usage{
 s160_read_csv(
   path,

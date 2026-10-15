@@ -2,7 +2,7 @@
 % Please edit documentation in R/s160_api.R
 \name{s160_api_campaign_get}
 \alias{s160_api_campaign_get}
-\title{Read a single campaign's attributes}
+\title{Read one campaign's attributes from the Survey160 API}
 \usage{
 s160_api_campaign_get(campaign_id, conn = NULL)
 }

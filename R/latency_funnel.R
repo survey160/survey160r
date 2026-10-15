@@ -9,7 +9,7 @@
 # accessor performs the one correct reduction so no consumer has to re-derive
 # it (see R/latency_aggregate.R for how the fan-out is built).
 
-#' Reduce a consolidated latency table to the funnel counts
+#' Reduce a latency report to funnel counts
 #'
 #' \code{latency_run()} / \code{latency_report()} return a \code{consolidated}
 #' table whose funnel anchor columns (\code{n_sent}, \code{n_engaged},

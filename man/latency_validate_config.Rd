@@ -2,7 +2,7 @@
 % Please edit documentation in R/latency_config.R
 \name{latency_validate_config}
 \alias{latency_validate_config}
-\title{Validate a latency config against a data frame}
+\title{Validate a latency config against a campaign export}
 \usage{
 latency_validate_config(config, data)
 }

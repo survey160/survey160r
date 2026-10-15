@@ -230,7 +230,7 @@ s160_api_request <- function(method, path, body = NULL, conn = NULL) {
 
 # --- Exported functions -------------------------------------------------------
 
-#' Authenticate to a Survey160 environment and return a connection
+#' Authenticate to the Survey160 API
 #'
 #' One entry point, addressed by environment \emph{name} so the base URL, the
 #' campaign-results GCS bucket, and the API key are resolved together and cannot
@@ -352,7 +352,7 @@ print.s160_api_conn <- function(x, ...) {
   invisible(x)
 }
 
-#' Download campaign results via API
+#' Trigger a fresh campaign export and read it
 #'
 #' Triggers a fresh campaign results export, polls GCS until the file is
 #' updated, and returns the results as a data frame. Requires both API auth
@@ -450,7 +450,7 @@ s160_api_campaign_results <- function(campaign_id, filter_open = FALSE,
             fn = "s160_api_campaign_results")
 }
 
-#' Read a single campaign's attributes
+#' Read one campaign's attributes from the Survey160 API
 #'
 #' Wraps the Survey160 API endpoint \code{GET /campaigns/<campaign_id>}, which
 #' returns every column on the \code{campaigns} table for one campaign. Useful

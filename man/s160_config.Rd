@@ -2,7 +2,7 @@
 % Please edit documentation in R/s160_gcs.R
 \name{s160_config}
 \alias{s160_config}
-\title{The Survey160 environment configuration}
+\title{Read the Survey160 environment configuration}
 \usage{
 s160_config(refresh = FALSE)
 }
