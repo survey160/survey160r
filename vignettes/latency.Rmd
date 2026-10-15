@@ -13,7 +13,7 @@ vignette: >
 knitr::opts_chunk$set(collapse = TRUE, comment = "#>", eval = FALSE)
 ```
 
-Turn a campaign's raw results CSV into a per-campaign recipient-latency report -- how fast each message followed the previous one, and what share of recipients hit the fleet's target windows -- so you can tune send timing. Assumes you have completed First-time setup (see the package README) if you read from GCS.
+Turn a campaign's raw results CSV into a per-campaign recipient-latency report -- how fast each message followed the previous one, and what share of recipients hit the fleet's target windows -- so you can tune send timing. Assumes you have completed First-time setup (see the package README) if you read the export from Cloud Storage.
 
 ## Build a report
 
@@ -52,11 +52,48 @@ latency_report(data, config,
 
 A hand-built data frame works too; `result$meta` provenance is then `NA`, which is correct for that case.
 
+## Reduce a report to funnel counts
+
+`consolidated` is denormalized -- the funnel anchors repeat across every segment and threshold row, and the frame carries both hour rows and a day rollup -- so summing a column over it multi-counts. `latency_funnel()` does the one correct reduction:
+
+```{r}
+latency_funnel(result$consolidated)                  # one row per (campaign, date)
+latency_funnel(result$consolidated, grain = "hour")  # one row per (campaign, date, hour)
+```
+
+Each row carries `n_sent`, `n_engaged`, `n_opted_in`, and `n_completed`; summing an anchor across the `"hour"` result equals the matching `"day"` value.
+
+## Count recipients reaching each question
+
+For the "records reaching each question" view -- which stage sheds respondents -- pass the flow in order to `question_funnel()`. It reads the export directly, not the report:
+
+```{r}
+question_funnel(data, c("intro", "q1", "q2", "close"))
+```
+
+It returns one row per question with `n_reached` and `pct_reached` (share of the first stage). Underneath, `question_timestamps(data, "close")` reads and parses one question's timestamp column, and `parse_campaign_timestamps()` decodes the export's timestamp strings directly -- both operate on the raw export data frame.
+
+## Run a large export
+
+A wide, high-volume campaign fits a laptop with three levers, all output-identical to the default read and run:
+
+```{r}
+path   <- "path/to/1234.csv"
+header <- s160_csv_header(path)
+config <- latency_build_config(1234, header, field_timezone = "America/New_York")
+data <- s160_read_csv(path,
+                      columns = latency_input_columns(config, available = header),
+                      timestamps = "POSIXct")   # 8 bytes per cell, not ~60
+result <- latency_run(1234, data, config = config, compact = TRUE)
+```
+
+`columns` projects the read to the timestamp, population and campaign-id columns the report needs. `timestamps = "POSIXct"` guarantees compact timestamp columns even where a stray unparseable cell would otherwise keep a column as text (an unparseable cell is still counted in `diagnostics$parse_failures_per_column`). `compact = TRUE` computes the same `consolidated` and `diagnostics` segment by segment, keeping only the rows with a real send date (it never materializes the full respondent-by-segment frame), so peak memory follows real engagement rather than `(questions - 1) x respondents`; `latency_frame` then holds just those rows. A 1M-respondent, 12-question export runs in about 15 seconds within 4 GB.
+
 ## What you get back
 
 `result$consolidated` is one row per `(campaign_id, date, hour_local, segment, threshold_min)` -- the shape a consumer project writes to Parquet:
 
-| Column(s) | Purpose |
+| Column | Meaning |
 |---|---|
 | `campaign_id`, `project_id` | Wave identity |
 | `survey_mode` | `sms` / `t2w` / `t2w_external` |
@@ -67,53 +104,17 @@ A hand-built data frame works too; `result$meta` provenance is then `NA`, which 
 | `n_respondents`, `pct_resp_hit_gt`, `pct_resp_worst_gt` | Respondent-cascade metrics |
 | `mean_delta_min`, `p50_delta_min`, `p90_delta_min`, `p95_delta_min` | Per-segment latency distribution (minutes) |
 | `n_na_parse`, `n_na_missing`, `n_na_chain` | Segments with no computable latency, by reason |
-| `n_sent`, `n_engaged`, `n_opted_in`, `n_completed`, `n_ineligible` | Bucket volume: sent, engaged, opted-in, completed, screened out |
+| `n_sent`, `n_engaged`, `n_opted_in`, `n_completed`, `n_ineligible`, `n_refused` | Bucket volume: sent, engaged, opted-in, completed, screened out, declined |
 | `algorithm_version`, `config_hash`, `source_csv_hash`, `run_at_utc`, `run_by` | Provenance |
 
 `result$meta` carries `algorithm_version`, `schema_version`, `config_hash`, `run_at_utc`, `source_csv_hash`, and `source_csv_path`. See `?latency_run` for the full argument list.
 
-## Reduce to the funnel
-
-`consolidated` is denormalised -- the funnel anchors repeat across every segment and threshold row, and the frame carries both hour rows and a day rollup -- so summing a column over it multi-counts. `latency_funnel()` does the one correct reduction:
-
-```{r}
-latency_funnel(result$consolidated)                  # one row per (campaign, date)
-latency_funnel(result$consolidated, grain = "hour")  # one row per (campaign, date, hour)
-```
-
-Each row carries `n_sent`, `n_engaged`, `n_opted_in`, and `n_completed`; summing an anchor across the `"hour"` result equals the matching `"day"` value.
-
-## Per-question reached funnel
-
-For the "records reaching each question" view -- which stage sheds respondents -- pass the flow in order to `question_funnel()`. It reads the export directly, not the report:
-
-```{r}
-question_funnel(data, c("intro", "q1", "q2", "close"))
-```
-
-It returns one row per question with `n_reached` and `pct_reached` (share of the first stage). Underneath, `question_timestamps(data, "close")` reads and parses one question's timestamp column, and `parse_campaign_timestamps()` decodes the export's timestamp strings directly -- both operate on the raw export data frame.
-
-## Large exports
-
-A wide, high-volume campaign fits a laptop with three levers, all output-identical to the default read and run:
-
-```r
-header <- s160_csv_header(path)
-config <- latency_build_config(1234, header, field_timezone = "America/New_York")
-data <- s160_read_csv(path,
-                      columns = latency_input_columns(config, available = header),  # read only the columns the report uses
-                      timestamps = "POSIXct")                                       # decode timestamps at read time (8 bytes per cell, not ~60)
-result <- latency_run(1234, data, config = config, compact = TRUE)                  # never materialise the full respondent x segment frame
-```
-
-`columns` projects the read to the timestamp, population and campaign-id columns the report needs. `timestamps = "POSIXct"` guarantees compact timestamp columns even where a stray unparseable cell would otherwise keep a column as text (an unparseable cell is still counted in `diagnostics$parse_failures_per_column`). `compact = TRUE` computes the same `consolidated` and `diagnostics` segment by segment, keeping only the rows with a real send date, so peak memory follows real engagement rather than `(questions - 1) x respondents`; `latency_frame` then holds just those rows. A 1M-respondent, 12-question export runs in about 15 seconds within 4 GB.
-
 ## Notes
 
-- `latency_run()` composes `latency_build_config()` + `latency_report()`; reach for the pieces only when you need to inspect or override the config.
-- `respondent_id_column` defaults to `NULL` -- `userid` is the agent login, not a per-respondent id.
-- For a non-interactive run (a scheduled job or a report), authenticate with `s160_gcs_init(adc = TRUE)` -- Application Default Credentials, no browser.
+- **Run or build.** `latency_run()` composes `latency_build_config()` and `latency_report()`; reach for the pieces only when you need to inspect or override the config.
+- **No respondent id by default.** `respondent_id_column` defaults to `NULL` -- `userid` is the agent login, not a per-respondent id.
+- **Non-interactive runs.** For a scheduled job or a rendered report, authenticate with `s160_gcs_init(adc = TRUE)` -- Application Default Credentials, no browser.
 
 ## See also
 
-`?latency_run`, `?latency_report`, `?latency_funnel`, `?question_funnel`, `?question_timestamps`, `?parse_campaign_timestamps`, `?latency_build_config`, `?latency_validate_config`. For disposition screening, `vignette("disposition")`.
+`?latency_run`, `?latency_report`, `?latency_funnel`, `?question_funnel`, `?question_timestamps`, `?parse_campaign_timestamps`, `?latency_build_config`, `?latency_validate_config`, and `?survey160r` for every function by task. To screen a phone sample, `vignette("disposition")` and `vignette("opt-out")`. For the funnel across the fleet by registration or brand, `vignette("campaign-metrics")`.

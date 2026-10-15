@@ -4,7 +4,7 @@
 # compute over an in-memory export frame -- no I/O, no raw-source access -- so
 # they take bare names.
 
-#' Read a question's timestamps from a campaign export
+#' Read one question's timestamps from a campaign export
 #'
 #' Resolves the \code{id.<question>.<field>} column of a Survey160 campaign
 #' export and parses it to \code{POSIXct} (UTC) via
@@ -49,7 +49,7 @@ question_timestamps <- function(data, question, field = "scriptDate") {
   .column_timestamps(data, col)
 }
 
-#' Per-question reached-count funnel for a campaign export
+#' Count the recipients reaching each question of a campaign export
 #'
 #' For each question in \code{questions} (in the given order), counts the
 #' records that reached it -- those with a parseable \code{field} timestamp for

@@ -2,7 +2,7 @@
 % Please edit documentation in R/disposition_read.R
 \name{disposition_summary}
 \alias{disposition_summary}
-\title{Summarize the disposition dataset for a phone list (one row per phone)}
+\title{Summarize the disposition dataset to one row per phone}
 \usage{
 disposition_summary(
   x,

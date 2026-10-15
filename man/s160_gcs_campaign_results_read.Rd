@@ -2,7 +2,7 @@
 % Please edit documentation in R/s160_gcs.R
 \name{s160_gcs_campaign_results_read}
 \alias{s160_gcs_campaign_results_read}
-\title{Read campaign results CSV from GCS into a data frame}
+\title{Read a campaign export from Cloud Storage}
 \usage{
 s160_gcs_campaign_results_read(
   campaign_id,

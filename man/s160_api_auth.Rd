@@ -2,7 +2,7 @@
 % Please edit documentation in R/s160_api.R
 \name{s160_api_auth}
 \alias{s160_api_auth}
-\title{Authenticate to a Survey160 environment and return a connection}
+\title{Authenticate to the Survey160 API}
 \usage{
 s160_api_auth(env = .ENV_CHOICES)
 }

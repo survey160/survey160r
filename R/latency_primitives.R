@@ -22,7 +22,7 @@
   out
 }
 
-#' Parse Survey160 campaign-export timestamps
+#' Parse campaign-export timestamps
 #'
 #' Parses the timestamp strings found in a Survey160 campaign export (e.g.
 #' \code{id.intro.scriptDate}) to \code{POSIXct} in UTC. The export encodes

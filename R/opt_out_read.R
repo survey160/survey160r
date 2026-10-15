@@ -73,7 +73,7 @@
              stringsAsFactors = FALSE)
 }
 
-#' Screen a sample against the opt-out list (annotate in place)
+#' Screen a sample against the opt-out list
 #'
 #' Takes a sample data frame (a phone column plus whatever else -- strata,
 #' quota cells, ...) and returns it \strong{unchanged with two opt-out columns

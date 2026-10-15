@@ -216,7 +216,7 @@ empty_disposition_frame <- function() {
   )
 }
 
-#' CSV columns disposition_run() reads for a given population
+#' List the export columns disposition_run() reads
 #'
 #' Returns the (dot-form) column names \code{disposition_run()} touches, so a
 #' caller can project a wide export down to just those columns and get output

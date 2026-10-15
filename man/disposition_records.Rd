@@ -2,7 +2,7 @@
 % Please edit documentation in R/disposition_read.R
 \name{disposition_records}
 \alias{disposition_records}
-\title{Read the raw disposition records (one row per phone + campaign)}
+\title{Read the disposition records, one row per phone and campaign}
 \usage{
 disposition_records(
   dataset,

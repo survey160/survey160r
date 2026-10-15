@@ -2,7 +2,7 @@
 % Please edit documentation in R/disposition_funnel.R
 \name{disposition_funnel}
 \alias{disposition_funnel}
-\title{Roll the disposition dataset up to funnel counts + rates by dimension}
+\title{Summarize the disposition dataset to funnel counts and rates by dimension}
 \usage{
 disposition_funnel(
   x,

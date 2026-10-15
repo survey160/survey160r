@@ -2,7 +2,7 @@
 % Please edit documentation in R/latency_config.R
 \name{latency_discover_questions}
 \alias{latency_discover_questions}
-\title{Discover the question flow from CSV column names}
+\title{Discover the question flow from export column names}
 \usage{
 latency_discover_questions(data)
 }

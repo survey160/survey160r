@@ -2,6 +2,34 @@
 
 ## Bug fixes
 
+* `campaign_metrics_summary()` counted every send twice on the published
+  projection. `campaign_all.parquet` carries two grains per `(campaign_id,
+  date)` -- hour cells and a day-total cell (`hour_local = NA`) with the same
+  sends -- and the summary summed both, so every `n_*` count was doubled (the
+  rates were unaffected: numerator and denominator doubled alike). It now
+  counts each `(campaign_id, date)` once: its day total when present, else its
+  hour cells. `?campaign_metrics_records` documents the two grains for callers
+  who sum the cells themselves.
+
+## Documentation
+
+* New article, `vignette("campaign-metrics")`: summarize the campaign-metrics
+  funnel by dimension, work with the cells directly, and what you get back.
+
+* The package help page (`?survey160r`) is now listed in the manual's help
+  index (it was marked internal) and groups every exported function by task:
+  first-time setup, campaign exports, latency, disposition, opt-out, campaign
+  metrics, and utilities. A test keeps it complete.
+* Help-page titles follow one style -- an imperative verb, "Cloud Storage"
+  rather than "GCS", "and" rather than "+", and no parenthetical asides -- so
+  the alphabetical help index reads as a list of tasks.
+* The package `Description` covers the whole surface (disposition, opt-out and
+  campaign metrics), not only latency.
+* The articles share one structure: task sections, then "What you get back",
+  "Notes" and "See also", each linking the others.
+
+## Bug fixes
+
 * `disposition_run()` no longer counts a literal `"NA"` in an export's
   `error_code` column as a delivery-error code. Some historical exports write
   `"NA"` (quoted) for "no error", and the CSV reader keeps a quoted `"NA"` as

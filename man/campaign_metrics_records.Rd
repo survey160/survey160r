@@ -38,6 +38,11 @@ double-counts. With \code{dedup = TRUE} (default) the frame is collapsed to
 the replicating grain), which is the correct base for
 \code{\link{campaign_metrics_summary}}. This is the step every consumer must
 get right; do not sum the raw pull.
+
+The cells still carry \strong{two grains} per \code{(campaign_id, date)}:
+hour cells (\code{hour_local} 0-23) and a day-total cell (\code{hour_local =
+NA}) with the same sends. Sum one grain -- the day totals, or the hour cells
+-- never both; \code{\link{campaign_metrics_summary}} does this for you.
 }
 \examples{
 \dontrun{

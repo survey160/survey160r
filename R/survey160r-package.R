@@ -1,89 +1,115 @@
 #' survey160r: R Client for Survey160 Data
 #'
 #' @description
-#' Access Survey160 campaign data from R, in a raw data-access layer that reaches
-#' Survey160's own systems (the \code{s160_*} functions) plus higher-level
-#' surfaces built on top of it. \strong{Latency} analysis is pure (in-memory data
-#' frame in, data frame out, no I/O). \strong{Disposition} screening reads the
-#' Parquet projection (\code{\link{disposition_summary}},
-#' \code{\link{disposition_screen}}, \code{\link{disposition_records}}) or fetches
-#' it from GCS (\code{\link{disposition_pull}}). \strong{Opt-out} screening
-#' annotates a sample with each number's opt-out status
-#' (\code{\link{opt_out_screen}}), fetched from GCS with
-#' \code{\link{opt_out_pull}}. \strong{Campaign metrics} reads the consolidated
-#' per-campaign metrics projection into cells
-#' (\code{\link{campaign_metrics_records}}) and rolls them up to funnel counts
-#' and rates by any project dimension (\code{\link{campaign_metrics_summary}}),
-#' fetched from GCS with \code{\link{campaign_metrics_pull}}.
+#' Access Survey160 campaign data from R. The \code{s160_*} functions reach
+#' Survey160's own systems -- Google Cloud Storage, the Survey160 API, and raw
+#' campaign-export CSVs. The rest work on what those return or on datasets
+#' survey160r produces: \strong{latency} reports, \strong{disposition} and
+#' \strong{opt-out} screening of phone samples, and \strong{campaign metrics}.
+#' Every function, grouped by task, is listed below. The articles
+#' (\code{vignette("latency")}, \code{vignette("disposition")},
+#' \code{vignette("opt-out")}, \code{vignette("campaign-metrics")}) walk
+#' through each task.
 #'
 #' @section First-time setup:
-#' Most functions that touch Survey160 data need a one-time sign-in:
+#' Functions that touch Survey160 data need a one-time sign-in:
 #' \itemize{
 #'   \item \code{\link{s160_gcs_init}} -- authenticate to Google Cloud Storage
-#'     (a browser sign-in on first run; the token is cached). Needed to read
-#'     campaign exports and to \code{\link{disposition_pull}} /
-#'     \code{\link{opt_out_pull}} the disposition projection and opt-out list
-#'     (when they must download; a cache hit needs no auth).
-#'   \item \code{\link{s160_api_auth}} -- authenticate to the Survey160 REST API,
-#'     only needed to trigger a \emph{fresh} export via
+#'     (a browser sign-in on first run, then cached; \code{adc = TRUE} for a
+#'     non-interactive run). Needed to read campaign exports and to download
+#'     the disposition dataset, the opt-out list, and the campaign-metrics
+#'     projection (a cache hit needs no sign-in).
+#'   \item \code{\link{s160_api_auth}} -- authenticate to the Survey160 API.
+#'     Needed only to trigger a fresh export with
 #'     \code{\link{s160_api_campaign_results}}.
 #' }
 #'
-#' @section Disposition screening:
-#' Answer "which of these phone numbers have we contacted / completed / refused
-#' before?" and clean a sample list. Pull the shared disposition dataset once,
-#' then screen a sample data frame in place:
+#' @section Campaign exports:
+#' Read a campaign's raw results:
 #' \itemize{
-#'   \item \code{\link{disposition_pull}} -- download the disposition projection
-#'     from GCS (cached locally).
-#'   \item \code{\link{disposition_screen}} -- append screening columns to your
-#'     sample, 1:1 with its rows, preserving your original columns.
-#'   \item \code{\link{disposition_summary}} / \code{\link{disposition_records}}
-#'     -- ad-hoc query surfaces over the same dataset (one row per phone / one
-#'     row per \code{(phone, campaign_id)}); pass \code{disposition_summary()} a
-#'     data frame to summarize one you already read.
-#' }
-#'
-#' @section Opt-out screening:
-#' Answer "which of these phone numbers have opted out?" and flag or drop them
-#' before you field. Pull the opt-out list once, then screen a sample in place:
-#' \itemize{
-#'   \item \code{\link{opt_out_pull}} -- download the opt-out list from GCS
-#'     (cached locally; it shares the disposition bucket).
-#'   \item \code{\link{opt_out_screen}} -- append \code{opted_out} and
-#'     \code{opt_out_date} to your sample, 1:1 with its rows, never dropping any.
-#' }
-#'
-#' @section Campaign metrics:
-#' Work with the consolidated per-campaign metrics + recipient-latency
-#' projection -- the funnel counts (\code{n_sent} / \code{n_engaged} /
-#' \code{n_opted_in} / \code{n_completed}) and the \code{tracker_*} project
-#' dimensions per \code{(campaign, date, hour)}:
-#' \itemize{
-#'   \item \code{\link{campaign_metrics_pull}} -- download the projection
-#'     (\code{campaign_all.parquet}) from the analytics bucket (cached locally).
-#'   \item \code{\link{campaign_metrics_records}} -- read it into analysis-ready
-#'     cells; collapses the latency/threshold replication to one row per cell,
-#'     so summing the raw pull cannot double-count.
-#'   \item \code{\link{campaign_metrics_summary}} -- roll the cells up to summed
-#'     funnel counts and rates by any project dimension.
-#'     \code{\link{funnel_rates}} is the shared definition of the funnel rates.
+#'   \item \code{\link{s160_gcs_campaign_results_read}} -- read a campaign
+#'     export from Cloud Storage.
+#'   \item \code{\link{s160_read_csv}} / \code{\link{s160_csv_header}} -- read
+#'     a campaign export, or just its column names, from a local file.
+#'   \item \code{\link{s160_gcs_campaign_results_list}} /
+#'     \code{\link{s160_gcs_campaign_results_files}} /
+#'     \code{\link{s160_gcs_campaign_results_status}} -- list campaigns, list
+#'     a campaign's files, and check when its export last updated.
+#'   \item \code{\link{s160_api_campaign_results}} -- trigger a fresh export
+#'     and read it; \code{\link{s160_api_campaign_get}} reads a campaign's
+#'     attributes.
+#'   \item \code{\link{s160_config}} / \code{\link{s160_datasets}} -- the
+#'     environments and datasets the package can reach.
 #' }
 #'
 #' @section Latency analysis:
-#' Compute a per-campaign recipient-latency report from a raw campaign CSV:
+#' Turn a campaign export into a recipient-latency report
+#' (\code{vignette("latency")}):
 #' \itemize{
-#'   \item \code{\link{latency_run}} -- the one-campaign runner (builds the
-#'     config from the CSV header, then runs the algorithm).
-#'   \item \code{\link{latency_report}} -- the pure algorithm, for tests and
-#'     ad-hoc analysis.
-#'   \item \code{\link{s160_gcs_campaign_results_read}} / \code{\link{s160_read_csv}} -- read a
-#'     campaign export from GCS or from a local file, respectively.
+#'   \item \code{\link{latency_run}} -- build the config from the export and
+#'     run the report; \code{\link{latency_report}} runs it on a config you
+#'     supply.
+#'   \item \code{\link{latency_build_config}} /
+#'     \code{\link{latency_validate_config}} /
+#'     \code{\link{latency_discover_questions}} /
+#'     \code{\link{latency_config_hash}} -- build, check, and fingerprint a
+#'     config.
+#'   \item \code{\link{latency_input_columns}} -- the columns to read, to
+#'     project a large export.
+#'   \item \code{\link{latency_funnel}} -- reduce a report to funnel counts.
+#'   \item \code{\link{question_funnel}} / \code{\link{question_timestamps}} /
+#'     \code{\link{parse_campaign_timestamps}} -- per-question views straight
+#'     from the export.
 #' }
 #'
-#' Persisting outputs as Parquet, walking the whole campaign fleet, and
-#' scheduling all live in a downstream consumer project -- this package is
-#' algorithm-only and source-agnostic.
+#' @section Disposition screening:
+#' Screen a phone sample on prior contact, and measure the funnel across
+#' recipients (\code{vignette("disposition")}):
+#' \itemize{
+#'   \item \code{\link{disposition_pull}} -- download the disposition dataset
+#'     (cached locally).
+#'   \item \code{\link{disposition_screen}} -- append the screening columns to
+#'     your sample, 1:1 with its rows.
+#'   \item \code{\link{disposition_summary}} / \code{\link{disposition_records}}
+#'     -- query the dataset: one row per phone, or the stored rows, one per
+#'     phone and campaign.
+#'   \item \code{\link{disposition_funnel}} -- funnel counts and rates by any
+#'     dimension.
+#'   \item \code{\link{disposition_run}} / \code{\link{disposition_input_columns}}
+#'     -- build the per-respondent rows from one campaign export (the producer
+#'     side of the dataset).
+#' }
 #'
-#' @keywords internal
+#' @section Opt-out screening:
+#' Flag opted-out numbers in a phone sample (\code{vignette("opt-out")}):
+#' \itemize{
+#'   \item \code{\link{opt_out_pull}} -- download the opt-out list (cached
+#'     locally).
+#'   \item \code{\link{opt_out_screen}} -- append \code{opted_out} and
+#'     \code{opt_out_date} to your sample, 1:1 with its rows.
+#' }
+#'
+#' @section Campaign metrics:
+#' Work with the consolidated per-campaign metrics projection -- funnel counts
+#' and Project Tracker dimensions per campaign, date, and hour
+#' (\code{vignette("campaign-metrics")}):
+#' \itemize{
+#'   \item \code{\link{campaign_metrics_pull}} -- download the projection
+#'     (cached locally).
+#'   \item \code{\link{campaign_metrics_records}} -- read it into
+#'     analysis-ready cells, one row per cell.
+#'   \item \code{\link{campaign_metrics_summary}} -- funnel counts and rates by
+#'     any dimension.
+#'   \item \code{\link{funnel_rates}} -- the funnel-rate definitions shared with
+#'     \code{\link{disposition_funnel}}.
+#' }
+#'
+#' @section Utilities:
+#' \itemize{
+#'   \item \code{\link{utils_fix_double_utf8}} -- detect or repair
+#'     double-encoded text (mojibake) in an export.
+#' }
+#'
+#' Persisting results, walking the whole campaign fleet, and scheduling live
+#' in consumer projects; this package returns in-memory data frames.
 "_PACKAGE"

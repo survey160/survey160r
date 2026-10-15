@@ -12,3 +12,4 @@
 ^pkgdown$
 ^writing-style\.md$
 ^\.lintr$
+^e2e\.R$

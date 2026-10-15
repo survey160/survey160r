@@ -1,6 +1,6 @@
 # survey160r
 
-R client for Survey160 data. Reads campaign results from Google Cloud Storage, triggers fresh exports via the API, and computes per-campaign recipient-latency reports as in-memory R objects. Fleet orchestration, GCS Parquet writes, and scheduling live in a downstream consumer project.
+R client for Survey160 data. Reads campaign exports from Google Cloud Storage or local files, triggers fresh exports via the API, computes per-campaign recipient-latency reports, screens phone samples against the disposition dataset and opt-out list, and rolls disposition and campaign metrics up to funnel counts -- all as in-memory R objects. Fleet orchestration, GCS Parquet writes, and scheduling live in a downstream consumer project.
 
 ## Stack
 

@@ -1,0 +1,97 @@
+---
+title: "Campaign metrics"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Campaign metrics}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+# Auth/network chunks are shown but not run at build time; the chunks on an
+# in-memory frame below run, so their output is real.
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>", eval = FALSE)
+```
+
+Measure the campaign funnel -- sent, engaged, opted in, completed -- across the whole fleet, by registration, brand, client, fielding location, or mode, from the consolidated **campaign-metrics projection**. Assumes you have completed First-time setup (see the package README): Cloud Storage access to `s160_analytics_prod`.
+
+## Summarize the funnel by dimension
+
+Pull the projection once (cached), then roll it up:
+
+```{r}
+library(survey160r)
+s160_gcs_init()   # one browser sign-in, cached
+path <- campaign_metrics_pull()          # cached after the first download
+
+campaign_metrics_summary(path, by = "registration_id")
+campaign_metrics_summary(path, by = c("brand", "mode"), percent = TRUE)
+```
+
+`campaign_metrics_summary()` returns one row per `by` group: the number of campaigns, the summed funnel counts, and the four funnel rates (see [What you get back](#what-you-get-back)). `by` defaults to `campaign_id`; any of `registration_id`, `brand`, `client`, `fielding_location`, and `mode` work, alone or together. `percent = TRUE` scales the rates to `0`-`100`.
+
+## Summarize a slice
+
+To scope the rollup -- a date window, a set of campaigns -- read the cells with `campaign_metrics_records()`, filter them, and pass the frame to `campaign_metrics_summary()`. On a frame it does no I/O, so this runs:
+
+```{r slice, eval = TRUE}
+library(survey160r)
+cells <- data.frame(
+  campaign_id     = c(101L, 101L, 101L, 102L, 102L),
+  date            = as.Date(c("2026-03-02", "2026-03-02", "2026-03-02",
+                              "2026-03-09", "2026-03-09")),
+  hour_local      = c(10L, 11L, NA, 14L, NA),     # NA = the day total
+  registration_id = c("R-1", "R-1", "R-1", "R-2", "R-2"),
+  mode            = c("T2W", "T2W", "T2W", "Live", "Live"),
+  n_sent          = c(600L, 400L, 1000L, 500L, 500L),
+  n_engaged       = c(60L, 40L, 100L, 75L, 75L),
+  n_opted_in      = c(30L, 20L, 50L, 25L, 25L),
+  n_completed     = c(12L, 8L, 20L, 10L, 10L)
+)
+march_week_one <- subset(cells, date >= as.Date("2026-03-01") & date < as.Date("2026-03-08"))
+campaign_metrics_summary(march_week_one, by = "mode")
+campaign_metrics_summary(cells, by = "registration_id", percent = TRUE)
+```
+
+Campaign 101's day reads `n_sent = 1000`, not `2000`: the summary counts each campaign-day once, from its day total, though the cells carry both the hour rows and that total (see [Notes](#notes)). With real data, `cells <- campaign_metrics_records(path)` reads the projection into this shape.
+
+## Compute the rates on your own counts
+
+The rates come from `funnel_rates()`, the one definition `campaign_metrics_summary()` and `disposition_funnel()` share. Use it on any frame of summed counts so your numbers match theirs:
+
+```{r rates, eval = TRUE}
+funnel_rates(data.frame(n_sent = 2000, n_engaged = 180, n_opted_in = 90, n_completed = 35))
+```
+
+## What you get back
+
+`campaign_metrics_summary()` returns one row per `by` group:
+
+| Column | Meaning |
+|---|---|
+| the `by` columns | The group, e.g. `registration_id`. |
+| `campaigns` | Distinct campaigns in the group. |
+| `n_sent` / `n_engaged` / `n_opted_in` / `n_completed` | Summed funnel counts: sent, replied, consented, reached the close. |
+| `engagement_rate` | `n_engaged / n_sent`. |
+| `opted_in_rate` | `n_opted_in / n_sent` -- opt-ins per send, end to end. |
+| `opted_in_engaged_rate` | `n_opted_in / n_engaged` -- opt-in conversion once a recipient replies. |
+| `completion_rate` | `n_completed / n_sent`. |
+
+The rates are proportions, or `0`-`100` with `percent = TRUE`; `rates = FALSE` drops them. A rate whose denominator is `0` is `NA`.
+
+`campaign_metrics_records()` returns the cells: `campaign_id`, `date`, `hour_local`, the project dimensions (`registration_id`, `brand`, `client`, `fielding_location`, `mode`) when the projection carries them, and the four `n_*` counts. See `?campaign_metrics_records`.
+
+## Notes
+
+- **Two grains in the cells.** Each campaign-day has hour cells (`hour_local` 0-23) and a day-total cell (`hour_local = NA`) with the same sends. `campaign_metrics_summary()` counts each campaign-day once; if you sum the cells yourself, keep one grain -- `subset(cells, is.na(hour_local))` for daily totals -- never both.
+- **Never sum the raw file.** The projection repeats each cell's counts across its latency segment and threshold rows. `campaign_metrics_records()` collapses that; read through it (or `campaign_metrics_summary()`), not with your own Parquet reader.
+- **`mode` is the declared mode.** It is the Project Tracker's mode (`Live`, `T2W`), not the mode detected from the export, which the disposition dataset carries as `survey_mode`.
+- **Tracker coverage.** The dimensions come from the Project Tracker; a campaign it does not cover reads `NA` and groups as its own `NA` row.
+- **Undated sends.** A cell whose sends carry no usable date has `date = NA`; it counts in an all-dates rollup and drops out of any date filter.
+- **Aggregate, not phone-keyed.** The projection holds counts, not phone numbers, so there is no screening helper -- to screen a sample, see `vignette("disposition")`.
+- **Stale cache.** The projection is republished on every producer run; `campaign_metrics_pull(refresh = TRUE)` forces a fresh download.
+- **`env`.** `campaign_metrics_pull()` reads `"prod"` (default) or `"dev"` -- there is no `staging` tier, so `env = "staging"` errors. Run `s160_datasets()` to see every dataset's environments.
+
+## See also
+
+`?campaign_metrics_summary`, `?campaign_metrics_records`, `?campaign_metrics_pull`, `?funnel_rates`, and `?survey160r` for every function by task. For the same funnel per recipient, by carrier or any stored dimension, `disposition_funnel()` in `vignette("disposition")`. To screen a phone sample, `vignette("disposition")` and `vignette("opt-out")`. For per-campaign latency reports, `vignette("latency")`.

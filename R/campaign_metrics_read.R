@@ -15,7 +15,7 @@
 # projection the pipeline produces), not a raw Survey160 source -- the same rule
 # that keeps disposition_pull / opt_out_pull bare.
 
-#' Download the consolidated campaign-metrics projection from Cloud Storage
+#' Download the campaign-metrics projection from Cloud Storage
 #'
 #' Pulls \code{campaign_all.parquet} -- the fleet's consolidated per-campaign
 #' metrics and recipient-latency view -- from the environment's analytics bucket

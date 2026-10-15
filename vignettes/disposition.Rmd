@@ -13,7 +13,7 @@ vignette: >
 knitr::opts_chunk$set(collapse = TRUE, comment = "#>", eval = FALSE)
 ```
 
-Screen a phone sample against the **disposition dataset** -- one row per `(phone, campaign_id)` for every recipient Survey160 has contacted across closed campaigns -- to drop numbers already completed, refused, or screened out before you field. Assumes you have completed First-time setup (see the package README): GCS access to `s160_disposition_prod`.
+Screen a phone sample against the **disposition dataset** -- one row per `(phone, campaign_id)` for every recipient Survey160 has contacted across closed campaigns -- to drop numbers already completed, refused, or screened out before you field. Assumes you have completed First-time setup (see the package README): Cloud Storage access to `s160_disposition_prod`.
 
 ## Screen a sample
 
@@ -47,7 +47,7 @@ disposition_summary(dataset, phones = c("2015550101", "2015550102"))
 disposition_records(dataset, campaign_ids = 1234)
 ```
 
-Both take `phones` / `campaign_ids` filters. Phones match digit-normalized: a leading US `1` is dropped, so an 11-digit number matches a stored 10-digit one. `disposition_records()` hands back the stored schema as-is, one row per `(phone, campaign_id)` -- the funnel flags, the recipient's carrier and any delivery error, the Tracker dimensions, and the disposition date. See [The stored record columns](#the-stored-record-columns).
+Both take `phones` / `campaign_ids` filters. Phones match digit-normalized: a leading US `1` is dropped, so an 11-digit number matches a stored 10-digit one. `disposition_records()` hands back the stored schema as-is, one row per `(phone, campaign_id)` -- the funnel flags, the recipient's carrier and any delivery error, the Tracker dimensions, and the disposition date. See [Stored record columns](#stored-record-columns).
 
 ## Screen several samples
 
@@ -74,7 +74,6 @@ Note `5551234567`: its **latest** disposition is `refused` (its most recent camp
 To measure the funnel across recipients (rather than screen a list), `disposition_funnel()` groups the dataset by any dimension and returns the counts plus the standard funnel rates -- the disposition analogue of `campaign_metrics_summary()`. It takes the dataset path or an already-read frame; on a frame it does no I/O, so this runs:
 
 ```{r funnel_frame, eval = TRUE}
-library(survey160r)
 records <- data.frame(
   phone       = as.character(1:5),
   campaign_id = c(101L, 101L, 102L, 102L, 102L),
@@ -114,9 +113,9 @@ Roll up the whole projection with `disposition_funnel(dataset, by = "carrier")` 
 
 The counts overlap rather than partition `n_campaigns` -- a completed campaign is also engaged -- so read each as "reached status X in this many campaigns".
 
-`latest_disposition` and `best_disposition`, least to most advanced: `never_contacted` -> `non_response` -> `engaged` -> `opted_in` -> `terminated` -> `ineligible` -> `refused` -> `completed` -> `web_complete`. The terminal band (`terminated` < `ineligible` < `refused`) sits between `opted_in` and `completed`: `terminated` is the unsplit residual, `ineligible` a screen-out, `refused` a decline. `disposition_records()` returns the stored per-campaign columns instead; see [The stored record columns](#the-stored-record-columns).
+`latest_disposition` and `best_disposition`, least to most advanced: `never_contacted` -> `non_response` -> `engaged` -> `opted_in` -> `terminated` -> `ineligible` -> `refused` -> `completed` -> `web_complete`. The terminal band (`terminated` < `ineligible` < `refused`) sits between `opted_in` and `completed`: `terminated` is the unsplit residual, `ineligible` a screen-out, `refused` a decline. `disposition_records()` returns the stored per-campaign columns instead; see [Stored record columns](#stored-record-columns).
 
-## The stored record columns
+### Stored record columns
 
 `disposition_records()` returns the dataset as stored -- one row per `(phone, campaign_id)`, contacted-only -- which `disposition_summary()` and `disposition_screen()` roll up per phone (above). The columns, in funnel order:
 
@@ -152,4 +151,4 @@ The funnel flags overlap rather than partition -- a `completed` row is also `eng
 
 ## See also
 
-`?disposition_screen`, `?disposition_summary`, `?disposition_records`, `?disposition_funnel`, `?disposition_pull`. For the funnel rates `disposition_funnel()` shares with the latency side, `?funnel_rates` and `?campaign_metrics_summary`. To build the dataset from a raw campaign CSV (the producer side), `?disposition_run` and `?disposition_input_columns`. For latency reports, `vignette("latency")`.
+`?disposition_screen`, `?disposition_summary`, `?disposition_records`, `?disposition_funnel`, `?disposition_pull`. For the funnel rates `disposition_funnel()` shares with the latency side, `?funnel_rates` and `?campaign_metrics_summary`. To build the dataset from a raw campaign CSV (the producer side), `?disposition_run` and `?disposition_input_columns`; `?survey160r` lists every function by task. To screen the same sample against the opt-out list, `vignette("opt-out")`. For latency reports, `vignette("latency")`; for the fleet funnel by registration or brand, `vignette("campaign-metrics")`.

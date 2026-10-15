@@ -2,7 +2,7 @@
 % Please edit documentation in R/question.R
 \name{question_funnel}
 \alias{question_funnel}
-\title{Per-question reached-count funnel for a campaign export}
+\title{Count the recipients reaching each question of a campaign export}
 \usage{
 question_funnel(data, questions, field = "scriptDate")
 }

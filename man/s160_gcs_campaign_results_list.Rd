@@ -2,7 +2,7 @@
 % Please edit documentation in R/s160_gcs.R
 \name{s160_gcs_campaign_results_list}
 \alias{s160_gcs_campaign_results_list}
-\title{List all campaign IDs in the current bucket}
+\title{List the campaign ids in the campaign-results bucket}
 \usage{
 s160_gcs_campaign_results_list(env = .ENV_CHOICES, bucket = NULL)
 }

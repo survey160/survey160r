@@ -2,7 +2,7 @@
 % Please edit documentation in R/disposition_aggregate.R
 \name{disposition_input_columns}
 \alias{disposition_input_columns}
-\title{CSV columns disposition_run() reads for a given population}
+\title{List the export columns disposition_run() reads}
 \usage{
 disposition_input_columns(available = NULL, population = NULL)
 }
