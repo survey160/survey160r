@@ -32,7 +32,9 @@ Rolls the campaign-metrics cells up to summed funnel counts and the standard
 funnel rates, grouped by any project dimension(s). Reads and de-duplicates
 through \code{\link{campaign_metrics_records}} first, so it is safe to pass
 either a projection \strong{path} or a frame -- the latency/threshold
-replication is always collapsed before summing (no double counting).
+replication is always collapsed before summing. Each \code{(campaign_id,
+date)} is counted at one grain: its day-total cell (\code{hour_local =
+NA}) when present, else its hour cells, so no send is counted twice.
 }
 \examples{
 \dontrun{

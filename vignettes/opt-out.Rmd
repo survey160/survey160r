@@ -66,4 +66,4 @@ Your original phone column and every other column of the sample are returned unt
 
 ## See also
 
-`?opt_out_screen`, `?opt_out_pull`, and `?survey160r` for every function by task. To screen the same sample on prior contact history, `vignette("disposition")`. For latency reports, `vignette("latency")`.
+`?opt_out_screen`, `?opt_out_pull`, and `?survey160r` for every function by task. To screen the same sample on prior contact history, `vignette("disposition")`. For latency reports, `vignette("latency")`; for the fleet funnel by registration or brand, `vignette("campaign-metrics")`.

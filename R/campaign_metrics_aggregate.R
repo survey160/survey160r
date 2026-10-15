@@ -105,6 +105,11 @@ funnel_rates <- function(x, sent = "n_sent", engaged = "n_engaged",
 #' \code{\link{campaign_metrics_summary}}. This is the step every consumer must
 #' get right; do not sum the raw pull.
 #'
+#' The cells still carry \strong{two grains} per \code{(campaign_id, date)}:
+#' hour cells (\code{hour_local} 0-23) and a day-total cell (\code{hour_local =
+#' NA}) with the same sends. Sum one grain -- the day totals, or the hour cells
+#' -- never both; \code{\link{campaign_metrics_summary}} does this for you.
+#'
 #' @param x A path to a campaign-metrics Parquet (from
 #'   \code{\link{campaign_metrics_pull}}), or an in-memory data frame already
 #'   read (carrying either the \code{tracker_*} names or the short names). The
@@ -137,13 +142,26 @@ campaign_metrics_records <- function(x, dedup = TRUE) {
   d
 }
 
+# The projection carries two grains per (campaign_id, date): hour cells and a
+# day-total cell (hour_local = NA) holding the same sends, so summing every cell
+# counts each send twice. Keep the day total where a (campaign_id, date) has
+# one, else its hour cells -- one grain per day, each send counted once.
+.campaign_metrics_one_grain <- function(d) {
+  if (!"hour_local" %in% names(d) || !anyNA(d$hour_local)) return(d)
+  key <- paste(d[["campaign_id"]], d[["date"]], sep = "\r")
+  is_day <- is.na(d$hour_local)
+  d[is_day | !(key %in% key[is_day]), , drop = FALSE]
+}
+
 #' Summarize campaign metrics to funnel counts and rates by dimension
 #'
 #' Rolls the campaign-metrics cells up to summed funnel counts and the standard
 #' funnel rates, grouped by any project dimension(s). Reads and de-duplicates
 #' through \code{\link{campaign_metrics_records}} first, so it is safe to pass
 #' either a projection \strong{path} or a frame -- the latency/threshold
-#' replication is always collapsed before summing (no double counting).
+#' replication is always collapsed before summing. Each \code{(campaign_id,
+#' date)} is counted at one grain: its day-total cell (\code{hour_local =
+#' NA}) when present, else its hour cells, so no send is counted twice.
 #'
 #' @param x A path to a campaign-metrics Parquet, or a data frame (raw or a
 #'   \code{\link{campaign_metrics_records}} frame).
@@ -170,7 +188,7 @@ campaign_metrics_records <- function(x, dedup = TRUE) {
 #' @export
 campaign_metrics_summary <- function(x, by = "campaign_id", rates = TRUE,
                                      percent = FALSE) {
-  d <- campaign_metrics_records(x)
+  d <- .campaign_metrics_one_grain(campaign_metrics_records(x))
   if (!"campaign_id" %in% names(d)) {
     stop("campaign_metrics_summary(): `campaign_id` is required.", call. = FALSE)
   }

@@ -117,4 +117,4 @@ result <- latency_run(1234, data, config = config, compact = TRUE)
 
 ## See also
 
-`?latency_run`, `?latency_report`, `?latency_funnel`, `?question_funnel`, `?question_timestamps`, `?parse_campaign_timestamps`, `?latency_build_config`, `?latency_validate_config`, and `?survey160r` for every function by task. To screen a phone sample, `vignette("disposition")` and `vignette("opt-out")`.
+`?latency_run`, `?latency_report`, `?latency_funnel`, `?question_funnel`, `?question_timestamps`, `?parse_campaign_timestamps`, `?latency_build_config`, `?latency_validate_config`, and `?survey160r` for every function by task. To screen a phone sample, `vignette("disposition")` and `vignette("opt-out")`. For the funnel across the fleet by registration or brand, `vignette("campaign-metrics")`.

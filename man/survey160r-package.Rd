@@ -13,7 +13,8 @@ survey160r produces: \strong{latency} reports, \strong{disposition} and
 \strong{opt-out} screening of phone samples, and \strong{campaign metrics}.
 Every function, grouped by task, is listed below. The articles
 (\code{vignette("latency")}, \code{vignette("disposition")},
-\code{vignette("opt-out")}) walk through each task.
+\code{vignette("opt-out")}, \code{vignette("campaign-metrics")}) walk
+through each task.
 }
 \section{First-time setup}{
 
@@ -106,7 +107,8 @@ Flag opted-out numbers in a phone sample (\code{vignette("opt-out")}):
 \section{Campaign metrics}{
 
 Work with the consolidated per-campaign metrics projection -- funnel counts
-and Project Tracker dimensions per campaign, date, and hour:
+and Project Tracker dimensions per campaign, date, and hour
+(\code{vignette("campaign-metrics")}):
 \itemize{
   \item \code{\link{campaign_metrics_pull}} -- download the projection
     (cached locally).

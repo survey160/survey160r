@@ -63,3 +63,31 @@ test_that("summary reads from a Parquet path and dedups before summing", {
   s <- campaign_metrics_summary(tmp, by = "registration_id")
   expect_equal(s$n_sent[s$registration_id == "R1"], 150)
 })
+
+test_that("summary counts each send once across the hour and day-total grains", {
+  # Campaign 1, 2026-01-01: two hour cells plus their day total (hour_local NA),
+  # as the projection stores them. Campaign 2 has hour cells only.
+  d <- data.frame(
+    campaign_id = c(1, 1, 1, 2, 2),
+    date        = as.Date("2026-01-01"),
+    hour_local  = c(9L, 10L, NA, 9L, 10L),
+    tracker_registration_id = "R1",
+    n_sent      = c(60, 40, 100, 30, 20),
+    n_engaged   = c(6, 4, 10, 3, 2),
+    n_opted_in  = c(3, 1, 4, 1, 1),
+    n_completed = c(1, 1, 2, 0, 1),
+    stringsAsFactors = FALSE)
+  s <- campaign_metrics_summary(d, by = "registration_id", rates = FALSE)
+  expect_identical(s$n_sent, 150)        # 100 (day total) + 30 + 20, not 250
+  expect_identical(s$n_completed, 3)
+  expect_identical(s$campaigns, 2L)
+})
+
+test_that("summary on a real latency report matches latency_funnel()", {
+  fx <- synthetic_fixture()
+  cons <- latency_report(fx$data, fx$config)$consolidated   # hour rows + day rollup
+  s <- campaign_metrics_summary(cons, rates = FALSE)
+  f <- latency_funnel(cons)
+  expect_identical(s$n_sent, sum(f$n_sent))
+  expect_identical(s$n_completed, sum(f$n_completed))
+})
