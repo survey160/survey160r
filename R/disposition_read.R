@@ -128,7 +128,7 @@
   if (is.null(x)) return(NULL)
   d <- tryCatch(as.Date(x), error = function(e) NA)
   if (length(d) != 1L || is.na(d)) {
-    stop(sprintf("`%s` must be a single valid date.", name), call. = FALSE)
+    stop_s160(sprintf("`%s` must be a single valid date%s.", name, .not_got(x)))
   }
   d
 }
@@ -285,7 +285,7 @@
     stringsAsFactors = FALSE
   )
 }
-.disposition_paginate <- function(summ, page, page_size) {
+.disposition_paginate <- function(summ, page, page_size, fn = NULL) {
   if (is.null(page) && is.null(page_size)) return(summ)
   ps <- if (is.null(page_size)) max(1L, nrow(summ)) else page_size
   pg <- if (is.null(page)) 1L else page
@@ -295,7 +295,8 @@
     is.numeric(x) && length(x) == 1L && is.finite(x) && x >= 1L && x %% 1 == 0
   }
   if (!ok(ps) || !ok(pg)) {
-    stop("`page` and `page_size` must be positive integers.", call. = FALSE)
+    stop_s160(sprintf("`page` and `page_size` must be positive integers (got page = %s, page_size = %s).",
+                      .describe_value(pg), .describe_value(ps)), fn = fn)
   }
   from <- (pg - 1L) * ps + 1L
   if (from > nrow(summ)) return(summ[0L, , drop = FALSE])
@@ -305,10 +306,12 @@
 # Validate a projection path (shared by every reader's I/O helper).
 .disposition_check_path <- function(dataset) {
   if (!is.character(dataset) || length(dataset) != 1L || !nzchar(dataset)) {
-    stop("`dataset` must be a single Parquet path.", call. = FALSE)
+    stop_s160(sprintf("`dataset` must be a single Parquet path%s.", .not_got(dataset)))
   }
   if (!file.exists(dataset)) {
-    stop_not_found("disposition dataset", dataset)
+    stop_not_found("disposition dataset", dataset, hint = paste0(
+      "disposition_pull() downloads the projection and returns its path. ",
+      .path_hint(dataset) %||% ""))
   }
 }
 
@@ -378,16 +381,21 @@
   engine <- getOption("survey160r.disposition_engine", "auto")
   choices <- c("auto", "duckdb", "nanoparquet")
   if (!is.character(engine) || length(engine) != 1L || !engine %in% choices) {
-    stop_s160(sprintf("option `survey160r.disposition_engine` must be one of: %s",
-                      paste(choices, collapse = ", ")))
+    stop_s160(sprintf("option `survey160r.disposition_engine` must be one of %s%s.",
+                      paste(choices, collapse = ", "), .not_got(engine)))
   }
   if (engine == "nanoparquet") return(engine)
-  has_duckdb <- requireNamespace("duckdb", quietly = TRUE) &&
-    requireNamespace("DBI", quietly = TRUE)
-  if (has_duckdb) return("duckdb")
+  have <- c(duckdb = requireNamespace("duckdb", quietly = TRUE),
+            DBI = requireNamespace("DBI", quietly = TRUE))
+  if (all(have)) return("duckdb")
   if (engine == "duckdb") {
-    stop_s160(paste("option `survey160r.disposition_engine` is \"duckdb\" but the",
-                    "duckdb package is not installed: install.packages(\"duckdb\")"))
+    absent <- names(have)[!have]
+    stop_s160(sprintf(paste0(
+      "option `survey160r.disposition_engine` is \"duckdb\" but %s not installed: ",
+      "install.packages(c(\"duckdb\", \"DBI\")), or set the option to \"auto\" ",
+      "to fall back to nanoparquet."),
+      paste(paste(absent, collapse = " and "),
+            if (length(absent) == 1L) "is" else "are")))
   }
   "nanoparquet"
 }
@@ -734,13 +742,17 @@
                                     "refused", "ineligible")),
                           names(data))
   if (length(missing_cols) > 0L) {
-    stop_s160(sprintf("input is missing required column(s): %s",
-                      paste(missing_cols, collapse = ", ")),
-              fn = fn)
+    stop_s160(sprintf(paste0(
+      "input is missing required column(s): %s (%s). Pass the projection ",
+      "path or a disposition_records() frame."),
+      paste(missing_cols, collapse = ", "), .columns_hint(data, "x")),
+      fn = fn)
   }
   if (!"disposition_date" %in% names(data)) {
     if (!is.null(date_from) || !is.null(date_to)) {
-      stop_s160("input has no `disposition_date` column to filter on.", fn = fn)
+      stop_s160(paste0("input has no `disposition_date` column to filter on; ",
+                       "drop `date_from` / `date_to` or pass an enriched frame."),
+                fn = fn)
     }
     data$disposition_date <- rep(as.Date(NA), nrow(data))
   }
@@ -761,8 +773,9 @@
   if (!is.null(statuses)) {
     bad <- setdiff(as.character(statuses), .DISPOSITION_CATEGORIES)
     if (length(bad) > 0L) {
-      stop_s160(sprintf("unknown status(es): %s",
-                        paste(bad, collapse = ", ")),
+      stop_s160(sprintf("unknown `statuses` value(s): %s (valid: %s).",
+                        paste(bad, collapse = ", "),
+                        paste(.DISPOSITION_CATEGORIES, collapse = ", ")),
                 fn = fn)
     }
   }
@@ -785,7 +798,7 @@
   # Phones are digit strings here, so a radix (byte) sort orders them exactly as
   # the locale sort would, in a fraction of the time on a large sample.
   summ <- summ[order(summ$phone, method = "radix"), , drop = FALSE]
-  summ <- .disposition_paginate(summ, page, page_size)
+  summ <- .disposition_paginate(summ, page, page_size, fn = fn)
   rownames(summ) <- NULL
   summ
 }
@@ -913,8 +926,8 @@ disposition_summary <- function(x, phones = NULL, campaign_ids = NULL,
                                filters = filters)
     }
   } else {
-    stop_s160(paste("`x` must be a disposition Parquet path (a single string)",
-                    "or an in-memory disposition data frame."),
+    stop_s160(paste0("`x` must be a disposition Parquet path (a single string) ",
+                     "or an in-memory disposition data frame", .not_got(x), "."),
               fn = "disposition_summary")
   }
   .disposition_rollup(data, phones = phones, campaign_ids = campaign_ids,
@@ -1014,13 +1027,15 @@ disposition_records <- function(dataset, phones = NULL, campaign_ids = NULL,
   }
   missing_cols <- setdiff(c("phone", "campaign_id"), names(raw))
   if (length(missing_cols) > 0L) {
-    stop_s160(sprintf("`dataset` is missing required column(s): %s",
-                      paste(missing_cols, collapse = ", ")),
+    stop_s160(sprintf("`dataset` is missing required column(s): %s (%s).",
+                      paste(missing_cols, collapse = ", "),
+                      .columns_hint(raw, "dataset")),
               fn = "disposition_records")
   }
   if ((!is.null(date_from) || !is.null(date_to)) &&
         !"disposition_date" %in% names(raw)) {
-    stop_s160("`dataset` has no `disposition_date` column to filter on.",
+    stop_s160(paste0("`dataset` has no `disposition_date` column to filter on; ",
+                     "drop `date_from` / `date_to`."),
               fn = "disposition_records")
   }
 
@@ -1028,7 +1043,7 @@ disposition_records <- function(dataset, phones = NULL, campaign_ids = NULL,
   cols <- intersect(.DISPOSITION_RECORD_COLS, names(d))
   # radix keeps the order locale-independent (byte order on the digit strings).
   d <- d[order(d$phone, as.numeric(d$campaign_id), method = "radix"), cols, drop = FALSE]
-  d <- .disposition_paginate(d, page, page_size)
+  d <- .disposition_paginate(d, page, page_size, fn = "disposition_records")
   rownames(d) <- NULL
   d
 }
@@ -1098,14 +1113,15 @@ disposition_screen <- function(sample, dataset, phone_col = "phone",
   check_data_frame(sample, "sample", fn = "disposition_screen")
   if (!is.character(phone_col) || length(phone_col) != 1L ||
         !phone_col %in% names(sample)) {
-    stop_s160(sprintf("phone column %s not found in `sample`.",
-                      deparse(phone_col)), fn = "disposition_screen")
+    stop_s160(sprintf("`phone_col` %s is not a column of `sample` (%s).",
+                      deparse(phone_col), .columns_hint(sample, "sample")),
+              fn = "disposition_screen")
   }
   disposition_cols <- setdiff(.DISPOSITION_SUMMARY_COLS, "phone")
   clash <- intersect(disposition_cols, names(sample))
   if (length(clash) > 0L) {
-    stop_s160(sprintf(paste0("`sample` already has ",
-                             "disposition column(s) [%s]; rename them first."),
+    stop_s160(sprintf(paste0("`sample` already has disposition column(s) %s; ",
+                             "rename or drop them first so the screen can add its own."),
                       paste(clash, collapse = ", ")),
               fn = "disposition_screen")
   }

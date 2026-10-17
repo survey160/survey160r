@@ -39,9 +39,10 @@ question_timestamps <- function(data, question, field = "scriptDate") {
   col <- sprintf("id.%s.%s", question, field)
   if (!col %in% names(data)) {
     stop_s160(
-      sprintf(
-        "column `%s` not found in `data` (question = \"%s\", field = \"%s\").",
-        col, question, field
+      sprintf(paste0(
+        "column `%s` not found in `data` (question = \"%s\", field = \"%s\"). ",
+        "Questions in `data`: %s."),
+        col, question, field, .preview_values(.all_questions(data), n = 8L)
       ),
       fn = "question_timestamps"
     )
@@ -89,7 +90,8 @@ question_funnel <- function(data, questions, field = "scriptDate") {
   if (!is.character(questions) || length(questions) == 0L ||
         anyNA(questions) || !all(nzchar(questions))) {
     stop_s160(
-      "`questions` must be a non-empty character vector of question stems.",
+      sprintf("`questions` must be a non-empty character vector of question stems%s.",
+              .not_got(questions)),
       fn = "question_funnel"
     )
   }

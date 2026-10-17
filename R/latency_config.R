@@ -81,11 +81,15 @@ latency_build_config <- function(campaign_id, data,
                          respondent_id_column = NULL) {
   questions <- latency_discover_questions(data)
   if (length(questions) < 2L) {
-    stop_s160(paste(
-      "Could not discover at least two questions from CSV columns;",
-      "expected id.<q>.scriptDate columns. Found:",
-      paste(head(questions, 5L), collapse = ", ")
-    ), fn = "latency_build_config")
+    cols <- if (is.data.frame(data)) names(data) else as.character(data)
+    stop_s160(sprintf(paste0(
+      "could not discover at least two questions from the export's columns ",
+      "(need id.<question>.scriptDate columns; found %s). `data` has %d ",
+      "column(s), e.g. %s. Read the export with s160_read_csv() or ",
+      "s160_gcs_campaign_results_read() so its headers are in dot form."),
+      if (length(questions)) paste(questions, collapse = ", ") else "none",
+      length(cols), .preview_values(cols)),
+      fn = "latency_build_config")
   }
   # Opt-in / consent is routing-based by default (the funnel masks derive it from
   # reaching a continuation step -- phrasing- and language-agnostic), so no
@@ -142,32 +146,63 @@ latency_validate_config <- function(config, data) {
 # -- the same three checks in the same order, without decoding every timestamp
 # a second time for the flow-order ratio.
 .validate_config_shape <- function(config) {
+  if (!is.list(config)) {
+    stop_config(sprintf("must be a list (from latency_build_config())%s.",
+                        .not_got(config)))
+  }
   unknown <- setdiff(names(config), .config_keys)
   if (length(unknown) > 0) {
-    stop(sprintf("config: unknown keys: %s", paste(unknown, collapse = ", ")),
-         call. = FALSE)
+    stop_config(sprintf("unknown key(s): %s (known keys: %s).",
+                        paste(unknown, collapse = ", "),
+                        paste(.config_keys, collapse = ", ")))
   }
-  if (is.null(config$project_id)) stop("config: `project_id` is required.", call. = FALSE)
-  if (is.null(config$campaign_id)) stop("config: `campaign_id` is required.", call. = FALSE)
-  if (is.null(config$field_timezone)) stop("config: `field_timezone` is required.", call. = FALSE)
+  required <- c("project_id", "campaign_id", "field_timezone")
+  absent <- required[vapply(config[required], is.null, logical(1))]
+  if (length(absent) > 0) {
+    stop_config(sprintf("`%s` %s required.", paste(absent, collapse = "`, `"),
+                        if (length(absent) == 1L) "is" else "are"))
+  }
+  # The nested blocks must be lists before their fields are read, else a
+  # hand-written `flow = "intro"` dies on `$` with a base error instead of the
+  # classed config error. `filters` is optional (NULL); `flow` is required.
+  if (!is.list(config$flow)) {
+    stop_config(sprintf("`flow` must be a list with a `questions` element%s.",
+                        .not_got(config$flow)))
+  }
+  if (!is.null(config$filters) && !is.list(config$filters)) {
+    stop_config(sprintf("`filters` must be a list (or NULL)%s.",
+                        .not_got(config$filters)))
+  }
   validate_questions(config$flow$questions)
   invisible(TRUE)
 }
 
+# Raise a config error: the "config:" domain prefix (not a function name, see
+# conditions.R) and the `s160_config_error` class, so a caller validating many
+# hand-written configs can catch exactly these.
+stop_config <- function(msg) {
+  stop_s160(paste0("config: ", msg), subclass = "s160_config_error")
+}
+
 validate_questions <- function(questions) {
   if (is.null(questions) || length(questions) == 0) {
-    stop("config: `flow.questions` is required and must be non-empty.", call. = FALSE)
+    stop_config("`flow.questions` is required and must be non-empty.")
   }
   if (length(questions) < 2) {
-    stop("config: `flow.questions` must contain at least two questions.", call. = FALSE)
+    stop_config(sprintf("`flow.questions` must contain at least two questions%s.",
+                        .not_got(questions)))
   }
-  if (anyDuplicated(questions)) {
-    stop("config: `flow.questions` contains duplicates.", call. = FALSE)
+  dup <- unique(questions[duplicated(questions)])
+  if (length(dup) > 0) {
+    stop_config(sprintf("`flow.questions` contains duplicate(s): %s.",
+                        paste(dup, collapse = ", ")))
   }
   bad <- intersect(questions, .terminal_states)
   if (length(bad) > 0) {
-    stop(sprintf("config: `flow.questions` must not include terminal states: %s",
-                 paste(bad, collapse = ", ")), call. = FALSE)
+    stop_config(sprintf(paste0(
+      "`flow.questions` must not include terminal state(s): %s. ",
+      "latency_discover_questions() excludes them; drop them from the flow."),
+      paste(bad, collapse = ", ")))
   }
 }
 
@@ -199,8 +234,13 @@ validate_columns_present <- function(config, data) {
   required <- c(required, campaign_col)
   missing_cols <- setdiff(required, names(data))
   if (length(missing_cols) > 0) {
-    stop(sprintf("Required columns missing from data: %s",
-                 paste(missing_cols, collapse = ", ")), call. = FALSE)
+    stop_config(sprintf(paste0(
+      "required column(s) missing from `data`: %s. `flow.questions` is %s; ",
+      "`data` has %d column(s), e.g. %s. Check the flow against ",
+      "s160_csv_header() / names(data)."),
+      paste(missing_cols, collapse = ", "),
+      paste(config$flow$questions, collapse = ", "),
+      ncol(data), .preview_values(names(data))))
   }
 }
 
@@ -303,23 +343,38 @@ latency_input_columns <- function(config, available = NULL) {
 validate_flow_order <- function(config, data) {
   questions <- config$flow$questions
   if (length(questions) < 2) return(invisible(TRUE))
-  ok_total <- 0L
-  cmp_total <- 0L
-  for (i in seq_len(length(questions) - 1)) {
+  n_seg <- length(questions) - 1L
+  seg_ok <- integer(n_seg)
+  seg_cmp <- integer(n_seg)
+  for (i in seq_len(n_seg)) {
     prior <- sprintf("id.%s.batchDate", questions[i])
     nxt <- sprintf("id.%s.scriptDate", questions[i + 1])
     bp <- parse_campaign_timestamps(data[[prior]])
     sn <- parse_campaign_timestamps(data[[nxt]])
     valid <- !is.na(bp) & !is.na(sn)
     if (!any(valid)) next
-    cmp_total <- cmp_total + sum(valid)
-    ok_total <- ok_total + sum(sn[valid] >= bp[valid])
+    seg_cmp[i] <- sum(valid)
+    seg_ok[i] <- sum(sn[valid] >= bp[valid])
   }
+  cmp_total <- sum(seg_cmp)
   if (cmp_total == 0) return(invisible(TRUE))
-  ratio <- ok_total / cmp_total
+  ratio <- sum(seg_ok) / cmp_total
   if (ratio < 0.9) {
-    stop(sprintf("Flow order check failed: only %.1f%% of rows have scriptDate(next) >= batchDate(prior). Likely mis-ordered `flow.questions`.", # nolint
-                 100 * ratio), call. = FALSE)
+    # Name the segment(s) that drag the ratio down, so a mis-ordered flow is
+    # located at once rather than hunted through every question pair.
+    seg_ratio <- ifelse(seg_cmp > 0L, seg_ok / seg_cmp, NA_real_)
+    worst <- which(!is.na(seg_ratio) & seg_ratio < 0.9)
+    worst <- worst[order(seg_ratio[worst])]
+    worst <- worst[seq_len(min(3L, length(worst)))]
+    segments <- sprintf("%s -> %s (%.1f%% of %d rows)",
+                        questions[worst], questions[worst + 1L],
+                        100 * seg_ratio[worst], seg_cmp[worst])
+    stop_config(sprintf(paste0(
+      "flow order check failed: only %.1f%% of rows have scriptDate(next) ",
+      ">= batchDate(prior); out of order at %s. `flow.questions` (%s) is ",
+      "likely mis-ordered."),
+      100 * ratio, paste(segments, collapse = ", "),
+      paste(questions, collapse = ", ")))
   }
   invisible(TRUE)
 }

@@ -166,14 +166,22 @@ test_that("the engine option is validated, and auto picks duckdb when installed"
   with_engine("auto", expect_equal(.disposition_engine(), "duckdb"))
   with_engine("nanoparquet", expect_equal(.disposition_engine(), "nanoparquet"))
   with_engine("duckdb", expect_equal(.disposition_engine(), "duckdb"))
-  with_engine("arrow", expect_error(.disposition_engine(), "must be one of"))
-  with_engine(NA, expect_error(.disposition_engine(), "must be one of"))
+  with_engine("arrow", expect_error(
+    .disposition_engine(),
+    "option `survey160r.disposition_engine` must be one of auto, duckdb, nanoparquet, not \"arrow\".",
+    fixed = TRUE))
+  with_engine(NA, expect_error(.disposition_engine(), "must be one of .*, not NA"))
 })
 
 test_that("without duckdb, auto falls back to nanoparquet and a forced duckdb errors", {
   local_mocked_bindings(requireNamespace = function(...) FALSE, .package = "base")
   with_engine("auto", expect_equal(.disposition_engine(), "nanoparquet"))
-  with_engine("duckdb", expect_error(.disposition_engine(), "not installed"))
+  with_engine("duckdb", expect_error(
+    .disposition_engine(),
+    paste0("option `survey160r.disposition_engine` is \"duckdb\" but duckdb and DBI are ",
+           "not installed: install.packages(c(\"duckdb\", \"DBI\")), or set the option to ",
+           "\"auto\" to fall back to nanoparquet."),
+    fixed = TRUE))
 })
 
 # A recorder for rlang::check_installed(), so the offer branch never tries a real

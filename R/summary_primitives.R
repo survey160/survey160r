@@ -38,19 +38,35 @@ population_filter_mask <- function(data, expr) {
   if (is.null(expr) || !nzchar(expr)) return(rep(TRUE, nrow(data)))
   parsed <- tryCatch(parse(text = expr),
                      error = function(e) {
-                       stop(sprintf("`filters.population` is not valid R: %s", expr),
-                            call. = FALSE)
+                       stop_config(sprintf(
+                         "`filters.population` is not valid R: %s (%s).",
+                         deparse(expr), trimws(sub("\n.*$", "", conditionMessage(e)))))
                      })
   env <- list2env(as.list(data), parent = baseenv())
+  # One eval(); R's own "object 'x' not found" is translated into the column
+  # hint (a typo'd or unprojected column is the usual cause), so a lambda
+  # parameter or a `$` field never trips a static scan, and anything else the
+  # expression does wrong is reported as it happened.
   keep <- tryCatch(eval(parsed, envir = env),
                    error = function(e) {
-                     stop(sprintf("`filters.population` evaluation failed: %s",
-                                  conditionMessage(e)),
-                          call. = FALSE)
+                     missing_col <- regmatches(
+                       conditionMessage(e),
+                       regexec("^object '(.+)' not found$", conditionMessage(e)))[[1L]]
+                     if (length(missing_col) == 2L) {
+                       stop_config(sprintf(paste0(
+                         "`filters.population` references column(s) not in `data`: ",
+                         "%s (expression: %s; %s)."),
+                         missing_col[[2L]], deparse(expr), .columns_hint(data)))
+                     }
+                     stop_config(sprintf(
+                       "`filters.population` evaluation failed: %s (expression: %s).",
+                       conditionMessage(e), deparse(expr)))
                    })
   if (!is.logical(keep) || length(keep) != nrow(data)) {
-    stop("`filters.population` must evaluate to a logical vector matching nrow(data).",
-         call. = FALSE)
+    stop_config(sprintf(paste0(
+      "`filters.population` must evaluate to a logical vector of length ",
+      "nrow(data) = %d%s (expression: %s)."),
+      nrow(data), .not_got(keep), deparse(expr)))
   }
   keep[is.na(keep)] <- FALSE
   keep

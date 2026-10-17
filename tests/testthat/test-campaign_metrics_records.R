@@ -47,7 +47,9 @@ test_that("records is idempotent on a frame already using short names", {
 
 test_that("records errors when funnel columns are missing", {
   expect_error(campaign_metrics_records(data.frame(campaign_id = 1)),
-               "missing funnel columns")
+               paste0("campaign_metrics_records: `x` is missing funnel column\\(s\\): ",
+                      "n_sent, n_engaged, n_opted_in, n_completed ",
+                      "\\(`x` has 1 column\\(s\\): campaign_id\\)\\."))
 })
 
 test_that("records errors on a non-existent path", {

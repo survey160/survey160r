@@ -21,11 +21,16 @@
 # column pushdown (col_select), so the wide recipient-latency columns are never
 # read. Only the columns that exist are requested, so a slimmer projection still
 # reads.
-.campaign_metrics_read_parquet <- function(dataset) {
+.campaign_metrics_read_parquet <- function(dataset, fn = NULL) {
   if (!is.character(dataset) || length(dataset) != 1L || !nzchar(dataset)) {
-    stop("`x` must be a single Parquet path or a data frame.", call. = FALSE)
+    stop_s160(sprintf("`x` must be a single Parquet path or a data frame%s.",
+                      .not_got(dataset)), fn = fn)
   }
-  if (!file.exists(dataset)) stop_not_found("campaign metrics projection", dataset)
+  if (!file.exists(dataset)) {
+    stop_not_found("campaign metrics projection", dataset, fn = fn, hint = paste0(
+      "campaign_metrics_pull() downloads the projection and returns its path. ",
+      .path_hint(dataset) %||% ""))
+  }
   want <- c("campaign_id", "date", "hour_local",
             unname(.CAMPAIGN_METRICS_RENAME), .CAMPAIGN_METRICS_COUNTS)
   cols <- intersect(want, nanoparquet::read_parquet_schema(dataset)$name)
@@ -75,8 +80,8 @@ funnel_rates <- function(x, sent = "n_sent", engaged = "n_engaged",
   cols <- c(sent, engaged, opted_in, completed)
   miss <- setdiff(cols, names(x))
   if (length(miss)) {
-    stop(sprintf("funnel_rates(): missing count columns: %s",
-                 paste(miss, collapse = ", ")), call. = FALSE)
+    stop_s160(sprintf("missing count column(s): %s", paste(miss, collapse = ", ")),
+              fn = "funnel_rates")
   }
   mult  <- if (isTRUE(percent)) 100 else 1
   ratio <- function(num, den) ifelse(den > 0, num / den, NA_real_)
@@ -129,12 +134,17 @@ funnel_rates <- function(x, sent = "n_sent", engaged = "n_engaged",
 #' }
 #' @export
 campaign_metrics_records <- function(x, dedup = TRUE) {
-  d <- if (is.data.frame(x)) as.data.frame(x) else .campaign_metrics_read_parquet(x)
+  d <- if (is.data.frame(x)) {
+    as.data.frame(x)
+  } else {
+    .campaign_metrics_read_parquet(x, fn = "campaign_metrics_records")
+  }
   d <- .campaign_metrics_rename(d)
   miss <- setdiff(.CAMPAIGN_METRICS_COUNTS, names(d))
   if (length(miss)) {
-    stop(sprintf("campaign metrics frame is missing funnel columns: %s",
-                 paste(miss, collapse = ", ")), call. = FALSE)
+    stop_s160(sprintf("`x` is missing funnel column(s): %s (%s).",
+                      paste(miss, collapse = ", "), .columns_hint(d, "x")),
+              fn = "campaign_metrics_records")
   }
   keep <- intersect(c(.CAMPAIGN_METRICS_DIMS, .CAMPAIGN_METRICS_COUNTS), names(d))
   d <- d[, keep, drop = FALSE]
@@ -190,13 +200,15 @@ campaign_metrics_summary <- function(x, by = "campaign_id", rates = TRUE,
                                      percent = FALSE) {
   d <- .campaign_metrics_one_grain(campaign_metrics_records(x))
   if (!"campaign_id" %in% names(d)) {
-    stop("campaign_metrics_summary(): `campaign_id` is required.", call. = FALSE)
+    stop_s160("`x` has no `campaign_id` column.", fn = "campaign_metrics_summary")
   }
   by <- as.character(by)
   bad <- setdiff(by, names(d))
   if (length(bad)) {
-    stop(sprintf("campaign_metrics_summary(): `by` column(s) not available: %s",
-                 paste(bad, collapse = ", ")), call. = FALSE)
+    stop_s160(sprintf("`by` column(s) not in `x`: %s (available: %s)",
+                      paste(bad, collapse = ", "),
+                      paste(names(d), collapse = ", ")),
+              fn = "campaign_metrics_summary")
   }
   g <- dplyr::summarise(
     dplyr::group_by(d, dplyr::across(dplyr::all_of(by))),

@@ -30,7 +30,9 @@ apply_population_filter <- function(data, expr) {
 # callers can apply them to parallel per-row masks.
 dedupe_keep_rows <- function(data, resp_id_col) {
   if (!resp_id_col %in% names(data)) {
-    stop_not_found("respondent-id column", resp_id_col)
+    stop_config(sprintf(paste0(
+      "`filters.respondent_id_column` names a column not in `data`: %s (%s)."),
+      resp_id_col, .columns_hint(data)))
   }
   n <- nrow(data)
   openers <- .discover_openers(data)

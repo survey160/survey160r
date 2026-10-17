@@ -213,8 +213,12 @@ Common symptoms and fixes:
 | A **403** after a successful Google sign-in | Your account lacks Storage Object Viewer on that bucket | Ask a sysadmin to add you to `gcp-campaign-readers` for the bucket (see [First-time setup](#first-time-setup)) |
 | `could not find function "disposition_pull"` | R-universe has not rebuilt the latest release yet | Install from GitHub (`pak::pkg_install("survey160/survey160r")`), then restart R |
 | `disposition_pull()` returns data you know is out of date | It reused a cached copy | Re-download with `disposition_pull(refresh = TRUE)` |
-| `unused argument (...)` from a reader | The argument belongs to a different function (e.g. `filter_open` is on `s160_api_campaign_results()`, not `s160_gcs_campaign_results_read()`) | Move it to the right function, or drop it |
+| `argument(s) not accepted by the CSV reader (data.table::fread): filter_open` | The argument belongs to a different function (e.g. `filter_open` is on `s160_api_campaign_results()`, not `s160_gcs_campaign_results_read()`) | Move it to the right function, or drop it |
 | A `date_from` / `date_to` filter drops more rows than expected | A row whose `disposition_date` is `NA` (never populated for that campaign) is dropped by any date bound | Expected -- only dated rows match a date filter; omit the bound to keep undated rows |
+
+Every error names the function, what it received, and the next step; a script
+can catch one by class (`s160_not_initialized`, `s160_not_found`, ...) -- see
+the "Errors and messages" section of `?survey160r`.
 
 Reset credentials (edit `~/.Renviron`, remove the relevant line, restart R):
 

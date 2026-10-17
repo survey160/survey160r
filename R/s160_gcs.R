@@ -24,7 +24,9 @@
 # Stop with a clear message if GCS has not been authenticated.
 check_gcs_ready <- function() {
   if (!.gcs_has_token()) {
-    stop_not_initialized("GCS", "s160_gcs_init")
+    stop_not_initialized("GCS", "s160_gcs_init", hint = paste0(
+      "It opens a browser sign-in; use s160_gcs_init(adc = TRUE) in a ",
+      "non-interactive session."))
   }
 }
 
@@ -98,7 +100,10 @@ dataset_object <- function(dataset) {
 resolve_dataset <- function(dataset, env, fn = NULL) {
   tiers <- dataset_tiers(dataset)
   if (length(tiers) == 0L) {
-    stop_s160(sprintf("unknown dataset: %s", dataset), fn = fn)
+    known <- unique(unlist(lapply(get_config()$environments,
+                                  function(e) names(e$datasets))))
+    stop_s160(sprintf("unknown dataset: %s (known: %s).", dataset,
+                      paste(known, collapse = ", ")), fn = fn)
   }
   ds <- tiers[[env]]
   if (is.null(ds)) {
@@ -156,11 +161,14 @@ prompt_and_save_secret <- function() { # nocov start
 # Validate campaign_id is a non-empty scalar
 validate_campaign_id <- function(campaign_id) {
   if (length(campaign_id) != 1) {
-    stop("`campaign_id` must be a single value, not a vector.", call. = FALSE)
+    stop_s160(sprintf("`campaign_id` must be a single value%s.",
+                      .not_got(campaign_id)))
   }
+  raw <- campaign_id
   campaign_id <- as.character(campaign_id)
   if (is.na(campaign_id) || !nzchar(trimws(campaign_id))) {
-    stop("`campaign_id` must be a non-empty scalar value.", call. = FALSE)
+    stop_s160(sprintf("`campaign_id` must be a non-empty scalar value%s.",
+                      .not_got(raw)))
   }
   campaign_id
 }
@@ -258,25 +266,28 @@ download_with_verify <- function(object_name, local_path, max_retries = 2L,
 
     actual_size <- file.info(local_path)$size
     if (!file.exists(local_path) || is.na(actual_size)) {
-      stop(sprintf("Download produced no file for '%s'.", object_name), call. = FALSE)
+      stop_s160(sprintf("Download of '%s' produced no file at %s.",
+                        object_name, local_path))
     }
 
     if (is.null(expected_size)) break  # metadata unavailable; trust the download
     if (actual_size == expected_size) break
 
     if (attempt > max_retries) {
-      stop(sprintf(
-        "Download incomplete after %d attempts. Expected %s bytes, got %s bytes.",
-        attempt, format(expected_size, big.mark = ","),
+      stop_s160(sprintf(paste0(
+        "Download incomplete after %d attempts: '%s' is %s bytes in GCS but %s ",
+        "bytes arrived. Retry; if it persists, the object may be changing while ",
+        "it is read."),
+        attempt, object_name, format(expected_size, big.mark = ","),
         format(actual_size, big.mark = ",")
-      ), call. = FALSE)
+      ))
     }
 
     wait <- 2^(attempt - 1)
     message(sprintf(
-      "Download size mismatch (expected %s, got %s). Retrying in %ds... (attempt %d/%d)",
-      format(expected_size, big.mark = ","), format(actual_size, big.mark = ","),
-      wait, attempt + 1L, max_retries + 1L
+      "Download size mismatch for '%s' (expected %s bytes, got %s); retrying in %ds (attempt %d/%d)...",
+      object_name, format(expected_size, big.mark = ","),
+      format(actual_size, big.mark = ","), wait, attempt + 1L, max_retries + 1L
     ))
     Sys.sleep(wait)
   }
@@ -346,7 +357,8 @@ download_with_verify <- function(object_name, local_path, max_retries = 2L,
 .check_timestamps_arg <- function(timestamps, fn) {
   if (!is.character(timestamps) || length(timestamps) != 1L ||
         !timestamps %in% c("character", "POSIXct")) {
-    stop_s160("`timestamps` must be \"character\" or \"POSIXct\".", fn = fn)
+    stop_s160(sprintf("`timestamps` must be \"character\" or \"POSIXct\"%s.",
+                      .not_got(timestamps)), fn = fn)
   }
   timestamps
 }
@@ -399,7 +411,8 @@ fast_read_csv <- function(path, columns = NULL, encoding = "UTF-8",
   # (read.csv fallback assembly no-ops an unnamed arg). Validate against
   # whichever reader will run.
   if (length(extra) > 0L) {
-    valid <- if (requireNamespace("data.table", quietly = TRUE)) {
+    has_dt <- requireNamespace("data.table", quietly = TRUE)
+    valid <- if (has_dt) {
       names(formals(data.table::fread))
     } else {
       c(names(formals(utils::read.csv)), names(formals(utils::read.table)))
@@ -408,8 +421,11 @@ fast_read_csv <- function(path, columns = NULL, encoding = "UTF-8",
     bad <- setdiff(if (is.null(nms)) "" else nms, valid)
     if (length(bad) > 0L) {
       bad[!nzchar(bad)] <- "unnamed"
-      stop_s160(sprintf("argument(s) not accepted by the CSV reader: %s",
-                        paste(unique(bad), collapse = ", ")), fn = fn)
+      reader <- if (has_dt) "data.table::fread" else "utils::read.csv"
+      stop_s160(sprintf(paste0(
+        "argument(s) not accepted by the CSV reader (%s): %s. `...` is ",
+        "forwarded to it; see ?%s for what it takes."),
+        reader, paste(unique(bad), collapse = ", "), reader), fn = fn)
     }
   }
   select_raw <- NULL
@@ -428,8 +444,11 @@ fast_read_csv <- function(path, columns = NULL, encoding = "UTF-8",
     munged_keep <- munged[keep]   # read.csv fallback subsets by munged name
     if (length(select_raw) == 0L) {
       warning(sprintf(paste0(
-        "None of the %d requested column(s) matched the header ",
-        "of '%s'; reading all columns."), length(columns), path), call. = FALSE)
+        "%s: none of the %d requested column(s) (%s) matched the header of ",
+        "'%s' (%d columns: %s); reading all columns. `columns` takes dot-form ",
+        "names as s160_csv_header() returns them."),
+        fn, length(columns), .preview_values(columns), path, length(munged),
+        .preview_values(munged)), call. = FALSE)
       select_raw <- NULL
     }
   }
@@ -602,8 +621,7 @@ s160_gcs_init <- function(bucket = NULL, adc = FALSE) {
       )
     }
     gcs_auth(token = token)
-    message("Authenticated via Application Default Credentials")
-    return(finish_gcs_init(bucket))
+    return(finish_gcs_init(bucket, "Application Default Credentials"))
   }
 
   # Client ID from bundled JSON (public, not a secret)
@@ -623,9 +641,10 @@ s160_gcs_init <- function(bucket = NULL, adc = FALSE) {
     if (!interactive()) {
       stop_s160(
         paste0(
-          "S160_GCS_CLIENT_SECRET not found in .Renviron.\n",
-          "Run s160_gcs_init() interactively to set it up, ",
-          "or add S160_GCS_CLIENT_SECRET manually to ~/.Renviron."
+          "S160_GCS_CLIENT_SECRET is not set. Add ",
+          "`S160_GCS_CLIENT_SECRET=<value>` to ~/.Renviron and restart R, ",
+          "run s160_gcs_init() in an interactive session to be prompted, ",
+          "or use s160_gcs_init(adc = TRUE) with Application Default Credentials."
         ),
         fn = "s160_gcs_init"
       )
@@ -641,20 +660,20 @@ s160_gcs_init <- function(bucket = NULL, adc = FALSE) {
   # Browser OAuth via gargle -- opens Google sign-in page on first run.
   # email = TRUE tells gargle to reuse the cached email on subsequent runs.
   gcs_auth(email = TRUE)
-  message("Authenticated via browser OAuth")
 
-  finish_gcs_init(bucket)
+  finish_gcs_init(bucket, "browser OAuth")
 }
 
-# Session-default bucket handling + readiness message, shared by the ADC and
-# interactive auth paths. Honors a (deprecated) explicit bucket as the session
-# global so existing global-bucket flows keep working during deprecation.
-finish_gcs_init <- function(bucket) {
+# Session-default bucket handling + one readiness message naming the auth
+# method, shared by the ADC and interactive auth paths. Honors a (deprecated)
+# explicit bucket as the session global so existing global-bucket flows keep
+# working during deprecation.
+finish_gcs_init <- function(bucket, method) {
   if (!is.null(bucket)) {
     gcs_global_bucket(bucket)
-    message(sprintf("GCS ready. Bucket: %s", bucket))
+    message(sprintf("GCS ready (%s). Bucket: %s", method, bucket))
   } else {
-    message("GCS ready.")
+    message(sprintf("GCS ready (%s).", method))
   }
   invisible(NULL)
 }
@@ -740,12 +759,10 @@ s160_gcs_campaign_results_read <- function(campaign_id, filename = NULL,
   env <- match.arg(env)
   bucket <- .locate("campaign_results", env, bucket,
                     "s160_gcs_campaign_results_read")$bucket
-  if (!is.logical(hash) || length(hash) != 1L || is.na(hash)) {
-    stop_s160("`hash` must be a single TRUE or FALSE.",
-              fn = "s160_gcs_campaign_results_read")
-  }
+  .require_single_logical(hash, "hash", "s160_gcs_campaign_results_read")
   if (!is.null(columns_fn) && !is.function(columns_fn)) {
-    stop_s160("`columns_fn` must be a function of the CSV header, or NULL.",
+    stop_s160(sprintf("`columns_fn` must be a function of the CSV header, or NULL%s.",
+                      .not_got(columns_fn)),
               fn = "s160_gcs_campaign_results_read")
   }
 
@@ -753,24 +770,28 @@ s160_gcs_campaign_results_read <- function(campaign_id, filename = NULL,
     filename <- paste0(campaign_id, "_raw_data_download.csv")
   }
   if (filename != basename(filename)) {
-    stop_s160("`filename` must not contain path separators.",
-              fn = "s160_gcs_campaign_results_read")
+    stop_s160(sprintf(paste0(
+      "`filename` must be a bare file name inside the campaign's folder, not a ",
+      "path: %s."), deparse(filename)),
+      fn = "s160_gcs_campaign_results_read")
   }
   object_name <- paste0(campaign_id, "/", filename)
 
   gcs_path <- sprintf("gs://%s/%s", bucket, object_name)
-  message(sprintf("Reading: %s", gcs_path))
+  message(sprintf("Reading %s (%s)", gcs_path, env))
 
   if (is.null(destdir)) {
     local_path <- tempfile(pattern = paste0("s160_", campaign_id, "_"), fileext = ".csv")
     on.exit(unlink(local_path), add = TRUE)
   } else if (!is.character(destdir) || length(destdir) != 1) {
-    stop_s160("`destdir` must be a single character string.",
+    stop_s160(sprintf("`destdir` must be a single directory path%s.",
+                      .not_got(destdir)),
               fn = "s160_gcs_campaign_results_read")
   } else {
     destdir <- normalizePath(destdir, mustWork = FALSE)
     if (!dir.exists(destdir)) {
-      stop_s160(sprintf("`destdir` does not exist or is not a directory: %s", destdir),
+      stop_s160(sprintf("`destdir` does not exist or is not a directory: %s. Create it first (dir.create()).", # nolint line_length_linter
+                        destdir),
                 fn = "s160_gcs_campaign_results_read")
     }
     local_path <- file.path(destdir, filename)
@@ -780,7 +801,12 @@ s160_gcs_campaign_results_read <- function(campaign_id, filename = NULL,
   tryCatch(
     download_with_verify(object_name = object_name, local_path = local_path,
                          bucket = bucket),
-    s160_not_found = function(e) stop_not_found("file", gcs_path, fn = fn),
+    s160_not_found = function(e) {
+      stop_not_found("file", gcs_path, fn = fn, hint = sprintf(paste0(
+        "List the campaign's files with s160_gcs_campaign_results_files(%s, ",
+        "env = \"%s\"), or trigger a fresh export with ",
+        "s160_api_campaign_results(%s)."), campaign_id, env, campaign_id))
+    },
     error = function(e) {
       stop_failed(sprintf("download %s", gcs_path), conditionMessage(e), fn = fn)
     }
@@ -809,9 +835,10 @@ s160_gcs_campaign_results_read <- function(campaign_id, filename = NULL,
     columns <- tryCatch(
       columns_fn(s160_csv_header(local_path, encoding = header_encoding)),
       error = function(e) {
-        warning(sprintf(
-          "column projection via `columns_fn` failed (%s); reading all columns.", # nolint line_length_linter
-          conditionMessage(e)), call. = FALSE)
+        warning(sprintf(paste0(
+          "s160_gcs_campaign_results_read: column projection via `columns_fn` ",
+          "failed (%s); reading all columns of %s."),
+          conditionMessage(e), gcs_path), call. = FALSE)
         NULL
       })
   }
@@ -865,7 +892,8 @@ s160_gcs_campaign_results_files <- function(campaign_id,
   )
 
   if (nrow(objects) == 0) {
-    message(sprintf("No files found for campaign %s", campaign_id))
+    message(sprintf("No files found for campaign %s in gs://%s/ (%s).",
+                    campaign_id, bucket, env))
     return(character(0))
   }
 
@@ -902,7 +930,7 @@ s160_gcs_campaign_results_list <- function(env = .ENV_CHOICES,
   )
 
   if (nrow(objects) == 0) {
-    message("No campaigns found in bucket")
+    message(sprintf("No campaigns found in gs://%s/ (%s).", bucket, env))
     return(character(0))
   }
 
@@ -954,11 +982,9 @@ s160_gcs_campaign_results_list <- function(env = .ENV_CHOICES,
 s160_read_csv <- function(path, columns = NULL, hash = TRUE,
                           timestamps = c("character", "POSIXct"), ...) {
   if (!file.exists(path)) {
-    stop_not_found("file", path, fn = "s160_read_csv")
+    stop_not_found("file", path, fn = "s160_read_csv", hint = .path_hint(path))
   }
-  if (!is.logical(hash) || length(hash) != 1L || is.na(hash)) {
-    stop_s160("`hash` must be a single TRUE or FALSE.", fn = "s160_read_csv")
-  }
+  .require_single_logical(hash, "hash", "s160_read_csv")
   timestamps <- .check_timestamps_arg(timestamps[[1L]], "s160_read_csv")
   data <- fast_read_csv(path, columns = columns, fn = "s160_read_csv", ...)
   if (timestamps == "POSIXct") data <- .parse_export_timestamps(data)
@@ -993,7 +1019,7 @@ s160_read_csv <- function(path, columns = NULL, hash = TRUE,
 #' @export
 s160_csv_header <- function(path, encoding = "UTF-8") {
   if (!file.exists(path)) {
-    stop_not_found("file", path, fn = "s160_csv_header")
+    stop_not_found("file", path, fn = "s160_csv_header", hint = .path_hint(path))
   }
   make.names(read_header_raw(path, encoding = encoding), unique = TRUE)
 }
@@ -1079,7 +1105,8 @@ s160_gcs_campaign_results_status <- function(campaign_id,
     dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
     local_path <- file.path(cache_dir, default_name)
   } else if (!is.character(dest) || length(dest) != 1L || !nzchar(trimws(dest))) {
-    stop_s160("`dest` must be a single non-empty path or directory.", fn = fn)
+    stop_s160(sprintf("`dest` must be a single non-empty path or directory%s.",
+                      .not_got(dest)), fn = fn)
   } else if (dir.exists(dest)) {
     local_path <- file.path(dest, default_name)
   } else {
@@ -1089,7 +1116,7 @@ s160_gcs_campaign_results_status <- function(campaign_id,
 
   gcs_path <- sprintf("gs://%s/%s", bucket, object_name)
   if (!refresh && file.exists(local_path)) {
-    message(sprintf("Using cached %s (%s): %s",
+    message(sprintf("Using cached %s (%s): %s (refresh = TRUE re-downloads it).",
                     noun, .format_file_age(local_path), local_path))
     return(local_path)
   }
@@ -1100,7 +1127,7 @@ s160_gcs_campaign_results_status <- function(campaign_id,
   # googleCloudStorageR error wrapped as "Failed to download".
   check_gcs_ready()
 
-  message(sprintf("Downloading %s", gcs_path))
+  message(sprintf("Downloading %s to %s", gcs_path, local_path))
   # Download to a temp file in the destination dir, then atomically move it into
   # place on success -- a failed or partial download never poisons the cache,
   # and any existing good copy survives.
@@ -1109,7 +1136,11 @@ s160_gcs_campaign_results_status <- function(campaign_id,
   tryCatch(
     download_with_verify(object_name = object_name, local_path = tmp,
                          bucket = bucket, progress = progress),
-    s160_not_found = function(e) stop_not_found(noun, gcs_path, fn = fn),
+    s160_not_found = function(e) {
+      stop_not_found(noun, gcs_path, fn = fn, hint = paste0(
+        "Check `env =` names the environment that publishes it, and that ",
+        "s160_gcs_init() authenticated an account that can read the bucket."))
+    },
     error = function(e) {
       stop_failed(sprintf("download %s", gcs_path), conditionMessage(e), fn = fn)
     }

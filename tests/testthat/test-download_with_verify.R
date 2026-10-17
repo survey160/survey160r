@@ -72,7 +72,7 @@ test_that("download errors when file not written to disk", {
 
   expect_error(
     download_with_verify("100/data.csv", tmp),
-    "Download produced no file"
+    "Download of '100/data.csv' produced no file at "
   )
 })
 

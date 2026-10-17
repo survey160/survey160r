@@ -71,20 +71,23 @@ test_that("filename with path separator is rejected", {
 
   expect_error(
     s160_gcs_campaign_results_read(1980, filename = "../evil.csv"),
-    "path separators"
+    "`filename` must be a bare file name inside the campaign's folder, not a path: "
   )
   expect_error(
     s160_gcs_campaign_results_read(1980, filename = "subdir/file.csv"),
-    "path separators"
+    "`filename` must be a bare file name inside the campaign's folder, not a path: "
   )
 })
 
 test_that("non-string destdir is rejected", {
   stub_gcs_base()
 
-  expect_error(s160_gcs_campaign_results_read(1980, destdir = 123), "single character string")
-  expect_error(s160_gcs_campaign_results_read(1980, destdir = TRUE), "single character string")
-  expect_error(s160_gcs_campaign_results_read(1980, destdir = c("a", "b")), "single character string")
+  expect_error(s160_gcs_campaign_results_read(1980, destdir = 123),
+               "`destdir` must be a single directory path, not 123", fixed = TRUE)
+  expect_error(s160_gcs_campaign_results_read(1980, destdir = TRUE),
+               "single directory path, not TRUE", fixed = TRUE)
+  expect_error(s160_gcs_campaign_results_read(1980, destdir = c("a", "b")),
+               "single directory path, not a character vector of length 2", fixed = TRUE)
 })
 
 test_that("nonexistent destdir is rejected", {

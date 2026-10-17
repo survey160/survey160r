@@ -62,7 +62,9 @@ test_that("columns with no header match warns and reads in full -- fread", {
 
   # No requested column matches -> warn (visible, not a silent OOM) + full read.
   expect_warning(data <- fast_read_csv(tmp, columns = c("does.not.exist")),
-                 "None of the")
+                 paste0("s160_read_csv: none of the 1 requested column\\(s\\) ",
+                        "\\(does.not.exist\\) matched the header of .*",
+                        "\\(2 columns: a, b\\); reading all columns"))
   expect_equal(names(data), c("a", "b"))
 })
 
@@ -73,7 +75,9 @@ test_that("columns with no header match warns and reads in full -- fallback", {
   stub_no_data_table()
   # Symmetric with the fread branch: full read (not a 0-column frame).
   expect_warning(data <- fast_read_csv(tmp, columns = c("does.not.exist")),
-                 "None of the")
+                 paste0("s160_read_csv: none of the 1 requested column\\(s\\) ",
+                        "\\(does.not.exist\\) matched the header of .*",
+                        "\\(2 columns: a, b\\); reading all columns"))
   expect_equal(names(data), c("a", "b"))
 })
 

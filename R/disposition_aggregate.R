@@ -437,30 +437,25 @@ disposition_run <- function(campaign_id, data, population = NULL,
                             field_timezone = "America/New_York") {
   check_data_frame(data, "data", fn = "disposition_run")
   if (!"phone" %in% names(data)) {
-    stop_s160("`data` must contain a `phone` column.", fn = "disposition_run")
+    stop_s160(sprintf("`data` must contain a `phone` column (%s).", .columns_hint(data)),
+              fn = "disposition_run")
   }
   if (length(campaign_id) != 1L) {
     # A vector id would recycle into the frame and multiply rows past the
     # grain guard (which runs on the input phone), silently breaking the grain.
-    stop_s160("`campaign_id` must be a single value.", fn = "disposition_run")
-  }
-  if (!is.logical(contacted_only) || length(contacted_only) != 1L ||
-        is.na(contacted_only)) {
-    stop_s160("`contacted_only` must be a single TRUE or FALSE.",
+    stop_s160(sprintf("`campaign_id` must be a single value%s.", .not_got(campaign_id)),
               fn = "disposition_run")
   }
-  if (!is.character(field_timezone) || length(field_timezone) != 1L ||
-        is.na(field_timezone) || !nzchar(field_timezone)) {
-    stop_s160("`field_timezone` must be a single non-empty string.",
-              fn = "disposition_run")
-  }
+  .require_single_logical(contacted_only, "contacted_only", "disposition_run")
+  check_nonempty_string(field_timezone, "field_timezone", fn = "disposition_run")
   # An unknown zone is silently ignored by `format(..., tz =)` on some platforms
   # (falling back to UTC / local), which would assign a wrong disposition_date --
   # so reject anything not in the IANA database rather than bucket dates wrong.
   if (!field_timezone %in% OlsonNames()) {
-    stop_s160(sprintf(
-      "`field_timezone` (\"%s\") is not a known IANA timezone (see OlsonNames()).",
-      field_timezone), fn = "disposition_run")
+    stop_s160(sprintf(paste0(
+      "`field_timezone` %s is not a known IANA timezone, e.g. \"America/New_York\" ",
+      "or \"UTC\" (OlsonNames() lists them all)."),
+      deparse(field_timezone)), fn = "disposition_run")
   }
   if (nrow(data) == 0L) {
     return(list(consolidated = empty_disposition_frame(),

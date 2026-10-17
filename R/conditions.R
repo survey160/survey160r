@@ -24,6 +24,17 @@
 # single caller's name would be arbitrary (which of the callers?) rather than
 # informative. This mirrors stop_not_initialized() below.
 #
+#   * A "must be X" check says what it got instead ("`timeout` must be a
+#     positive number, not -1."), via .not_got(); a "not in `data`" check lists
+#     what the frame has, via .columns_hint(); a not-found error says how to
+#     get the thing (`hint =`). Long lists are cut by .preview_values().
+#
+# Classes: every error carries "s160_error" (stop_s160 raises through
+# s160_condition), plus a subclass where control flow dispatches on it:
+# "s160_not_found", "s160_http_error" (with `status`), "s160_not_initialized",
+# and "s160_config_error" (latency config validation, see stop_config in
+# latency_config.R). Documented for users under ?survey160r "Errors".
+#
 # The helpers below centralize the recurring shapes so that grammar stays
 # uniform and the duplicated raise-and-format logic lives in one place.
 
@@ -47,9 +58,12 @@ s160_condition <- function(msg, subclass, fn = NULL, ...) {
   )
 }
 
-# Raise a standardized survey160r error (see convention above).
-stop_s160 <- function(msg, fn = NULL) {
-  stop(.error_prefix(msg, fn), call. = FALSE)
+# Raise a standardized survey160r error (see convention above). Every raise
+# goes through s160_condition(), so `tryCatch(..., s160_error = )` catches any
+# error the package itself raises (and never one from R or a dependency). An
+# optional `subclass` adds a more specific class in front of "s160_error".
+stop_s160 <- function(msg, fn = NULL, subclass = NULL) {
+  stop(s160_condition(msg, subclass, fn = fn))
 }
 
 # Raise a classed HTTP error carrying the numeric `status`, so a caller can
@@ -65,7 +79,8 @@ stop_http_error <- function(status, msg, fn = NULL) {
 check_nonempty_string <- function(x, name, fn = NULL) {
   # nzchar(NA_character_) is TRUE by default, so guard NA explicitly.
   if (!is.character(x) || length(x) != 1L || is.na(x) || !nzchar(trimws(x))) {
-    stop_s160(sprintf("`%s` must be a non-empty string.", name), fn = fn)
+    stop_s160(sprintf("`%s` must be a non-empty string%s.", name, .not_got(x)),
+              fn = fn)
   }
   invisible(x)
 }
@@ -74,7 +89,8 @@ check_nonempty_string <- function(x, name, fn = NULL) {
 # an Inf timeout, for one, would turn a bounded poll into an unbounded loop).
 check_positive_number <- function(x, name, fn = NULL) {
   if (!is.numeric(x) || length(x) != 1L || !is.finite(x) || x <= 0) {
-    stop_s160(sprintf("`%s` must be a positive number.", name), fn = fn)
+    stop_s160(sprintf("`%s` must be a positive number%s.", name, .not_got(x)),
+              fn = fn)
   }
   invisible(x)
 }
@@ -82,7 +98,8 @@ check_positive_number <- function(x, name, fn = NULL) {
 # Validate `x` is a data frame. `name` is the argument's name, backticked.
 check_data_frame <- function(x, name, fn = NULL) {
   if (!is.data.frame(x)) {
-    stop_s160(sprintf("`%s` must be a data frame.", name), fn = fn)
+    stop_s160(sprintf("`%s` must be a data frame%s.", name, .not_got(x)),
+              fn = fn)
   }
   invisible(x)
 }
@@ -93,27 +110,94 @@ check_data_frame <- function(x, name, fn = NULL) {
 # function body so their cyclomatic complexity stays under the linter cap.
 .require_single_logical <- function(x, arg, fn) {
   if (!is.logical(x) || length(x) != 1L || is.na(x)) {
-    stop_s160(sprintf("`%s` must be a single TRUE or FALSE.", arg), fn = fn)
+    stop_s160(sprintf("`%s` must be a single TRUE or FALSE%s.", arg, .not_got(x)),
+              fn = fn)
   }
   invisible(x)
 }
 
-# "<service> not initialized. Run <init_fn>() first." Raised from the private
-# readiness checks on behalf of whichever exported call needs auth, so it stays
-# bare and names the fix rather than the failing helper.
-stop_not_initialized <- function(service, init_fn) {
-  stop_s160(sprintf("%s not initialized. Run %s() first.", service, init_fn))
+# "<service> not initialized. Run <init_fn>() first. <hint>" Raised from the
+# private readiness checks on behalf of whichever exported call needs auth, so
+# it stays bare and names the fix rather than the failing helper. Classed
+# `s160_not_initialized` so a script can catch it and sign in.
+stop_not_initialized <- function(service, init_fn, hint = NULL) {
+  msg <- sprintf("%s not initialized. Run %s() first.", service, init_fn)
+  if (!is.null(hint)) msg <- paste(msg, hint)
+  stop_s160(msg, subclass = "s160_not_initialized")
 }
 
 # "<subject> not found: <value>" -- value-bearing, no trailing period. Classed
 # `s160_not_found` so a boundary raise (e.g. download_with_verify translating a
 # GCS 404) can be caught by class at the callers rather than re-grepping "404".
-stop_not_found <- function(subject, value, fn = NULL) {
-  stop(s160_condition(sprintf("%s not found: %s", subject, value),
-                      "s160_not_found", fn = fn))
+# An optional `hint` (a sentence: how to get or locate the thing) follows.
+stop_not_found <- function(subject, value, fn = NULL, hint = NULL) {
+  msg <- sprintf("%s not found: %s", subject, value)
+  if (!is.null(hint)) msg <- paste0(msg, ". ", hint)
+  stop(s160_condition(msg, "s160_not_found", fn = fn))
+}
+
+# The hint for a local path that does not exist: a relative path names the
+# working directory it was resolved against (the usual cause: the wrong one).
+.path_hint <- function(path) {
+  # Absolute: POSIX, tilde, drive letter, UNC share, or a URL scheme.
+  if (grepl("^(/|~|[A-Za-z]:[/\\\\]|\\\\\\\\|[A-Za-z][A-Za-z0-9+.-]*://)", path)) {
+    return(NULL)
+  }
+  sprintf("The path is relative to the working directory, %s.", getwd())
 }
 
 # "Failed to <action>: <cause>" -- value-bearing, no trailing period.
 stop_failed <- function(action, cause, fn = NULL) {
   stop_s160(sprintf("Failed to %s: %s", action, cause), fn = fn)
+}
+
+# Describe a value for a "must be X, not <this>" error: what the caller actually
+# passed, compactly, so the fix is obvious without re-inspecting the argument.
+# A scalar is shown literally (strings quoted, cut at 40 characters); anything
+# else by shape -- "a character vector of length 3", "a data frame (10 x 4)",
+# "a list of length 2", "a function", "an object of class <cls>".
+.describe_value <- function(x) {
+  if (is.null(x)) return("NULL")
+  if (is.function(x)) return("a function")
+  if (is.data.frame(x)) {
+    return(sprintf("a data frame (%d x %d)", nrow(x), ncol(x)))
+  }
+  if (is.atomic(x) && length(x) == 1L) {
+    if (!is.character(x)) return(format(x))   # NA, NaN, Inf, numbers, logicals
+    if (is.na(x)) return("NA")
+    # An invalid multibyte string makes nchar()/substr() throw; allowNA = TRUE
+    # yields NA for one, and deparse() escapes its bytes safely untruncated.
+    n <- nchar(x, allowNA = TRUE)
+    shown <- if (!is.na(n) && n > 40L) paste0(substr(x, 1L, 37L), "...") else x
+    return(deparse(shown))
+  }
+  if (is.atomic(x) || is.list(x)) {
+    kind <- if (is.list(x)) "list" else paste(class(x)[[1L]], "vector")
+    if (length(x) == 0L) return(sprintf("an empty %s", kind))
+    return(sprintf("a %s of length %d", kind, length(x)))
+  }
+  sprintf("an object of class <%s>", paste(class(x), collapse = "/"))
+}
+
+# ", not <value>" -- the tail of a "`arg` must be X, not <value>." message.
+.not_got <- function(x) {
+  paste0(", not ", .describe_value(x))
+}
+
+# "a, b, c, ... (+N more)" -- the first `n` of a character vector for a message
+# that wants to show what is available without dumping a 200-column header.
+.preview_values <- function(x, n = 5L) {
+  x <- as.character(x)
+  if (length(x) == 0L) return("none")
+  shown <- x[seq_len(min(n, length(x)))]
+  extra <- length(x) - length(shown)
+  paste0(paste(shown, collapse = ", "),
+         if (extra > 0L) sprintf(", ... (+%d more)", extra) else "")
+}
+
+# "`<name>` has N column(s): a, b, c, ..." -- the tail of a missing-column error,
+# so the caller sees what the frame actually carries next to what it lacks.
+.columns_hint <- function(data, name = "data") {
+  cols <- names(data)
+  sprintf("`%s` has %d column(s): %s", name, length(cols), .preview_values(cols))
 }

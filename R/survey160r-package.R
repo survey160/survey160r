@@ -110,6 +110,40 @@
 #'     double-encoded text (mojibake) in an export.
 #' }
 #'
+#' @section Errors and messages:
+#' Every error the package raises says which function failed, what it
+#' received, and what to do:
+#' \preformatted{
+#' s160_api_campaign_results: `timeout` must be a positive number, not -1.
+#' s160_gcs_campaign_results_read: file not found: gs://.../744_raw_data_download.csv.
+#'   List the campaign's files with s160_gcs_campaign_results_files(744, env = "prod"), ...
+#' }
+#' Progress (downloads, export polling, cache hits) goes to \code{message()},
+#' so \code{suppressMessages()} silences it and a log captures it.
+#'
+#' Errors are classed, so a script can catch exactly what it expects with
+#' \code{tryCatch()} instead of matching message text:
+#' \itemize{
+#'   \item \code{s160_error} -- every error raised by survey160r itself (never
+#'     one from R or a dependency).
+#'   \item \code{s160_not_initialized} -- \code{\link{s160_gcs_init}} /
+#'     \code{\link{s160_api_auth}} has not run in this session.
+#'   \item \code{s160_not_found} -- a campaign, export file, local file or
+#'     dataset does not exist.
+#'   \item \code{s160_http_error} -- the Survey160 API answered a request with
+#'     an error; \code{s160_auth_error} -- the sign-in itself was refused. Both
+#'     carry the HTTP status code in the condition's \code{status} field.
+#'   \item \code{s160_config_error} -- a latency config (or the export it is
+#'     checked against) fails \code{\link{latency_validate_config}}.
+#' }
+#' \preformatted{
+#' tryCatch(
+#'   s160_gcs_campaign_results_read(744),
+#'   s160_not_initialized = function(e) { s160_gcs_init(); s160_gcs_campaign_results_read(744) },
+#'   s160_not_found = function(e) NULL
+#' )
+#' }
+#'
 #' Persisting results, walking the whole campaign fleet, and scheduling live
 #' in consumer projects; this package returns in-memory data frames.
 "_PACKAGE"

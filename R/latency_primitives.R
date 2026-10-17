@@ -210,7 +210,7 @@ subset_parsed_input <- function(data, parse_failed_mask, keep_idx) {
 # negatives so the caller can roll up diagnostics.
 compute_segment_delta <- function(batch_prior, script_next) {
   if (length(batch_prior) != length(script_next)) {
-    stop("`batch_prior` and `script_next` must have the same length.", call. = FALSE)
+    stop_s160("`batch_prior` and `script_next` must have the same length.")
   }
   # difftime(units = "mins") is exactly (unclass(t1) - unclass(t2)) / 60; done
   # inline to skip its tz / units dispatch on an export-sized vector.

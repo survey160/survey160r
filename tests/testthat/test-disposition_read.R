@@ -250,7 +250,7 @@ test_that("statuses filter keeps matching latest_disposition; unknown status err
   res <- disposition_summary(.disposition_base(), statuses = "terminated")
   expect_equal(res$phone, "2015550102")
   expect_error(disposition_summary(.disposition_base(), statuses = "bogus"),
-               "unknown status")
+               "disposition_summary: unknown `statuses` value\\(s\\): bogus \\(valid: never_contacted, ")
 })
 
 test_that("date bounds drop rows outside the range (incl. NA close dates)", {
@@ -396,7 +396,7 @@ test_that("disposition_screen validates sample, phone_col, and column clashes", 
   p <- .disposition_base()
   expect_error(disposition_screen(list(), p), "must be a data frame")
   expect_error(disposition_screen(data.frame(x = 1), p),
-               "phone column")
+               "`phone_col` \"phone\" is not a column of `sample` \\(`sample` has 1 column\\(s\\): x\\)")
   clash <- data.frame(phone = "2015550101", n_completed = 5L,
                       stringsAsFactors = FALSE)
   expect_error(disposition_screen(clash, p), "already has")

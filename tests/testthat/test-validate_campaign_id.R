@@ -23,5 +23,6 @@ test_that("whitespace-only errors", {
 })
 
 test_that("vector input errors", {
-  expect_error(survey160r:::validate_campaign_id(c(1001, 1002)), "single value, not a vector")
+  expect_error(survey160r:::validate_campaign_id(c(1001, 1002)),
+               "single value, not a numeric vector of length 2", fixed = TRUE)
 })

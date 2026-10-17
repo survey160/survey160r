@@ -73,8 +73,14 @@ test_that("build_config errors when fewer than two questions are discoverable", 
                         check.names = FALSE)
   expect_error(
     latency_build_config(1L, too_few),
-    "at least two questions"
+    paste0("latency_build_config: could not discover at least two questions from the ",
+           "export's columns \\(need id.<question>.scriptDate columns; found intro\\). ",
+           "`data` has 2 column\\(s\\), e.g. campaignid, id.intro.scriptDate. Read the ",
+           "export with s160_read_csv\\(\\)")
   )
+  expect_error(latency_build_config(1L, data.frame(a = 1, b = 2)), "found none")
+  expect_error(latency_build_config(1L, c("a", "b", "c", "d", "e", "f", "g")),
+               "e.g. a, b, c, d, e, ... \\(\\+2 more\\)")
 })
 
 test_that("build_config result passes validate_config against real data", {

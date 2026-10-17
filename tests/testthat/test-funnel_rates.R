@@ -26,5 +26,8 @@ test_that("funnel_rates returns NA on a zero denominator (not NaN/Inf)", {
 })
 
 test_that("funnel_rates errors on missing count columns", {
-  expect_error(funnel_rates(data.frame(n_sent = 1)), "missing count columns")
+  expect_error(
+    funnel_rates(data.frame(n_sent = 1)),
+    "funnel_rates: missing count column\\(s\\): n_engaged, n_opted_in, n_completed"
+  )
 })
