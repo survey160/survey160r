@@ -71,11 +71,11 @@ test_that("filename with path separator is rejected", {
 
   expect_error(
     s160_gcs_campaign_results_read(1980, filename = "../evil.csv"),
-    "path separators"
+    "`filename` must be a bare file name inside the campaign's folder, not a path: "
   )
   expect_error(
     s160_gcs_campaign_results_read(1980, filename = "subdir/file.csv"),
-    "path separators"
+    "`filename` must be a bare file name inside the campaign's folder, not a path: "
   )
 })
 

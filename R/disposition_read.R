@@ -389,8 +389,14 @@
     requireNamespace("DBI", quietly = TRUE)
   if (has_duckdb) return("duckdb")
   if (engine == "duckdb") {
-    stop_s160(paste("option `survey160r.disposition_engine` is \"duckdb\" but the",
-                    "duckdb package is not installed: install.packages(\"duckdb\")"))
+    absent <- c("duckdb", "DBI")[!c(requireNamespace("duckdb", quietly = TRUE),
+                                     requireNamespace("DBI", quietly = TRUE))]
+    stop_s160(sprintf(paste0(
+      "option `survey160r.disposition_engine` is \"duckdb\" but %s not installed: ",
+      "install.packages(c(\"duckdb\", \"DBI\")), or set the option to \"auto\" ",
+      "to fall back to nanoparquet."),
+      paste(paste(absent, collapse = " and "),
+            if (length(absent) == 1L) "is" else "are")))
   }
   "nanoparquet"
 }
@@ -768,8 +774,9 @@
   if (!is.null(statuses)) {
     bad <- setdiff(as.character(statuses), .DISPOSITION_CATEGORIES)
     if (length(bad) > 0L) {
-      stop_s160(sprintf("unknown status(es): %s",
-                        paste(bad, collapse = ", ")),
+      stop_s160(sprintf("unknown `statuses` value(s): %s (valid: %s).",
+                        paste(bad, collapse = ", "),
+                        paste(.DISPOSITION_CATEGORIES, collapse = ", ")),
                 fn = fn)
     }
   }

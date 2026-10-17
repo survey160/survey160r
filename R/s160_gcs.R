@@ -98,7 +98,10 @@ dataset_object <- function(dataset) {
 resolve_dataset <- function(dataset, env, fn = NULL) {
   tiers <- dataset_tiers(dataset)
   if (length(tiers) == 0L) {
-    stop_s160(sprintf("unknown dataset: %s", dataset), fn = fn)
+    known <- unique(unlist(lapply(get_config()$environments,
+                                  function(e) names(e$datasets))))
+    stop_s160(sprintf("unknown dataset: %s (known: %s).", dataset,
+                      paste(known, collapse = ", ")), fn = fn)
   }
   ds <- tiers[[env]]
   if (is.null(ds)) {
@@ -261,25 +264,28 @@ download_with_verify <- function(object_name, local_path, max_retries = 2L,
 
     actual_size <- file.info(local_path)$size
     if (!file.exists(local_path) || is.na(actual_size)) {
-      stop_s160(sprintf("Download produced no file for '%s'.", object_name))
+      stop_s160(sprintf("Download of '%s' produced no file at %s.",
+                        object_name, local_path))
     }
 
     if (is.null(expected_size)) break  # metadata unavailable; trust the download
     if (actual_size == expected_size) break
 
     if (attempt > max_retries) {
-      stop_s160(sprintf(
-        "Download incomplete after %d attempts. Expected %s bytes, got %s bytes.",
-        attempt, format(expected_size, big.mark = ","),
+      stop_s160(sprintf(paste0(
+        "Download incomplete after %d attempts: '%s' is %s bytes in GCS but %s ",
+        "bytes arrived. Retry; if it persists, the object may be changing while ",
+        "it is read."),
+        attempt, object_name, format(expected_size, big.mark = ","),
         format(actual_size, big.mark = ",")
       ))
     }
 
     wait <- 2^(attempt - 1)
     message(sprintf(
-      "Download size mismatch (expected %s, got %s). Retrying in %ds... (attempt %d/%d)",
-      format(expected_size, big.mark = ","), format(actual_size, big.mark = ","),
-      wait, attempt + 1L, max_retries + 1L
+      "Download size mismatch for '%s' (expected %s bytes, got %s); retrying in %ds (attempt %d/%d)...",
+      object_name, format(expected_size, big.mark = ","),
+      format(actual_size, big.mark = ","), wait, attempt + 1L, max_retries + 1L
     ))
     Sys.sleep(wait)
   }
@@ -403,7 +409,8 @@ fast_read_csv <- function(path, columns = NULL, encoding = "UTF-8",
   # (read.csv fallback assembly no-ops an unnamed arg). Validate against
   # whichever reader will run.
   if (length(extra) > 0L) {
-    valid <- if (requireNamespace("data.table", quietly = TRUE)) {
+    has_dt <- requireNamespace("data.table", quietly = TRUE)
+    valid <- if (has_dt) {
       names(formals(data.table::fread))
     } else {
       c(names(formals(utils::read.csv)), names(formals(utils::read.table)))
@@ -412,8 +419,11 @@ fast_read_csv <- function(path, columns = NULL, encoding = "UTF-8",
     bad <- setdiff(if (is.null(nms)) "" else nms, valid)
     if (length(bad) > 0L) {
       bad[!nzchar(bad)] <- "unnamed"
-      stop_s160(sprintf("argument(s) not accepted by the CSV reader: %s",
-                        paste(unique(bad), collapse = ", ")), fn = fn)
+      reader <- if (has_dt) "data.table::fread" else "utils::read.csv"
+      stop_s160(sprintf(paste0(
+        "argument(s) not accepted by the CSV reader (%s): %s. `...` is ",
+        "forwarded to it; see ?%s for what it takes."),
+        reader, paste(unique(bad), collapse = ", "), reader), fn = fn)
     }
   }
   select_raw <- NULL
@@ -758,8 +768,10 @@ s160_gcs_campaign_results_read <- function(campaign_id, filename = NULL,
     filename <- paste0(campaign_id, "_raw_data_download.csv")
   }
   if (filename != basename(filename)) {
-    stop_s160("`filename` must not contain path separators.",
-              fn = "s160_gcs_campaign_results_read")
+    stop_s160(sprintf(paste0(
+      "`filename` must be a bare file name inside the campaign's folder, not a ",
+      "path: %s."), deparse(filename)),
+      fn = "s160_gcs_campaign_results_read")
   }
   object_name <- paste0(campaign_id, "/", filename)
 
@@ -776,7 +788,8 @@ s160_gcs_campaign_results_read <- function(campaign_id, filename = NULL,
   } else {
     destdir <- normalizePath(destdir, mustWork = FALSE)
     if (!dir.exists(destdir)) {
-      stop_s160(sprintf("`destdir` does not exist or is not a directory: %s", destdir),
+      stop_s160(sprintf("`destdir` does not exist or is not a directory: %s. Create it first (dir.create()).", # nolint line_length_linter
+                        destdir),
                 fn = "s160_gcs_campaign_results_read")
     }
     local_path <- file.path(destdir, filename)

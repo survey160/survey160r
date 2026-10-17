@@ -250,7 +250,7 @@ test_that("statuses filter keeps matching latest_disposition; unknown status err
   res <- disposition_summary(.disposition_base(), statuses = "terminated")
   expect_equal(res$phone, "2015550102")
   expect_error(disposition_summary(.disposition_base(), statuses = "bogus"),
-               "unknown status")
+               "disposition_summary: unknown `statuses` value\\(s\\): bogus \\(valid: never_contacted, ")
 })
 
 test_that("date bounds drop rows outside the range (incl. NA close dates)", {

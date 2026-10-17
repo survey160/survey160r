@@ -451,9 +451,10 @@ disposition_run <- function(campaign_id, data, population = NULL,
   # (falling back to UTC / local), which would assign a wrong disposition_date --
   # so reject anything not in the IANA database rather than bucket dates wrong.
   if (!field_timezone %in% OlsonNames()) {
-    stop_s160(sprintf(
-      "`field_timezone` (\"%s\") is not a known IANA timezone (see OlsonNames()).",
-      field_timezone), fn = "disposition_run")
+    stop_s160(sprintf(paste0(
+      "`field_timezone` %s is not a known IANA timezone, e.g. \"America/New_York\" ",
+      "or \"UTC\" (OlsonNames() lists them all)."),
+      deparse(field_timezone)), fn = "disposition_run")
   }
   if (nrow(data) == 0L) {
     return(list(consolidated = empty_disposition_frame(),
