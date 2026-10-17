@@ -1,5 +1,53 @@
 # survey160r (development version)
 
+## Errors and messages
+
+Twenty review rounds over every error, warning and message the package emits,
+so a failure says which function failed, what it received, and what to do next.
+Message *wording* changed throughout; code that matched error text should
+dispatch on the new condition classes instead.
+
+* **Every error is classed.** All package errors carry `s160_error`; the
+  specific ones add `s160_not_initialized` (sign in first), `s160_not_found`
+  (campaign, export file, local file or dataset), `s160_http_error` (the API
+  answered with an error; `$status` holds the HTTP code) and
+  `s160_config_error` (a latency config, or the export it is checked against,
+  fails validation). `?survey160r` has a "Errors and messages" section with a
+  `tryCatch()` example.
+* **Argument errors say what they got**: `` `timeout` must be a positive
+  number, not -1. ``, `` `destdir` must be a single directory path, not a
+  character vector of length 2. ``, `` `timestamps` must be "character" or
+  "POSIXct", not "posix". ``
+* **Missing-column errors list what the frame has** (`` `sample` has 3
+  column(s): id, cell, name ``), and `question_timestamps()` lists the
+  questions the export does carry. `` `filters.population` `` names the
+  column(s) it references that `data` lacks, echoes the expression, and
+  reports a non-logical result with its value.
+* **Config errors** list the known keys, report every missing required key at
+  once, name the duplicate / terminal question, and the flow-order check names
+  the out-of-order segment(s) with their in-order share (`out of order at
+  intro -> q1 (12.0% of 50 rows)`). A non-list `config` is rejected up front.
+* **Not-found errors say how to get the file**: a missing export points at
+  `s160_gcs_campaign_results_files()` / `s160_api_campaign_results()`; a
+  missing projection at the matching `*_pull()`; a relative local path names
+  the working directory it was resolved against.
+* **Authentication**: a failed API sign-in names the credential variables to
+  check (`S160_API_USERID`, `S160_PROD_API_KEY` ...) and the URL; a missing
+  variable in a non-interactive session says what to add to `~/.Renviron`;
+  "not initialized" errors say the next step. API errors carry the HTTP status.
+* **Export polling** reports what it polls (`gs://.../744_raw_data_download.csv`),
+  progress against `timeout`, and on timeout how to pick the export up later
+  (`s160_gcs_campaign_results_status()`).
+* **Listing, cache and projection messages** name the bucket and environment
+  (`No files found for campaign 9999 in gs://campaign_results/ (prod).`), the
+  cache hit says how to refresh, and the "no requested column matched" warning
+  shows what was requested against the header.
+* **Valid values are listed** for `statuses`, the disposition engine option
+  (with the packages to install), an unknown dataset, and an unaccepted CSV
+  reader argument names the reader (`data.table::fread`) to look up.
+* `campaign_metrics_summary()` / `funnel_rates()` / `disposition_summary()`
+  paging errors carry the function prefix like the rest of the package.
+
 ## Bug fixes
 
 * `campaign_metrics_summary()` counted every send twice on the published
