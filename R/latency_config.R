@@ -162,6 +162,17 @@ latency_validate_config <- function(config, data) {
     stop_config(sprintf("`%s` %s required.", paste(absent, collapse = "`, `"),
                         if (length(absent) == 1L) "is" else "are"))
   }
+  # The nested blocks must be lists before their fields are read, else a
+  # hand-written `flow = "intro"` dies on `$` with a base error instead of the
+  # classed config error. `filters` is optional (NULL); `flow` is required.
+  if (!is.list(config$flow)) {
+    stop_config(sprintf("`flow` must be a list with a `questions` element%s.",
+                        .not_got(config$flow)))
+  }
+  if (!is.null(config$filters) && !is.list(config$filters)) {
+    stop_config(sprintf("`filters` must be a list (or NULL)%s.",
+                        .not_got(config$filters)))
+  }
   validate_questions(config$flow$questions)
   invisible(TRUE)
 }

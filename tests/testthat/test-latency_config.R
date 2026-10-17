@@ -43,6 +43,19 @@ test_that("config errors are classed s160_config_error", {
                "config: `project_id`, `campaign_id`, `field_timezone` are required.")
 })
 
+test_that("validate_config rejects a non-list flow or filters with a config error", {
+  d <- minimal_synthetic_data()
+  err <- tryCatch(latency_validate_config(.minimal_config(list(flow = "intro")), d),
+                  error = identity)
+  expect_s3_class(err, "s160_config_error")
+  expect_equal(conditionMessage(err),
+               "config: `flow` must be a list with a `questions` element, not \"intro\".")
+  expect_error(latency_validate_config(.minimal_config(list(filters = TRUE)), d),
+               "config: `filters` must be a list \\(or NULL\\), not TRUE.")
+  expect_error(latency_validate_config(.minimal_config(list(flow = NULL)), d),
+               "config: `flow` must be a list with a `questions` element, not NULL.")
+})
+
 test_that("validate_config requires project_id, campaign_id, field_timezone", {
   expect_error(latency_validate_config(.minimal_config(list(project_id = NULL)),
                                minimal_synthetic_data()), "project_id")
