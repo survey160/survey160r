@@ -47,14 +47,15 @@ test_that("summary rates = FALSE omits the rate columns", {
 })
 
 test_that("summary errors on an unknown `by` column", {
-  expect_error(campaign_metrics_summary(raw_metrics(), by = "nope"), "not available")
+  expect_error(campaign_metrics_summary(raw_metrics(), by = "nope"),
+               "campaign_metrics_summary: `by` column\\(s\\) not in `x`: nope \\(available: ")
 })
 
 test_that("summary errors when `campaign_id` is absent (needed for `campaigns`)", {
   df <- data.frame(registration_id = "R1", n_sent = 100, n_engaged = 10,
                    n_opted_in = 2, n_completed = 1, stringsAsFactors = FALSE)
   expect_error(campaign_metrics_summary(df, by = "registration_id"),
-               "campaign_id.*required")
+               "campaign_metrics_summary: `x` has no `campaign_id` column\\.")
 })
 
 test_that("summary reads from a Parquet path and dedups before summing", {

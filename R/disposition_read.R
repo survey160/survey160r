@@ -285,7 +285,7 @@
     stringsAsFactors = FALSE
   )
 }
-.disposition_paginate <- function(summ, page, page_size) {
+.disposition_paginate <- function(summ, page, page_size, fn = NULL) {
   if (is.null(page) && is.null(page_size)) return(summ)
   ps <- if (is.null(page_size)) max(1L, nrow(summ)) else page_size
   pg <- if (is.null(page)) 1L else page
@@ -295,7 +295,7 @@
     is.numeric(x) && length(x) == 1L && is.finite(x) && x >= 1L && x %% 1 == 0
   }
   if (!ok(ps) || !ok(pg)) {
-    stop_s160("`page` and `page_size` must be positive integers.")
+    stop_s160("`page` and `page_size` must be positive integers.", fn = fn)
   }
   from <- (pg - 1L) * ps + 1L
   if (from > nrow(summ)) return(summ[0L, , drop = FALSE])
@@ -785,7 +785,7 @@
   # Phones are digit strings here, so a radix (byte) sort orders them exactly as
   # the locale sort would, in a fraction of the time on a large sample.
   summ <- summ[order(summ$phone, method = "radix"), , drop = FALSE]
-  summ <- .disposition_paginate(summ, page, page_size)
+  summ <- .disposition_paginate(summ, page, page_size, fn = fn)
   rownames(summ) <- NULL
   summ
 }
@@ -1028,7 +1028,7 @@ disposition_records <- function(dataset, phones = NULL, campaign_ids = NULL,
   cols <- intersect(.DISPOSITION_RECORD_COLS, names(d))
   # radix keeps the order locale-independent (byte order on the digit strings).
   d <- d[order(d$phone, as.numeric(d$campaign_id), method = "radix"), cols, drop = FALSE]
-  d <- .disposition_paginate(d, page, page_size)
+  d <- .disposition_paginate(d, page, page_size, fn = "disposition_records")
   rownames(d) <- NULL
   d
 }
