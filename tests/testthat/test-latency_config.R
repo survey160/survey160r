@@ -27,7 +27,20 @@ test_that("validate_config accepts a minimal valid config", {
 test_that("validate_config rejects unknown top-level keys", {
   cfg <- .minimal_config(list(weird_key = 1))
   expect_error(latency_validate_config(cfg, minimal_synthetic_data()),
-               "unknown keys")
+               "config: unknown key\\(s\\): weird_key \\(known keys: project_id, ")
+})
+
+test_that("validate_config rejects a non-list config", {
+  expect_error(latency_validate_config("cfg", minimal_synthetic_data()),
+               "config: must be a list \\(from latency_build_config\\(\\)\\), not \"cfg\".")
+})
+
+test_that("config errors are classed s160_config_error", {
+  err <- tryCatch(latency_validate_config(list(), minimal_synthetic_data()),
+                  error = identity)
+  expect_s3_class(err, c("s160_config_error", "s160_error"))
+  expect_equal(conditionMessage(err),
+               "config: `project_id`, `campaign_id`, `field_timezone` are required.")
 })
 
 test_that("validate_config requires project_id, campaign_id, field_timezone", {
@@ -52,12 +65,12 @@ test_that("validate_config rejects empty / single-question / dup / terminal flow
   expect_error(
     latency_validate_config(.minimal_config(
       list(flow = list(questions = c("intro", "intro", "close")))), d),
-    "duplicates"
+    "config: `flow.questions` contains duplicate\\(s\\): intro."
   )
   expect_error(
     latency_validate_config(.minimal_config(
       list(flow = list(questions = c("intro", "refusal", "close")))), d),
-    "terminal states"
+    "config: `flow.questions` must not include terminal state\\(s\\): refusal."
   )
 })
 
@@ -65,7 +78,8 @@ test_that("validate_config rejects missing required columns", {
   d <- minimal_synthetic_data()
   d$id.q1.batchDate <- NULL
   expect_error(latency_validate_config(.minimal_config(), d),
-               "Required columns missing")
+               paste0("config: required column\\(s\\) missing from `data`: id.q1.batchDate. ",
+                      "`flow.questions` is intro, q1, close"))
 })
 
 test_that("validate_config rejects mis-ordered flow (script before batch)", {
@@ -76,7 +90,10 @@ test_that("validate_config rejects mis-ordered flow (script before batch)", {
   d$id.q1.batchDate <- "2026-01-26 20:00:30.000000Z"
   d$id.close.scriptDate <- "2026-01-26 20:01:00.000000Z"
   expect_error(latency_validate_config(.minimal_config(), d),
-               "Flow order check failed")
+               paste0("config: flow order check failed: only 50.0% of rows have ",
+                      "scriptDate\\(next\\) >= batchDate\\(prior\\); out of order at ",
+                      "intro -> q1 \\(0.0% of 1 rows\\). `flow.questions` \\(intro, q1, close\\) ",
+                      "is likely mis-ordered."))
 })
 
 test_that("config_hash is stable across canonically-equal configs", {

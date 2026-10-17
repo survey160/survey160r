@@ -62,3 +62,11 @@ test_that("the check_* validators say what they received", {
   expect_error(survey160r:::.require_single_logical("yes", "refresh", "f"),
                "f: `refresh` must be a single TRUE or FALSE, not \"yes\".", fixed = TRUE)
 })
+
+test_that(".preview_values shows the first few values and counts the rest", {
+  p <- survey160r:::.preview_values
+  expect_equal(p(character(0)), "none")
+  expect_equal(p(c("a", "b")), "a, b")
+  expect_equal(p(letters[1:7]), "a, b, c, d, e, ... (+2 more)")
+  expect_equal(p(1:3, n = 2L), "1, 2, ... (+1 more)")
+})

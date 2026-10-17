@@ -156,3 +156,14 @@ stop_failed <- function(action, cause, fn = NULL) {
 .not_got <- function(x) {
   paste0(", not ", .describe_value(x))
 }
+
+# "a, b, c, ... (+N more)" -- the first `n` of a character vector for a message
+# that wants to show what is available without dumping a 200-column header.
+.preview_values <- function(x, n = 5L) {
+  x <- as.character(x)
+  if (length(x) == 0L) return("none")
+  shown <- x[seq_len(min(n, length(x)))]
+  extra <- length(x) - length(shown)
+  paste0(paste(shown, collapse = ", "),
+         if (extra > 0L) sprintf(", ... (+%d more)", extra) else "")
+}
