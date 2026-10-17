@@ -28,7 +28,9 @@
 check_api_ready <- function(conn = NULL) {
   conn <- conn %||% .s160_api_env
   if (is.null(conn$jwt) || conn$jwt == "") {
-    stop_not_initialized("API", "s160_api_auth")
+    stop_not_initialized("API", "s160_api_auth", hint = paste0(
+      "It authenticates the default connection; pass the connection it ",
+      "returns as `conn =` to target another environment."))
   }
 }
 
@@ -527,7 +529,11 @@ s160_api_campaign_get <- function(campaign_id, conn = NULL) {
       # found; a real 404 is mapped defensively too. Dispatch on the status the
       # condition carries, not the (rewordable) message text.
       if (e$status %in% c(400L, 404L)) {
-        stop_not_found("campaign", campaign_id, fn = "s160_api_campaign_get")
+        stop_not_found("campaign", campaign_id, fn = "s160_api_campaign_get",
+                       hint = sprintf(paste0(
+                         "Campaign ids are per environment; this connection is %s ",
+                         "(pass `conn =` from s160_api_auth(env = ...) for another)."),
+                         conn$env %||% "unnamed"))
       }
       stop(e)
     }

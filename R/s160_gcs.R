@@ -24,7 +24,9 @@
 # Stop with a clear message if GCS has not been authenticated.
 check_gcs_ready <- function() {
   if (!.gcs_has_token()) {
-    stop_not_initialized("GCS", "s160_gcs_init")
+    stop_not_initialized("GCS", "s160_gcs_init", hint = paste0(
+      "It opens a browser sign-in; use s160_gcs_init(adc = TRUE) in a ",
+      "non-interactive session."))
   }
 }
 
@@ -776,7 +778,7 @@ s160_gcs_campaign_results_read <- function(campaign_id, filename = NULL,
   object_name <- paste0(campaign_id, "/", filename)
 
   gcs_path <- sprintf("gs://%s/%s", bucket, object_name)
-  message(sprintf("Reading: %s", gcs_path))
+  message(sprintf("Reading %s (%s)", gcs_path, env))
 
   if (is.null(destdir)) {
     local_path <- tempfile(pattern = paste0("s160_", campaign_id, "_"), fileext = ".csv")

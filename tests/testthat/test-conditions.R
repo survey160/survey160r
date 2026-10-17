@@ -83,3 +83,11 @@ test_that("stop_not_found appends a hint and .path_hint fires only for relative 
                "s160_read_csv: file not found: nope.csv. The path is relative to the working directory, ",
                fixed = TRUE)
 })
+
+test_that("stop_not_initialized is classed and carries the hint", {
+  err <- tryCatch(survey160r:::stop_not_initialized("GCS", "s160_gcs_init", hint = "Then retry."),
+                  error = identity)
+  expect_s3_class(err, c("s160_not_initialized", "s160_error"))
+  expect_equal(conditionMessage(err),
+               "GCS not initialized. Run s160_gcs_init() first. Then retry.")
+})

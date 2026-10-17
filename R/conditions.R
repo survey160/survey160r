@@ -24,6 +24,17 @@
 # single caller's name would be arbitrary (which of the callers?) rather than
 # informative. This mirrors stop_not_initialized() below.
 #
+#   * A "must be X" check says what it got instead ("`timeout` must be a
+#     positive number, not -1."), via .not_got(); a "not in `data`" check lists
+#     what the frame has, via .columns_hint(); a not-found error says how to
+#     get the thing (`hint =`). Long lists are cut by .preview_values().
+#
+# Classes: every error carries "s160_error" (stop_s160 raises through
+# s160_condition), plus a subclass where control flow dispatches on it:
+# "s160_not_found", "s160_http_error" (with `status`), "s160_not_initialized",
+# and "s160_config_error" (latency config validation, see stop_config in
+# latency_config.R). Documented for users under ?survey160r "Errors".
+#
 # The helpers below centralize the recurring shapes so that grammar stays
 # uniform and the duplicated raise-and-format logic lives in one place.
 
@@ -105,11 +116,14 @@ check_data_frame <- function(x, name, fn = NULL) {
   invisible(x)
 }
 
-# "<service> not initialized. Run <init_fn>() first." Raised from the private
-# readiness checks on behalf of whichever exported call needs auth, so it stays
-# bare and names the fix rather than the failing helper.
-stop_not_initialized <- function(service, init_fn) {
-  stop_s160(sprintf("%s not initialized. Run %s() first.", service, init_fn))
+# "<service> not initialized. Run <init_fn>() first. <hint>" Raised from the
+# private readiness checks on behalf of whichever exported call needs auth, so
+# it stays bare and names the fix rather than the failing helper. Classed
+# `s160_not_initialized` so a script can catch it and sign in.
+stop_not_initialized <- function(service, init_fn, hint = NULL) {
+  msg <- sprintf("%s not initialized. Run %s() first.", service, init_fn)
+  if (!is.null(hint)) msg <- paste(msg, hint)
+  stop_s160(msg, subclass = "s160_not_initialized")
 }
 
 # "<subject> not found: <value>" -- value-bearing, no trailing period. Classed
