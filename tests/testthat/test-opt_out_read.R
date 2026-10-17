@@ -90,7 +90,8 @@ test_that("opt_out_screen honors a custom phone_col", {
 test_that("opt_out_screen validates sample, phone_col, and column clashes", {
   p <- .opt_out_base()
   expect_error(opt_out_screen(list(), p), "must be a data frame")
-  expect_error(opt_out_screen(data.frame(x = 1), p), "phone column")
+  expect_error(opt_out_screen(data.frame(x = 1), p),
+               "`phone_col` \"phone\" is not a column of `sample` \\(`sample` has 1 column\\(s\\): x\\)")
   clash <- data.frame(phone = "2015550101", opted_out = TRUE,
                       stringsAsFactors = FALSE)
   expect_error(opt_out_screen(clash, p), "already has")

@@ -735,13 +735,17 @@
                                     "refused", "ineligible")),
                           names(data))
   if (length(missing_cols) > 0L) {
-    stop_s160(sprintf("input is missing required column(s): %s",
-                      paste(missing_cols, collapse = ", ")),
-              fn = fn)
+    stop_s160(sprintf(paste0(
+      "input is missing required column(s): %s (%s). Pass the projection ",
+      "path or a disposition_records() frame."),
+      paste(missing_cols, collapse = ", "), .columns_hint(data, "x")),
+      fn = fn)
   }
   if (!"disposition_date" %in% names(data)) {
     if (!is.null(date_from) || !is.null(date_to)) {
-      stop_s160("input has no `disposition_date` column to filter on.", fn = fn)
+      stop_s160(paste0("input has no `disposition_date` column to filter on; ",
+                       "drop `date_from` / `date_to` or pass an enriched frame."),
+                fn = fn)
     }
     data$disposition_date <- rep(as.Date(NA), nrow(data))
   }
@@ -1015,13 +1019,15 @@ disposition_records <- function(dataset, phones = NULL, campaign_ids = NULL,
   }
   missing_cols <- setdiff(c("phone", "campaign_id"), names(raw))
   if (length(missing_cols) > 0L) {
-    stop_s160(sprintf("`dataset` is missing required column(s): %s",
-                      paste(missing_cols, collapse = ", ")),
+    stop_s160(sprintf("`dataset` is missing required column(s): %s (%s).",
+                      paste(missing_cols, collapse = ", "),
+                      .columns_hint(raw, "dataset")),
               fn = "disposition_records")
   }
   if ((!is.null(date_from) || !is.null(date_to)) &&
         !"disposition_date" %in% names(raw)) {
-    stop_s160("`dataset` has no `disposition_date` column to filter on.",
+    stop_s160(paste0("`dataset` has no `disposition_date` column to filter on; ",
+                     "drop `date_from` / `date_to`."),
               fn = "disposition_records")
   }
 
@@ -1099,14 +1105,15 @@ disposition_screen <- function(sample, dataset, phone_col = "phone",
   check_data_frame(sample, "sample", fn = "disposition_screen")
   if (!is.character(phone_col) || length(phone_col) != 1L ||
         !phone_col %in% names(sample)) {
-    stop_s160(sprintf("phone column %s not found in `sample`.",
-                      deparse(phone_col)), fn = "disposition_screen")
+    stop_s160(sprintf("`phone_col` %s is not a column of `sample` (%s).",
+                      deparse(phone_col), .columns_hint(sample, "sample")),
+              fn = "disposition_screen")
   }
   disposition_cols <- setdiff(.DISPOSITION_SUMMARY_COLS, "phone")
   clash <- intersect(disposition_cols, names(sample))
   if (length(clash) > 0L) {
-    stop_s160(sprintf(paste0("`sample` already has ",
-                             "disposition column(s) [%s]; rename them first."),
+    stop_s160(sprintf(paste0("`sample` already has disposition column(s) %s; ",
+                             "rename or drop them first so the screen can add its own."),
                       paste(clash, collapse = ", ")),
               fn = "disposition_screen")
   }

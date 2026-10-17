@@ -38,16 +38,31 @@ population_filter_mask <- function(data, expr) {
   if (is.null(expr) || !nzchar(expr)) return(rep(TRUE, nrow(data)))
   parsed <- tryCatch(parse(text = expr),
                      error = function(e) {
-                       stop_s160(sprintf("`filters.population` is not valid R: %s", expr))
+                       stop_config(sprintf(
+                         "`filters.population` is not valid R: %s (%s).",
+                         deparse(expr), trimws(sub("\n.*$", "", conditionMessage(e)))))
                      })
+  # Name the columns the expression references but `data` lacks before eval()
+  # reports a bare "object 'x' not found" -- a typo'd or unprojected column is
+  # the usual cause, and this says which one(s) and what is there instead.
+  absent <- setdiff(all.vars(parsed), c(names(data), ls(baseenv())))
+  if (length(absent) > 0L) {
+    stop_config(sprintf(
+      "`filters.population` references column(s) not in `data`: %s (expression: %s; %s).",
+      paste(absent, collapse = ", "), deparse(expr), .columns_hint(data)))
+  }
   env <- list2env(as.list(data), parent = baseenv())
   keep <- tryCatch(eval(parsed, envir = env),
                    error = function(e) {
-                     stop_s160(sprintf("`filters.population` evaluation failed: %s",
-                                  conditionMessage(e)))
+                     stop_config(sprintf(
+                       "`filters.population` evaluation failed: %s (expression: %s).",
+                       conditionMessage(e), deparse(expr)))
                    })
   if (!is.logical(keep) || length(keep) != nrow(data)) {
-    stop_s160("`filters.population` must evaluate to a logical vector matching nrow(data).")
+    stop_config(sprintf(paste0(
+      "`filters.population` must evaluate to a logical vector of length ",
+      "nrow(data) = %d%s (expression: %s)."),
+      nrow(data), .not_got(keep), deparse(expr)))
   }
   keep[is.na(keep)] <- FALSE
   keep

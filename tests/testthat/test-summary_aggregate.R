@@ -211,10 +211,22 @@ test_that("population_filter_mask: invalid expression aborts", {
   expect_error(population_filter_mask(d, "this is not R"),
                "`filters.population` is not valid R")
   expect_error(population_filter_mask(d, "no_such_column == 1"),
-               "`filters.population` evaluation failed")
+               paste0("config: `filters.population` references column\\(s\\) not in ",
+                      "`data`: no_such_column \\(expression: \"no_such_column == 1\"; ",
+                      "`data` has 10 column\\(s\\): campaignid, userid, "))
+  # A column that exists but whose comparison fails at eval time.
+  expect_error(population_filter_mask(d, "campaignid + \"a\""),
+               paste0("config: `filters.population` evaluation failed: non-numeric ",
+                      "argument to binary operator \\(expression: ",
+                      "\"campaignid \\+ \\\\\"a\\\\\"\"\\)."))
   # Expression that returns a non-logical / wrong length
   expect_error(population_filter_mask(d, "42"),
-               "must evaluate to a logical vector matching nrow")
+               paste0("must evaluate to a logical vector of length nrow\\(data\\) = 4, ",
+                      "not 42 \\(expression: \"42\"\\)."))
+  err <- tryCatch(population_filter_mask(d, "this is not R"), error = identity)
+  expect_s3_class(err, c("s160_config_error", "s160_error"))
+  expect_match(conditionMessage(err),
+               "^config: `filters.population` is not valid R: \"this is not R\" \\(")
 })
 
 test_that("population_filter_mask: NA in expression becomes FALSE", {

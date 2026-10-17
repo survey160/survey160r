@@ -170,9 +170,11 @@
 
   missing_cols <- setdiff(c(group_cols, "campaign_id", need_funnel), names(data))
   if (length(missing_cols) > 0L) {
-    stop_s160(sprintf("input is missing required column(s): %s",
-                      paste(missing_cols, collapse = ", ")),
-              fn = "disposition_funnel")
+    stop_s160(sprintf(paste0(
+      "input is missing required column(s): %s (%s). Pass the projection ",
+      "path or a disposition_records() frame, and `by` column(s) it carries."),
+      paste(missing_cols, collapse = ", "), .columns_hint(data, "x")),
+      fn = "disposition_funnel")
   }
   # refused / ineligible (the terminal split) are optional: a projection produced
   # before survey160r 0.51.0 lacks them -> default 0 (matches the disposition rollup).

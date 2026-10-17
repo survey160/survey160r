@@ -167,3 +167,10 @@ stop_failed <- function(action, cause, fn = NULL) {
   paste0(paste(shown, collapse = ", "),
          if (extra > 0L) sprintf(", ... (+%d more)", extra) else "")
 }
+
+# "`<name>` has N column(s): a, b, c, ..." -- the tail of a missing-column error,
+# so the caller sees what the frame actually carries next to what it lacks.
+.columns_hint <- function(data, name = "data") {
+  cols <- names(data)
+  sprintf("`%s` has %d column(s): %s", name, length(cols), .preview_values(cols))
+}

@@ -55,7 +55,8 @@
 # is its first occurrence in the list, so the kept row is the same).
 .opt_out_lookup <- function(data, fn, phones = NULL) {
   if (!"phone" %in% names(data)) {
-    stop_s160("input is missing required column(s): phone", fn = fn)
+    stop_s160(sprintf("input is missing required column(s): phone (%s).",
+                      .columns_hint(data, "dataset")), fn = fn)
   }
   phone <- .normalize_phone(data$phone)
   date_added <- if ("date_added" %in% names(data)) {
@@ -111,13 +112,14 @@ opt_out_screen <- function(sample, dataset, phone_col = "phone") {
   check_data_frame(sample, "sample", fn = "opt_out_screen")
   if (!is.character(phone_col) || length(phone_col) != 1L ||
         !phone_col %in% names(sample)) {
-    stop_s160(sprintf("phone column %s not found in `sample`.",
-                      deparse(phone_col)), fn = "opt_out_screen")
+    stop_s160(sprintf("`phone_col` %s is not a column of `sample` (%s).",
+                      deparse(phone_col), .columns_hint(sample, "sample")),
+              fn = "opt_out_screen")
   }
   clash <- intersect(.OPT_OUT_SCREEN_COLS, names(sample))
   if (length(clash) > 0L) {
-    stop_s160(sprintf(paste0("`sample` already has ",
-                             "opt-out column(s) [%s]; rename them first."),
+    stop_s160(sprintf(paste0("`sample` already has opt-out column(s) %s; ",
+                             "rename or drop them first so the screen can add its own."),
                       paste(clash, collapse = ", ")),
               fn = "opt_out_screen")
   }
