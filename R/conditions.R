@@ -115,9 +115,18 @@ stop_not_initialized <- function(service, init_fn) {
 # "<subject> not found: <value>" -- value-bearing, no trailing period. Classed
 # `s160_not_found` so a boundary raise (e.g. download_with_verify translating a
 # GCS 404) can be caught by class at the callers rather than re-grepping "404".
-stop_not_found <- function(subject, value, fn = NULL) {
-  stop(s160_condition(sprintf("%s not found: %s", subject, value),
-                      "s160_not_found", fn = fn))
+# An optional `hint` (a sentence: how to get or locate the thing) follows.
+stop_not_found <- function(subject, value, fn = NULL, hint = NULL) {
+  msg <- sprintf("%s not found: %s", subject, value)
+  if (!is.null(hint)) msg <- paste0(msg, ". ", hint)
+  stop(s160_condition(msg, "s160_not_found", fn = fn))
+}
+
+# The hint for a local path that does not exist: a relative path names the
+# working directory it was resolved against (the usual cause: the wrong one).
+.path_hint <- function(path) {
+  if (grepl("^(/|~|[A-Za-z]:[/\\\\])", path)) return(NULL)
+  sprintf("The path is relative to the working directory, %s.", getwd())
 }
 
 # "Failed to <action>: <cause>" -- value-bearing, no trailing period.

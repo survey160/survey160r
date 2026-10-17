@@ -309,7 +309,9 @@
     stop_s160(sprintf("`dataset` must be a single Parquet path%s.", .not_got(dataset)))
   }
   if (!file.exists(dataset)) {
-    stop_not_found("disposition dataset", dataset)
+    stop_not_found("disposition dataset", dataset, hint = paste0(
+      "disposition_pull() downloads the projection and returns its path. ",
+      .path_hint(dataset) %||% ""))
   }
 }
 

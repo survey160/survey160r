@@ -27,7 +27,9 @@
                       .not_got(dataset)), fn = fn)
   }
   if (!file.exists(dataset)) {
-    stop_not_found("campaign metrics projection", dataset, fn = fn)
+    stop_not_found("campaign metrics projection", dataset, fn = fn, hint = paste0(
+      "campaign_metrics_pull() downloads the projection and returns its path. ",
+      .path_hint(dataset) %||% ""))
   }
   want <- c("campaign_id", "date", "hour_local",
             unname(.CAMPAIGN_METRICS_RENAME), .CAMPAIGN_METRICS_COUNTS)

@@ -33,7 +33,9 @@
     stop_s160(sprintf("`dataset` must be a single Parquet path%s.", .not_got(dataset)))
   }
   if (!file.exists(dataset)) {
-    stop_not_found("opt-out dataset", dataset)
+    stop_not_found("opt-out dataset", dataset, hint = paste0(
+      "opt_out_pull() downloads the list and returns its path. ",
+      .path_hint(dataset) %||% ""))
   }
   if (!is.null(columns)) {
     columns <- intersect(columns, nanoparquet::read_parquet_schema(dataset)$name)

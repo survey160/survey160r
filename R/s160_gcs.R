@@ -432,8 +432,11 @@ fast_read_csv <- function(path, columns = NULL, encoding = "UTF-8",
     munged_keep <- munged[keep]   # read.csv fallback subsets by munged name
     if (length(select_raw) == 0L) {
       warning(sprintf(paste0(
-        "None of the %d requested column(s) matched the header ",
-        "of '%s'; reading all columns."), length(columns), path), call. = FALSE)
+        "%s: none of the %d requested column(s) (%s) matched the header of ",
+        "'%s' (%d columns: %s); reading all columns. `columns` takes dot-form ",
+        "names as s160_csv_header() returns them."),
+        fn, length(columns), .preview_values(columns), path, length(munged),
+        .preview_values(munged)), call. = FALSE)
       select_raw <- NULL
     }
   }
@@ -606,8 +609,7 @@ s160_gcs_init <- function(bucket = NULL, adc = FALSE) {
       )
     }
     gcs_auth(token = token)
-    message("Authenticated via Application Default Credentials")
-    return(finish_gcs_init(bucket))
+    return(finish_gcs_init(bucket, "Application Default Credentials"))
   }
 
   # Client ID from bundled JSON (public, not a secret)
@@ -646,20 +648,20 @@ s160_gcs_init <- function(bucket = NULL, adc = FALSE) {
   # Browser OAuth via gargle -- opens Google sign-in page on first run.
   # email = TRUE tells gargle to reuse the cached email on subsequent runs.
   gcs_auth(email = TRUE)
-  message("Authenticated via browser OAuth")
 
-  finish_gcs_init(bucket)
+  finish_gcs_init(bucket, "browser OAuth")
 }
 
-# Session-default bucket handling + readiness message, shared by the ADC and
-# interactive auth paths. Honors a (deprecated) explicit bucket as the session
-# global so existing global-bucket flows keep working during deprecation.
-finish_gcs_init <- function(bucket) {
+# Session-default bucket handling + one readiness message naming the auth
+# method, shared by the ADC and interactive auth paths. Honors a (deprecated)
+# explicit bucket as the session global so existing global-bucket flows keep
+# working during deprecation.
+finish_gcs_init <- function(bucket, method) {
   if (!is.null(bucket)) {
     gcs_global_bucket(bucket)
-    message(sprintf("GCS ready. Bucket: %s", bucket))
+    message(sprintf("GCS ready (%s). Bucket: %s", method, bucket))
   } else {
-    message("GCS ready.")
+    message(sprintf("GCS ready (%s).", method))
   }
   invisible(NULL)
 }
@@ -784,7 +786,12 @@ s160_gcs_campaign_results_read <- function(campaign_id, filename = NULL,
   tryCatch(
     download_with_verify(object_name = object_name, local_path = local_path,
                          bucket = bucket),
-    s160_not_found = function(e) stop_not_found("file", gcs_path, fn = fn),
+    s160_not_found = function(e) {
+      stop_not_found("file", gcs_path, fn = fn, hint = sprintf(paste0(
+        "List the campaign's files with s160_gcs_campaign_results_files(%s, ",
+        "env = \"%s\"), or trigger a fresh export with ",
+        "s160_api_campaign_results(%s)."), campaign_id, env, campaign_id))
+    },
     error = function(e) {
       stop_failed(sprintf("download %s", gcs_path), conditionMessage(e), fn = fn)
     }
@@ -813,9 +820,10 @@ s160_gcs_campaign_results_read <- function(campaign_id, filename = NULL,
     columns <- tryCatch(
       columns_fn(s160_csv_header(local_path, encoding = header_encoding)),
       error = function(e) {
-        warning(sprintf(
-          "column projection via `columns_fn` failed (%s); reading all columns.", # nolint line_length_linter
-          conditionMessage(e)), call. = FALSE)
+        warning(sprintf(paste0(
+          "s160_gcs_campaign_results_read: column projection via `columns_fn` ",
+          "failed (%s); reading all columns of %s."),
+          conditionMessage(e), gcs_path), call. = FALSE)
         NULL
       })
   }
@@ -869,7 +877,8 @@ s160_gcs_campaign_results_files <- function(campaign_id,
   )
 
   if (nrow(objects) == 0) {
-    message(sprintf("No files found for campaign %s", campaign_id))
+    message(sprintf("No files found for campaign %s in gs://%s/ (%s).",
+                    campaign_id, bucket, env))
     return(character(0))
   }
 
@@ -906,7 +915,7 @@ s160_gcs_campaign_results_list <- function(env = .ENV_CHOICES,
   )
 
   if (nrow(objects) == 0) {
-    message("No campaigns found in bucket")
+    message(sprintf("No campaigns found in gs://%s/ (%s).", bucket, env))
     return(character(0))
   }
 
@@ -958,7 +967,7 @@ s160_gcs_campaign_results_list <- function(env = .ENV_CHOICES,
 s160_read_csv <- function(path, columns = NULL, hash = TRUE,
                           timestamps = c("character", "POSIXct"), ...) {
   if (!file.exists(path)) {
-    stop_not_found("file", path, fn = "s160_read_csv")
+    stop_not_found("file", path, fn = "s160_read_csv", hint = .path_hint(path))
   }
   .require_single_logical(hash, "hash", "s160_read_csv")
   timestamps <- .check_timestamps_arg(timestamps[[1L]], "s160_read_csv")
@@ -995,7 +1004,7 @@ s160_read_csv <- function(path, columns = NULL, hash = TRUE,
 #' @export
 s160_csv_header <- function(path, encoding = "UTF-8") {
   if (!file.exists(path)) {
-    stop_not_found("file", path, fn = "s160_csv_header")
+    stop_not_found("file", path, fn = "s160_csv_header", hint = .path_hint(path))
   }
   make.names(read_header_raw(path, encoding = encoding), unique = TRUE)
 }
@@ -1092,7 +1101,7 @@ s160_gcs_campaign_results_status <- function(campaign_id,
 
   gcs_path <- sprintf("gs://%s/%s", bucket, object_name)
   if (!refresh && file.exists(local_path)) {
-    message(sprintf("Using cached %s (%s): %s",
+    message(sprintf("Using cached %s (%s): %s (refresh = TRUE re-downloads it).",
                     noun, .format_file_age(local_path), local_path))
     return(local_path)
   }
@@ -1103,7 +1112,7 @@ s160_gcs_campaign_results_status <- function(campaign_id,
   # googleCloudStorageR error wrapped as "Failed to download".
   check_gcs_ready()
 
-  message(sprintf("Downloading %s", gcs_path))
+  message(sprintf("Downloading %s to %s", gcs_path, local_path))
   # Download to a temp file in the destination dir, then atomically move it into
   # place on success -- a failed or partial download never poisons the cache,
   # and any existing good copy survives.
@@ -1112,7 +1121,11 @@ s160_gcs_campaign_results_status <- function(campaign_id,
   tryCatch(
     download_with_verify(object_name = object_name, local_path = tmp,
                          bucket = bucket, progress = progress),
-    s160_not_found = function(e) stop_not_found(noun, gcs_path, fn = fn),
+    s160_not_found = function(e) {
+      stop_not_found(noun, gcs_path, fn = fn, hint = paste0(
+        "Check `env =` names the environment that publishes it, and that ",
+        "s160_gcs_init() authenticated an account that can read the bucket."))
+    },
     error = function(e) {
       stop_failed(sprintf("download %s", gcs_path), conditionMessage(e), fn = fn)
     }

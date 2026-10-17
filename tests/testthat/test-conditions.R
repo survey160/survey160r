@@ -70,3 +70,16 @@ test_that(".preview_values shows the first few values and counts the rest", {
   expect_equal(p(letters[1:7]), "a, b, c, d, e, ... (+2 more)")
   expect_equal(p(1:3, n = 2L), "1, 2, ... (+1 more)")
 })
+
+test_that("stop_not_found appends a hint and .path_hint fires only for relative paths", {
+  expect_error(survey160r:::stop_not_found("file", "x.csv", hint = "Try y."),
+               "file not found: x.csv. Try y.", fixed = TRUE)
+  expect_null(survey160r:::.path_hint("/abs/x.csv"))
+  expect_null(survey160r:::.path_hint("~/x.csv"))
+  expect_null(survey160r:::.path_hint("C:/x.csv"))
+  expect_equal(survey160r:::.path_hint("data/x.csv"),
+               sprintf("The path is relative to the working directory, %s.", getwd()))
+  expect_error(s160_read_csv("nope.csv"),
+               "s160_read_csv: file not found: nope.csv. The path is relative to the working directory, ",
+               fixed = TRUE)
+})
