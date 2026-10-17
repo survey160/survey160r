@@ -385,12 +385,11 @@
                       paste(choices, collapse = ", "), .not_got(engine)))
   }
   if (engine == "nanoparquet") return(engine)
-  has_duckdb <- requireNamespace("duckdb", quietly = TRUE) &&
-    requireNamespace("DBI", quietly = TRUE)
-  if (has_duckdb) return("duckdb")
+  have <- c(duckdb = requireNamespace("duckdb", quietly = TRUE),
+            DBI = requireNamespace("DBI", quietly = TRUE))
+  if (all(have)) return("duckdb")
   if (engine == "duckdb") {
-    absent <- c("duckdb", "DBI")[!c(requireNamespace("duckdb", quietly = TRUE),
-                                     requireNamespace("DBI", quietly = TRUE))]
+    absent <- names(have)[!have]
     stop_s160(sprintf(paste0(
       "option `survey160r.disposition_engine` is \"duckdb\" but %s not installed: ",
       "install.packages(c(\"duckdb\", \"DBI\")), or set the option to \"auto\" ",

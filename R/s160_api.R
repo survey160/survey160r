@@ -107,11 +107,14 @@ api_do_auth <- function(conn, base_url, userid, api_key) {
   )
 
   if (httr::http_error(resp)) {
-    stop_http_error(
-      httr::status_code(resp),
+    # Classed s160_auth_error, NOT s160_http_error: the in-session refresh runs
+    # inside s160_api_request(), whose callers dispatch on s160_http_error (a
+    # 400/404 there means "no such campaign"), and a 400 from /auth must not be
+    # rewritten as a missing campaign. `status` is still carried.
+    stop(s160_condition(
       sprintf("Authentication failed (%s): %s. %s", base_url,
-              http_error_message(resp), .api_credentials_hint(conn$env))
-    )
+              http_error_message(resp), .api_credentials_hint(conn$env)),
+      "s160_auth_error", status = as.integer(httr::status_code(resp))))
   }
 
   parsed <- httr::content(resp, as = "parsed")

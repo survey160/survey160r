@@ -130,8 +130,9 @@
 #'     \code{\link{s160_api_auth}} has not run in this session.
 #'   \item \code{s160_not_found} -- a campaign, export file, local file or
 #'     dataset does not exist.
-#'   \item \code{s160_http_error} -- the Survey160 API answered with an error;
-#'     the condition's \code{status} field holds the HTTP status code.
+#'   \item \code{s160_http_error} -- the Survey160 API answered a request with
+#'     an error; \code{s160_auth_error} -- the sign-in itself was refused. Both
+#'     carry the HTTP status code in the condition's \code{status} field.
 #'   \item \code{s160_config_error} -- a latency config (or the export it is
 #'     checked against) fails \code{\link{latency_validate_config}}.
 #' }

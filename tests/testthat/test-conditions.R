@@ -33,6 +33,11 @@ test_that(".describe_value renders scalars literally and the rest by shape", {
   expect_equal(d(""), "\"\"")
   expect_equal(d(strrep("x", 50)), paste0("\"", strrep("x", 37), "...\""))
   expect_equal(d(3.5), "3.5")
+  expect_equal(d(NaN), "NaN")
+  expect_equal(d(-Inf), "-Inf")
+  expect_equal(d(NA_real_), "NA")
+  bad <- rawToChar(as.raw(c(0x66, 0xe9)))
+  expect_equal(d(bad), deparse(bad))
   expect_equal(d(TRUE), "TRUE")
   expect_equal(d(c("a", "b")), "a character vector of length 2")
   expect_equal(d(1:3), "a integer vector of length 3")
@@ -77,6 +82,8 @@ test_that("stop_not_found appends a hint and .path_hint fires only for relative 
   expect_null(survey160r:::.path_hint("/abs/x.csv"))
   expect_null(survey160r:::.path_hint("~/x.csv"))
   expect_null(survey160r:::.path_hint("C:/x.csv"))
+  expect_null(survey160r:::.path_hint("\\\\server\\share\\x.csv"))
+  expect_null(survey160r:::.path_hint("file:///x.csv"))
   expect_equal(survey160r:::.path_hint("data/x.csv"),
                sprintf("The path is relative to the working directory, %s.", getwd()))
   expect_error(s160_read_csv("nope.csv"),

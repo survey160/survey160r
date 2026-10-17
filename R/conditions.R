@@ -139,7 +139,10 @@ stop_not_found <- function(subject, value, fn = NULL, hint = NULL) {
 # The hint for a local path that does not exist: a relative path names the
 # working directory it was resolved against (the usual cause: the wrong one).
 .path_hint <- function(path) {
-  if (grepl("^(/|~|[A-Za-z]:[/\\\\])", path)) return(NULL)
+  # Absolute: POSIX, tilde, drive letter, UNC share, or a URL scheme.
+  if (grepl("^(/|~|[A-Za-z]:[/\\\\]|\\\\\\\\|[A-Za-z][A-Za-z0-9+.-]*://)", path)) {
+    return(NULL)
+  }
   sprintf("The path is relative to the working directory, %s.", getwd())
 }
 
@@ -160,12 +163,13 @@ stop_failed <- function(action, cause, fn = NULL) {
     return(sprintf("a data frame (%d x %d)", nrow(x), ncol(x)))
   }
   if (is.atomic(x) && length(x) == 1L) {
+    if (!is.character(x)) return(format(x))   # NA, NaN, Inf, numbers, logicals
     if (is.na(x)) return("NA")
-    if (is.character(x)) {
-      shown <- if (nchar(x) > 40L) paste0(substr(x, 1L, 37L), "...") else x
-      return(deparse(shown))
-    }
-    return(format(x))
+    # An invalid multibyte string makes nchar()/substr() throw; allowNA = TRUE
+    # yields NA for one, and deparse() escapes its bytes safely untruncated.
+    n <- nchar(x, allowNA = TRUE)
+    shown <- if (!is.na(n) && n > 40L) paste0(substr(x, 1L, 37L), "...") else x
+    return(deparse(shown))
   }
   if (is.atomic(x) || is.list(x)) {
     kind <- if (is.list(x)) "list" else paste(class(x)[[1L]], "vector")

@@ -214,6 +214,10 @@ test_that("population_filter_mask: invalid expression aborts", {
                paste0("config: `filters.population` references column\\(s\\) not in ",
                       "`data`: no_such_column \\(expression: \"no_such_column == 1\"; ",
                       "`data` has 10 column\\(s\\): campaignid, userid, "))
+  # A lambda parameter or a `$` field is not a column: no false rejection.
+  expect_length(population_filter_mask(d, "vapply(campaignid, function(v) v > 0, logical(1))"),
+                nrow(d))
+  expect_length(population_filter_mask(d, "campaignid > .Machine$integer.max"), nrow(d))
   # A column that exists but whose comparison fails at eval time.
   expect_error(population_filter_mask(d, "campaignid + \"a\""),
                paste0("config: `filters.population` evaluation failed: non-numeric ",

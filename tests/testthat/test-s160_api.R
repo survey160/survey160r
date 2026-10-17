@@ -36,7 +36,8 @@ test_that("auth fails with clear error on 401", {
     http_error = TRUE
   )
   err <- tryCatch(s160_api_auth(), error = identity)
-  expect_s3_class(err, c("s160_http_error", "s160_error"))
+  expect_s3_class(err, c("s160_auth_error", "s160_error"))
+  expect_false(inherits(err, "s160_http_error"))
   expect_identical(err$status, 401L)
   expect_equal(conditionMessage(err), paste0(
     "Authentication failed (https://api.survey160.com): Invalid API key (HTTP 401). ",

@@ -10,7 +10,8 @@ dispatch on the new condition classes instead.
 * **Every error is classed.** All package errors carry `s160_error`; the
   specific ones add `s160_not_initialized` (sign in first), `s160_not_found`
   (campaign, export file, local file or dataset), `s160_http_error` (the API
-  answered with an error; `$status` holds the HTTP code) and
+  answered a request with an error; `$status` holds the HTTP code),
+  `s160_auth_error` (the sign-in itself was refused; also carries `$status`) and
   `s160_config_error` (a latency config, or the export it is checked against,
   fails validation). `?survey160r` has a "Errors and messages" section with a
   `tryCatch()` example.
