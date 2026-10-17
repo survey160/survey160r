@@ -437,7 +437,8 @@ disposition_run <- function(campaign_id, data, population = NULL,
                             field_timezone = "America/New_York") {
   check_data_frame(data, "data", fn = "disposition_run")
   if (!"phone" %in% names(data)) {
-    stop_s160("`data` must contain a `phone` column.", fn = "disposition_run")
+    stop_s160(sprintf("`data` must contain a `phone` column (%s).", .columns_hint(data)),
+              fn = "disposition_run")
   }
   if (length(campaign_id) != 1L) {
     # A vector id would recycle into the frame and multiply rows past the

@@ -142,8 +142,8 @@ campaign_metrics_records <- function(x, dedup = TRUE) {
   d <- .campaign_metrics_rename(d)
   miss <- setdiff(.CAMPAIGN_METRICS_COUNTS, names(d))
   if (length(miss)) {
-    stop_s160(sprintf("`x` is missing funnel columns: %s",
-                      paste(miss, collapse = ", ")),
+    stop_s160(sprintf("`x` is missing funnel column(s): %s (%s).",
+                      paste(miss, collapse = ", "), .columns_hint(d, "x")),
               fn = "campaign_metrics_records")
   }
   keep <- intersect(c(.CAMPAIGN_METRICS_DIMS, .CAMPAIGN_METRICS_COUNTS), names(d))

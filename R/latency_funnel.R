@@ -77,10 +77,10 @@ latency_funnel <- function(consolidated, grain = c("day", "hour")) {
                 "n_completed")
   missing_cols <- setdiff(required, names(consolidated))
   if (length(missing_cols) > 0L) {
-    stop_s160(paste0("`consolidated` is missing column(s): ",
-                     paste(missing_cols, collapse = ", "),
-                     ". Pass the `consolidated` element of a latency_run() ",
-                     "result."),
+    stop_s160(sprintf(paste0("`consolidated` is missing column(s): %s (%s). ",
+                             "Pass the `consolidated` element of a latency_run() result."),
+                      paste(missing_cols, collapse = ", "),
+                      .columns_hint(consolidated, "consolidated")),
               fn = "latency_funnel")
   }
 
