@@ -44,13 +44,13 @@ prompt_and_save_renviron <- function(var_name, prompt_msg, secret = FALSE) { # n
   message(prompt_msg)
   if (secret && requireNamespace("askpass", quietly = TRUE)) {
     value <- askpass::askpass(paste0(var_name, ": "))
-    if (is.null(value)) stop(paste(var_name, "cannot be empty."), call. = FALSE)
+    if (is.null(value)) stop_s160(paste(var_name, "cannot be empty."))
   } else {
     if (secret) message("(Tip: install the 'askpass' package for masked input.)")
     value <- readline(paste0(var_name, ": "))
   }
   if (value == "") {
-    stop(paste(var_name, "cannot be empty."), call. = FALSE)
+    stop_s160(paste(var_name, "cannot be empty."))
   }
   renviron_path <- path.expand("~/.Renviron")
   if (file.exists(renviron_path)) {

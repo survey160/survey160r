@@ -144,30 +144,29 @@ latency_validate_config <- function(config, data) {
 .validate_config_shape <- function(config) {
   unknown <- setdiff(names(config), .config_keys)
   if (length(unknown) > 0) {
-    stop(sprintf("config: unknown keys: %s", paste(unknown, collapse = ", ")),
-         call. = FALSE)
+    stop_s160(sprintf("config: unknown keys: %s", paste(unknown, collapse = ", ")))
   }
-  if (is.null(config$project_id)) stop("config: `project_id` is required.", call. = FALSE)
-  if (is.null(config$campaign_id)) stop("config: `campaign_id` is required.", call. = FALSE)
-  if (is.null(config$field_timezone)) stop("config: `field_timezone` is required.", call. = FALSE)
+  if (is.null(config$project_id)) stop_s160("config: `project_id` is required.")
+  if (is.null(config$campaign_id)) stop_s160("config: `campaign_id` is required.")
+  if (is.null(config$field_timezone)) stop_s160("config: `field_timezone` is required.")
   validate_questions(config$flow$questions)
   invisible(TRUE)
 }
 
 validate_questions <- function(questions) {
   if (is.null(questions) || length(questions) == 0) {
-    stop("config: `flow.questions` is required and must be non-empty.", call. = FALSE)
+    stop_s160("config: `flow.questions` is required and must be non-empty.")
   }
   if (length(questions) < 2) {
-    stop("config: `flow.questions` must contain at least two questions.", call. = FALSE)
+    stop_s160("config: `flow.questions` must contain at least two questions.")
   }
   if (anyDuplicated(questions)) {
-    stop("config: `flow.questions` contains duplicates.", call. = FALSE)
+    stop_s160("config: `flow.questions` contains duplicates.")
   }
   bad <- intersect(questions, .terminal_states)
   if (length(bad) > 0) {
-    stop(sprintf("config: `flow.questions` must not include terminal states: %s",
-                 paste(bad, collapse = ", ")), call. = FALSE)
+    stop_s160(sprintf("config: `flow.questions` must not include terminal states: %s",
+                 paste(bad, collapse = ", ")))
   }
 }
 
@@ -199,8 +198,8 @@ validate_columns_present <- function(config, data) {
   required <- c(required, campaign_col)
   missing_cols <- setdiff(required, names(data))
   if (length(missing_cols) > 0) {
-    stop(sprintf("Required columns missing from data: %s",
-                 paste(missing_cols, collapse = ", ")), call. = FALSE)
+    stop_s160(sprintf("Required columns missing from data: %s",
+                 paste(missing_cols, collapse = ", ")))
   }
 }
 
@@ -318,8 +317,8 @@ validate_flow_order <- function(config, data) {
   if (cmp_total == 0) return(invisible(TRUE))
   ratio <- ok_total / cmp_total
   if (ratio < 0.9) {
-    stop(sprintf("Flow order check failed: only %.1f%% of rows have scriptDate(next) >= batchDate(prior). Likely mis-ordered `flow.questions`.", # nolint
-                 100 * ratio), call. = FALSE)
+    stop_s160(sprintf("Flow order check failed: only %.1f%% of rows have scriptDate(next) >= batchDate(prior). Likely mis-ordered `flow.questions`.", # nolint
+                 100 * ratio))
   }
   invisible(TRUE)
 }

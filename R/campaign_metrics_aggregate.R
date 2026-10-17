@@ -23,7 +23,7 @@
 # reads.
 .campaign_metrics_read_parquet <- function(dataset) {
   if (!is.character(dataset) || length(dataset) != 1L || !nzchar(dataset)) {
-    stop("`x` must be a single Parquet path or a data frame.", call. = FALSE)
+    stop_s160("`x` must be a single Parquet path or a data frame.")
   }
   if (!file.exists(dataset)) stop_not_found("campaign metrics projection", dataset)
   want <- c("campaign_id", "date", "hour_local",
@@ -75,8 +75,8 @@ funnel_rates <- function(x, sent = "n_sent", engaged = "n_engaged",
   cols <- c(sent, engaged, opted_in, completed)
   miss <- setdiff(cols, names(x))
   if (length(miss)) {
-    stop(sprintf("funnel_rates(): missing count columns: %s",
-                 paste(miss, collapse = ", ")), call. = FALSE)
+    stop_s160(sprintf("funnel_rates(): missing count columns: %s",
+                 paste(miss, collapse = ", ")))
   }
   mult  <- if (isTRUE(percent)) 100 else 1
   ratio <- function(num, den) ifelse(den > 0, num / den, NA_real_)
@@ -133,8 +133,8 @@ campaign_metrics_records <- function(x, dedup = TRUE) {
   d <- .campaign_metrics_rename(d)
   miss <- setdiff(.CAMPAIGN_METRICS_COUNTS, names(d))
   if (length(miss)) {
-    stop(sprintf("campaign metrics frame is missing funnel columns: %s",
-                 paste(miss, collapse = ", ")), call. = FALSE)
+    stop_s160(sprintf("campaign metrics frame is missing funnel columns: %s",
+                 paste(miss, collapse = ", ")))
   }
   keep <- intersect(c(.CAMPAIGN_METRICS_DIMS, .CAMPAIGN_METRICS_COUNTS), names(d))
   d <- d[, keep, drop = FALSE]
@@ -190,13 +190,13 @@ campaign_metrics_summary <- function(x, by = "campaign_id", rates = TRUE,
                                      percent = FALSE) {
   d <- .campaign_metrics_one_grain(campaign_metrics_records(x))
   if (!"campaign_id" %in% names(d)) {
-    stop("campaign_metrics_summary(): `campaign_id` is required.", call. = FALSE)
+    stop_s160("campaign_metrics_summary(): `campaign_id` is required.")
   }
   by <- as.character(by)
   bad <- setdiff(by, names(d))
   if (length(bad)) {
-    stop(sprintf("campaign_metrics_summary(): `by` column(s) not available: %s",
-                 paste(bad, collapse = ", ")), call. = FALSE)
+    stop_s160(sprintf("campaign_metrics_summary(): `by` column(s) not available: %s",
+                 paste(bad, collapse = ", ")))
   }
   g <- dplyr::summarise(
     dplyr::group_by(d, dplyr::across(dplyr::all_of(by))),

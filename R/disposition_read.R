@@ -128,7 +128,7 @@
   if (is.null(x)) return(NULL)
   d <- tryCatch(as.Date(x), error = function(e) NA)
   if (length(d) != 1L || is.na(d)) {
-    stop(sprintf("`%s` must be a single valid date.", name), call. = FALSE)
+    stop_s160(sprintf("`%s` must be a single valid date.", name))
   }
   d
 }
@@ -295,7 +295,7 @@
     is.numeric(x) && length(x) == 1L && is.finite(x) && x >= 1L && x %% 1 == 0
   }
   if (!ok(ps) || !ok(pg)) {
-    stop("`page` and `page_size` must be positive integers.", call. = FALSE)
+    stop_s160("`page` and `page_size` must be positive integers.")
   }
   from <- (pg - 1L) * ps + 1L
   if (from > nrow(summ)) return(summ[0L, , drop = FALSE])
@@ -305,7 +305,7 @@
 # Validate a projection path (shared by every reader's I/O helper).
 .disposition_check_path <- function(dataset) {
   if (!is.character(dataset) || length(dataset) != 1L || !nzchar(dataset)) {
-    stop("`dataset` must be a single Parquet path.", call. = FALSE)
+    stop_s160("`dataset` must be a single Parquet path.")
   }
   if (!file.exists(dataset)) {
     stop_not_found("disposition dataset", dataset)

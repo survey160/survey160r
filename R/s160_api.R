@@ -105,13 +105,12 @@ api_do_auth <- function(conn, base_url, userid, api_key) {
   )
 
   if (httr::http_error(resp)) {
-    stop(sprintf("Authentication failed: %s", http_error_message(resp)),
-         call. = FALSE)
+    stop_s160(sprintf("Authentication failed: %s", http_error_message(resp)))
   }
 
   parsed <- httr::content(resp, as = "parsed")
   if (!is.list(parsed) || !isTRUE(parsed$success) || is.null(parsed$data)) {
-    stop("Authentication failed: unexpected response format.", call. = FALSE)
+    stop_s160("Authentication failed: unexpected response format.")
   }
 
   conn$jwt <- parsed$data
@@ -128,12 +127,11 @@ get_credential <- function(var_name, prompt_msg, secret = FALSE) {
   if (nzchar(value)) return(value)
 
   if (!interactive()) {
-    stop(
+    stop_s160(paste0(
       sprintf("%s not set in the current R session.\n", var_name),
       "Run s160_api_auth() interactively to set it up, ",
-      sprintf("or add %s to ~/.Renviron and restart R.", var_name),
-      call. = FALSE
-    )
+      sprintf("or add %s to ~/.Renviron and restart R.", var_name)
+    ))
   }
 
   prompt_and_save_renviron(var_name, prompt_msg, secret = secret) # nocov # nolint object_usage_linter.

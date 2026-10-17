@@ -156,11 +156,11 @@ prompt_and_save_secret <- function() { # nocov start
 # Validate campaign_id is a non-empty scalar
 validate_campaign_id <- function(campaign_id) {
   if (length(campaign_id) != 1) {
-    stop("`campaign_id` must be a single value, not a vector.", call. = FALSE)
+    stop_s160("`campaign_id` must be a single value, not a vector.")
   }
   campaign_id <- as.character(campaign_id)
   if (is.na(campaign_id) || !nzchar(trimws(campaign_id))) {
-    stop("`campaign_id` must be a non-empty scalar value.", call. = FALSE)
+    stop_s160("`campaign_id` must be a non-empty scalar value.")
   }
   campaign_id
 }
@@ -258,18 +258,18 @@ download_with_verify <- function(object_name, local_path, max_retries = 2L,
 
     actual_size <- file.info(local_path)$size
     if (!file.exists(local_path) || is.na(actual_size)) {
-      stop(sprintf("Download produced no file for '%s'.", object_name), call. = FALSE)
+      stop_s160(sprintf("Download produced no file for '%s'.", object_name))
     }
 
     if (is.null(expected_size)) break  # metadata unavailable; trust the download
     if (actual_size == expected_size) break
 
     if (attempt > max_retries) {
-      stop(sprintf(
+      stop_s160(sprintf(
         "Download incomplete after %d attempts. Expected %s bytes, got %s bytes.",
         attempt, format(expected_size, big.mark = ","),
         format(actual_size, big.mark = ",")
-      ), call. = FALSE)
+      ))
     }
 
     wait <- 2^(attempt - 1)

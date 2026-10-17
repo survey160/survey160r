@@ -47,9 +47,12 @@ s160_condition <- function(msg, subclass, fn = NULL, ...) {
   )
 }
 
-# Raise a standardized survey160r error (see convention above).
-stop_s160 <- function(msg, fn = NULL) {
-  stop(.error_prefix(msg, fn), call. = FALSE)
+# Raise a standardized survey160r error (see convention above). Every raise
+# goes through s160_condition(), so `tryCatch(..., s160_error = )` catches any
+# error the package itself raises (and never one from R or a dependency). An
+# optional `subclass` adds a more specific class in front of "s160_error".
+stop_s160 <- function(msg, fn = NULL, subclass = NULL) {
+  stop(s160_condition(msg, subclass, fn = fn))
 }
 
 # Raise a classed HTTP error carrying the numeric `status`, so a caller can
