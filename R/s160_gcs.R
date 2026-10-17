@@ -627,9 +627,10 @@ s160_gcs_init <- function(bucket = NULL, adc = FALSE) {
     if (!interactive()) {
       stop_s160(
         paste0(
-          "S160_GCS_CLIENT_SECRET not found in .Renviron.\n",
-          "Run s160_gcs_init() interactively to set it up, ",
-          "or add S160_GCS_CLIENT_SECRET manually to ~/.Renviron."
+          "S160_GCS_CLIENT_SECRET is not set. Add ",
+          "`S160_GCS_CLIENT_SECRET=<value>` to ~/.Renviron and restart R, ",
+          "run s160_gcs_init() in an interactive session to be prompted, ",
+          "or use s160_gcs_init(adc = TRUE) with Application Default Credentials."
         ),
         fn = "s160_gcs_init"
       )

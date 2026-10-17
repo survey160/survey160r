@@ -35,20 +35,37 @@ test_that("auth fails with clear error on 401", {
     body = list(error = "Invalid API key"),
     http_error = TRUE
   )
-  expect_error(s160_api_auth(), "Authentication failed.*Invalid API key")
+  err <- tryCatch(s160_api_auth(), error = identity)
+  expect_s3_class(err, c("s160_http_error", "s160_error"))
+  expect_identical(err$status, 401L)
+  expect_equal(conditionMessage(err), paste0(
+    "Authentication failed (https://api.survey160.com): Invalid API key (HTTP 401). ",
+    "Check S160_API_USERID and S160_PROD_API_KEY (or S160_API_KEY) in ~/.Renviron."))
+})
+
+test_that("the credentials hint names the env's key variable(s)", {
+  hint <- survey160r:::.api_credentials_hint
+  expect_equal(hint("staging"),
+               "Check S160_API_USERID and S160_STAGING_API_KEY in ~/.Renviron.")
+  expect_equal(hint(NULL),
+               "Check S160_API_USERID and the S160_<ENV>_API_KEY in ~/.Renviron.")
 })
 
 test_that("auth errors when S160_API_USERID not set in non-interactive mode", {
   withr::local_envvar(S160_API_USERID = NA, S160_PROD_API_KEY = "key123")
   local_mocked_bindings(interactive = function() FALSE, .package = "base")
-  expect_error(s160_api_auth(), "S160_API_USERID not set")
+  expect_error(
+    s160_api_auth(),
+    paste0("s160_api_auth: S160_API_USERID is not set. Add `S160_API_USERID=<value>` to ",
+           "~/.Renviron and restart R, or run s160_api_auth\\(\\) in an interactive session")
+  )
 })
 
 test_that("auth errors when no prod key var is set in non-interactive mode", {
   withr::local_envvar(S160_API_USERID = "svc", S160_PROD_API_KEY = NA,
                       S160_API_KEY = NA)
   local_mocked_bindings(interactive = function() FALSE, .package = "base")
-  expect_error(s160_api_auth(env = "prod"), "S160_PROD_API_KEY not set")
+  expect_error(s160_api_auth(env = "prod"), "S160_PROD_API_KEY is not set")
 })
 
 test_that("auth rejects an unknown environment", {
@@ -58,7 +75,9 @@ test_that("auth rejects an unknown environment", {
 test_that("auth errors on unexpected response format", {
   withr::local_envvar(S160_API_USERID = "svc", S160_API_KEY = "key")
   stub_httr_response(body = list(success = FALSE))
-  expect_error(s160_api_auth(), "unexpected response format")
+  expect_error(s160_api_auth(), paste0(
+    "Failed to authenticate: unexpected response from https://api.survey160.com ",
+    "\\(expected \\{success: true, data: <jwt>\\}\\)"))
 })
 
 test_that("auth falls back to http_status when error field is NULL", {
@@ -79,7 +98,7 @@ test_that("auth errors clearly when the response body is not a list", {
   # is.list() guard must surface the format error, not crash on `parsed$success`.
   withr::local_envvar(S160_API_USERID = "svc", S160_API_KEY = "key")
   stub_httr_response(body = "a gateway returned HTML, not JSON")
-  expect_error(s160_api_auth(), "unexpected response format")
+  expect_error(s160_api_auth(), "Failed to authenticate: unexpected response from")
 })
 
 test_that("auth tolerates a multi-element error field, falling back to status", {
@@ -267,7 +286,7 @@ test_that("get_credential errors in non-interactive when env var missing", {
   local_mocked_bindings(interactive = function() FALSE, .package = "base")
   expect_error(
     survey160r:::get_credential("S160_TEST_VAR", "prompt msg"),
-    "S160_TEST_VAR not set"
+    "S160_TEST_VAR is not set"
   )
 })
 
@@ -554,7 +573,11 @@ test_that("results times out when GCS never updates", {
 
   expect_error(
     suppressMessages(s160_api_campaign_results(1980, timeout = 0.2, poll_interval = 0.1)),
-    "timed out"
+    paste0("s160_api_campaign_results: export of campaign 1980 did not complete within ",
+           "`timeout` = 0.2 seconds. It may still finish: check ",
+           "s160_gcs_campaign_results_status\\(1980, env = \"\\?\"\\)\\$updated moves past ",
+           "2024-01-01T00:00:00Z, then read it with s160_gcs_campaign_results_read\\(\\); ",
+           "or retry with a larger `timeout`.")
   )
 })
 

@@ -105,12 +105,18 @@ api_do_auth <- function(conn, base_url, userid, api_key) {
   )
 
   if (httr::http_error(resp)) {
-    stop_s160(sprintf("Authentication failed: %s", http_error_message(resp)))
+    stop_http_error(
+      httr::status_code(resp),
+      sprintf("Authentication failed (%s): %s. %s", base_url,
+              http_error_message(resp), .api_credentials_hint(conn$env))
+    )
   }
 
   parsed <- httr::content(resp, as = "parsed")
   if (!is.list(parsed) || !isTRUE(parsed$success) || is.null(parsed$data)) {
-    stop_s160("Authentication failed: unexpected response format.")
+    stop_failed("authenticate", sprintf(
+      "unexpected response from %s (expected {success: true, data: <jwt>})",
+      base_url))
   }
 
   conn$jwt <- parsed$data
@@ -121,17 +127,35 @@ api_do_auth <- function(conn, base_url, userid, api_key) {
   invisible(conn)
 }
 
+# The env vars an environment's API credentials are read from (the user id,
+# then the key candidates in lookup order). One definition for s160_api_auth()
+# and the auth-failure hint.
+.api_key_vars <- function(env) {
+  key_var <- sprintf("S160_%s_API_KEY", toupper(env))
+  if (identical(env, "prod")) c(key_var, "S160_API_KEY") else key_var
+}
+
+# "Check S160_API_USERID and S160_PROD_API_KEY (or S160_API_KEY) in ~/.Renviron."
+.api_credentials_hint <- function(env) {
+  keys <- if (is.null(env)) {
+    "the S160_<ENV>_API_KEY"
+  } else {
+    vars <- .api_key_vars(env)
+    paste0(vars[[1L]], if (length(vars) > 1L) sprintf(" (or %s)", vars[[2L]]))
+  }
+  sprintf("Check S160_API_USERID and %s in ~/.Renviron.", keys)
+}
+
 # Read a credential from env, prompting interactively if missing
 get_credential <- function(var_name, prompt_msg, secret = FALSE) {
   value <- Sys.getenv(var_name)
   if (nzchar(value)) return(value)
 
   if (!interactive()) {
-    stop_s160(paste0(
-      sprintf("%s not set in the current R session.\n", var_name),
-      "Run s160_api_auth() interactively to set it up, ",
-      sprintf("or add %s to ~/.Renviron and restart R.", var_name)
-    ))
+    stop_s160(sprintf(paste0(
+      "%s is not set. Add `%s=<value>` to ~/.Renviron and restart R, ",
+      "or run s160_api_auth() in an interactive session to be prompted."),
+      var_name, var_name), fn = "s160_api_auth")
   }
 
   prompt_and_save_renviron(var_name, prompt_msg, secret = secret) # nocov # nolint object_usage_linter.
@@ -142,15 +166,17 @@ get_credential <- function(var_name, prompt_msg, secret = FALSE) {
 # HTML or a multi-element body; coerce defensively to one string (the
 # length != 1 guard short-circuits before nzchar() would choke on a vector) and
 # fall back to the HTTP status text.
+# The API's own error text is suffixed with the status ("Invalid API key (HTTP
+# 401)"); the httr fallback ("Client error: (404) Not Found") already names it.
 http_error_message <- function(resp) {
   msg <- tryCatch(
     httr::content(resp, as = "parsed")$error,
     error = function(e) NULL
   )
   if (is.null(msg) || !is.character(msg) || length(msg) != 1L || !nzchar(msg)) {
-    msg <- httr::http_status(resp)$message
+    return(httr::http_status(resp)$message)
   }
-  msg
+  sprintf("%s (HTTP %s)", msg, httr::status_code(resp))
 }
 
 # Copy every field of connection `src` into connection `dst` (both environments).
@@ -304,12 +330,8 @@ s160_api_auth <- function(env = .ENV_CHOICES) {
   # The API base URL is backend config (from s160_config()). The key env-var
   # follows a uniform pattern, so derive it from `env`; only prod keeps the
   # legacy S160_API_KEY fallback. The secret itself never lives in the config.
-  key_var <- sprintf("S160_%s_API_KEY", toupper(env))
-  key_candidates <- if (identical(env, "prod")) {
-    c(key_var, "S160_API_KEY")
-  } else {
-    key_var
-  }
+  key_candidates <- .api_key_vars(env)
+  key_var <- key_candidates[[1L]]
   environments <- get_config()$environments
   api_url <- environments[[env]]$api_url
   if (is.null(api_url)) {
@@ -337,7 +359,7 @@ s160_api_auth <- function(env = .ENV_CHOICES) {
   class(conn) <- c("s160_api_conn", "environment")
   copy_connection(conn, .s160_api_env)
 
-  message(sprintf("API authenticated (%s).", env))
+  message(sprintf("API authenticated: %s (%s).", env, api_url))
   invisible(conn)
 }
 
@@ -423,7 +445,9 @@ s160_api_campaign_results <- function(campaign_id, filter_open = FALSE,
     userid = conn$userid,
     filterOpen = filter_open
   ), conn = conn)
-  message("Export triggered. Polling GCS for completion...")
+  env_name <- conn$env %||% "?"
+  message(sprintf("Export triggered for campaign %s (%s). Polling gs://%s/%s/%s until it updates...",
+                  campaign_id, env_name, conn$bucket %||% "?", campaign_id, export_filename))
 
   # Step 3: Poll GCS until timestamp changes
   elapsed <- 0
@@ -435,17 +459,24 @@ s160_api_campaign_results <- function(campaign_id, filter_open = FALSE,
     current_updated <- poll_updated()
     if (!is.null(current_updated) &&
           (is.null(baseline_updated) || current_updated != baseline_updated)) {
-      message("Export complete.")
+      message(sprintf("Export complete after %ds; reading it.", as.integer(elapsed)))
       return(s160_gcs_campaign_results_read(campaign_id, destdir = destdir, # nolint object_usage_linter
                                             env = conn$env, ...))
     }
 
     interval <- min(interval * 2, poll_interval)
-    message(sprintf("  Waiting... (%ds elapsed)", as.integer(elapsed)))
+    message(sprintf("  Waiting for the export... (%ds of %gs)",
+                    as.integer(elapsed), timeout))
   }
 
-  stop_s160(sprintf("Export timed out after %g seconds.", timeout),
-            fn = "s160_api_campaign_results")
+  stop_s160(sprintf(paste0(
+    "export of campaign %s did not complete within `timeout` = %g seconds. ",
+    "It may still finish: check s160_gcs_campaign_results_status(%s, env = \"%s\")$updated ",
+    "moves past %s, then read it with s160_gcs_campaign_results_read(); or ",
+    "retry with a larger `timeout`."),
+    campaign_id, timeout, campaign_id, env_name,
+    if (is.null(baseline_updated)) "the current (absent) file" else format(baseline_updated)),
+    fn = "s160_api_campaign_results")
 }
 
 #' Read one campaign's attributes from the Survey160 API
