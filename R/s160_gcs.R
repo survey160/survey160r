@@ -156,11 +156,14 @@ prompt_and_save_secret <- function() { # nocov start
 # Validate campaign_id is a non-empty scalar
 validate_campaign_id <- function(campaign_id) {
   if (length(campaign_id) != 1) {
-    stop_s160("`campaign_id` must be a single value, not a vector.")
+    stop_s160(sprintf("`campaign_id` must be a single value%s.",
+                      .not_got(campaign_id)))
   }
+  raw <- campaign_id
   campaign_id <- as.character(campaign_id)
   if (is.na(campaign_id) || !nzchar(trimws(campaign_id))) {
-    stop_s160("`campaign_id` must be a non-empty scalar value.")
+    stop_s160(sprintf("`campaign_id` must be a non-empty scalar value%s.",
+                      .not_got(raw)))
   }
   campaign_id
 }
@@ -346,7 +349,8 @@ download_with_verify <- function(object_name, local_path, max_retries = 2L,
 .check_timestamps_arg <- function(timestamps, fn) {
   if (!is.character(timestamps) || length(timestamps) != 1L ||
         !timestamps %in% c("character", "POSIXct")) {
-    stop_s160("`timestamps` must be \"character\" or \"POSIXct\".", fn = fn)
+    stop_s160(sprintf("`timestamps` must be \"character\" or \"POSIXct\"%s.",
+                      .not_got(timestamps)), fn = fn)
   }
   timestamps
 }
@@ -740,12 +744,10 @@ s160_gcs_campaign_results_read <- function(campaign_id, filename = NULL,
   env <- match.arg(env)
   bucket <- .locate("campaign_results", env, bucket,
                     "s160_gcs_campaign_results_read")$bucket
-  if (!is.logical(hash) || length(hash) != 1L || is.na(hash)) {
-    stop_s160("`hash` must be a single TRUE or FALSE.",
-              fn = "s160_gcs_campaign_results_read")
-  }
+  .require_single_logical(hash, "hash", "s160_gcs_campaign_results_read")
   if (!is.null(columns_fn) && !is.function(columns_fn)) {
-    stop_s160("`columns_fn` must be a function of the CSV header, or NULL.",
+    stop_s160(sprintf("`columns_fn` must be a function of the CSV header, or NULL%s.",
+                      .not_got(columns_fn)),
               fn = "s160_gcs_campaign_results_read")
   }
 
@@ -765,7 +767,8 @@ s160_gcs_campaign_results_read <- function(campaign_id, filename = NULL,
     local_path <- tempfile(pattern = paste0("s160_", campaign_id, "_"), fileext = ".csv")
     on.exit(unlink(local_path), add = TRUE)
   } else if (!is.character(destdir) || length(destdir) != 1) {
-    stop_s160("`destdir` must be a single character string.",
+    stop_s160(sprintf("`destdir` must be a single directory path%s.",
+                      .not_got(destdir)),
               fn = "s160_gcs_campaign_results_read")
   } else {
     destdir <- normalizePath(destdir, mustWork = FALSE)
@@ -956,9 +959,7 @@ s160_read_csv <- function(path, columns = NULL, hash = TRUE,
   if (!file.exists(path)) {
     stop_not_found("file", path, fn = "s160_read_csv")
   }
-  if (!is.logical(hash) || length(hash) != 1L || is.na(hash)) {
-    stop_s160("`hash` must be a single TRUE or FALSE.", fn = "s160_read_csv")
-  }
+  .require_single_logical(hash, "hash", "s160_read_csv")
   timestamps <- .check_timestamps_arg(timestamps[[1L]], "s160_read_csv")
   data <- fast_read_csv(path, columns = columns, fn = "s160_read_csv", ...)
   if (timestamps == "POSIXct") data <- .parse_export_timestamps(data)
@@ -1079,7 +1080,8 @@ s160_gcs_campaign_results_status <- function(campaign_id,
     dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
     local_path <- file.path(cache_dir, default_name)
   } else if (!is.character(dest) || length(dest) != 1L || !nzchar(trimws(dest))) {
-    stop_s160("`dest` must be a single non-empty path or directory.", fn = fn)
+    stop_s160(sprintf("`dest` must be a single non-empty path or directory%s.",
+                      .not_got(dest)), fn = fn)
   } else if (dir.exists(dest)) {
     local_path <- file.path(dest, default_name)
   } else {

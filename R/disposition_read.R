@@ -128,7 +128,7 @@
   if (is.null(x)) return(NULL)
   d <- tryCatch(as.Date(x), error = function(e) NA)
   if (length(d) != 1L || is.na(d)) {
-    stop_s160(sprintf("`%s` must be a single valid date.", name))
+    stop_s160(sprintf("`%s` must be a single valid date%s.", name, .not_got(x)))
   }
   d
 }
@@ -295,7 +295,8 @@
     is.numeric(x) && length(x) == 1L && is.finite(x) && x >= 1L && x %% 1 == 0
   }
   if (!ok(ps) || !ok(pg)) {
-    stop_s160("`page` and `page_size` must be positive integers.", fn = fn)
+    stop_s160(sprintf("`page` and `page_size` must be positive integers (got page = %s, page_size = %s).",
+                      .describe_value(pg), .describe_value(ps)), fn = fn)
   }
   from <- (pg - 1L) * ps + 1L
   if (from > nrow(summ)) return(summ[0L, , drop = FALSE])
@@ -305,7 +306,7 @@
 # Validate a projection path (shared by every reader's I/O helper).
 .disposition_check_path <- function(dataset) {
   if (!is.character(dataset) || length(dataset) != 1L || !nzchar(dataset)) {
-    stop_s160("`dataset` must be a single Parquet path.")
+    stop_s160(sprintf("`dataset` must be a single Parquet path%s.", .not_got(dataset)))
   }
   if (!file.exists(dataset)) {
     stop_not_found("disposition dataset", dataset)
@@ -378,8 +379,8 @@
   engine <- getOption("survey160r.disposition_engine", "auto")
   choices <- c("auto", "duckdb", "nanoparquet")
   if (!is.character(engine) || length(engine) != 1L || !engine %in% choices) {
-    stop_s160(sprintf("option `survey160r.disposition_engine` must be one of: %s",
-                      paste(choices, collapse = ", ")))
+    stop_s160(sprintf("option `survey160r.disposition_engine` must be one of %s%s.",
+                      paste(choices, collapse = ", "), .not_got(engine)))
   }
   if (engine == "nanoparquet") return(engine)
   has_duckdb <- requireNamespace("duckdb", quietly = TRUE) &&
@@ -913,8 +914,8 @@ disposition_summary <- function(x, phones = NULL, campaign_ids = NULL,
                                filters = filters)
     }
   } else {
-    stop_s160(paste("`x` must be a disposition Parquet path (a single string)",
-                    "or an in-memory disposition data frame."),
+    stop_s160(paste0("`x` must be a disposition Parquet path (a single string) ",
+                     "or an in-memory disposition data frame", .not_got(x), "."),
               fn = "disposition_summary")
   }
   .disposition_rollup(data, phones = phones, campaign_ids = campaign_ids,

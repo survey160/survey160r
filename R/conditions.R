@@ -68,7 +68,8 @@ stop_http_error <- function(status, msg, fn = NULL) {
 check_nonempty_string <- function(x, name, fn = NULL) {
   # nzchar(NA_character_) is TRUE by default, so guard NA explicitly.
   if (!is.character(x) || length(x) != 1L || is.na(x) || !nzchar(trimws(x))) {
-    stop_s160(sprintf("`%s` must be a non-empty string.", name), fn = fn)
+    stop_s160(sprintf("`%s` must be a non-empty string%s.", name, .not_got(x)),
+              fn = fn)
   }
   invisible(x)
 }
@@ -77,7 +78,8 @@ check_nonempty_string <- function(x, name, fn = NULL) {
 # an Inf timeout, for one, would turn a bounded poll into an unbounded loop).
 check_positive_number <- function(x, name, fn = NULL) {
   if (!is.numeric(x) || length(x) != 1L || !is.finite(x) || x <= 0) {
-    stop_s160(sprintf("`%s` must be a positive number.", name), fn = fn)
+    stop_s160(sprintf("`%s` must be a positive number%s.", name, .not_got(x)),
+              fn = fn)
   }
   invisible(x)
 }
@@ -85,7 +87,8 @@ check_positive_number <- function(x, name, fn = NULL) {
 # Validate `x` is a data frame. `name` is the argument's name, backticked.
 check_data_frame <- function(x, name, fn = NULL) {
   if (!is.data.frame(x)) {
-    stop_s160(sprintf("`%s` must be a data frame.", name), fn = fn)
+    stop_s160(sprintf("`%s` must be a data frame%s.", name, .not_got(x)),
+              fn = fn)
   }
   invisible(x)
 }
@@ -96,7 +99,8 @@ check_data_frame <- function(x, name, fn = NULL) {
 # function body so their cyclomatic complexity stays under the linter cap.
 .require_single_logical <- function(x, arg, fn) {
   if (!is.logical(x) || length(x) != 1L || is.na(x)) {
-    stop_s160(sprintf("`%s` must be a single TRUE or FALSE.", arg), fn = fn)
+    stop_s160(sprintf("`%s` must be a single TRUE or FALSE%s.", arg, .not_got(x)),
+              fn = fn)
   }
   invisible(x)
 }
@@ -119,4 +123,36 @@ stop_not_found <- function(subject, value, fn = NULL) {
 # "Failed to <action>: <cause>" -- value-bearing, no trailing period.
 stop_failed <- function(action, cause, fn = NULL) {
   stop_s160(sprintf("Failed to %s: %s", action, cause), fn = fn)
+}
+
+# Describe a value for a "must be X, not <this>" error: what the caller actually
+# passed, compactly, so the fix is obvious without re-inspecting the argument.
+# A scalar is shown literally (strings quoted, cut at 40 characters); anything
+# else by shape -- "a character vector of length 3", "a data frame (10 x 4)",
+# "a list of length 2", "a function", "an object of class <cls>".
+.describe_value <- function(x) {
+  if (is.null(x)) return("NULL")
+  if (is.function(x)) return("a function")
+  if (is.data.frame(x)) {
+    return(sprintf("a data frame (%d x %d)", nrow(x), ncol(x)))
+  }
+  if (is.atomic(x) && length(x) == 1L) {
+    if (is.na(x)) return("NA")
+    if (is.character(x)) {
+      shown <- if (nchar(x) > 40L) paste0(substr(x, 1L, 37L), "...") else x
+      return(deparse(shown))
+    }
+    return(format(x))
+  }
+  if (is.atomic(x) || is.list(x)) {
+    kind <- if (is.list(x)) "list" else paste(class(x)[[1L]], "vector")
+    if (length(x) == 0L) return(sprintf("an empty %s", kind))
+    return(sprintf("a %s of length %d", kind, length(x)))
+  }
+  sprintf("an object of class <%s>", paste(class(x), collapse = "/"))
+}
+
+# ", not <value>" -- the tail of a "`arg` must be X, not <value>." message.
+.not_got <- function(x) {
+  paste0(", not ", .describe_value(x))
 }

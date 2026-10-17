@@ -26,8 +26,8 @@
   if (is.character(x) && length(x) == 1L && nzchar(x)) {
     return(.disposition_read_parquet(x, columns = want_cols))
   }
-  stop_s160(paste("`x` must be a disposition Parquet path (a single string)",
-                  "or an in-memory disposition data frame."),
+  stop_s160(paste0("`x` must be a disposition Parquet path (a single string) ",
+                   "or an in-memory disposition data frame", .not_got(x), "."),
             fn = "disposition_funnel")
 }
 
@@ -266,8 +266,8 @@ disposition_funnel <- function(x, by = "carrier", grain = c("day", "all"),
                                rates = TRUE, percent = FALSE) {
   grain <- match.arg(grain)
   if (!is.character(by) || length(by) < 1L || anyNA(by) || !all(nzchar(by))) {
-    stop_s160("`by` must be a non-empty character vector of column name(s).",
-              fn = "disposition_funnel")
+    stop_s160(sprintf("`by` must be a non-empty character vector of column name(s)%s.",
+                      .not_got(by)), fn = "disposition_funnel")
   }
   group_cols <- unique(c(by, if (grain == "day") "disposition_date"))
   need_funnel <- c("sent", "engaged", "opted_in", "completed")

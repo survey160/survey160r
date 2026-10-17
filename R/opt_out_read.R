@@ -30,7 +30,7 @@
 # column, so intersect first).
 .opt_out_read_parquet <- function(dataset, columns = .OPT_OUT_READ_COLS) {
   if (!is.character(dataset) || length(dataset) != 1L || !nzchar(dataset)) {
-    stop_s160("`dataset` must be a single Parquet path.")
+    stop_s160(sprintf("`dataset` must be a single Parquet path%s.", .not_got(dataset)))
   }
   if (!file.exists(dataset)) {
     stop_not_found("opt-out dataset", dataset)

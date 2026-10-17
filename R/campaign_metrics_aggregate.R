@@ -23,7 +23,8 @@
 # reads.
 .campaign_metrics_read_parquet <- function(dataset, fn = NULL) {
   if (!is.character(dataset) || length(dataset) != 1L || !nzchar(dataset)) {
-    stop_s160("`x` must be a single Parquet path or a data frame.", fn = fn)
+    stop_s160(sprintf("`x` must be a single Parquet path or a data frame%s.",
+                      .not_got(dataset)), fn = fn)
   }
   if (!file.exists(dataset)) {
     stop_not_found("campaign metrics projection", dataset, fn = fn)

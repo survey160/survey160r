@@ -89,7 +89,8 @@ question_funnel <- function(data, questions, field = "scriptDate") {
   if (!is.character(questions) || length(questions) == 0L ||
         anyNA(questions) || !all(nzchar(questions))) {
     stop_s160(
-      "`questions` must be a non-empty character vector of question stems.",
+      sprintf("`questions` must be a non-empty character vector of question stems%s.",
+              .not_got(questions)),
       fn = "question_funnel"
     )
   }
