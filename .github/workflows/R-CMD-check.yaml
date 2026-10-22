@@ -20,8 +20,12 @@ permissions:
 jobs:
   R-CMD-check:
     runs-on: ubuntu-latest
-    # Backstop below the 360m default; healthy runs finish in ~2.3m.
-    timeout-minutes: 20
+    # Backstop below the 360m default. A warm run (package cache hit) finishes in
+    # ~2.3m, but a cold one -- a new container image changes the cache key -- builds
+    # all ~90 dependencies from source, duckdb alone ~20m. 20m cancelled every cold
+    # run before the cache-save step, so the cache never refilled; 60m lets one
+    # cold run finish and save it.
+    timeout-minutes: 60
     container:
       image: ghcr.io/r-hub/containers/ubuntu-release:latest
 
