@@ -151,6 +151,10 @@ test_that("dataset problems are reported", {
   rows$label <- "x"
   expect_error(disposition_steps(write_sequence_parquet(rows)),
                "named like the sequence columns these readers add: label", class = "s160_error")
+  rows$label <- NULL
+  rows$S160_CODE <- "C"
+  expect_error(disposition_paths(write_sequence_parquet(rows)),
+               "named like the sequence columns these readers add: S160_CODE", class = "s160_error")
   globbed <- file.path(tempdir(), "seq[1].parquet")
   file.copy(write_sequence_parquet(), globbed)
   expect_error(disposition_steps(globbed), "must be a literal file path", class = "s160_error")

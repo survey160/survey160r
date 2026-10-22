@@ -184,8 +184,11 @@
                       paste(missing_cols, collapse = ", "), length(cols),
                       .preview_values(cols)), fn = fn)
   }
-  clash <- cols[cols %in% c(.DISPOSITION_SEQUENCE_GENERATED, "file_row_number") |
-                  startsWith(cols, "s160_")]
+  # DuckDB identifiers are case-insensitive: a stored S160_CODE would shadow the
+  # generated s160_code, so the guard compares lower-cased names.
+  lower <- tolower(cols)
+  clash <- cols[lower %in% c(.DISPOSITION_SEQUENCE_GENERATED, "file_row_number") |
+                  startsWith(lower, "s160_")]
   if (length(clash) > 0L) {
     stop_s160(sprintf(paste0("`dataset` has column(s) named like the sequence columns these ",
                              "readers add: %s. Rename them in a copy of the file."),
