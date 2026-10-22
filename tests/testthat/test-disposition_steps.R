@@ -157,7 +157,7 @@ test_that("dataset problems are reported", {
                "named like the sequence columns these readers add: S160_CODE", class = "s160_error")
   globbed <- file.path(tempdir(), "seq[1].parquet")
   file.copy(write_sequence_parquet(), globbed)
-  expect_error(disposition_steps(globbed), "must be a literal file path", class = "s160_error")
+  expect_error(disposition_steps(globbed), "must resolve to a literal file path", class = "s160_error")
   expect_error(disposition_steps(file.path(tempdir(), "absent.parquet")),
                class = "s160_not_found")
 })
@@ -283,4 +283,35 @@ test_that("each connection spills into its own subdirectory, created with its pa
   moved <- DBI::dbGetQuery(con, "SELECT current_setting('temp_directory') AS d")$d
   .disposition_lazy_close()
   expect_false(dir.exists(moved))
+})
+
+test_that("glob characters in the resolved path are refused", {
+  skip_if_no_sequence()
+  dir <- file.path(tempdir(), "run[1]")
+  dir.create(dir, showWarnings = FALSE)
+  file.copy(write_sequence_parquet(), file.path(dir, "disposition.parquet"), overwrite = TRUE)
+  withr::local_dir(dir)
+  expect_error(disposition_steps("disposition.parquet"), "must resolve to a literal file path",
+               class = "s160_error")
+})
+
+test_that("DECIMAL ids filter as numbers; ids tied as numbers keep the summary's order", {
+  skip_if_no_sequence()
+  src <- write_sequence_parquet()
+  dec <- tempfile(fileext = ".parquet")
+  con <- DBI::dbConnect(duckdb::duckdb())
+  DBI::dbExecute(con, sprintf(paste0(
+    "COPY (SELECT * REPLACE (CAST(campaign_id AS DECIMAL(10, 1)) AS campaign_id) ",
+    "FROM read_parquet('%s')) TO '%s' (FORMAT parquet)"), src, dec))
+  DBI::dbDisconnect(con, shutdown = TRUE)
+  d <- collect_sorted(disposition_steps(dec, campaign_ids = 3, phones = "2015550101"))
+  expect_equal(d$path_so_far, "NEC")
+  # "01" and "1" are the same campaign number: the first stored row is the latest
+  rows <- rbind(.sequence_row("2015550101", 1L, "2026-01-01", engaged = 1L),
+                .sequence_row("2015550101", 1L, "2026-01-01"))
+  rows$campaign_id <- c("01", "1")
+  p <- write_sequence_parquet(rows)
+  last <- collect_sorted(disposition_paths(p))
+  expect_equal(last$path, "NE")
+  expect_equal(disposition_summary(p)$latest_disposition, "engaged")
 })

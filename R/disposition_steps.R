@@ -182,13 +182,16 @@
 # path, so the lazy table survives a later setwd()) and its stored column names.
 .disposition_lazy_source <- function(con, dataset, fn) {
   .disposition_check_path(dataset)
-  if (grepl("[*?[]", dataset)) {
+  # Checked on the RESOLVED path: a glob character in the working directory or a
+  # symlink target ("/data/run[1]/x.parquet") would expand just the same.
+  resolved <- normalizePath(dataset, mustWork = TRUE)
+  if (grepl("[*?[]", resolved)) {
     stop_s160(sprintf(paste0(
-      "`dataset` must be a literal file path; DuckDB would expand the glob ",
+      "`dataset` must resolve to a literal file path; DuckDB would expand the glob ",
       "character(s) in %s and read other files too. Rename or copy the file."),
-      dataset), fn = fn)
+      resolved), fn = fn)
   }
-  path <- DBI::dbQuoteString(con, normalizePath(dataset, mustWork = TRUE))
+  path <- DBI::dbQuoteString(con, resolved)
   schema <- DBI::dbGetQuery(con, paste0("DESCRIBE SELECT * FROM read_parquet(", path, ")"))
   # The file row number is the last tie-break of the sequence order (two stored
   # rows of one phone, date and campaign -- e.g. "12015550101" and "2015550101"
@@ -355,17 +358,20 @@
 # is the summary's latest_disposition.
 # An integer id (prod) sorts as itself; only a text or other id pays for the
 # numeric cast (~3 s on the full projection).
-# Whether a DuckDB column type is numeric (ids stored as numbers).
+# Whether a DuckDB column type is numeric (ids stored as numbers), DECIMAL(p,s)
+# included.
 .disposition_numeric_type <- function(type) {
   type %in% c("TINYINT", "SMALLINT", "INTEGER", "BIGINT", "HUGEINT", "UTINYINT", "USMALLINT",
-              "UINTEGER", "UBIGINT", "FLOAT", "DOUBLE")
+              "UINTEGER", "UBIGINT", "FLOAT", "DOUBLE") || startsWith(type, "DECIMAL")
 }
 
 .disposition_sequence_window <- function(source) {
   id_order <- if (.disposition_numeric_type(source$types[["campaign_id"]])) {
     "campaign_id ASC NULLS FIRST"
   } else {
-    "TRY_CAST(campaign_id AS DOUBLE) ASC NULLS FIRST, CAST(campaign_id AS VARCHAR) ASC NULLS FIRST"
+    # numeric value only, like the summary's as.numeric(): ids that tie as
+    # numbers ("01", "1") or are not numbers fall to the file-order tie-break
+    "TRY_CAST(campaign_id AS DOUBLE) ASC NULLS FIRST"
   }
   paste("WINDOW w AS (PARTITION BY phone ORDER BY disposition_date ASC NULLS FIRST,", id_order,
         ", s160_row DESC ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)")
