@@ -122,6 +122,12 @@ test_that("campaign and date filters keep rows after the history is computed", {
                                         phones = "2015550102"))
   expect_equal(d$step, 4L)
   expect_equal(d$non_responses_so_far, 3L)
+  # a DOUBLE id column (an extract built from c(1, 2)) still matches campaign_ids = 3
+  rows <- sequence_records()
+  rows$campaign_id <- as.numeric(rows$campaign_id)
+  d <- collect_sorted(disposition_steps(write_sequence_parquet(rows), campaign_ids = 3,
+                                        phones = "2015550101"))
+  expect_equal(d$path_so_far, "NEC")
   expect_error(disposition_steps(p, campaign_ids = c(1, NA)), "`campaign_ids` must be a vector",
                class = "s160_error")
   expect_error(disposition_steps(p, date_from = "not a date"), "`date_from` must be a single valid date",

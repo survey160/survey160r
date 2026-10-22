@@ -188,7 +188,7 @@ disposition_paths <- function(dataset, pattern = NULL, phones = NULL, sample_fra
 
   con <- .disposition_lazy_con()
   source <- .disposition_lazy_source(con, dataset, fn)
-  window <- .disposition_after_filters(con, NULL, date_from, date_to, fn)
+  window <- .disposition_after_filters(con, source, NULL, date_from, date_to, fn)
   base <- .disposition_base_sql(con, source, phones, sample_frac,
                                 .disposition_label_sql(con, source, terminal, codes),
                                 pre = window)

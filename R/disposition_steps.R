@@ -331,11 +331,14 @@
 # is the summary's latest_disposition.
 # An integer id (prod) sorts as itself; only a text or other id pays for the
 # numeric cast (~3 s on the full projection).
+# Whether a DuckDB column type is numeric (ids stored as numbers).
+.disposition_numeric_type <- function(type) {
+  type %in% c("TINYINT", "SMALLINT", "INTEGER", "BIGINT", "HUGEINT", "UTINYINT", "USMALLINT",
+              "UINTEGER", "UBIGINT", "FLOAT", "DOUBLE")
+}
+
 .disposition_sequence_window <- function(source) {
-  numeric_id <- source$types[["campaign_id"]] %in%
-    c("TINYINT", "SMALLINT", "INTEGER", "BIGINT", "HUGEINT", "UTINYINT", "USMALLINT",
-      "UINTEGER", "UBIGINT", "FLOAT", "DOUBLE")
-  id_order <- if (numeric_id) {
+  id_order <- if (.disposition_numeric_type(source$types[["campaign_id"]])) {
     "campaign_id ASC NULLS FIRST"
   } else {
     "TRY_CAST(campaign_id AS DOUBLE) ASC NULLS FIRST, CAST(campaign_id AS VARCHAR) ASC NULLS FIRST"
@@ -347,16 +350,23 @@
 # Row filters applied AFTER the history windows (disposition_steps): keeping a
 # campaign or a date range must not reset the history the kept rows carry, so a
 # 2026 row still counts the phone's 2025 non-responses.
-.disposition_after_filters <- function(con, campaign_ids, date_from, date_to, fn) {
+.disposition_after_filters <- function(con, source, campaign_ids, date_from, date_to, fn) {
   where <- character(0)
   if (!is.null(campaign_ids)) {
     if (!(is.character(campaign_ids) || is.numeric(campaign_ids)) || anyNA(campaign_ids)) {
       stop_s160(sprintf("`campaign_ids` must be a vector of campaign ids with no NA%s.",
                         .not_got(campaign_ids)), fn = fn)
     }
+    # A numeric id column (a DOUBLE extract stores 1 as 1.0, which casts to the
+    # text "1.0") is matched as numbers; a text id column as text, like
+    # disposition_records()' as.character() match.
+    numeric_id <- .disposition_numeric_type(source$types[["campaign_id"]])
     ids <- .disposition_lazy_register(con, "campaigns", data.frame(
-      id = unique(as.character(campaign_ids)), stringsAsFactors = FALSE))
-    where <- c(where, sprintf("CAST(campaign_id AS VARCHAR) IN (SELECT id FROM %s)", ids))
+      id = unique(if (numeric_id) suppressWarnings(as.numeric(campaign_ids)) else as.character(campaign_ids)),
+      stringsAsFactors = FALSE))
+    where <- c(where, sprintf("%s IN (SELECT id FROM %s)",
+                              if (numeric_id) "CAST(campaign_id AS DOUBLE)" else "CAST(campaign_id AS VARCHAR)",
+                              ids))
   }
   date_bound <- function(x, name, op) {
     d <- .disposition_date_bound(x, name)
@@ -556,7 +566,7 @@ disposition_steps <- function(dataset, phones = NULL, sample_frac = NULL,
 
   con <- .disposition_lazy_con()
   source <- .disposition_lazy_source(con, dataset, fn)
-  after <- .disposition_after_filters(con, campaign_ids, date_from, date_to, fn)
+  after <- .disposition_after_filters(con, source, campaign_ids, date_from, date_to, fn)
   base <- .disposition_base_sql(con, source, phones, sample_frac,
                                 .disposition_label_sql(con, source, terminal, codes))
   need_path <- any(c("run_length", "path_so_far") %in% columns) || !is.null(pattern_re)
