@@ -76,6 +76,9 @@ dispatch on the new condition classes instead.
   campaign metrics), not only latency.
 * The articles share one structure: task sections, then "What you get back",
   "Notes" and "See also", each linking the others.
+* The disposition docs (`?disposition_pull`, `?disposition_summary`) no
+  longer call `disposition_all.parquet` phone-sorted: it is a consolidated
+  concat of the per-campaign files, so a phone lookup scans the whole file.
 
 ## Bug fixes
 
