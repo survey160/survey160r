@@ -173,7 +173,9 @@
   schema <- DBI::dbGetQuery(con, paste0("DESCRIBE SELECT * FROM read_parquet(", path, ")"))
   # The file row number is the last tie-break of the sequence order (two stored
   # rows of one phone, date and campaign -- e.g. "12015550101" and "2015550101"
-  # normalizing together -- keep file order, as disposition_summary() does).
+  # normalizing together). It sorts DESCENDING: disposition_summary() takes the
+  # FIRST stored row of a full tie as the latest, so that row must be the last
+  # step here.
   src <- paste0("read_parquet(", path, ", file_row_number = true)")
   cols <- schema$column_name
   missing_cols <- setdiff(.DISPOSITION_SEQUENCE_REQUIRED, cols)
@@ -344,7 +346,7 @@
     "TRY_CAST(campaign_id AS DOUBLE) ASC NULLS FIRST, CAST(campaign_id AS VARCHAR) ASC NULLS FIRST"
   }
   paste("WINDOW w AS (PARTITION BY phone ORDER BY disposition_date ASC NULLS FIRST,", id_order,
-        ", s160_row ASC ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)")
+        ", s160_row DESC ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)")
 }
 
 # Row filters applied AFTER the history windows (disposition_steps): keeping a

@@ -219,14 +219,17 @@ test_that("ids order as numbers and numeric phone / error columns read as text",
   expect_equal(d$path, c("NEC", "XNNT", "OW", "NE", "RI"))
 })
 
-test_that("duplicate stored rows of one phone, date and campaign keep file order", {
+test_that("on a full tie the first stored row is the latest step, as in the summary", {
   skip_if_no_sequence()
   rows <- rbind(.sequence_row("2015550101", 1L, "2026-01-01", engaged = 1L),
                 .sequence_row("12015550101", 1L, "2026-01-01"))
-  d <- collect_sorted(disposition_steps(write_sequence_parquet(rows)))
-  expect_equal(d$label, c("engaged", "non_response"))
-  d <- collect_sorted(disposition_steps(write_sequence_parquet(rows[2:1, ])))
-  expect_equal(d$label, c("non_response", "engaged"))
+  for (r in list(rows, rows[2:1, ])) {
+    p <- write_sequence_parquet(r)
+    last <- collect_sorted(disposition_steps(p))$label[2]
+    first_stored <- if (r$engaged[1] == 1L) "engaged" else "non_response"
+    expect_equal(last, first_stored)
+    expect_equal(last, disposition_summary(p)$latest_disposition)
+  }
   rows$file_row_number <- 1:2
   expect_error(disposition_steps(write_sequence_parquet(rows)),
                "named like the sequence columns these readers add: file_row_number",
