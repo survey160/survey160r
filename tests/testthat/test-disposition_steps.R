@@ -14,14 +14,15 @@ test_that("steps order each phone's campaigns and label them", {
   # same-date tie broken by campaign_id; a leading-1 stored phone is normalized
   expect_equal(by_phone[["2015550103"]]$campaign_id, c(1L, 2L))
   expect_equal(by_phone[["2015550103"]]$label, c("opted_in", "web_complete"))
-  # a missing date sorts last; completed NA (t2w_external) is engaged, completion unknown
-  expect_equal(by_phone[["2015550104"]]$campaign_id, c(3L, 1L))
-  expect_equal(by_phone[["2015550104"]]$label, c("engaged", "non_response"))
-  expect_equal(by_phone[["2015550104"]]$completion_known, c(FALSE, TRUE))
+  # a missing date counts as the oldest (as in disposition_summary); completed NA
+  # (t2w_external) is engaged, completion unknown
+  expect_equal(by_phone[["2015550104"]]$campaign_id, c(1L, 3L))
+  expect_equal(by_phone[["2015550104"]]$label, c("non_response", "engaged"))
+  expect_equal(by_phone[["2015550104"]]$completion_known, c(TRUE, FALSE))
   # stored out of date order: refused (Jan) precedes ineligible (Feb)
   expect_equal(by_phone[["2015550105"]]$label, c("refused", "ineligible"))
-  expect_equal(d$step, c(1:3, 1:4, 1:2, 1:2, 1:2))
-  expect_equal(d$n_campaigns, rep(c(3, 4, 2, 2, 2), c(3, 4, 2, 2, 2)))
+  expect_identical(d$step, c(1:3, 1:4, 1:2, 1:2, 1:2))
+  expect_identical(d$n_campaigns, rep(c(3L, 4L, 2L, 2L, 2L), c(3, 4, 2, 2, 2)))
 })
 
 test_that("history columns: neighbours, gaps, running counts, run length, path", {
@@ -33,12 +34,12 @@ test_that("history columns: neighbours, gaps, running counts, run length, path",
   expect_equal(a$next_date, as.Date(c("2026-02-01", "2026-03-01", NA)))
   expect_equal(a$gap_prev_days, c(NA, 31L, 28L))
   expect_equal(a$gap_next_days, c(31L, 28L, NA))
-  expect_equal(a$completes_so_far, c(0, 0, 1))
-  expect_equal(a$replies_so_far, c(0, 1, 2))
+  expect_identical(a$completes_so_far, c(0L, 0L, 1L))
+  expect_identical(a$replies_so_far, c(0L, 1L, 2L))
   expect_equal(a$path_so_far, c("N", "NE", "NEC"))
   b <- d[d$phone == "2015550102", ]
   expect_equal(b$path_so_far, c("X", "XN", "XNN", "XNNT"))
-  expect_equal(b$non_responses_so_far, c(1, 2, 3, 3))
+  expect_identical(b$non_responses_so_far, c(1L, 2L, 3L, 3L))
   # the trailing run of THIS step's letter: X, then N N, then T
   expect_equal(b$run_length, c(1L, 1L, 2L, 1L))
   # stored columns ride along after the generated ones
@@ -60,14 +61,15 @@ test_that("`columns` picks the history groups; NULL keeps only identity and labe
                class = "s160_error")
 })
 
-test_that("a pattern flags steps whose history matches; it needs path_so_far", {
+test_that("a pattern flags steps whose history matches, whatever the columns", {
   skip_if_no_sequence()
   p <- write_sequence_parquet()
   d <- collect_sorted(disposition_steps(p, pattern = "non_response|undeliverable{2,}$"))
   expect_equal(d$history_matched[d$phone == "2015550102"], c(FALSE, TRUE, TRUE, FALSE))
   expect_false(any(d$history_matched[d$phone != "2015550102"]))
-  expect_error(disposition_steps(p, columns = "so_far", pattern = "N"),
-               "must include \"path_so_far\"", class = "s160_error")
+  d <- collect_sorted(disposition_steps(p, columns = "so_far", pattern = "N > E", phones = "2015550101"))
+  expect_equal(d$history_matched, c(FALSE, TRUE, TRUE))
+  expect_false("path_so_far" %in% names(d))
 })
 
 test_that("undeliverable_codes and terminal change the labels", {
@@ -119,7 +121,7 @@ test_that("campaign and date filters keep rows after the history is computed", {
   d <- collect_sorted(disposition_steps(p, date_from = "2026-02-15", date_to = as.Date("2026-03-01"),
                                         phones = "2015550102"))
   expect_equal(d$step, 4L)
-  expect_equal(d$non_responses_so_far, 3)
+  expect_equal(d$non_responses_so_far, 3L)
   expect_error(disposition_steps(p, campaign_ids = c(1, NA)), "`campaign_ids` must be a vector",
                class = "s160_error")
   expect_error(disposition_steps(p, date_from = "not a date"), "`date_from` must be a single valid date",
@@ -165,9 +167,13 @@ test_that("tables share one session connection, configured from options", {
   b <- disposition_paths(p)
   expect_identical(dbplyr::remote_con(a), dbplyr::remote_con(b))
   con <- dbplyr::remote_con(a)
+  limit <- function() DBI::dbGetQuery(con, "SELECT current_setting('memory_limit') AS m")$m
   withr::local_options(survey160r.duckdb_memory = "1GB")
   disposition_steps(p)
-  expect_equal(DBI::dbGetQuery(con, "SELECT current_setting('memory_limit') AS m")$m, "953.6 MiB")
+  one <- limit()
+  withr::local_options(survey160r.duckdb_memory = "2GB")
+  disposition_steps(p)
+  expect_false(identical(limit(), one))
   withr::local_options(survey160r.duckdb_memory = "lots")
   expect_error(disposition_steps(p), "DuckDB rejected the connection settings \\(memory lots",
                class = "s160_error")
@@ -186,4 +192,62 @@ test_that("closing the session connection reopens it on the next call", {
   fresh <- disposition_steps(p)
   expect_true(DBI::dbIsValid(dbplyr::remote_con(fresh)))
   expect_equal(nrow(collect_sorted(fresh)), 13L)
+})
+
+test_that("ids order as numbers and numeric phone / error columns read as text", {
+  skip_if_no_sequence()
+  # a text campaign id: "10" follows "9", as disposition_summary() orders them
+  rows <- rbind(.sequence_row("2015550101", 9L, "2026-01-01"),
+                .sequence_row("2015550101", 10L, "2026-01-01", engaged = 1L))
+  rows$campaign_id <- as.character(rows$campaign_id)
+  p <- write_sequence_parquet(rows)
+  d <- collect_sorted(disposition_steps(p))
+  expect_equal(d$campaign_id, c("9", "10"))
+  expect_equal(d$label[d$step == d$n_campaigns], disposition_summary(p)$latest_disposition)
+  # numeric phone and error columns (a hand-built extract)
+  rows <- sequence_records()
+  rows$phone <- as.numeric(sub("^1", "", rows$phone))
+  rows$error <- as.numeric(rows$error)
+  d <- collect_sorted(disposition_paths(write_sequence_parquet(rows)))
+  expect_equal(d$phone, paste0("201555010", 1:5))
+  expect_equal(d$path, c("NEC", "XNNT", "OW", "NE", "RI"))
+})
+
+test_that("duplicate stored rows of one phone, date and campaign keep file order", {
+  skip_if_no_sequence()
+  rows <- rbind(.sequence_row("2015550101", 1L, "2026-01-01", engaged = 1L),
+                .sequence_row("12015550101", 1L, "2026-01-01"))
+  d <- collect_sorted(disposition_steps(write_sequence_parquet(rows)))
+  expect_equal(d$label, c("engaged", "non_response"))
+  d <- collect_sorted(disposition_steps(write_sequence_parquet(rows[2:1, ])))
+  expect_equal(d$label, c("non_response", "engaged"))
+  rows$file_row_number <- 1:2
+  expect_error(disposition_steps(write_sequence_parquet(rows)),
+               "named like the sequence columns these readers add: file_row_number",
+               class = "s160_error")
+})
+
+test_that("the last step's label is disposition_summary()'s latest_disposition", {
+  skip_if_no_sequence()
+  p <- write_sequence_parquet()
+  last <- collect_sorted(dplyr::filter(disposition_steps(p, undeliverable_codes = NULL),
+                                       step == n_campaigns))
+  summ <- disposition_summary(p)
+  expect_equal(last$phone, summ$phone)
+  expect_equal(last$label, summ$latest_disposition)
+  expect_equal(last$n_campaigns, summ$n_campaigns)
+})
+
+test_that("repeated phone scopes reuse one registration", {
+  skip_if_no_sequence()
+  p <- write_sequence_parquet()
+  con <- dbplyr::remote_con(disposition_steps(p))
+  views <- function() sum(startsWith(DBI::dbListTables(con), "s160_phones_"))
+  disposition_steps(p, phones = c("2015550101", "2015550102"))
+  before <- views()
+  disposition_paths(p, phones = c("2015550101", "2015550102"))
+  disposition_steps(p, phones = c("2015550101", "2015550102"))
+  expect_equal(views(), before)
+  disposition_steps(p, phones = "2015550105")
+  expect_equal(views(), before + 1L)
 })

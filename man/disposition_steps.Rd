@@ -11,7 +11,7 @@ disposition_steps(
   campaign_ids = NULL,
   date_from = NULL,
   date_to = NULL,
-  columns = .DISPOSITION_STEP_GROUPS,
+  columns = c("neighbors", "so_far", "run_length", "path_so_far"),
   pattern = NULL,
   terminal = c("raw", "engaged"),
   undeliverable_codes = .DISPOSITION_UNDELIVERABLE_CODES
@@ -50,8 +50,7 @@ projection.}
 \item{pattern}{Optional sequence pattern (see \code{\link{disposition_paths}}
 for the syntax); adds \code{history_matched}: whether the history up to and
 including this step matches. Use a \code{$} anchor for "history ends with",
-e.g. \code{"non_response|undeliverable{3,}$"}. Requires the
-\code{"path_so_far"} column group.}
+e.g. \code{"non_response|undeliverable{3,}$"}.}
 
 \item{terminal}{How to label an unsplit \code{terminated} row (terminated but
 neither refused nor ineligible): \code{"raw"} (default) keeps
@@ -100,7 +99,9 @@ Resources).
 
 \strong{Order and labels.} A phone's campaigns are ordered by
 \code{disposition_date} (its last send in that campaign), then
-\code{campaign_id}; a missing date sorts last. Campaigns that overlapped in time
+\code{campaign_id} compared as a number; a missing date or id counts as the
+oldest, as in \code{\link{disposition_summary}}, so a phone's last step is its
+\code{latest_disposition}. Campaigns that overlapped in time
 can come out in either order (0.5\% of consecutive pairs on prod, all under 30
 days apart). Each row gets the furthest step it reached, by the precedence of
 \code{\link{disposition_summary}}'s \code{latest_disposition}:
@@ -120,9 +121,12 @@ non-responses).
 \strong{Resources.} The connection uses a 4 GB DuckDB \code{memory_limit} and
 spills to disk past it (a full-projection query can spill ~20 GB, freed when it
 finishes); set \code{options(survey160r.duckdb_memory = "8GB")} or
-\code{options(survey160r.duckdb_temp_dir = "/path")} to change either. Measured
-on the production projection: a full-scan aggregate in ~10 s at under 5.5 GB;
-a phone-scoped table (up to millions of phones) in 1-5 s.
+\code{options(survey160r.duckdb_temp_dir = "/path")} to change either (a new
+spill directory applies only before the session's first spill). Measured on
+the production projection (~165M rows): a full-scan aggregate in ~16 s at
+~5.5 GB of process memory; a phone-scoped table (up to millions of phones) in
+1-5 s. Each distinct \code{phones} vector stays registered on the connection
+for the session, so later operations on the table keep working.
 }
 \examples{
 \dontrun{

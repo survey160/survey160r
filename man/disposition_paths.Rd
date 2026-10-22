@@ -84,8 +84,10 @@ resources documented there.
     campaign.
 }
 \code{"non_response > completed"} and \code{"N > C"} are the same pattern.
-\code{match_start} / \code{match_end} locate the first (leftmost, shortest)
-match.
+\code{match_start} / \code{match_end} locate the leftmost match: a repeat
+takes its whole run (\code{"N+"} on \code{"XNNT"} is steps 2-3) and a
+\code{>} gap stops at the earliest next step (\code{"N > C"} on
+\code{"NCNC"} is steps 1-2).
 
 \strong{Date window.} Unlike \code{\link{disposition_steps}}, \code{date_from} /
 \code{date_to} choose which campaigns form the path (the phone's 2025+ path,

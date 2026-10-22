@@ -41,7 +41,16 @@
     bad("has an empty step (a `>` or `>>` with nothing on one side)")
   }
   regex <- vapply(steps, .disposition_pattern_step, character(1), bad = bad)
-  joins <- c(ifelse(seps == ">", ".*", ""), "")
+  # Every step must consume at least one campaign: a pattern that can match an
+  # empty path ("N{0}", "*{0,2}") matches every phone at no position (match_end
+  # 0). Our RE2 subset reads the same under PCRE, so R can test it up front.
+  if (grepl(paste0("^(?:", paste(regex, collapse = ".*?"), ")$"), "", perl = TRUE)) {
+    bad("can match zero campaigns; give every step at least one repeat")
+  }
+  # `>` is a LAZY gap: it does not change what matches, but it ends
+  # match_end at the earliest next step (the first completion after the
+  # non-response, not the last one).
+  joins <- c(ifelse(seps == ">", ".*?", ""), "")
   paste0(if (start) "^", paste0(regex, joins, collapse = ""), if (end) "$")
 }
 
@@ -60,8 +69,11 @@
   m <- regmatches(step, regexec("^([A-Za-z_*| ]+?)\\s*(\\+|\\{[0-9]+(?:,[0-9]*)?\\})?$",
                                 step, perl = TRUE))[[1]]
   if (length(m) == 0L) bad(sprintf("has a step it cannot read (`%s`)", step))
+  if (grepl("^\\s*[|]|[|]\\s*$|[|]\\s*[|]", m[2])) {
+    bad(sprintf("has an empty `|` alternative in `%s`", step))
+  }
   tokens <- trimws(strsplit(m[2], "|", fixed = TRUE)[[1]])
-  letters <- vapply(tokens, function(tok) {
+  codes <- vapply(tokens, function(tok) {
     if (tok == "*") return(".")
     if (tolower(tok) %in% names(.DISPOSITION_PATH_CODES)) {
       return(.DISPOSITION_PATH_CODES[[tolower(tok)]])
@@ -69,15 +81,15 @@
     if (toupper(tok) %in% .DISPOSITION_PATH_CODES) return(toupper(tok))
     bad(sprintf("has an unknown label `%s`", tok))
   }, character(1))
-  class <- if ("." %in% letters) {
+  class <- if ("." %in% codes) {
     "."
   } else {
-    paste0("[", paste(intersect(.DISPOSITION_PATH_CODES, letters), collapse = ""), "]")
+    paste0("[", paste(intersect(.DISPOSITION_PATH_CODES, codes), collapse = ""), "]")
   }
   quant <- m[3]
   if (nzchar(quant) && quant != "+") {
-    bounds <- as.integer(strsplit(gsub("[{}]", "", quant), ",", fixed = TRUE)[[1]])
-    if (any(bounds > 1000L, na.rm = TRUE) || (length(bounds) == 2L && bounds[1] > bounds[2])) {
+    bounds <- as.numeric(strsplit(gsub("[{}]", "", quant), ",", fixed = TRUE)[[1]])
+    if (any(bounds > 1000) || (length(bounds) == 2L && bounds[1] > bounds[2])) {
       bad(sprintf("has a repeat `%s` outside 0-1000 or with min > max", quant))
     }
   }
@@ -120,8 +132,10 @@
 #'     campaign.
 #' }
 #' \code{"non_response > completed"} and \code{"N > C"} are the same pattern.
-#' \code{match_start} / \code{match_end} locate the first (leftmost, shortest)
-#' match.
+#' \code{match_start} / \code{match_end} locate the leftmost match: a repeat
+#' takes its whole run (\code{"N+"} on \code{"XNNT"} is steps 2-3) and a
+#' \code{>} gap stops at the earliest next step (\code{"N > C"} on
+#' \code{"NCNC"} is steps 1-2).
 #'
 #' \strong{Date window.} Unlike \code{\link{disposition_steps}}, \code{date_from} /
 #' \code{date_to} choose which campaigns form the path (the phone's 2025+ path,
@@ -176,7 +190,7 @@ disposition_paths <- function(dataset, pattern = NULL, phones = NULL, sample_fra
   source <- .disposition_lazy_source(con, dataset, fn)
   window <- .disposition_after_filters(con, NULL, date_from, date_to, fn)
   base <- .disposition_base_sql(con, source, phones, sample_frac,
-                                .disposition_label_sql(con, source$cols, terminal, codes),
+                                .disposition_label_sql(con, source, terminal, codes),
                                 pre = window)
   # Every column is a running aggregate over the ONE ordered window, read at the
   # phone's last row (where nothing follows): a second, unordered
@@ -184,12 +198,12 @@ disposition_paths <- function(dataset, pattern = NULL, phones = NULL, sample_fra
   # second sort -- ~2.5x the time and memory on prod.
   windowed <- paste0(
     "SELECT phone, ",
-    "lead(phone) OVER w IS NULL AS s160_last, row_number() OVER w AS n_campaigns, ",
+    "lead(phone) OVER w IS NULL AS s160_last, CAST(row_number() OVER w AS INTEGER) AS n_campaigns, ",
     "string_agg(s160_code, '') OVER w AS path, ",
     "min(disposition_date) OVER w AS first_date, max(disposition_date) OVER w AS last_date, ",
     "sum(CAST(NOT completion_known AS INTEGER)) OVER w AS n_unknown_completion",
     if (!is.null(pattern_re)) ", list(disposition_date) OVER w AS s160_dates",
-    " FROM (", base, ") ", .DISPOSITION_SEQUENCE_WINDOW)
+    " FROM (", base, ") ", .disposition_sequence_window(source))
   last <- paste0("SELECT * FROM (", windowed, ") WHERE s160_last")
   cols <- c("phone", "n_campaigns", "path", paste(.disposition_shape_sql("path"), "AS shape"),
             "first_date", "last_date", "CAST(n_unknown_completion AS INTEGER) AS n_unknown_completion")

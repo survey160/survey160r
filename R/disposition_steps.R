@@ -92,8 +92,11 @@
 .disposition_lazy_con <- function() {
   con <- .disposition_lazy_env$con
   if (is.null(con) || !DBI::dbIsValid(con)) {
-    drv <- do.call(duckdb::duckdb,
-                   if ("shared_home" %in% names(formals(duckdb::duckdb))) list(shared_home = FALSE))
+    # shared_home (newer duckdb) only silences a note about the extension
+    # directory; older versions lack the argument, and the subset is then an
+    # empty list (do.call() needs a list either way).
+    drv_args <- list(shared_home = FALSE)["shared_home" %in% names(formals(duckdb::duckdb))]
+    drv <- do.call(duckdb::duckdb, drv_args)
     con <- DBI::dbConnect(drv)
     .disposition_lazy_env$con <- con
     .disposition_lazy_env$temp_dir <- NULL
@@ -132,16 +135,27 @@
   con <- env$con
   if (!is.null(con) && DBI::dbIsValid(con)) DBI::dbDisconnect(con, shutdown = TRUE)
   env$con <- NULL
+  env$registered <- NULL
   invisible()
 }
 
-# Register a lookup frame under a name no other lazy table uses: tables share the
-# connection, so reusing one name would silently change an earlier table's rows.
+# Register a lookup frame (requested phones, campaign ids) for a lazy table. Each
+# distinct frame gets its own name -- tables share the connection, so reusing one
+# name for different content would silently change an earlier table's rows --
+# and stays registered for the session, because a lazy table (and every dplyr
+# verb built on it) reads it again on each collect(). Identical frames reuse one
+# registration, so screening the same sample repeatedly does not pile up copies.
 .disposition_lazy_register <- function(con, prefix, df) {
+  key <- paste(prefix, digest::digest(df, algo = "xxhash64"))
+  registered <- .disposition_lazy_env$registered %||% list()
+  name <- registered[[key]]
+  if (!is.null(name) && name %in% DBI::dbListTables(con)) return(name)
   n <- (.disposition_lazy_env$n %||% 0L) + 1L
   .disposition_lazy_env$n <- n
   name <- sprintf("s160_%s_%d", prefix, n)
   duckdb::duckdb_register(con, name, df)
+  registered[[key]] <- name
+  .disposition_lazy_env$registered <- registered
   name
 }
 
@@ -155,22 +169,37 @@
       "character(s) in %s and read other files too. Rename or copy the file."),
       dataset), fn = fn)
   }
-  src <- paste0("read_parquet(",
-                DBI::dbQuoteString(con, normalizePath(dataset, mustWork = TRUE)), ")")
-  cols <- DBI::dbGetQuery(con, paste("DESCRIBE SELECT * FROM", src))$column_name
+  path <- DBI::dbQuoteString(con, normalizePath(dataset, mustWork = TRUE))
+  schema <- DBI::dbGetQuery(con, paste0("DESCRIBE SELECT * FROM read_parquet(", path, ")"))
+  # The file row number is the last tie-break of the sequence order (two stored
+  # rows of one phone, date and campaign -- e.g. "12015550101" and "2015550101"
+  # normalizing together -- keep file order, as disposition_summary() does).
+  src <- paste0("read_parquet(", path, ", file_row_number = true)")
+  cols <- schema$column_name
   missing_cols <- setdiff(.DISPOSITION_SEQUENCE_REQUIRED, cols)
   if (length(missing_cols) > 0L) {
     stop_s160(sprintf("`dataset` is missing required column(s): %s (it has %d: %s).",
                       paste(missing_cols, collapse = ", "), length(cols),
                       .preview_values(cols)), fn = fn)
   }
-  clash <- cols[cols %in% .DISPOSITION_SEQUENCE_GENERATED | startsWith(cols, "s160_")]
+  clash <- cols[cols %in% c(.DISPOSITION_SEQUENCE_GENERATED, "file_row_number") |
+                  startsWith(cols, "s160_")]
   if (length(clash) > 0L) {
     stop_s160(sprintf(paste0("`dataset` has column(s) named like the sequence columns these ",
                              "readers add: %s. Rename them in a copy of the file."),
                       paste(clash, collapse = ", ")), fn = fn)
   }
-  list(src = src, cols = cols)
+  types <- schema$column_type
+  names(types) <- cols
+  list(src = src, cols = cols, types = types)
+}
+
+# A stored id-like column (phone, error code) as text, the way R's as.character()
+# prints it: a numeric column -- a fixture or a hand-built extract -- is cast
+# through an integer first, so 2015550101 reads "2015550101", not "2015550101.0".
+.disposition_text_sql <- function(col, type) {
+  if (type %in% c("VARCHAR", "BLOB")) return(col)
+  sprintf("CAST(TRY_CAST(%s AS HUGEINT) AS VARCHAR)", col)
 }
 
 # Columns the sequence readers generate; a stored column of the same name would
@@ -203,8 +232,9 @@
 # unsplit terminated row (neither refused nor ineligible) back to the step it
 # reached -- opted_in or engaged -- for analyses where the producer's unsplit
 # terminal is noise.
-.disposition_label_sql <- function(con, cols, terminal, undeliverable_codes) {
+.disposition_label_sql <- function(con, source, terminal, undeliverable_codes) {
   q <- function(x) as.character(DBI::dbQuoteIdentifier(con, x))
+  cols <- source$cols
   has <- function(x) x %in% cols
   when <- function(cond, code) sprintf("WHEN %s THEN '%s'", cond, code)
   flag <- function(x) paste(q(x), "= 1")
@@ -222,7 +252,8 @@
     when(flag("opted_in"), "O"),
     when(flag("engaged"), "E"),
     if (has("error") && length(undeliverable_codes) > 0L) {
-      when(sprintf("CAST(%s AS VARCHAR) IN (%s)", q("error"), codes), "X")
+      when(sprintf("%s IN (%s)", .disposition_text_sql(q("error"), source$types[["error"]]), codes),
+           "X")
     })
   paste("CASE", paste(rules, collapse = " "), "ELSE 'N' END")
 }
@@ -266,10 +297,12 @@
 .disposition_base_sql <- function(con, source, phones, sample_frac, label_sql, pre = NULL) {
   q <- function(x) as.character(DBI::dbQuoteIdentifier(con, x))
   others <- setdiff(source$cols, c("phone", "disposition_date"))
-  select <- c(paste(.disposition_phone_sql(q("phone")), "AS phone"),
+  phone <- .disposition_text_sql(q("phone"), source$types[["phone"]])
+  select <- c(paste(.disposition_phone_sql(phone), "AS phone"),
               paste0("CAST(", q("disposition_date"), " AS DATE) AS disposition_date"),
               q(others),
               paste(label_sql, "AS s160_code"),
+              "file_row_number AS s160_row",
               paste(q("completed"), "IS NOT NULL AS completion_known"))
   where <- c("phone IS NOT NULL", pre)
   if (!is.null(phones)) {
@@ -291,10 +324,25 @@
          source$src, ") WHERE ", paste(where, collapse = " AND "))
 }
 
-# The ordered window every history column shares (one sort per query).
-.DISPOSITION_SEQUENCE_WINDOW <- paste(
-  "WINDOW w AS (PARTITION BY phone ORDER BY disposition_date ASC NULLS LAST,",
-  "campaign_id ASC NULLS LAST ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)")
+# The ordered window every history column shares (one sort per query). It is the
+# order disposition_summary() reads "latest" from (.disposition_collapse): by
+# date, then by campaign id compared as a NUMBER (a text id "10" follows "9"),
+# with a missing date or id counted as the OLDEST -- so a phone's last step here
+# is the summary's latest_disposition.
+# An integer id (prod) sorts as itself; only a text or other id pays for the
+# numeric cast (~3 s on the full projection).
+.disposition_sequence_window <- function(source) {
+  numeric_id <- source$types[["campaign_id"]] %in%
+    c("TINYINT", "SMALLINT", "INTEGER", "BIGINT", "HUGEINT", "UTINYINT", "USMALLINT",
+      "UINTEGER", "UBIGINT", "FLOAT", "DOUBLE")
+  id_order <- if (numeric_id) {
+    "campaign_id ASC NULLS FIRST"
+  } else {
+    "TRY_CAST(campaign_id AS DOUBLE) ASC NULLS FIRST, CAST(campaign_id AS VARCHAR) ASC NULLS FIRST"
+  }
+  paste("WINDOW w AS (PARTITION BY phone ORDER BY disposition_date ASC NULLS FIRST,", id_order,
+        ", s160_row ASC ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)")
+}
 
 # Row filters applied AFTER the history windows (disposition_steps): keeping a
 # campaign or a date range must not reset the history the kept rows carry, so a
@@ -317,14 +365,15 @@
   c(where, date_bound(date_from, "date_from", ">="), date_bound(date_to, "date_to", "<="))
 }
 
-# The window columns for each requested group, over the base rows' letters.
-.disposition_step_windows <- function(groups) {
+# The window columns for each requested group, over the base rows' letters. The
+# history path is also built when only run_length or a pattern needs it.
+.disposition_step_windows <- function(groups, need_path) {
   in_codes <- function(codes) {
-    sprintf("sum(CAST(s160_code IN (%s) AS INTEGER)) OVER w",
+    sprintf("CAST(sum(CAST(s160_code IN (%s) AS INTEGER)) OVER w AS INTEGER)",
             paste0("'", codes, "'", collapse = ", "))
   }
-  c("row_number() OVER w AS step",
-    "count(*) OVER (PARTITION BY phone) AS n_campaigns",
+  c("CAST(row_number() OVER w AS INTEGER) AS step",
+    "CAST(count(*) OVER (PARTITION BY phone) AS INTEGER) AS n_campaigns",
     if ("neighbors" %in% groups) {
       c("lag(s160_code) OVER w AS s160_prev", "lead(s160_code) OVER w AS s160_next",
         "lag(disposition_date) OVER w AS s160_prev_date",
@@ -335,9 +384,7 @@
         paste(in_codes(c("N", "X")), "AS non_responses_so_far"),
         paste(in_codes(c("E", "O", "T", "I", "R", "C", "W")), "AS replies_so_far"))
     },
-    if (any(c("run_length", "path_so_far") %in% groups)) {
-      "string_agg(s160_code, '') OVER w AS path_so_far"
-    })
+    if (need_path) "string_agg(s160_code, '') OVER w AS path_so_far")
 }
 
 # The output projection: identity, label, history, then the stored columns. A
@@ -395,7 +442,9 @@
 #'
 #' \strong{Order and labels.} A phone's campaigns are ordered by
 #' \code{disposition_date} (its last send in that campaign), then
-#' \code{campaign_id}; a missing date sorts last. Campaigns that overlapped in time
+#' \code{campaign_id} compared as a number; a missing date or id counts as the
+#' oldest, as in \code{\link{disposition_summary}}, so a phone's last step is its
+#' \code{latest_disposition}. Campaigns that overlapped in time
 #' can come out in either order (0.5\% of consecutive pairs on prod, all under 30
 #' days apart). Each row gets the furthest step it reached, by the precedence of
 #' \code{\link{disposition_summary}}'s \code{latest_disposition}:
@@ -415,9 +464,12 @@
 #' \strong{Resources.} The connection uses a 4 GB DuckDB \code{memory_limit} and
 #' spills to disk past it (a full-projection query can spill ~20 GB, freed when it
 #' finishes); set \code{options(survey160r.duckdb_memory = "8GB")} or
-#' \code{options(survey160r.duckdb_temp_dir = "/path")} to change either. Measured
-#' on the production projection: a full-scan aggregate in ~10 s at under 5.5 GB;
-#' a phone-scoped table (up to millions of phones) in 1-5 s.
+#' \code{options(survey160r.duckdb_temp_dir = "/path")} to change either (a new
+#' spill directory applies only before the session's first spill). Measured on
+#' the production projection (~165M rows): a full-scan aggregate in ~16 s at
+#' ~5.5 GB of process memory; a phone-scoped table (up to millions of phones) in
+#' 1-5 s. Each distinct \code{phones} vector stays registered on the connection
+#' for the session, so later operations on the table keep working.
 #'
 #' @param dataset Path to the disposition Parquet file, e.g. from
 #'   \code{\link{disposition_pull}}.
@@ -445,8 +497,7 @@
 #' @param pattern Optional sequence pattern (see \code{\link{disposition_paths}}
 #'   for the syntax); adds \code{history_matched}: whether the history up to and
 #'   including this step matches. Use a \code{$} anchor for "history ends with",
-#'   e.g. \code{"non_response|undeliverable{3,}$"}. Requires the
-#'   \code{"path_so_far"} column group.
+#'   e.g. \code{"non_response|undeliverable{3,}$"}.
 #' @param terminal How to label an unsplit \code{terminated} row (terminated but
 #'   neither refused nor ineligible): \code{"raw"} (default) keeps
 #'   \code{terminated}, matching \code{\link{disposition_summary}};
@@ -485,7 +536,8 @@
 #' @export
 disposition_steps <- function(dataset, phones = NULL, sample_frac = NULL,
                               campaign_ids = NULL, date_from = NULL, date_to = NULL,
-                              columns = .DISPOSITION_STEP_GROUPS, pattern = NULL,
+                              columns = c("neighbors", "so_far", "run_length", "path_so_far"),
+                              pattern = NULL,
                               terminal = c("raw", "engaged"),
                               undeliverable_codes = .DISPOSITION_UNDELIVERABLE_CODES) {
   fn <- "disposition_steps"
@@ -498,10 +550,6 @@ disposition_steps <- function(dataset, phones = NULL, sample_frac = NULL,
               fn = fn)
   }
   pattern_re <- if (!is.null(pattern)) .disposition_pattern_compile(pattern, fn)
-  if (!is.null(pattern_re) && !"path_so_far" %in% columns) {
-    stop_s160("`pattern` matches the history path, so `columns` must include \"path_so_far\".",
-              fn = fn)
-  }
   codes <- .disposition_check_terminal_codes(undeliverable_codes, fn)
   sample_frac <- .disposition_check_sample_frac(sample_frac, fn)
   phones <- .disposition_request_phones(phones)
@@ -510,9 +558,10 @@ disposition_steps <- function(dataset, phones = NULL, sample_frac = NULL,
   source <- .disposition_lazy_source(con, dataset, fn)
   after <- .disposition_after_filters(con, campaign_ids, date_from, date_to, fn)
   base <- .disposition_base_sql(con, source, phones, sample_frac,
-                                .disposition_label_sql(con, source$cols, terminal, codes))
-  windowed <- paste0("SELECT *, ", paste(.disposition_step_windows(columns), collapse = ", "),
-                     " FROM (", base, ") ", .DISPOSITION_SEQUENCE_WINDOW)
+                                .disposition_label_sql(con, source, terminal, codes))
+  need_path <- any(c("run_length", "path_so_far") %in% columns) || !is.null(pattern_re)
+  windowed <- paste0("SELECT *, ", paste(.disposition_step_windows(columns, need_path), collapse = ", "),
+                     " FROM (", base, ") ", .disposition_sequence_window(source))
   sql <- paste0("SELECT ", paste(.disposition_step_select(con, source$cols, columns, pattern_re),
                                  collapse = ", "),
                 " FROM (", windowed, ")",

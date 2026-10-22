@@ -23,6 +23,9 @@ answer, later engaged, then completed" -- which the per-phone counts of
   under 6.5 GB; `phones =` or `sample_frac =` (a reproducible md5 sample of
   numbers) take seconds. They need `duckdb`, `DBI` and `dbplyr` (`dbplyr` is a
   new Suggests).
+* **Order** matches `disposition_summary()`: by `disposition_date`, then
+  campaign id as a number, a missing date or id counting as the oldest -- so
+  a phone's last step is its `latest_disposition`.
 * **Labels** follow `disposition_summary()`'s precedence, plus
   `undeliverable`: no reply with a hard carrier rejection (4700, 4701, 4702,
   4720, 4750, 4753 by default, `undeliverable_codes =`). `terminal =

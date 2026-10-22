@@ -169,7 +169,9 @@ tryCatch(
 }
 
 Persisting results, walking the whole campaign fleet, and scheduling live
-in consumer projects; this package returns in-memory data frames.
+in consumer projects; this package returns in-memory data frames, except
+\code{\link{disposition_steps}} and \code{\link{disposition_paths}}, which return
+lazy \pkg{dbplyr} tables that DuckDB computes on \code{collect()}.
 }
 
 \seealso{
