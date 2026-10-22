@@ -37,7 +37,7 @@ pull otherwise looks stalled while it transfers.}
 The local path to the downloaded Parquet (a single string).
 }
 \description{
-Pulls the phone-sorted disposition projection
+Pulls the consolidated disposition projection
 (\code{disposition_all.parquet}) from the environment's
 disposition bucket to a local file and returns the path -- ready to hand to
 \code{\link{disposition_summary}} / \code{\link{disposition_screen}}. Downloaded

@@ -16,7 +16,7 @@ disposition_summary(
 )
 }
 \arguments{
-\item{x}{Either a path to a disposition Parquet file (the phone-sorted read
+\item{x}{Either a path to a disposition Parquet file (the consolidated read
 projection, e.g. from \code{\link{disposition_pull}}) or an in-memory
 disposition data frame (from \code{\link{disposition_records}}). A path is
 read projected to the summary columns (only the \code{phones} rows when

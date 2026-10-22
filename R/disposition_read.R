@@ -1,7 +1,7 @@
 # Disposition readers -- the R-only consumers of the disposition dataset.
 #
 # The disposition dataset is one row per (phone, campaign_id), contacted-only,
-# produced upstream (per-campaign Parquet + a phone-sorted read projection). The
+# produced upstream (per-campaign Parquet + a consolidated read projection). The
 # caller screens a fresh sample against it -- "which of these numbers
 # have been contacted / completed / refused before?" -- to clean the list. So a
 # summary returns ONE ROW PER PHONE: the number's cross-campaign screening flags +
@@ -814,7 +814,7 @@
 #' \code{\link{disposition_screen}}; for the raw rows behind the rollup (one per
 #' \code{(phone, campaign_id)}), use \code{\link{disposition_records}}.
 #'
-#' @param x Either a path to a disposition Parquet file (the phone-sorted read
+#' @param x Either a path to a disposition Parquet file (the consolidated read
 #'   projection, e.g. from \code{\link{disposition_pull}}) or an in-memory
 #'   disposition data frame (from \code{\link{disposition_records}}). A path is
 #'   read projected to the summary columns (only the \code{phones} rows when
@@ -1141,7 +1141,7 @@ disposition_screen <- function(sample, dataset, phone_col = "phone",
 
 #' Download the disposition dataset from Cloud Storage
 #'
-#' Pulls the phone-sorted disposition projection
+#' Pulls the consolidated disposition projection
 #' (\code{disposition_all.parquet}) from the environment's
 #' disposition bucket to a local file and returns the path -- ready to hand to
 #' \code{\link{disposition_summary}} / \code{\link{disposition_screen}}. Downloaded
