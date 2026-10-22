@@ -84,9 +84,13 @@
 # are re-applied on every call, so a change takes effect on the next table:
 #   survey160r.duckdb_memory    DuckDB memory_limit (default "4GB" -- fits the
 #                               16 GB laptop target; past it DuckDB spills)
-#   survey160r.duckdb_temp_dir  spill directory (default under the package cache,
-#                               on real disk -- never the session tempdir, which
-#                               may be a small tmpfs)
+#   survey160r.duckdb_temp_dir  spill ROOT (default under the package cache, on
+#                               real disk -- never the session tempdir, which may
+#                               be a small tmpfs). Each connection spills into its
+#                               own subdirectory of it: DuckDB names spill files
+#                               without any instance id and deletes them on
+#                               shutdown, so two R sessions sharing one directory
+#                               would overwrite and delete each other's buffers.
 # Insertion order is not preserved: every query here orders by its own window,
 # and dropping it lets DuckDB spill more freely.
 .disposition_lazy_con <- function() {
@@ -99,23 +103,29 @@
     drv <- do.call(duckdb::duckdb, drv_args)
     con <- DBI::dbConnect(drv)
     .disposition_lazy_env$con <- con
-    .disposition_lazy_env$temp_dir <- NULL
+    .disposition_lazy_env$temp_root <- NULL
     if (is.null(.disposition_lazy_env$finalizer)) {
       reg.finalizer(.disposition_lazy_env, .disposition_lazy_close, onexit = TRUE)
       .disposition_lazy_env$finalizer <- TRUE
     }
   }
   memory <- .disposition_lazy_option("survey160r.duckdb_memory", "4GB")
-  temp_dir <- .disposition_lazy_option(
+  temp_root <- .disposition_lazy_option(
     "survey160r.duckdb_temp_dir",
     file.path(tools::R_user_dir("survey160r", "cache"), "duckdb_tmp"))
   tryCatch({
     DBI::dbExecute(con, paste("SET memory_limit =", DBI::dbQuoteString(con, memory)))
     # DuckDB refuses to switch the spill directory once it has been used (even to
-    # the same path), so it is set only when it changes: on a fresh connection,
-    # or when the option names a new directory before any spill.
-    if (!identical(.disposition_lazy_env$temp_dir, temp_dir)) {
+    # the same path), so it is set only when the root changes: on a fresh
+    # connection, or when the option names a new root before any spill. DuckDB
+    # creates only the last path level itself, so the parents are made here.
+    if (!identical(.disposition_lazy_env$temp_root, temp_root)) {
+      temp_dir <- file.path(temp_root, sprintf("session-%d-%s", Sys.getpid(),
+                                               basename(tempfile(""))))
+      dir.create(temp_dir, recursive = TRUE, showWarnings = FALSE)
       DBI::dbExecute(con, paste("SET temp_directory =", DBI::dbQuoteString(con, temp_dir)))
+      .disposition_lazy_close_spill()
+      .disposition_lazy_env$temp_root <- temp_root
       .disposition_lazy_env$temp_dir <- temp_dir
     }
     DBI::dbExecute(con, "SET preserve_insertion_order = false")
@@ -124,7 +134,7 @@
       "DuckDB rejected the connection settings (memory %s, spill directory %s): %s. ",
       "Check options `survey160r.duckdb_memory` (e.g. \"4GB\") and ",
       "`survey160r.duckdb_temp_dir` (a new spill directory applies only before the ",
-      "session's first spill; restart R to move it later)."), memory, temp_dir,
+      "session's first spill; restart R to move it later)."), memory, temp_root,
       conditionMessage(e)))
   })
   con
@@ -136,6 +146,15 @@
   if (!is.null(con) && DBI::dbIsValid(con)) DBI::dbDisconnect(con, shutdown = TRUE)
   env$con <- NULL
   env$registered <- NULL
+  env$temp_root <- NULL
+  .disposition_lazy_close_spill(env)
+  invisible()
+}
+
+# Remove this connection's spill subdirectory (DuckDB empties it on shutdown).
+.disposition_lazy_close_spill <- function(env = .disposition_lazy_env) {
+  if (!is.null(env$temp_dir)) unlink(env$temp_dir, recursive = TRUE)
+  env$temp_dir <- NULL
   invisible()
 }
 
@@ -480,7 +499,8 @@
 #' spills to disk past it (a full-projection query can spill ~20 GB, freed when it
 #' finishes); set \code{options(survey160r.duckdb_memory = "8GB")} or
 #' \code{options(survey160r.duckdb_temp_dir = "/path")} to change either (a new
-#' spill directory applies only before the session's first spill). Measured on
+#' spill directory applies only before the session's first spill; each session
+#' spills into its own subdirectory, removed when the session ends). Measured on
 #' the production projection (~165M rows): a full-scan aggregate in ~16 s at
 #' ~5.5 GB of process memory; a phone-scoped table (up to millions of phones) in
 #' 1-5 s. Each distinct \code{phones} vector stays registered on the connection

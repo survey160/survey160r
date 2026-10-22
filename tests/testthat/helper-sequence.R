@@ -2,6 +2,9 @@
 # return lazy dbplyr tables on DuckDB, so every test needs duckdb + DBI + dbplyr;
 # skip_if_no_sequence() skips otherwise.
 
+# Spill under the session tempdir, never the user's package cache, during tests.
+options(survey160r.duckdb_temp_dir = file.path(tempdir(), "survey160r-spill"))
+
 skip_if_no_sequence <- function() {
   testthat::skip_if_not_installed("duckdb")
   testthat::skip_if_not_installed("DBI")

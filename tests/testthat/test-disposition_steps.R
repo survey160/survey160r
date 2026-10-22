@@ -264,3 +264,23 @@ test_that("repeated phone scopes reuse one registration", {
   disposition_steps(p, phones = "2015550105")
   expect_equal(views(), before + 1L)
 })
+
+test_that("each connection spills into its own subdirectory, created with its parents", {
+  skip_if_no_sequence()
+  p <- write_sequence_parquet()
+  .disposition_lazy_close()
+  root <- file.path(tempdir(), "fresh-cache", "nested", "duckdb_tmp")
+  withr::local_options(survey160r.duckdb_temp_dir = root)
+  con <- dbplyr::remote_con(disposition_steps(p))
+  spill <- DBI::dbGetQuery(con, "SELECT current_setting('temp_directory') AS d")$d
+  expect_true(dir.exists(spill))
+  expect_identical(dirname(normalizePath(spill)), normalizePath(root))
+  expect_match(basename(spill), sprintf("^session-%d-", Sys.getpid()))
+  # a new root moves this connection to a fresh subdirectory and drops the old one
+  withr::local_options(survey160r.duckdb_temp_dir = file.path(tempdir(), "other-root"))
+  disposition_steps(p)
+  expect_false(dir.exists(spill))
+  moved <- DBI::dbGetQuery(con, "SELECT current_setting('temp_directory') AS d")$d
+  .disposition_lazy_close()
+  expect_false(dir.exists(moved))
+})

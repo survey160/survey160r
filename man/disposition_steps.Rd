@@ -122,7 +122,8 @@ non-responses).
 spills to disk past it (a full-projection query can spill ~20 GB, freed when it
 finishes); set \code{options(survey160r.duckdb_memory = "8GB")} or
 \code{options(survey160r.duckdb_temp_dir = "/path")} to change either (a new
-spill directory applies only before the session's first spill). Measured on
+spill directory applies only before the session's first spill; each session
+spills into its own subdirectory, removed when the session ends). Measured on
 the production projection (~165M rows): a full-scan aggregate in ~16 s at
 ~5.5 GB of process memory; a phone-scoped table (up to millions of phones) in
 1-5 s. Each distinct \code{phones} vector stays registered on the connection
