@@ -93,6 +93,47 @@ disposition_funnel(records, by = "carrier", grain = "all")
 
 Roll up the whole projection with `disposition_funnel(dataset, by = "carrier")` -- with `duckdb` installed the grouping runs inside the Parquet scan, so the full production projection rolls up in under a second and well under 1 GB of RAM -- or pre-filter with `disposition_records()` first (by campaign or date) to scope it.
 
+## Follow numbers over time
+
+The screen and the funnel collapse a number's campaigns into counts. To ask what happened *in order* -- no reply first, then engaged, then completed -- use `disposition_paths()` (one row per phone) and `disposition_steps()` (one row per campaign, with the history up to it). Both need `duckdb`, `DBI` and `dbplyr`, and return a lazy table that DuckDB computes: aggregate with `dplyr` verbs, then `collect()`.
+
+```{r}
+library(dplyr)
+dataset <- disposition_pull()
+
+# Numbers that did not answer, later engaged, then completed
+disposition_paths(dataset, "non_response > engaged|opted_in > completed|web_complete") |>
+  filter(matched) |>
+  count()
+
+# The commonest path shapes
+disposition_paths(dataset) |> count(shape, sort = TRUE) |> head(20) |> collect()
+
+# Reply rate on the next campaign after k non-responses in a row
+disposition_steps(dataset, sample_frac = 0.1) |>
+  filter(label == "non_response", !is.na(next_label)) |>
+  group_by(run = pmin(run_length, 5L)) |>
+  summarise(n = n(), reply_next = mean(as.integer(
+    !next_label %in% c("non_response", "undeliverable")), na.rm = TRUE)) |>
+  arrange(run) |>
+  collect()
+
+# Flag a sample's numbers whose last three contacts got no reply
+flags <- disposition_paths(dataset, "non_response|undeliverable{3,}$",
+                           phones = my_sample$phone) |>
+  select(phone, path, matched) |>
+  collect()
+```
+
+Each campaign gets one label, the furthest step it reached, ordered by `disposition_date`. A path spells them as letters: N non_response, X undeliverable (no reply and a hard carrier rejection), E engaged, O opted_in, T terminated, I ineligible, R refused, C completed, W web_complete -- `"NNEC"` is two non-responses, engaged, then completed, and its `shape` is `"N+E+C+"`. A pattern joins labels (or letters) with `>` ("later") or `>>` ("the very next campaign"), takes `|` alternatives, `+` / `{m,n}` repeats and `^` / `$` anchors; `?disposition_paths` has the full syntax.
+
+- **Scope for speed.** A full-projection query takes 15-25 seconds; `sample_frac = 0.1` (the same 10% of numbers on every run) or `phones =` take seconds.
+- **History is never cut short.** On `disposition_steps()`, `campaign_ids` / `date_from` / `date_to` drop rows *after* the history is computed, so a 2026 row still counts its 2025 non-responses. On `disposition_paths()` the dates instead choose which campaigns form the path.
+- **Undeliverable is separate from non-response.** After a hard rejection (codes 4700, 4701, 4702, 4720, 4750, 4753) the next campaign gets a reply about 0.7% of the time, against 5.9% after a plain non-response. `undeliverable_codes = NULL` folds them back, as the summary does.
+- **Text-to-web external hides completes.** `completion_known` (steps) and `n_unknown_completion` (paths) mark campaigns where a complete is never reported, so a `completed` step cannot match there.
+- **August 2026 terminals.** Since August 2026 most engaged recipients who did not finish are stored as an unsplit `terminated`. `terminal = "engaged"` labels those by the step they reached instead.
+- **Memory.** DuckDB works within 4 GB and spills to disk past it (up to ~20 GB on a full-projection query, freed when it finishes). Change it with `options(survey160r.duckdb_memory = "8GB")` or `options(survey160r.duckdb_temp_dir = "/path")`.
+
 ## What you get back
 
 `disposition_screen()` and `disposition_summary()` return one row per phone:
@@ -142,7 +183,7 @@ The funnel flags overlap rather than partition -- a `completed` row is also `eng
 
 - **Contacted-only.** A loaded number that was never texted is not in the dataset; it screens as `never_contacted`.
 - **Text-to-web (external) campaigns** have no completion callback, so `completed` is `NA` -- never a false positive, but an external completer reads as `n_completed = 0` and is kept (a false negative you cannot screen out here).
-- **`disposition_date` and `error` are populated.** The live producer stamps each phone's last-send date and any carrier delivery-error code, so the `date_from` / `date_to` filters and `n_error` work (prod currently spans mid-2023 to the last pipeline pass). A row with no surviving send has an `NA` `disposition_date`, which any date bound drops.
+- **`disposition_date` and `error` are populated.** The live producer stamps each phone's last-send date and any carrier delivery-error code, so the `date_from` / `date_to` filters and `n_error` work (prod spans April 2021 to the last pipeline pass). A row with no surviving send has an `NA` `disposition_date`, which any date bound drops.
 - **Terminal split rollout.** `refused` / `ineligible` are set for the terminals the routing could name-classify; a small residual stays `terminated`. A projection produced before the split defaults them to `0`, so those rows read as plain `terminated`.
 - **Screen on the counts, not on `latest_disposition`.** `latest_disposition` / `best_disposition` are informational; a number whose most-recent campaign only reached `engaged` can still have completed an earlier one, so filter on the `n_*` counts (which see every campaign), not the latest label.
 - **Scale.** The projection is over a hundred million rows (about 700 MB on disk). With `duckdb` installed, a screen reads only your sample's rows, a `campaign_ids` / `date_from` / `date_to` filter reads only the matching rows, and `disposition_funnel()` groups inside the scan -- seconds and a GB or two of RAM at most, so all of it runs on a laptop. Without it, every read loads the whole projection (tens of GB), so install `duckdb` or read once and summarize per sample in memory (see [Screen several samples](#screen-several-samples)). Set `options(survey160r.disposition_engine = "nanoparquet")` to force the fallback.
@@ -151,4 +192,4 @@ The funnel flags overlap rather than partition -- a `completed` row is also `eng
 
 ## See also
 
-`?disposition_screen`, `?disposition_summary`, `?disposition_records`, `?disposition_funnel`, `?disposition_pull`. For the funnel rates `disposition_funnel()` shares with the latency side, `?funnel_rates` and `?campaign_metrics_summary`. To build the dataset from a raw campaign CSV (the producer side), `?disposition_run` and `?disposition_input_columns`; `?survey160r` lists every function by task. To screen the same sample against the opt-out list, `vignette("opt-out")`. For latency reports, `vignette("latency")`; for the fleet funnel by registration or brand, `vignette("campaign-metrics")`.
+`?disposition_screen`, `?disposition_summary`, `?disposition_records`, `?disposition_funnel`, `?disposition_steps`, `?disposition_paths`, `?disposition_pull`. For the funnel rates `disposition_funnel()` shares with the latency side, `?funnel_rates` and `?campaign_metrics_summary`. To build the dataset from a raw campaign CSV (the producer side), `?disposition_run` and `?disposition_input_columns`; `?survey160r` lists every function by task. To screen the same sample against the opt-out list, `vignette("opt-out")`. For latency reports, `vignette("latency")`; for the fleet funnel by registration or brand, `vignette("campaign-metrics")`.

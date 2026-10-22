@@ -1,5 +1,37 @@
 # survey160r (development version)
 
+## Disposition sequences
+
+Two new readers follow each number's campaigns in time order -- "did not
+answer, later engaged, then completed" -- which the per-phone counts of
+`disposition_summary()` / `disposition_screen()` cannot express.
+
+* **`disposition_paths()`**: one row per phone, its campaigns as a letter path
+  (`"NNEC"`) and run-length `shape` (`"N+E+C+"`), plus an optional sequence
+  `pattern` (`"non_response > engaged|opted_in > completed|web_complete"`,
+  `"non_response|undeliverable{3,}$"`) with `matched`, match positions and
+  dates. `>` means later, `>>` the next campaign; labels or their letters,
+  `|`, `+`, `{m,n}`, `^` / `$`.
+* **`disposition_steps()`**: one row per (phone, campaign) with the history up
+  to it -- `step` / `n_campaigns`, `prev_label` / `next_label`, the gaps in
+  days, running counts, `run_length`, `path_so_far` -- for questions such as
+  the reply rate after k non-responses in a row.
+* **Lazy tables.** Both return a `dbplyr` table that DuckDB computes, on one
+  session-wide connection with a 4 GB memory limit that spills to disk past
+  it (`options(survey160r.duckdb_memory, survey160r.duckdb_temp_dir)`). On
+  the production projection (~165M rows) a full-scan aggregate takes 15-25 s
+  under 6.5 GB; `phones =` or `sample_frac =` (a reproducible md5 sample of
+  numbers) take seconds. They need `duckdb`, `DBI` and `dbplyr` (`dbplyr` is a
+  new Suggests).
+* **Labels** follow `disposition_summary()`'s precedence, plus
+  `undeliverable`: no reply with a hard carrier rejection (4700, 4701, 4702,
+  4720, 4750, 4753 by default, `undeliverable_codes =`). `terminal =
+  "engaged"` relabels unsplit terminals, which dominate the data since August
+  2026. `completion_known` / `n_unknown_completion` mark text-to-web external
+  campaigns, whose completes are never reported.
+* The disposition vignette gains "Follow numbers over time", and now dates
+  the projection from April 2021 (it said mid-2023).
+
 ## Errors and messages
 
 Twenty review rounds over every error, warning and message the package emits,

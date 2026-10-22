@@ -87,6 +87,10 @@ recipients (\code{vignette("disposition")}):
     phone and campaign.
   \item \code{\link{disposition_funnel}} -- funnel counts and rates by any
     dimension.
+  \item \code{\link{disposition_steps}} / \code{\link{disposition_paths}} --
+    each number's campaigns in time order: per-campaign history (what
+    happened after k non-responses) or one path per phone with sequence
+    patterns (no reply, then engaged, then completed).
   \item \code{\link{disposition_run}} / \code{\link{disposition_input_columns}}
     -- build the per-respondent rows from one campaign export (the producer
     side of the dataset).
