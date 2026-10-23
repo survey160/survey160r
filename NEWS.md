@@ -1,5 +1,17 @@
 # survey160r (development version)
 
+## Disposition history segments
+
+* `disposition_steps()` gains a `"history"` column group: `prior_completes`,
+  `prior_replies` and `prior_unanswered` (what the number did *before* this
+  campaign) and `history_segment` -- `first_contact`, `completer_2_plus`,
+  `completer_1`, `replied`, `unanswered_3_plus`, `unanswered_1_2` -- the
+  list-screening segments of the 2026 completion analysis
+  (survey160-notebooks, `disposition/2026-10-23-disposition-paths-completion`),
+  so notebooks and dashboards share one definition. Not in the default
+  `columns`; it shares the one window sort, so it costs about the same as
+  `"so_far"`.
+
 ## Disposition sequences
 
 Two new readers follow each number's campaigns in time order -- "did not
