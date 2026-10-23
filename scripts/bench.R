@@ -71,6 +71,12 @@ if (requireNamespace("duckdb", quietly = TRUE)) {
   measure("funnel_parquet", disposition_funnel(pq))
   measure("records_one_campaign", disposition_records(pq, campaign_ids = 1001L))
   measure("screen_parquet", disposition_screen(data.frame(phone = sample_phones), pq))
+  # Sequence readers: lazy tables, so time an aggregate that forces the windows.
+  if (requireNamespace("dbplyr", quietly = TRUE)) {
+    measure("steps_run_length", dplyr::collect(dplyr::count(disposition_steps(pq), run_length)))
+    measure("paths_pattern", dplyr::collect(dplyr::count(
+      dplyr::filter(disposition_paths(pq, "N > E|O > C|W"), matched))))
+  }
   unlink(pq)
 }
 
