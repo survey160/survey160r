@@ -112,6 +112,19 @@ days apart). Each row gets the furthest step it reached, by the precedence of
 engaged, O opted_in, T terminated, I ineligible, R refused, C completed, W
 web_complete.
 
+\strong{History segments.} With \code{columns = "history"} each row also
+carries what the phone did \emph{before} this campaign -- \code{prior_completes},
+\code{prior_replies} (any label but non_response / undeliverable) and
+\code{prior_unanswered} (the rest, so \code{step - 1 - prior_replies}) -- and
+\code{history_segment}, the first of: \code{first_contact} (step 1),
+\code{completer_2_plus}, \code{completer_1}, \code{replied} (replied before,
+never completed), \code{unanswered_3_plus}, \code{unanswered_1_2}. On the 2026
+production rows the segments complete at about 17\%, 9\%, 1.1\%, 0.55\%
+(first contact), 0.17\% and 0.33\% of sends, so \code{unanswered_3_plus} and
+a previous \code{undeliverable} are the usual suppression rule and the
+completers the usual priority; group by it to reproduce those rates on a
+newer projection.
+
 \strong{Filters.} \code{phones} and \code{sample_frac} keep or drop whole
 phones \emph{before} the history is computed. \code{campaign_ids},
 \code{date_from} and \code{date_to} drop rows \emph{after} it, so a kept row
@@ -134,6 +147,15 @@ for the session, so later operations on the table keep working.
 library(dplyr)
 dataset <- disposition_pull()
 steps <- disposition_steps(dataset, sample_frac = 0.1)
+
+# Completion of sends in 2026 by what the number did before (history still spans 2021+)
+disposition_steps(dataset, date_from = "2026-01-01", columns = "history") |>
+  filter(completion_known) |>
+  group_by(history_segment) |>
+  summarise(sends = n(), completion = mean(as.integer(
+    label \%in\% c("completed", "web_complete")))) |>
+  arrange(desc(completion)) |>
+  collect()
 
 # Reply rate on the next campaign after k non-responses in a row
 steps |>
