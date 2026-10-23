@@ -329,3 +329,18 @@ test_that("sample_frac keeps the same phones in steps and paths", {
   expect_gt(length(paths), 0L)
   expect_lt(length(paths), 60L)
 })
+
+test_that("stale spill directories of other sessions are pruned", {
+  root <- file.path(tempdir(), "prune-root")
+  old <- file.path(root, "session-1-old")
+  fresh <- file.path(root, "session-2-fresh")
+  other <- file.path(root, "keep-me")
+  for (d in c(old, fresh, other)) dir.create(d, recursive = TRUE, showWarnings = FALSE)
+  writeLines("x", file.path(old, "duckdb_temp_storage_S64K-0.tmp"))
+  Sys.setFileTime(old, Sys.time() - 3 * 86400)
+  Sys.setFileTime(other, Sys.time() - 30 * 86400)
+  expect_equal(.disposition_prune_spill(root), old)
+  expect_false(dir.exists(old))
+  expect_true(dir.exists(fresh))
+  expect_true(dir.exists(other))
+})

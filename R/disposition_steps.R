@@ -123,6 +123,7 @@
       temp_dir <- file.path(temp_root, sprintf("session-%d-%s", Sys.getpid(),
                                                basename(tempfile(""))))
       dir.create(temp_dir, recursive = TRUE, showWarnings = FALSE)
+      .disposition_prune_spill(temp_root)
       DBI::dbExecute(con, paste("SET temp_directory =", DBI::dbQuoteString(con, temp_dir)))
       .disposition_lazy_close_spill()
       .disposition_lazy_env$temp_root <- temp_root
@@ -149,6 +150,18 @@
   env$temp_root <- NULL
   .disposition_lazy_close_spill(env)
   invisible()
+}
+
+# Remove other sessions' spill subdirectories untouched for `days`: a session
+# that crashed (or was killed) never ran its finalizer, so its directory -- and
+# any spill files in it -- would otherwise stay under the root forever. A live
+# session that has not spilled for two days loses only an empty directory, which
+# DuckDB recreates on its next spill.
+.disposition_prune_spill <- function(root, days = 2) {
+  dirs <- list.files(root, pattern = "^session-", full.names = TRUE)
+  stale <- dirs[file.mtime(dirs) < Sys.time() - days * 86400]
+  unlink(stale, recursive = TRUE)
+  invisible(stale)
 }
 
 # Remove this connection's spill subdirectory (DuckDB empties it on shutdown).
