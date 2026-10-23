@@ -99,6 +99,10 @@ test_that("phones and sample_frac scope whole phones before the history", {
   p <- write_sequence_parquet()
   d <- collect_sorted(disposition_steps(p, phones = c("(201) 555-0103", "12015550101", NA)))
   expect_equal(unique(d$phone), c("2015550101", "2015550103"))
+  # A request with a number that is not ten digits takes the general match on
+  # the normalized phone: the same rows for the ten-digit numbers in it.
+  expect_identical(collect_sorted(disposition_steps(p, phones = c("2015550103", "555-0101"))),
+                   collect_sorted(disposition_steps(p, phones = "2015550103")))
   expect_equal(nrow(collect_sorted(disposition_steps(p, phones = character(0)))), 0L)
   expect_equal(nrow(collect_sorted(disposition_steps(p, phones = NA))), 0L)
   expect_equal(nrow(collect_sorted(disposition_steps(p, sample_frac = 1))), 13L)
