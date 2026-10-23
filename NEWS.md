@@ -18,11 +18,13 @@ answer, later engaged, then completed" -- which the per-phone counts of
   the reply rate after k non-responses in a row.
 * **Lazy tables.** Both return a `dbplyr` table that DuckDB computes, on one
   session-wide connection with a 4 GB memory limit that spills to disk past
-  it (`options(survey160r.duckdb_memory, survey160r.duckdb_temp_dir)`). On
+  it (`options(survey160r.duckdb_memory, survey160r.duckdb_temp_dir)`); each
+  session spills into its own subdirectory, removed when the session ends. On
   the production projection (~165M rows) a full-scan aggregate takes 15-25 s
-  under 6.5 GB; `phones =` or `sample_frac =` (a reproducible md5 sample of
-  numbers) take seconds. They need `duckdb`, `DBI` and `dbplyr` (`dbplyr` is a
-  new Suggests).
+  at 5.5-7.5 GB of process memory; `phones =` or `sample_frac =` (a
+  reproducible md5 sample of numbers) take seconds. They need `duckdb`, `DBI`
+  and `dbplyr` (`dbplyr` is a new Suggests); an interactive session is offered
+  the install.
 * **Order** matches `disposition_summary()`: by `disposition_date`, then
   campaign id as a number, a missing date or id counting as the oldest -- so
   a phone's last step is its `latest_disposition`.
@@ -34,6 +36,9 @@ answer, later engaged, then completed" -- which the per-phone counts of
   campaigns, whose completes are never reported.
 * The disposition vignette gains "Follow numbers over time", and now dates
   the projection from April 2021 (it said mid-2023).
+* CI installs dependencies as P3M Linux binaries: a cold run (new container
+  image, empty package cache) takes ~5 minutes instead of ~50, most of which
+  was compiling duckdb from source.
 
 ## Errors and messages
 
