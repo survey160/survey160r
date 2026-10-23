@@ -56,9 +56,39 @@ test_that("`columns` picks the history groups; NULL keeps only identity and labe
   only_run <- collect_sorted(disposition_steps(p, columns = "run_length"))
   expect_true("run_length" %in% names(only_run))
   expect_false("path_so_far" %in% names(only_run))
-  expect_error(disposition_steps(p, columns = "history"),
-               "`columns` must be NULL or any of neighbors, so_far, run_length, path_so_far",
+  expect_error(disposition_steps(p, columns = "foo"),
+               "`columns` must be NULL or any of neighbors, so_far, run_length, path_so_far, history",
                class = "s160_error")
+})
+
+test_that("the history group counts what came before and names the segment", {
+  skip_if_no_sequence()
+  rows <- rbind(sequence_records(),
+                .sequence_row("2015550106", 1L, "2026-01-01", engaged = 1L, opted_in = 1L, completed = 1L),
+                .sequence_row("2015550106", 2L, "2026-02-01", engaged = 1L, opted_in = 1L, completed = 1L),
+                .sequence_row("2015550106", 3L, "2026-03-01"))
+  d <- collect_sorted(disposition_steps(write_sequence_parquet(rows), columns = "history"))
+  expect_false(any(c("completes_so_far", "replies_so_far", "path_so_far") %in% names(d)))
+  a <- d[d$phone == "2015550101", ]                          # N E C
+  expect_identical(a$prior_completes, c(0L, 0L, 0L))
+  expect_identical(a$prior_replies, c(0L, 0L, 1L))
+  expect_identical(a$prior_unanswered, c(0L, 1L, 1L))
+  expect_equal(a$history_segment, c("first_contact", "unanswered_1_2", "replied"))
+  b <- d[d$phone == "2015550102", ]                          # X N N T: X counts as unanswered
+  expect_identical(b$prior_unanswered, c(0L, 1L, 2L, 3L))
+  expect_equal(b$history_segment, c("first_contact", "unanswered_1_2", "unanswered_1_2", "unanswered_3_plus"))
+  f <- d[d$phone == "2015550106", ]                          # C C N
+  expect_identical(f$prior_completes, c(0L, 1L, 2L))
+  expect_equal(f$history_segment, c("first_contact", "completer_1", "completer_2_plus"))
+  # a stored completion of unknown outcome (t2w_external) is a reply, not a complete
+  g <- d[d$phone == "2015550104", ]
+  expect_identical(g$prior_replies, c(0L, 0L))
+  # the group composes with the others, and the running counts agree with it
+  both <- collect_sorted(disposition_steps(write_sequence_parquet(rows), columns = c("so_far", "history")))
+  expect_identical(both$prior_replies + as.integer(!both$label %in% c("non_response", "undeliverable")),
+                   both$replies_so_far)
+  expect_identical(both$prior_completes + as.integer(both$label %in% c("completed", "web_complete")),
+                   both$completes_so_far)
 })
 
 test_that("a pattern flags steps whose history matches, whatever the columns", {
