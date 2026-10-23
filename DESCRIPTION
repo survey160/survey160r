@@ -1,6 +1,6 @@
 Package: survey160r
 Title: R Client for Survey160 Data
-Version: 0.72.0
+Version: 0.73.0
 Authors@R: c(
     person("Lennon", "Shimokawa", email = "lshimokawa@survey160.com", role = c("aut", "cre"))
     )
@@ -33,6 +33,7 @@ Imports:
 Suggests:
     askpass,
     DBI,
+    dbplyr (>= 2.4.0),
     duckdb (>= 1.0.0),
     testthat (>= 3.1.9),
     mockery,

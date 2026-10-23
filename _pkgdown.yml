@@ -58,6 +58,8 @@ reference:
   - disposition_screen
   - disposition_summary
   - disposition_records
+  - disposition_steps
+  - disposition_paths
   - disposition_run
   - disposition_input_columns
 - title: Opt-out screening

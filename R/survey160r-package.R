@@ -75,6 +75,10 @@
 #'     phone and campaign.
 #'   \item \code{\link{disposition_funnel}} -- funnel counts and rates by any
 #'     dimension.
+#'   \item \code{\link{disposition_steps}} / \code{\link{disposition_paths}} --
+#'     each number's campaigns in time order: per-campaign history (what
+#'     happened after k non-responses) or one path per phone with sequence
+#'     patterns (no reply, then engaged, then completed).
 #'   \item \code{\link{disposition_run}} / \code{\link{disposition_input_columns}}
 #'     -- build the per-respondent rows from one campaign export (the producer
 #'     side of the dataset).
@@ -145,5 +149,7 @@
 #' }
 #'
 #' Persisting results, walking the whole campaign fleet, and scheduling live
-#' in consumer projects; this package returns in-memory data frames.
+#' in consumer projects; this package returns in-memory data frames, except
+#' \code{\link{disposition_steps}} and \code{\link{disposition_paths}}, which return
+#' lazy \pkg{dbplyr} tables that DuckDB computes on \code{collect()}.
 "_PACKAGE"
