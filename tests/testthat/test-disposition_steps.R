@@ -174,20 +174,25 @@ test_that("a missing dependency is named with the install command", {
 })
 
 test_that("an interactive session is offered the install, then re-checked", {
+  # mockery::stub, not a base rebind: covr's non-interactive subprocess ignores
+  # a mocked base::interactive (see tests/CLAUDE.md, Mocking).
   captured <- new_capture()
-  missing <- c("dbplyr")
-  local_mocked_bindings(.disposition_lazy_missing = function() missing)
-  local_mocked_bindings(interactive = function() TRUE, .package = "base")
-  local_mocked_bindings(check_installed = function(pkg, reason = NULL, ...) {
+  captured$missing <- "dbplyr"
+  check <- .disposition_lazy_check
+  mockery::stub(check, ".disposition_lazy_missing", function() captured$missing)
+  mockery::stub(check, "interactive", function() TRUE)
+  mockery::stub(check, "rlang::check_installed", function(pkg, reason = NULL, ...) {
     captured$pkg <- pkg
-    missing <<- character(0)   # the user accepted the install
-  }, .package = "rlang")
-  expect_null(.disposition_lazy_check("disposition_steps"))
+    captured$missing <- character(0)   # the user accepted the install
+  })
+  expect_null(check("disposition_steps"))
   expect_equal(captured$pkg, "dbplyr")
   # declined: still missing after the offer -> the classed error
-  local_mocked_bindings(check_installed = function(pkg, reason = NULL, ...) NULL, .package = "rlang")
-  missing <- c("dbplyr")
-  expect_error(.disposition_lazy_check("disposition_steps"), "needs dbplyr installed", class = "s160_error")
+  declined <- .disposition_lazy_check
+  mockery::stub(declined, ".disposition_lazy_missing", function() "dbplyr")
+  mockery::stub(declined, "interactive", function() TRUE)
+  mockery::stub(declined, "rlang::check_installed", function(pkg, reason = NULL, ...) NULL)
+  expect_error(declined("disposition_steps"), "needs dbplyr installed", class = "s160_error")
 })
 
 test_that("tables share one session connection, configured from options", {
