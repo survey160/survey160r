@@ -207,13 +207,9 @@
   n_valid <- sum(valid)
   total_segments <- n_seg * n_frame
   na_segments <- total_segments - n_valid
-  by_reason <- list(
-    parse_failure = sum(na_date$na_parse) +
-      sum(kept$na_reason == "parse_failure", na.rm = TRUE),
-    missing_endpoint = sum(na_date$na_missing) +
-      sum(kept$na_reason == "missing_endpoint", na.rm = TRUE),
-    chain_break = sum(kept$na_reason == "chain_break", na.rm = TRUE)
-  )
+  by_reason <- .na_reason_counts(kept$na_reason)
+  by_reason$parse_failure <- sum(na_date$na_parse) + by_reason$parse_failure
+  by_reason$missing_endpoint <- sum(na_date$na_missing) + by_reason$missing_endpoint
   if (used > 0L) {
     pct_clean <- 100 * mean(worst <= 5)
     pct_5_10 <- 100 * mean(worst > 5 & worst <= 10)

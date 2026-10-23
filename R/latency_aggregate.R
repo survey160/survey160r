@@ -228,6 +228,12 @@ aggregate_segment_cells <- function(bucketed, thresholds) {
   # columns; segment_cells_long() then fans those out to the per-threshold
   # rows. The previous one-pass-per-threshold form grouped the long frame four
   # times and recomputed the quantiles each time.
+  #
+  # The group key is the integer segment_index, not the segment label too: the
+  # label is a function of the index, so the groups (and their first-appearance
+  # order) are the same, while sorting the long frame on a character column was
+  # the single largest cost of the whole aggregation. The label is read off the
+  # group's first row.
   segment <- segment_index <- delta_min <- respondent_index <- na_code <-
     NULL
   thresholds <- as.integer(thresholds)
@@ -237,12 +243,15 @@ aggregate_segment_cells <- function(bucketed, thresholds) {
     resp <- respondent_index[valid]
     n_valid <- length(vals)
     q <- if (n_valid > 0L) {
-      stats::quantile(vals, probs = c(0.50, 0.90, 0.95), names = FALSE)
+      .quantile7(vals, c(0.50, 0.90, 0.95))
     } else {
       c(NA_real_, NA_real_, NA_real_)
     }
     na_counts <- tabulate(na_code, nbins = 3L)
     out <- list(
+      # `[1L]`, not `[[1L]]`: data.table probes j once on a zero-row table
+      # (a summary-only run), where `[[` would be out of bounds.
+      segment = segment[1L],
       n = n_valid,
       mean_delta_min = if (n_valid > 0L) mean(vals) else NA_real_,
       p50_delta_min = q[[1L]],
@@ -268,8 +277,26 @@ aggregate_segment_cells <- function(bucketed, thresholds) {
       out[[sprintf(".n_resp_over_%d", k)]] <- if (n_over > 0L) first_seen[[n_over]] else 0L
     }
     out
-  }, by = c(.bucket_keys, "segment", "segment_index")]
+  }, by = c(.bucket_keys, "segment_index")]
   segment_cells_long(wide, thresholds)
+}
+
+# stats::quantile(x, probs, names = FALSE) for its default type 7, on a vector
+# with no NA: the same arithmetic as quantile.default's type-7 branch (same
+# partial sort, same interpolation, no fuzz), so the values are bit-identical,
+# without the generic's argument checks and dispatch -- which, run once per
+# cell, were a fifth of the cell pass.
+.quantile7 <- function(x, probs) {
+  n <- length(x)
+  index <- 1 + (n - 1) * probs
+  lo <- floor(index)
+  hi <- ceiling(index)
+  x <- sort(x, partial = unique(c(lo, hi)))
+  qs <- x[lo]
+  i <- which(index > lo & x[hi] != qs)
+  h <- (index - lo)[i]
+  qs[i] <- (1 - h) * qs[i] + h * x[hi[i]]
+  qs
 }
 
 # Fan the wide per-cell table out to one row per (cell, threshold): the shared
