@@ -160,6 +160,9 @@ test_that("dataset problems are reported", {
   expect_error(disposition_steps(globbed), "must resolve to a literal file path", class = "s160_error")
   expect_error(disposition_steps(file.path(tempdir(), "absent.parquet")),
                class = "s160_not_found")
+  expect_error(disposition_paths(rows),
+               "disposition_paths: `dataset` must be the disposition Parquet path .*not a data frame \\(13 x",
+               class = "s160_error")
 })
 
 test_that("a missing dependency is named with the install command", {
@@ -314,4 +317,15 @@ test_that("DECIMAL ids filter as numbers; ids tied as numbers keep the summary's
   last <- collect_sorted(disposition_paths(p))
   expect_equal(last$path, "NE")
   expect_equal(disposition_summary(p)$latest_disposition, "engaged")
+})
+
+test_that("sample_frac keeps the same phones in steps and paths", {
+  skip_if_no_sequence()
+  rows <- do.call(rbind, lapply(sprintf("20155501%02d", 1:60), function(ph) .sequence_row(ph, 1L, "2026-01-01")))
+  p <- write_sequence_parquet(rows)
+  steps <- unique(collect_sorted(disposition_steps(p, sample_frac = 0.3, columns = NULL))$phone)
+  paths <- collect_sorted(disposition_paths(p, sample_frac = 0.3))$phone
+  expect_identical(steps, paths)
+  expect_gt(length(paths), 0L)
+  expect_lt(length(paths), 60L)
 })

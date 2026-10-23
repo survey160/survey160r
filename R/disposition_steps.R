@@ -181,6 +181,15 @@
 # Validate `dataset` and describe it: the quoted read_parquet() source (absolute
 # path, so the lazy table survives a later setwd()) and its stored column names.
 .disposition_lazy_source <- function(con, dataset, fn) {
+  # disposition_summary() / disposition_funnel() take an in-memory frame too, so
+  # passing one here is a natural mistake: say why it cannot work and the fix.
+  if (is.data.frame(dataset)) {
+    stop_s160(sprintf(paste0(
+      "`dataset` must be the disposition Parquet path (from disposition_pull()), ",
+      "not a data frame%s. The sequence readers run inside DuckDB over the file; ",
+      "to use an in-memory frame, write it first with nanoparquet::write_parquet()."),
+      sub("^, not a data frame", "", .not_got(dataset))), fn = fn)
+  }
   .disposition_check_path(dataset)
   # Checked on the RESOLVED path: a glob character in the working directory or a
   # symlink target ("/data/run[1]/x.parquet") would expand just the same.
