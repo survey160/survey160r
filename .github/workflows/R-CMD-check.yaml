@@ -21,17 +21,20 @@ jobs:
   R-CMD-check:
     runs-on: ubuntu-latest
     # Backstop below the 360m default. A warm run (package cache hit) finishes in
-    # ~2.3m, but a cold one -- a new container image changes the cache key -- builds
-    # all ~90 dependencies from source, duckdb alone ~20m. 20m cancelled every cold
-    # run before the cache-save step, so the cache never refilled; 60m lets one
-    # cold run finish and save it.
-    timeout-minutes: 60
+    # ~2.3m; a cold one (a new container image changes the cache key) installs
+    # the ~90 dependencies as P3M binaries in a few minutes. Without binaries a
+    # cold run compiled everything from source -- duckdb alone took 45m single-
+    # threaded -- and a 20m limit cancelled it before the cache-save step, so the
+    # cache never refilled. 30m covers a source fallback compiled with -j4.
+    timeout-minutes: 30
     container:
       image: ghcr.io/r-hub/containers/ubuntu-release:latest
 
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
       R_KEEP_PKG_SOURCE: yes
+      # Parallel compilation for any package that still builds from source.
+      MAKEFLAGS: -j4
 
     steps:
       - uses: actions/checkout@v4
@@ -60,6 +63,16 @@ jobs:
             echo "::error::Version bumped from $BASE_VERSION to $PR_VERSION but NEWS.md was not updated. Add a section for $PR_VERSION."
             exit 1
           fi
+
+      # Install CRAN packages as Linux binaries from Posit Public Package Manager
+      # (P3M) instead of compiling them: the container's R points at plain CRAN,
+      # which serves Linux packages as source only. The codename comes from the
+      # image, so a container upgrade keeps resolving the matching binary repo.
+      - name: Use P3M binary packages
+        run: |
+          . /etc/os-release
+          echo "options(repos = c(CRAN = 'https://p3m.dev/cran/__linux__/${VERSION_CODENAME}/latest'))" >> "$(R RHOME)/etc/Rprofile.site"
+          Rscript -e 'print(getOption("repos"))'
 
       - uses: r-lib/actions/setup-r-dependencies@v2
         with:
