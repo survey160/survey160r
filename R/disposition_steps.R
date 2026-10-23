@@ -61,6 +61,15 @@
 .disposition_lazy_check <- function(fn) {
   absent <- .disposition_lazy_missing()
   if (length(absent) == 0L) return(invisible())
+  # An interactive session is offered the install, as the duckdb-backed screen
+  # does (.disposition_offer_duckdb); after it, re-check before giving up.
+  if (interactive()) {
+    rlang::check_installed(absent, reason = paste(
+      "to query disposition sequences inside DuckDB (the full projection does",
+      "not fit in memory otherwise)."))
+    absent <- .disposition_lazy_missing()
+    if (length(absent) == 0L) return(invisible())
+  }
   stop_s160(sprintf(paste0(
     "needs %s installed: install.packages(c(%s)). It returns a lazy table that ",
     "DuckDB computes, so the full projection never has to fit in memory."),
