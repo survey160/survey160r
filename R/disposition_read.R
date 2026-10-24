@@ -1220,7 +1220,12 @@ disposition_screen <- function(sample, dataset, phone_col = "phone",
 #'   \code{interactive()}: a live bar in an interactive session, silent in batch
 #'   or scheduled runs. The projection is a few hundred MB, so an interactive
 #'   pull otherwise looks stalled while it transfers.
-#' @return The local path to the downloaded Parquet (a single string).
+#' @return The local path to the downloaded Parquet (a single string), ready for
+#'   \code{\link{disposition_screen}}, \code{\link{disposition_summary}},
+#'   \code{\link{disposition_records}}, \code{\link{disposition_funnel}},
+#'   \code{\link{disposition_steps}} and \code{\link{disposition_paths}}. The
+#'   first pull transfers a few hundred MB (a minute or two on an office
+#'   connection); every later call returns the cached path at once.
 #' @seealso \code{\link{disposition_summary}}, \code{\link{disposition_screen}},
 #'   \code{\link{opt_out_pull}}, \code{\link{s160_gcs_init}}
 #' @examples
