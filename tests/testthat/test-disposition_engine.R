@@ -499,6 +499,8 @@ test_that("campaign / date filters pre-filtered in the scan match the in-R filte
     list(campaign_ids = 10L),
     list(campaign_ids = c(10, 12)),            # numeric ids, matched as text
     list(campaign_ids = c("11", "99")),
+    list(campaign_ids = c("011", "12")),       # not an integer's spelling: matched as text
+    list(campaign_ids = "10.0"),
     list(campaign_ids = c(10L, NA)),           # NA id: R matches the NA row -> not pushed
     list(campaign_ids = integer(0)),
     list(date_from = "2026-03-02"),

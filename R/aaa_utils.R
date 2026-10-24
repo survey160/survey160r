@@ -25,7 +25,12 @@
   # useBytes: the test is "exactly ten ASCII digits", which bytewise matching
   # decides identically (a multibyte character is never a digit byte) without
   # the per-string encoding validation -- measurably cheaper at 100M+ phones.
-  dirty <- !grepl("\\A[0-9]{10}\\z", x, perl = TRUE, useBytes = TRUE)
+  # As a byte-length test plus a search for any non-digit byte (which stops at
+  # the first one) rather than one anchored "exactly ten digits" match: the
+  # same set, slightly cheaper. An NA counts as two bytes (keepNA = FALSE)
+  # and so takes the slow path, as it did, where it stays NA.
+  dirty <- nchar(x, type = "bytes", keepNA = FALSE) != 10L |
+    grepl("\\D", x, perl = TRUE, useBytes = TRUE)
   if (any(dirty)) x[dirty] <- .normalize_phone_slow(x[dirty])
   x
 }

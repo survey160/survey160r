@@ -138,10 +138,10 @@ parse_campaign_timestamps <- function(x) {
 na_if_blank <- function(data) {
   char_cols <- vapply(data, is.character, logical(1))
   for (col in names(data)[char_cols]) {
-    # which() drops the NA comparisons, so one `== ""` pass per column is the
-    # whole test (no separate !is.na() mask), and only a column that has a
-    # blank is rewritten.
-    blank <- which(data[[col]] == "")
+    # nzchar() is FALSE only for "" (an NA is TRUE, as `NA == ""` is NA and
+    # which() drops it), so one length test per column is the whole check --
+    # no string comparison -- and only a column that has a blank is rewritten.
+    blank <- which(!nzchar(data[[col]]))
     if (length(blank) > 0L) data[[col]][blank] <- NA_character_
   }
   data

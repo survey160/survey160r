@@ -1,5 +1,33 @@
 # survey160r (development version)
 
+## Performance
+
+Outputs are identical to the previous version (checked on synthetic campaigns
+and on the production projection, ~165M rows); only the work behind them
+changed.
+
+* A phone screen of the production projection (`disposition_summary(path,
+  phones = )`, `disposition_screen()`, `disposition_records(path, phones = )`)
+  reads the matching rows in one scan: when every requested number is ten
+  digits -- the usual screen -- the stored value is matched as-is and only
+  other-length values are normalized, in the same scan (1.8 s -> 0.8 s for
+  100k numbers on prod). `disposition_steps()` / `disposition_paths()` scope
+  their `phones` the same way.
+* `campaign_ids` on a Parquet path compares the stored INTEGER id as an
+  integer (when the id is written as one), so DuckDB skips the row groups of
+  other campaigns: one campaign's records in 0.3 s instead of 1 s on prod.
+* `disposition_run()` decodes each `id.<q>.scriptDate` column once (the funnel,
+  terminal and date logic each parsed it again): ~2x faster on a 200k-row,
+  12-question export.
+* The per-phone rollup (`disposition_summary()` on a frame) groups phones from
+  one radix sort and reads the date span off the ordering it already has
+  (two fewer passes over the rows); the final sort is skipped when the
+  rollup already comes out in phone order.
+* `latency_report()` groups the segment cells by the integer segment index
+  rather than the label, counts NA reasons in one pass, and computes the cell
+  quantiles with the type-7 arithmetic directly; `na_if_blank()` tests string
+  length instead of comparing strings.
+
 ## Disposition history segments
 
 * `disposition_steps()` gains a `"history"` column group: `prior_completes`,

@@ -63,12 +63,7 @@ build_diagnostics <- function(frame, n_respondents_in, parse_failures,
     n_respondents_no_valid_segment = no_valid,
     n_segments_total = total_segments,
     n_segments_na = na_segments,
-    n_segments_na_by_reason = list(
-      parse_failure = sum(frame$na_reason == "parse_failure", na.rm = TRUE),
-      missing_endpoint = sum(frame$na_reason == "missing_endpoint",
-                             na.rm = TRUE),
-      chain_break = sum(frame$na_reason == "chain_break", na.rm = TRUE)
-    ),
+    n_segments_na_by_reason = .na_reason_counts(frame$na_reason),
     n_negative_latencies_clamped = n_clamped,
     parse_failures_per_column = parse_failures,
     config_hash = config_hash,
@@ -93,4 +88,13 @@ build_diagnostics <- function(frame, n_respondents_in, parse_failures,
   per_resp <- data.table::data.table(r = respondent_index[valid],
                                      d = delta_min[valid])
   per_resp[, list(d = max(d)), by = r][["d"]]
+}
+
+# The three NA-reason counts of a frame's na_reason column as the named list the
+# diagnostics carry: one match() over the column and a tabulate(), where three
+# `== "<reason>"` string comparisons each scanned the whole long frame.
+.na_reason_counts <- function(na_reason) {
+  counts <- tabulate(match(na_reason, .na_reason_levels), nbins = 3L)
+  list(parse_failure = counts[[1L]], missing_endpoint = counts[[2L]],
+       chain_break = counts[[3L]])
 }

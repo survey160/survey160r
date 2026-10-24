@@ -66,7 +66,10 @@
   work[[".cid"]] <- data[["campaign_id"]]
   work[[".sent1"]] <- data[["sent"]] == 1L
   for (f in flags) work[[paste0(".", f)]] <- data[[f]]
-  dt <- data.table::as.data.table(work)
+  # `work` is a fresh list shell of the columns, so setDT() converts it in
+  # place (as.data.table() deep-copied every column); the grouping below only
+  # reads them, and the `.na` column set() adds goes on the shell, not `data`.
+  dt <- data.table::setDT(work)
   agg <- dt[, list(
     campaigns = data.table::uniqueN(.cid),
     n_sent = sum(.sent1, na.rm = TRUE),

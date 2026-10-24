@@ -364,14 +364,26 @@
               "file_row_number AS s160_row",
               paste(q("completed"), "IS NOT NULL AS completion_known"))
   where <- c("phone IS NOT NULL", pre)
+  inner_where <- NULL
   if (!is.null(phones)) {
-    where <- c(where, if (length(phones) == 0L) {
-      "FALSE"
+    if (length(phones) == 0L) {
+      where <- c(where, "FALSE")
     } else {
       req <- .disposition_lazy_register(con, "phones",
                                         data.frame(phone = phones, stringsAsFactors = FALSE))
-      sprintf("phone IN (SELECT phone FROM %s)", req)
-    })
+      if (all(nchar(phones, type = "bytes") == 10L)) {
+        # Every requested phone is ten digits (the usual case), so a stored
+        # value of ten characters can only match as itself: match it as stored
+        # and normalize only the other lengths. Applied on the scan, before
+        # the normalized projection, it is a plain hash semi-join on the
+        # stored column for all of prod -- ~2x faster than filtering the
+        # normalized phone, with the same rows (see .disposition_read_duckdb).
+        inner_where <- sprintf("(CASE WHEN length(%1$s) = 10 THEN %1$s ELSE %2$s END) IN (SELECT phone FROM %3$s)",
+                               phone, .disposition_phone_sql(phone), req)
+      } else {
+        where <- c(where, sprintf("phone IN (SELECT phone FROM %s)", req))
+      }
+    }
   }
   if (!is.null(sample_frac) && sample_frac < 1) {
     # md5, not hash(): the same phones are sampled on every DuckDB version, so a
@@ -380,7 +392,8 @@
                               as.integer(round(sample_frac * 1e6))))
   }
   paste0("SELECT * FROM (SELECT ", paste(select, collapse = ", "), " FROM ",
-         source$src, ") WHERE ", paste(where, collapse = " AND "))
+         source$src, if (!is.null(inner_where)) paste(" WHERE", inner_where),
+         ") WHERE ", paste(where, collapse = " AND "))
 }
 
 # The ordered window every history column shares (one sort per query). It is the

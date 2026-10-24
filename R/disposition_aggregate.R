@@ -155,6 +155,19 @@
                    field_timezone)$date
 }
 
+# A copy of `data` with every id.<q>.scriptDate column decoded to POSIXct (UTC),
+# the batchDate columns left as they are: the send columns have several readers
+# in disposition_run(), the reply columns one each. A column already parsed (a
+# reader's `timestamps = "POSIXct"`) passes through.
+.parse_script_dates <- function(data) {
+  for (col in grep("^id\\..+\\.scriptDate$", names(data), value = TRUE)) {
+    if (!inherits(data[[col]], "POSIXct")) {
+      data[[col]] <- parse_campaign_timestamps(data[[col]])
+    }
+  }
+  data
+}
+
 # Collapse fully-identical duplicate rows before the grain guard. A campaign
 # export can repeat a respondent's row verbatim (a re-export appended to
 # itself, an upstream merge that duplicated a batch): an exactly-duplicated row
@@ -478,11 +491,20 @@ disposition_run <- function(campaign_id, data, population = NULL,
 
   survey_mode <- detect_survey_mode(data)
   questions <- latency_discover_questions(data)
+  # Every id.<q>.scriptDate column is decoded ONCE here: the funnel masks, the
+  # completion / terminal masks and the disposition date all read the same send
+  # columns, and each would otherwise parse its strings again (three decodes of
+  # every send column on a wide export). parse_campaign_timestamps() passes the
+  # parsed POSIXct through, so the consumers are unchanged. `data` itself keeps
+  # the raw columns for a caller's `population` filter, which may compare them
+  # as strings.
+  parsed <- .parse_script_dates(data)
   # `population` NULL (the default) -> .funnel_masks derives opt-in from routing
   # (reached a continuation step); a caller-supplied filter overrides it.
-  masks <- .funnel_masks(data, .opening_questions(questions), questions, population)
+  masks <- .funnel_masks(if (is.null(population)) parsed else data,
+                         .opening_questions(questions), questions, population)
   sent <- masks$sent
-  completed <- .mask_completed(data, survey_mode, sent)
+  completed <- .mask_completed(parsed, survey_mode, sent)
   # A completion IS an opt-in: fold it into opted_in so the funnel stays monotone
   # (completed <= opted_in) in every mode. For sms this is a no-op (the close is a
   # continuation step); for t2w it recovers web-completers whose link sat in the
@@ -492,8 +514,8 @@ disposition_run <- function(campaign_id, data, population = NULL,
   opted_in <- masks$opted_in | (completed %in% TRUE)
   # Terminal disposition split: refused (declined) vs ineligible (screened out),
   # with terminated the union kept for back-compat.
-  refused <- .mask_refused(data)
-  ineligible <- .mask_ineligible(data)
+  refused <- .mask_refused(parsed)
+  ineligible <- .mask_ineligible(parsed)
 
   # Output columns use the canonical funnel vocabulary (sent / engaged /
   # opted_in / completed), matching the latency signals and .funnel_masks().
@@ -512,7 +534,7 @@ disposition_run <- function(campaign_id, data, population = NULL,
     survey_mode = rep(survey_mode, length(phone)),
     error = .disposition_error(data),
     carrier = .disposition_carrier(data),
-    disposition_date = .disposition_dates(data, field_timezone),
+    disposition_date = .disposition_dates(parsed, field_timezone),
     stringsAsFactors = FALSE
   )
 
