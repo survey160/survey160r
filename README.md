@@ -13,7 +13,22 @@ R package for accessing Survey160 campaign data, across these areas:
 
 **New here?** To screen a sample before fielding, jump to [Disposition screening](#disposition-screening). First time on this machine, start with [First-time setup](#first-time-setup) -- you need a credential and a bucket grant before any data call works.
 
-The pure entry points `latency_run()` and `disposition_run()` take an in-memory data frame and return a list with a `consolidated` data frame plus provenance `meta`. The disposition readers (`disposition_summary()` / `disposition_records()` / `disposition_screen()` / `disposition_funnel()`) read the Parquet projection and return a data frame, and `disposition_pull()` downloads that projection from GCS and returns a local path. `disposition_funnel()` rolls the projection up to funnel counts and rates by any dimension (carrier, mode, topic, ...) -- the disposition analogue of `campaign_metrics_summary()`, sharing the `funnel_rates()` definition. `disposition_steps()` and `disposition_paths()` follow each number's campaigns in time order (per-campaign history, or one path per phone with sequence patterns such as "no reply, then engaged, then completed") and return a lazy `dbplyr` table that DuckDB computes. The opt-out readers mirror that pair: `opt_out_pull()` downloads the opt-out list and `opt_out_screen()` annotates a sample with each number's opt-out status. `campaign_metrics_pull()` downloads the consolidated per-campaign metrics + recipient-latency projection; `campaign_metrics_records()` reads it into analysis-ready cells and `campaign_metrics_summary()` rolls those up to funnel counts and rates by any project dimension (it is aggregate metrics, not phone-keyed PII, so there is no screen helper). Fleet orchestration and Parquet persistence live in downstream consumer projects. See `?survey160r` for an overview from the R console.
+## Which function do I need?
+
+| I want to... | Call | Guide |
+|---|---|---|
+| Drop numbers that already completed, refused, or screened out before I field | `disposition_pull()` then `disposition_screen(my_sample, dataset)` | [Disposition screening](#disposition-screening) |
+| Drop numbers that opted out | `opt_out_pull()` then `opt_out_screen(my_sample, optout)` | [Opt-out screening](#opt-out-screening) |
+| Look up a few numbers' contact history | `disposition_summary(dataset, phones = )` (one row per phone) / `disposition_records(dataset, phones = )` (one row per campaign) | [Disposition screening](#disposition-screening) |
+| Funnel rates by carrier, mode, topic, or campaign | `disposition_funnel(dataset, by = "carrier")` | [Disposition screening](#disposition-screening) |
+| Follow what each number did campaign after campaign | `disposition_paths()` (one path per phone) / `disposition_steps()` (one row per campaign) | `vignette("disposition")` |
+| Funnel rates across the fleet by registration, brand, client, or mode | `campaign_metrics_pull()` then `campaign_metrics_summary(path, by = )` | [Campaign metrics](#campaign-metrics) |
+| See how fast each message followed the last one in a campaign | `latency_run(campaign_id, data)` | [Latency analysis](#latency-analysis) |
+| How many recipients reached each question | `question_funnel(data, c("intro", "q1", "close"))` | `vignette("latency")` |
+| Read a campaign's last export | `s160_gcs_campaign_results_read(campaign_id)` | [Raw data access](#raw-data-access) |
+| Get an export fresher than the last one on GCS | `s160_api_auth()` then `s160_api_campaign_results(campaign_id)` | [Raw data access](#raw-data-access) |
+
+Every screen appends columns to your sample 1:1 and never drops a row -- you filter on your own rules. Every `*_pull()` downloads once and reuses a local cache (`refresh = TRUE` re-downloads). `?survey160r` lists every function by task from the R console.
 
 ## Installation
 
@@ -140,6 +155,21 @@ subset(cleaned, !(opted_out %in% TRUE))
 ```
 
 The opt-out list lives in the same `s160_disposition_prod` bucket as the disposition dataset, so the same access covers both, and the two screens chain (annotate for opt-out and prior contact, then filter once). Full walkthrough in the **[opt-out guide](vignettes/opt-out.Rmd)** (`vignette("opt-out")` once installed).
+
+## Campaign metrics
+
+Measure the funnel -- sent, engaged, opted in, completed -- across the whole fleet, by registration, brand, client, fielding location, or mode. Pull the consolidated projection once, then roll it up:
+
+```r
+library(survey160r)
+s160_gcs_init()   # one-time browser sign-in (cached)
+
+path <- campaign_metrics_pull()                        # cached after the first download
+campaign_metrics_summary(path, by = "registration_id")
+campaign_metrics_summary(path, by = c("brand", "mode"), percent = TRUE)
+```
+
+The projection holds counts, not phone numbers, so there is no screen here. To scope a rollup (a date window, a set of campaigns), read the cells with `campaign_metrics_records()`, filter, and pass the frame to `campaign_metrics_summary()`; never sum the raw Parquet yourself, it repeats each count across latency rows. Full walkthrough in the **[campaign-metrics guide](vignettes/campaign-metrics.Rmd)** (`vignette("campaign-metrics")` once installed).
 
 ## First-time setup
 
