@@ -249,6 +249,11 @@ Common symptoms and fixes:
 | `disposition_pull()` returns data you know is out of date | It reused a cached copy | Re-download with `disposition_pull(refresh = TRUE)` |
 | `argument(s) not accepted by the CSV reader (data.table::fread): filter_open` | The argument belongs to a different function (e.g. `filter_open` is on `s160_api_campaign_results()`, not `s160_gcs_campaign_results_read()`) | Move it to the right function, or drop it |
 | A `date_from` / `date_to` filter drops more rows than expected | A row whose `disposition_date` is `NA` (never populated for that campaign) is dropped by any date bound | Expected -- only dated rows match a date filter; omit the bound to keep undated rows |
+| The browser never opens on `s160_gcs_init()` | R has no default browser (a server, a container, some IDE sessions) | `options(browser = "xdg-open")` (or a browser path) and retry, or `s160_gcs_init(adc = TRUE)` after `gcloud auth application-default login` |
+| `disposition_pull(env = "staging")` (or `opt_out_pull`, `campaign_metrics_pull`) errors with no staging tier | Those datasets exist only for `prod` and `dev`; staging sends fold into prod | Use `env = "prod"`; `s160_datasets()` lists every dataset's environments |
+| `disposition_steps()` / `disposition_paths()` say a package is missing | The sequence readers need `duckdb`, `DBI` and `dbplyr`, with no in-R fallback | `install.packages(c("duckdb", "DBI", "dbplyr"))` and restart R |
+| A screen or filter is slow and R's memory balloons | `duckdb` is not installed, so the reader loads the whole projection | `install.packages("duckdb")`; the readers use it automatically |
+| `Using cached disposition projection (12 days old): ...` and you want today's | A cache hit never checks GCS | `disposition_pull(refresh = TRUE)`; same `refresh = TRUE` on the other pulls |
 
 Every error names the function, what it received, and the next step; a script
 can catch one by class (`s160_not_initialized`, `s160_not_found`, ...) -- see
@@ -269,6 +274,14 @@ Clear cached OAuth tokens:
 ```r
 gargle::gargle_oauth_sitrep()  # list cached tokens and their location
 # delete the cache directory shown above, then restart R
+```
+
+Clear the downloaded datasets (the disposition projection, opt-out list, and campaign-metrics projection all cache here; the next `*_pull()` re-downloads):
+
+```r
+cache <- tools::R_user_dir("survey160r", "cache")
+list.files(cache)          # what is cached
+unlink(cache, recursive = TRUE)
 ```
 
 ## License

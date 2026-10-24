@@ -559,6 +559,26 @@ s160_datasets <- function() {
 #' read. Reader functions resolve their own bucket (defaulting to prod), so you
 #' no longer pass a bucket here.
 #'
+#' @section Before you start:
+#' Two things come from outside R, both one-time:
+#' \itemize{
+#'   \item \strong{The OAuth client secret} -- ask your team lead. You paste it
+#'     at the first prompt and it is saved to \code{~/.Renviron} as
+#'     \code{S160_GCS_CLIENT_SECRET}.
+#'   \item \strong{A bucket grant} -- Storage Object Viewer on the bucket you
+#'     read (\code{campaign_results} for exports, \code{s160_disposition_prod}
+#'     for the disposition dataset and opt-out list, \code{s160_analytics_prod}
+#'     for campaign metrics), via the \code{gcp-campaign-readers} group. Without
+#'     it the sign-in succeeds but the first read fails with a 403; ask a
+#'     sysadmin to add you.
+#' }
+#' If the browser does not open (a server, a container, or an R session with no
+#' default browser), set one first with \code{options(browser = "xdg-open")} (or
+#' the path to a browser), or sign in headlessly with \code{adc = TRUE} after
+#' \code{gcloud auth application-default login}. To start over, delete the
+#' \code{S160_GCS_CLIENT_SECRET} line from \code{~/.Renviron}, remove the token
+#' cache \code{gargle::gargle_oauth_sitrep()} lists, and restart R.
+#'
 #' For headless runs (reports, CI, scheduled jobs) pass \code{adc = TRUE} to
 #' authenticate with Application Default Credentials instead of the browser
 #' flow: no client secret and no browser, using the credentials from

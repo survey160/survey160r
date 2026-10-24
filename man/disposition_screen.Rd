@@ -70,6 +70,25 @@ either way.
 }
 
 \examples{
+# Against a tiny local projection (no sign-in), so this runs. In practice the
+# dataset is the path disposition_pull() returns.
+dataset <- tempfile(fileext = ".parquet")
+nanoparquet::write_parquet(data.frame(
+  phone = c("5551234567", "5551234567", "5559876543"),
+  campaign_id = c(101L, 102L, 101L),
+  engaged = c(1L, 1L, 0L), opted_in = c(1L, 0L, 0L), completed = c(1L, 0L, 0L),
+  web_complete = c(0L, 0L, 0L), refused = c(0L, 1L, 0L), ineligible = c(0L, 0L, 0L),
+  terminated = c(0L, 1L, 0L),
+  disposition_date = as.Date(c("2026-01-10", "2026-01-20", "2026-01-15"))
+), dataset)
+my_sample <- data.frame(phone = c("5551234567", "5559876543", "5550000000"),
+                        stratum = c("A", "B", "A"))
+cleaned <- disposition_screen(my_sample, dataset)
+cleaned[, c("phone", "stratum", "n_campaigns", "n_completed", "n_refused",
+            "latest_disposition")]
+# keep numbers not already finished and not a hard stop
+subset(cleaned, !((n_completed > 0 | n_web_complete > 0) \%in\% TRUE |
+                    (n_terminated > 0 | n_refused > 0 | n_ineligible > 0) \%in\% TRUE))
 \dontrun{
 dataset <- disposition_pull()
 cleaned <- disposition_screen(my_sample, dataset, phone_col = "phone")
