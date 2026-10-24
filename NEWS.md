@@ -1,5 +1,19 @@
 # survey160r (development version)
 
+## Documentation and developer experience
+
+Twenty rounds over the README, the articles and the function help, written for
+a Survey Manager who scripts against the exports. No behaviour changed.
+
+* **README**: a "Which function do I need?" task table replaces the overview
+  paragraph; a Campaign metrics section joins the other areas; the install block
+  names `DBI` / `dbplyr` for the sequence readers; First-time setup names the
+  analytics bucket.
+* `campaign_metrics_pull()` points at `campaign_metrics_summary()` /
+  `campaign_metrics_records()` instead of "your Parquet reader of choice" (the
+  raw file multi-counts); `s160_datasets()` documents the `campaign_metrics`
+  dataset; the campaign-metrics article is listed on the package site.
+
 ## Performance
 
 Outputs are identical to the previous version (checked on synthetic campaigns

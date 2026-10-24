@@ -506,8 +506,8 @@ s160_config <- function(refresh = FALSE) {
 #'
 #' Lists the datasets survey160r can read and the environments each is available
 #' in -- the values you pass as \code{env =} to the campaign readers, the
-#' \code{disposition_pull()} / \code{opt_out_pull()} pulls, and
-#' \code{s160_api_auth()}. Use it to discover the valid \code{(dataset, env)}
+#' \code{disposition_pull()} / \code{opt_out_pull()} /
+#' \code{campaign_metrics_pull()} pulls, and \code{s160_api_auth()}. Use it to discover the valid \code{(dataset, env)}
 #' combinations instead of guessing and hitting a "no <env> tier" error.
 #'
 #' The physical storage location is intentionally not exposed: select data by
@@ -518,8 +518,9 @@ s160_config <- function(refresh = FALSE) {
 #'   \describe{
 #'     \item{\code{dataset}}{Logical dataset name: \code{"campaign_results"}
 #'       (the campaign readers and \code{s160_api_*}), \code{"disposition"}
-#'       (\code{disposition_pull()}), or \code{"opt_out"}
-#'       (\code{opt_out_pull()}).}
+#'       (\code{disposition_pull()}), \code{"opt_out"}
+#'       (\code{opt_out_pull()}), or \code{"campaign_metrics"}
+#'       (\code{campaign_metrics_pull()}).}
 #'     \item{\code{env}}{An environment the dataset is available in:
 #'       \code{"prod"}, \code{"staging"}, or \code{"dev"}.}
 #'   }

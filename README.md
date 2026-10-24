@@ -42,9 +42,12 @@ pak::pkg_install("survey160/survey160r")
 
 # Recommended: low-memory, fast disposition screening (used automatically when installed)
 install.packages("duckdb")
+
+# Also needed for disposition_steps() / disposition_paths() (the sequence readers)
+install.packages(c("DBI", "dbplyr"))
 ```
 
-With `duckdb` installed, `disposition_screen()` reads only your sample's rows from the projection, a campaign- or date-filtered `disposition_records()` / `disposition_summary()` reads only the matching rows, and `disposition_funnel()` groups inside the scan: each takes seconds and a GB or two of RAM at most, so it runs on a laptop. Without it the readers fall back to loading the whole projection, which needs tens of GB. `disposition_steps()` / `disposition_paths()` require `duckdb`, `DBI` and `dbplyr` (no fallback).
+With `duckdb` installed, `disposition_screen()` reads only your sample's rows from the projection, a campaign- or date-filtered `disposition_records()` / `disposition_summary()` reads only the matching rows, and `disposition_funnel()` groups inside the scan: each takes seconds and a GB or two of RAM at most, so it runs on a laptop. Without it the readers fall back to loading the whole projection, which needs tens of GB. `disposition_steps()` / `disposition_paths()` require `duckdb`, `DBI` and `dbplyr` (no fallback) and return a lazy table you aggregate with `dplyr` verbs, then `collect()`.
 
 > R-universe rebuilds from `main` and can lag a fresh release by up to ~30 minutes. If a newly added function (for example `disposition_pull()`) is not found after installing from R-universe, get the latest straight from GitHub with the `pak` line above and restart R.
 
@@ -176,7 +179,7 @@ The projection holds counts, not phone numbers, so there is no screen here. To s
 Before any data call works you need, in order:
 
 1. The **OAuth client secret** -- ask your team lead; you paste it in once (below).
-2. **Access to the bucket you are reading** -- Storage Object Viewer on `campaign_results` (raw data / latency) or `s160_disposition_prod` (disposition screening), granted via the `gcp-campaign-readers` group. Without it, sign-in still succeeds but the first read returns a **403** -- ask a sysadmin to add you.
+2. **Access to the bucket you are reading** -- Storage Object Viewer, granted via the `gcp-campaign-readers` group, on `campaign_results` (raw data / latency), `s160_disposition_prod` (disposition and opt-out screening), or `s160_analytics_prod` (campaign metrics). Without it, sign-in still succeeds but the first read returns a **403** -- ask a sysadmin to add you.
 3. For the API path only: your **API user ID and key** -- also from your team lead.
 
 The rest of this section walks through each.
@@ -197,8 +200,9 @@ You may also be asked to allow OAuth token caching (say yes) and to
 install the `httpuv` package for a smoother auth experience (say yes).
 
 Your Google account needs **Storage Object Viewer** permission on the
-source bucket (the campaign-results bucket, or `s160_disposition_prod`
-for disposition screening). Persisting latency outputs (via the consumer
+source bucket (the campaign-results bucket, `s160_disposition_prod` for
+disposition and opt-out screening, or `s160_analytics_prod` for campaign
+metrics). Persisting latency outputs (via the consumer
 project's fleet runner) additionally needs **Storage Object Creator** on
 the destination analytics bucket. Contact a sysadmin if you get 403
 errors after authenticating.
