@@ -287,6 +287,17 @@ s160_api_request <- function(method, path, body = NULL, conn = NULL) {
 #' as a fallback, the legacy \code{S160_API_KEY}) for prod. Missing values prompt
 #' once on an interactive run and are saved.
 #'
+#' @section Before you start:
+#' You need an API user ID and a per-environment API key from your team lead
+#' (most Survey Managers never need the API: the last export of every campaign is
+#' already on Cloud Storage, see \code{\link{s160_gcs_campaign_results_read}};
+#' the API is for an export fresher than that). The first
+#' \code{s160_api_auth(env)} prompts for whatever \code{~/.Renviron} lacks and
+#' saves it, so you type each value once. To rotate a key, edit the
+#' \code{S160_<ENV>_API_KEY} line in \code{~/.Renviron} and restart R. A
+#' refused sign-in raises \code{s160_auth_error} naming the variables and URL it
+#' used.
+#'
 #' The in-session JWT refresh (tokens expire after 10 minutes; re-auth at 8)
 #' reuses the credentials stored on the connection, so a staging connection held
 #' alongside prod keeps refreshing against staging rather than the default.

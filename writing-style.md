@@ -25,7 +25,7 @@ Articles are **task-oriented how-to guides** (Diataxis sense): the reader arrive
 
 Every article follows the same skeleton, so knowing one means knowing them all:
 
-1. **Intro** -- 1-2 sentences: the task the guide covers, and that it assumes First-time setup.
+1. **Intro** -- 1-2 sentences: the task the guide covers, and that it assumes First-time setup, phrased "(the package README, or `?s160_gcs_init` from R)" so a reader inside `vignette()` has an in-R path to it.
 2. **## \<Primary task\>** -- the main recipe, code first (e.g. "Screen a sample", "Build a report").
 3. **## \<Secondary task\>** (one or more) -- common variations.
 4. **## What you get back** -- the result shape; a compact, task-relevant column table.
@@ -44,6 +44,14 @@ Every article follows the same skeleton, so knowing one means knowing them all:
 - **Runnable vs illustrative.** Chunks needing auth or network are `eval = FALSE` (shown, not run). Prefer a runnable chunk where the inputs allow -- a pure operation on a small in-memory frame (e.g. `disposition_summary()` on a data frame) -- so at least some shown output is real. Some articles legitimately have none (latency's inputs are a real campaign CSV). Never present fabricated output as if it ran.
 - **NA-safe idioms.** Filter with `!((n_completed > 0 | n_web_complete > 0) %in% TRUE)`, never `!(n_completed > 0 | n_web_complete > 0)` -- the latter silently drops all-`NA` blank-phone rows.
 - Canonical example values: campaign id `1234`; fictional phone numbers only (`555` / `999` ranges), never real PII.
+
+## README
+
+The README is the landing page on GitHub and the package site. It opens with the area list, then **"Which function do I need?"**: a task -> call -> guide table, one row per thing a Survey Manager comes to do, in the words they would use ("drop numbers that opted out"), not the function's words. Each area then gets a section with one copy-and-go block and a link to its article; keep the sections parallel (every area has one, in the order of the table). Troubleshooting is a symptom -> cause -> fix table; add a row whenever a support question repeats.
+
+## Examples in `?fn`
+
+Prefer a runnable `@examples` block over `\dontrun{}` alone. A reader that takes a dataset path can still run: write a tiny frame to `tempfile(fileext = ".parquet")` with `nanoparquet::write_parquet()` (an Import, so no extra dependency) and screen against that, then keep the real `*_pull()` call in a `\dontrun{}` tail. Say in a comment that the temp file stands in for the pull.
 
 ## Reference lives in `?fn`
 

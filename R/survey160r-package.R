@@ -114,6 +114,15 @@
 #'     double-encoded text (mojibake) in an export.
 #' }
 #'
+#' @section Local cache:
+#' \code{\link{disposition_pull}}, \code{\link{opt_out_pull}} and
+#' \code{\link{campaign_metrics_pull}} download once into
+#' \code{tools::R_user_dir("survey160r", "cache")} and return the cached path on
+#' later calls, saying how old the copy is (\dQuote{Using cached disposition
+#' projection (3 days old): ...}). A cache hit needs no sign-in and never checks
+#' Cloud Storage, so pass \code{refresh = TRUE} for today's data, or
+#' \code{dest =} to keep a copy elsewhere. Remove the directory to start clean.
+#'
 #' @section Errors and messages:
 #' Every error the package raises says which function failed, what it
 #' received, and what to do:

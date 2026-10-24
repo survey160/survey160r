@@ -506,8 +506,8 @@ s160_config <- function(refresh = FALSE) {
 #'
 #' Lists the datasets survey160r can read and the environments each is available
 #' in -- the values you pass as \code{env =} to the campaign readers, the
-#' \code{disposition_pull()} / \code{opt_out_pull()} pulls, and
-#' \code{s160_api_auth()}. Use it to discover the valid \code{(dataset, env)}
+#' \code{disposition_pull()} / \code{opt_out_pull()} /
+#' \code{campaign_metrics_pull()} pulls, and \code{s160_api_auth()}. Use it to discover the valid \code{(dataset, env)}
 #' combinations instead of guessing and hitting a "no <env> tier" error.
 #'
 #' The physical storage location is intentionally not exposed: select data by
@@ -518,8 +518,9 @@ s160_config <- function(refresh = FALSE) {
 #'   \describe{
 #'     \item{\code{dataset}}{Logical dataset name: \code{"campaign_results"}
 #'       (the campaign readers and \code{s160_api_*}), \code{"disposition"}
-#'       (\code{disposition_pull()}), or \code{"opt_out"}
-#'       (\code{opt_out_pull()}).}
+#'       (\code{disposition_pull()}), \code{"opt_out"}
+#'       (\code{opt_out_pull()}), or \code{"campaign_metrics"}
+#'       (\code{campaign_metrics_pull()}).}
 #'     \item{\code{env}}{An environment the dataset is available in:
 #'       \code{"prod"}, \code{"staging"}, or \code{"dev"}.}
 #'   }
@@ -557,6 +558,26 @@ s160_datasets <- function() {
 #' Authentication is account-level: one call covers every bucket the account can
 #' read. Reader functions resolve their own bucket (defaulting to prod), so you
 #' no longer pass a bucket here.
+#'
+#' @section Before you start:
+#' Two things come from outside R, both one-time:
+#' \itemize{
+#'   \item \strong{The OAuth client secret} -- ask your team lead. You paste it
+#'     at the first prompt and it is saved to \code{~/.Renviron} as
+#'     \code{S160_GCS_CLIENT_SECRET}.
+#'   \item \strong{A bucket grant} -- Storage Object Viewer on the bucket you
+#'     read (\code{campaign_results} for exports, \code{s160_disposition_prod}
+#'     for the disposition dataset and opt-out list, \code{s160_analytics_prod}
+#'     for campaign metrics), via the \code{gcp-campaign-readers} group. Without
+#'     it the sign-in succeeds but the first read fails with a 403; ask a
+#'     sysadmin to add you.
+#' }
+#' If the browser does not open (a server, a container, or an R session with no
+#' default browser), set one first with \code{options(browser = "xdg-open")} (or
+#' the path to a browser), or sign in headlessly with \code{adc = TRUE} after
+#' \code{gcloud auth application-default login}. To start over, delete the
+#' \code{S160_GCS_CLIENT_SECRET} line from \code{~/.Renviron}, remove the token
+#' cache \code{gargle::gargle_oauth_sitrep()} lists, and restart R.
 #'
 #' For headless runs (reports, CI, scheduled jobs) pass \code{adc = TRUE} to
 #' authenticate with Application Default Credentials instead of the browser

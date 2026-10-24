@@ -19,8 +19,10 @@
 #'
 #' Pulls \code{campaign_all.parquet} -- the fleet's consolidated per-campaign
 #' metrics and recipient-latency view -- from the environment's analytics bucket
-#' to a local file and returns the path, ready to read with your Parquet reader
-#' of choice (e.g. \pkg{arrow} or \pkg{nanoparquet}). Downloaded once and reused
+#' to a local file and returns the path, ready to hand to
+#' \code{\link{campaign_metrics_summary}} (funnel counts and rates by any
+#' dimension) or \code{\link{campaign_metrics_records}} (the analysis-ready
+#' cells). Downloaded once and reused
 #' from the local cache on later calls (pass \code{refresh = TRUE} to force a
 #' fresh download). Parallels \code{\link{disposition_pull}} and reaches GCS the
 #' same way: authenticate first with \code{\link{s160_gcs_init}}() so the
@@ -32,8 +34,13 @@
 #' threshold)} and carries the funnel counts, the recipient-latency
 #' distribution, and the \code{tracker_*} project dimensions. It is aggregate
 #' metrics, not phone-keyed PII, so it lives in the \code{s160_analytics_<env>}
-#' bucket rather than the disposition bucket, and there is no screening helper --
-#' read the pulled file and aggregate directly.
+#' bucket rather than the disposition bucket, and there is no screening helper.
+#' For counts and rates, use \code{\link{campaign_metrics_summary}}: it reads
+#' through \code{\link{campaign_metrics_records}} (which drops the rows the file
+#' repeats across its latency segment and threshold rows) and sums one grain --
+#' the day totals, not the hour cells as well -- so a send is counted once. A raw
+#' Parquet reader, or a sum over the records' hour and day cells together,
+#' multi-counts every send.
 #'
 #' @param env Environment: \code{"prod"} (default) or \code{"dev"}. There is no
 #'   staging analytics tier; passing \code{env = "staging"} errors clearly.
@@ -49,14 +56,17 @@
 #' @param progress Show a download progress bar. Defaults to
 #'   \code{interactive()}: a live bar in an interactive session, silent in batch
 #'   or scheduled runs.
-#' @return The local path to the downloaded Parquet (a single string).
-#' @seealso \code{\link{disposition_pull}}, \code{\link{opt_out_pull}},
-#'   \code{\link{s160_gcs_init}}
+#' @return The local path to the downloaded Parquet (a single string), ready for
+#'   \code{\link{campaign_metrics_summary}} / \code{\link{campaign_metrics_records}}.
+#' @seealso \code{\link{campaign_metrics_summary}},
+#'   \code{\link{campaign_metrics_records}}, \code{\link{disposition_pull}},
+#'   \code{\link{opt_out_pull}}, \code{\link{s160_gcs_init}}
 #' @examples
 #' \dontrun{
 #' s160_gcs_init()   # one-time browser OAuth
 #' path <- campaign_metrics_pull()          # prod
-#' metrics <- nanoparquet::read_parquet(path)
+#' campaign_metrics_summary(path, by = "registration_id")
+#' cells <- campaign_metrics_records(path)  # the cells, for your own slicing
 #' }
 #' @export
 campaign_metrics_pull <- function(env = .ENV_CHOICES, dest = NULL,

@@ -1132,6 +1132,25 @@ disposition_records <- function(dataset, phones = NULL, campaign_ids = NULL,
 #' @seealso \code{\link{disposition_summary}}, \code{\link{disposition_records}},
 #'   \code{\link{opt_out_screen}}
 #' @examples
+#' # Against a tiny local projection (no sign-in), so this runs. In practice the
+#' # dataset is the path disposition_pull() returns.
+#' dataset <- tempfile(fileext = ".parquet")
+#' nanoparquet::write_parquet(data.frame(
+#'   phone = c("5551234567", "5551234567", "5559876543"),
+#'   campaign_id = c(101L, 102L, 101L),
+#'   engaged = c(1L, 1L, 0L), opted_in = c(1L, 0L, 0L), completed = c(1L, 0L, 0L),
+#'   web_complete = c(0L, 0L, 0L), refused = c(0L, 1L, 0L), ineligible = c(0L, 0L, 0L),
+#'   terminated = c(0L, 1L, 0L),
+#'   disposition_date = as.Date(c("2026-01-10", "2026-01-20", "2026-01-15"))
+#' ), dataset)
+#' my_sample <- data.frame(phone = c("5551234567", "5559876543", "5550000000"),
+#'                         stratum = c("A", "B", "A"))
+#' cleaned <- disposition_screen(my_sample, dataset)
+#' cleaned[, c("phone", "stratum", "n_campaigns", "n_completed", "n_refused",
+#'             "latest_disposition")]
+#' # keep numbers not already finished and not a hard stop
+#' subset(cleaned, !((n_completed > 0 | n_web_complete > 0) %in% TRUE |
+#'                     (n_terminated > 0 | n_refused > 0 | n_ineligible > 0) %in% TRUE))
 #' \dontrun{
 #' dataset <- disposition_pull()
 #' cleaned <- disposition_screen(my_sample, dataset, phone_col = "phone")
@@ -1201,7 +1220,13 @@ disposition_screen <- function(sample, dataset, phone_col = "phone",
 #'   \code{interactive()}: a live bar in an interactive session, silent in batch
 #'   or scheduled runs. The projection is a few hundred MB, so an interactive
 #'   pull otherwise looks stalled while it transfers.
-#' @return The local path to the downloaded Parquet (a single string).
+#' @return The local path to the downloaded Parquet (a single string), ready for
+#'   \code{\link{disposition_screen}}, \code{\link{disposition_summary}},
+#'   \code{\link{disposition_records}}, \code{\link{disposition_funnel}},
+#'   \code{\link{disposition_steps}} and \code{\link{disposition_paths}}. The
+#'   first pull transfers a few hundred MB (a minute or two on an office
+#'   connection); a later call with \code{refresh = FALSE} and the same
+#'   \code{dest} reuses that copy and returns at once.
 #' @seealso \code{\link{disposition_summary}}, \code{\link{disposition_screen}},
 #'   \code{\link{opt_out_pull}}, \code{\link{s160_gcs_init}}
 #' @examples

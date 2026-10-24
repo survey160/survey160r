@@ -7,13 +7,28 @@ R package for accessing Survey160 campaign data, across these areas:
 
 - **[Raw data access](#raw-data-access)** -- read campaign results from Google Cloud Storage (`s160_gcs_*`) and trigger fresh exports via the API (`s160_api_*`).
 - **[Latency analysis](vignettes/latency.Rmd)** -- compute a per-campaign recipient-latency report from a raw campaign CSV, as an in-memory R object.
-- **[Disposition screening](vignettes/disposition.Rmd)** -- screen a phone sample against every recipient Survey160 has contacted, dropping numbers already completed, refused, or screened out before you field.
+- **[Disposition screening](vignettes/disposition.Rmd)** -- screen a phone sample against every recipient Survey160 has contacted, dropping numbers already completed, refused, or screened out before you field; roll the same dataset up to funnel rates by carrier or mode, or follow each number's campaigns in order.
 - **[Opt-out screening](vignettes/opt-out.Rmd)** -- screen a phone sample against the opt-out list, flagging numbers that have opted out before you field.
 - **[Campaign metrics](vignettes/campaign-metrics.Rmd)** -- download the consolidated per-campaign metrics + recipient-latency projection (`campaign_all.parquet`) with `campaign_metrics_pull()`, read it into analysis-ready cells with `campaign_metrics_records()`, and roll those up to funnel counts and rates by any project dimension with `campaign_metrics_summary()`.
 
-**New here?** To screen a sample before fielding, jump to [Disposition screening](#disposition-screening). First time on this machine, start with [First-time setup](#first-time-setup) -- you need a credential and a bucket grant before any data call works.
+**New here?** Find your task in [Which function do I need?](#which-function-do-i-need) below; to screen a sample before fielding, jump to [Disposition screening](#disposition-screening). First time on this machine, start with [First-time setup](#first-time-setup) -- you need a credential and a bucket grant before any data call works.
 
-The pure entry points `latency_run()` and `disposition_run()` take an in-memory data frame and return a list with a `consolidated` data frame plus provenance `meta`. The disposition readers (`disposition_summary()` / `disposition_records()` / `disposition_screen()` / `disposition_funnel()`) read the Parquet projection and return a data frame, and `disposition_pull()` downloads that projection from GCS and returns a local path. `disposition_funnel()` rolls the projection up to funnel counts and rates by any dimension (carrier, mode, topic, ...) -- the disposition analogue of `campaign_metrics_summary()`, sharing the `funnel_rates()` definition. `disposition_steps()` and `disposition_paths()` follow each number's campaigns in time order (per-campaign history, or one path per phone with sequence patterns such as "no reply, then engaged, then completed") and return a lazy `dbplyr` table that DuckDB computes. The opt-out readers mirror that pair: `opt_out_pull()` downloads the opt-out list and `opt_out_screen()` annotates a sample with each number's opt-out status. `campaign_metrics_pull()` downloads the consolidated per-campaign metrics + recipient-latency projection; `campaign_metrics_records()` reads it into analysis-ready cells and `campaign_metrics_summary()` rolls those up to funnel counts and rates by any project dimension (it is aggregate metrics, not phone-keyed PII, so there is no screen helper). Fleet orchestration and Parquet persistence live in downstream consumer projects. See `?survey160r` for an overview from the R console.
+## Which function do I need?
+
+| I want to... | Call | Guide |
+|---|---|---|
+| Drop numbers that already completed, refused, or screened out before I field | `disposition_pull()` then `disposition_screen(my_sample, dataset)`, then `subset()` on the appended `n_*` counts | [Disposition screening](#disposition-screening) |
+| Drop numbers that opted out | `opt_out_pull()` then `opt_out_screen(my_sample, optout)`, then `subset()` on the appended `opted_out` | [Opt-out screening](#opt-out-screening) |
+| Look up a few numbers' contact history | `disposition_summary(dataset, phones = )` (one row per phone) / `disposition_records(dataset, phones = )` (one row per campaign) | [Disposition screening](#disposition-screening) |
+| Funnel rates by carrier, mode, topic, or campaign | `disposition_funnel(dataset, by = "carrier")` | [Disposition screening](#disposition-screening) |
+| Follow what each number did campaign after campaign | `disposition_paths()` (one path per phone) / `disposition_steps()` (one row per campaign) | `vignette("disposition")` |
+| Funnel rates across the fleet by registration, brand, client, or mode | `campaign_metrics_pull()` then `campaign_metrics_summary(path, by = )` | [Campaign metrics](#campaign-metrics) |
+| See how fast each message followed the last one in a campaign | `latency_run(campaign_id, data)` | [Latency analysis](#latency-analysis) |
+| How many recipients reached each question | `question_funnel(data, c("intro", "q1", "close"))` | `vignette("latency")` |
+| Read a campaign's last export | `s160_gcs_campaign_results_read(campaign_id)` | [Raw data access](#raw-data-access) |
+| Get an export fresher than the last one on GCS | `s160_api_auth()` then `s160_api_campaign_results(campaign_id)` | [Raw data access](#raw-data-access) |
+
+Every screen appends columns to your sample 1:1 and never drops a row -- you filter on your own rules. Every `*_pull()` downloads once and reuses a local cache (`refresh = TRUE` re-downloads). `?survey160r` lists every function by task from the R console.
 
 ## Installation
 
@@ -27,9 +42,12 @@ pak::pkg_install("survey160/survey160r")
 
 # Recommended: low-memory, fast disposition screening (used automatically when installed)
 install.packages("duckdb")
+
+# Also needed for disposition_steps() / disposition_paths() (the sequence readers)
+install.packages(c("DBI", "dbplyr"))
 ```
 
-With `duckdb` installed, `disposition_screen()` reads only your sample's rows from the projection, a campaign- or date-filtered `disposition_records()` / `disposition_summary()` reads only the matching rows, and `disposition_funnel()` groups inside the scan: each takes seconds and a GB or two of RAM at most, so it runs on a laptop. Without it the readers fall back to loading the whole projection, which needs tens of GB. `disposition_steps()` / `disposition_paths()` require `duckdb`, `DBI` and `dbplyr` (no fallback).
+With `duckdb` installed, `disposition_screen()` reads only your sample's rows from the projection, a campaign- or date-filtered `disposition_records()` / `disposition_summary()` reads only the matching rows, and `disposition_funnel()` groups inside the scan: each takes seconds and a GB or two of RAM at most, so it runs on a laptop. Without it the readers fall back to loading the whole projection, which needs tens of GB. `disposition_steps()` / `disposition_paths()` require `duckdb`, `DBI` and `dbplyr` (no fallback) and return a lazy table you aggregate with `dplyr` verbs, then `collect()`.
 
 > R-universe rebuilds from `main` and can lag a fresh release by up to ~30 minutes. If a newly added function (for example `disposition_pull()`) is not found after installing from R-universe, get the latest straight from GitHub with the `pak` line above and restart R.
 
@@ -141,12 +159,27 @@ subset(cleaned, !(opted_out %in% TRUE))
 
 The opt-out list lives in the same `s160_disposition_prod` bucket as the disposition dataset, so the same access covers both, and the two screens chain (annotate for opt-out and prior contact, then filter once). Full walkthrough in the **[opt-out guide](vignettes/opt-out.Rmd)** (`vignette("opt-out")` once installed).
 
+## Campaign metrics
+
+Measure the funnel -- sent, engaged, opted in, completed -- across the whole fleet, by registration, brand, client, fielding location, or mode. Pull the consolidated projection once, then roll it up:
+
+```r
+library(survey160r)
+s160_gcs_init()   # one-time browser sign-in (cached)
+
+path <- campaign_metrics_pull()                        # cached after the first download
+campaign_metrics_summary(path, by = "registration_id")
+campaign_metrics_summary(path, by = c("brand", "mode"), percent = TRUE)
+```
+
+The projection holds counts, not phone numbers, so there is no screen here. To scope a rollup (a date window, a set of campaigns), read the cells with `campaign_metrics_records()`, filter, and pass the frame to `campaign_metrics_summary()`; never sum the raw Parquet yourself, it repeats each count across latency rows. Full walkthrough in the **[campaign-metrics guide](vignettes/campaign-metrics.Rmd)** (`vignette("campaign-metrics")` once installed).
+
 ## First-time setup
 
 Before any data call works you need, in order:
 
 1. The **OAuth client secret** -- ask your team lead; you paste it in once (below).
-2. **Access to the bucket you are reading** -- Storage Object Viewer on `campaign_results` (raw data / latency) or `s160_disposition_prod` (disposition screening), granted via the `gcp-campaign-readers` group. Without it, sign-in still succeeds but the first read returns a **403** -- ask a sysadmin to add you.
+2. **Access to the bucket you are reading** -- Storage Object Viewer, granted via the `gcp-campaign-readers` group, on `campaign_results` (raw data / latency), `s160_disposition_prod` (disposition and opt-out screening), or `s160_analytics_prod` (campaign metrics). Without it, sign-in still succeeds but the first read returns a **403** -- ask a sysadmin to add you.
 3. For the API path only: your **API user ID and key** -- also from your team lead.
 
 The rest of this section walks through each.
@@ -167,8 +200,9 @@ You may also be asked to allow OAuth token caching (say yes) and to
 install the `httpuv` package for a smoother auth experience (say yes).
 
 Your Google account needs **Storage Object Viewer** permission on the
-source bucket (the campaign-results bucket, or `s160_disposition_prod`
-for disposition screening). Persisting latency outputs (via the consumer
+source bucket (the campaign-results bucket, `s160_disposition_prod` for
+disposition and opt-out screening, or `s160_analytics_prod` for campaign
+metrics). Persisting latency outputs (via the consumer
 project's fleet runner) additionally needs **Storage Object Creator** on
 the destination analytics bucket. Contact a sysadmin if you get 403
 errors after authenticating.
@@ -190,7 +224,7 @@ again. Get these from your team lead.
 ## Documentation
 
 - **Guides (articles):** [Latency analysis](vignettes/latency.Rmd), [Disposition screening](vignettes/disposition.Rmd), [Opt-out screening](vignettes/opt-out.Rmd), and [Campaign metrics](vignettes/campaign-metrics.Rmd) -- also rendered as Articles on the [package site](https://survey160.r-universe.dev/survey160r). In R: `vignette("latency")` / `vignette("disposition")` / `vignette("opt-out")` / `vignette("campaign-metrics")`.
-- **Function reference:** `?survey160r`, or `help(package = "survey160r")`.
+- **Function reference:** `?survey160r` (every function by task, the local cache, and the error classes), or `help(package = "survey160r")`. Setup from inside R: `?s160_gcs_init` and `?s160_api_auth`.
 - **Changelog:** `NEWS.md` (or `news(package = "survey160r")` after install). Cutting a release: [`RELEASING.md`](RELEASING.md). Project conventions and agent context: `CLAUDE.md`.
 
 ## End-to-end testing
@@ -215,6 +249,11 @@ Common symptoms and fixes:
 | `disposition_pull()` returns data you know is out of date | It reused a cached copy | Re-download with `disposition_pull(refresh = TRUE)` |
 | `argument(s) not accepted by the CSV reader (data.table::fread): filter_open` | The argument belongs to a different function (e.g. `filter_open` is on `s160_api_campaign_results()`, not `s160_gcs_campaign_results_read()`) | Move it to the right function, or drop it |
 | A `date_from` / `date_to` filter drops more rows than expected | A row whose `disposition_date` is `NA` (never populated for that campaign) is dropped by any date bound | Expected -- only dated rows match a date filter; omit the bound to keep undated rows |
+| The browser never opens on `s160_gcs_init()` | R has no default browser (a server, a container, some IDE sessions) | `options(browser = "xdg-open")` (or a browser path) and retry, or `s160_gcs_init(adc = TRUE)` after `gcloud auth application-default login` |
+| `disposition_pull(env = "staging")` (or `opt_out_pull`, `campaign_metrics_pull`) errors with no staging tier | Those datasets exist only for `prod` and `dev`; staging sends fold into prod | Use `env = "prod"`; `s160_datasets()` lists every dataset's environments |
+| `disposition_steps()` / `disposition_paths()` say a package is missing | The sequence readers need `duckdb`, `DBI` and `dbplyr`, with no in-R fallback | `install.packages(c("duckdb", "DBI", "dbplyr"))` and restart R |
+| A screen or filter is slow and R's memory balloons | `duckdb` is not installed, so the reader loads the whole projection | `install.packages("duckdb")`; the readers use it automatically |
+| `Using cached disposition projection (12 days old): ...` and you want today's | A cache hit never checks GCS | `disposition_pull(refresh = TRUE)`; same `refresh = TRUE` on the other pulls |
 
 Every error names the function, what it received, and the next step; a script
 can catch one by class (`s160_not_initialized`, `s160_not_found`, ...) -- see
@@ -235,6 +274,14 @@ Clear cached OAuth tokens:
 ```r
 gargle::gargle_oauth_sitrep()  # list cached tokens and their location
 # delete the cache directory shown above, then restart R
+```
+
+Clear the downloaded datasets (the disposition projection, opt-out list, and campaign-metrics projection all cache here; the next `*_pull()` re-downloads):
+
+```r
+cache <- tools::R_user_dir("survey160r", "cache")
+list.files(cache)          # what is cached
+unlink(cache, recursive = TRUE)
 ```
 
 ## License

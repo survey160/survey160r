@@ -1,5 +1,35 @@
 # survey160r (development version)
 
+## Documentation and developer experience
+
+Twenty rounds over the README, the articles and the function help, written for
+a Survey Manager who scripts against the exports. No behaviour changed.
+
+* **README**: a "Which function do I need?" task table replaces the overview
+  paragraph; a Campaign metrics section joins the other areas; the install block
+  names `DBI` / `dbplyr` for the sequence readers; First-time setup names the
+  analytics bucket.
+* `campaign_metrics_pull()` points at `campaign_metrics_summary()` /
+  `campaign_metrics_records()` instead of "your Parquet reader of choice" (the
+  raw file multi-counts); `s160_datasets()` documents the `campaign_metrics`
+  dataset; the campaign-metrics article is listed on the package site.
+* **Setup from inside R**: `?s160_gcs_init` and `?s160_api_auth` gain a "Before
+  you start" section (what to get from your team lead, the bucket grant behind a
+  403, a browser that does not open, starting over); every article's intro
+  points at it, so a `vignette()` reader is not sent to the README.
+* **Runnable examples**: `?disposition_screen` and `?opt_out_screen` screen a
+  sample against a tiny temp Parquet, so the appended columns and the keep
+  filter run from the help page; the `*_pull()` call stays in `\dontrun{}`.
+* **Troubleshooting**: six new rows (browser never opens, no staging tier for
+  the pulls, missing `duckdb` / `DBI` / `dbplyr`, memory ballooning without
+  `duckdb`, a stale cache hit) and a recipe to list and clear the dataset cache;
+  `?survey160r` gains a "Local cache" section.
+* `latency_run()` / the latency article call out that `field_timezone` defaults
+  to `"UTC"`; the disposition article names the `statuses` / date filters on
+  the lookups; `disposition_pull()` says what its path is ready for and what the
+  first pull costs; `writing-style.md` records the README and runnable-example
+  conventions.
+
 ## Performance
 
 Outputs are identical to the previous version (checked on synthetic campaigns
