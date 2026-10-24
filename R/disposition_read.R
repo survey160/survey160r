@@ -1225,7 +1225,8 @@ disposition_screen <- function(sample, dataset, phone_col = "phone",
 #'   \code{\link{disposition_records}}, \code{\link{disposition_funnel}},
 #'   \code{\link{disposition_steps}} and \code{\link{disposition_paths}}. The
 #'   first pull transfers a few hundred MB (a minute or two on an office
-#'   connection); every later call returns the cached path at once.
+#'   connection); a later call with \code{refresh = FALSE} and the same
+#'   \code{dest} reuses that copy and returns at once.
 #' @seealso \code{\link{disposition_summary}}, \code{\link{disposition_screen}},
 #'   \code{\link{opt_out_pull}}, \code{\link{s160_gcs_init}}
 #' @examples

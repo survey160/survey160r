@@ -35,9 +35,12 @@
 #' distribution, and the \code{tracker_*} project dimensions. It is aggregate
 #' metrics, not phone-keyed PII, so it lives in the \code{s160_analytics_<env>}
 #' bucket rather than the disposition bucket, and there is no screening helper.
-#' Read it through \code{\link{campaign_metrics_records}}, not with a raw Parquet
-#' reader: the file repeats each cell's counts across its latency segment and
-#' threshold rows, so summing it directly multi-counts every send.
+#' For counts and rates, use \code{\link{campaign_metrics_summary}}: it reads
+#' through \code{\link{campaign_metrics_records}} (which drops the rows the file
+#' repeats across its latency segment and threshold rows) and sums one grain --
+#' the day totals, not the hour cells as well -- so a send is counted once. A raw
+#' Parquet reader, or a sum over the records' hour and day cells together,
+#' multi-counts every send.
 #'
 #' @param env Environment: \code{"prod"} (default) or \code{"dev"}. There is no
 #'   staging analytics tier; passing \code{env = "staging"} errors clearly.

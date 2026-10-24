@@ -17,8 +17,8 @@ R package for accessing Survey160 campaign data, across these areas:
 
 | I want to... | Call | Guide |
 |---|---|---|
-| Drop numbers that already completed, refused, or screened out before I field | `disposition_pull()` then `disposition_screen(my_sample, dataset)` | [Disposition screening](#disposition-screening) |
-| Drop numbers that opted out | `opt_out_pull()` then `opt_out_screen(my_sample, optout)` | [Opt-out screening](#opt-out-screening) |
+| Drop numbers that already completed, refused, or screened out before I field | `disposition_pull()` then `disposition_screen(my_sample, dataset)`, then `subset()` on the appended `n_*` counts | [Disposition screening](#disposition-screening) |
+| Drop numbers that opted out | `opt_out_pull()` then `opt_out_screen(my_sample, optout)`, then `subset()` on the appended `opted_out` | [Opt-out screening](#opt-out-screening) |
 | Look up a few numbers' contact history | `disposition_summary(dataset, phones = )` (one row per phone) / `disposition_records(dataset, phones = )` (one row per campaign) | [Disposition screening](#disposition-screening) |
 | Funnel rates by carrier, mode, topic, or campaign | `disposition_funnel(dataset, by = "carrier")` | [Disposition screening](#disposition-screening) |
 | Follow what each number did campaign after campaign | `disposition_paths()` (one path per phone) / `disposition_steps()` (one row per campaign) | `vignette("disposition")` |

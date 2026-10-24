@@ -39,7 +39,8 @@ The local path to the downloaded Parquet (a single string), ready for
   \code{\link{disposition_records}}, \code{\link{disposition_funnel}},
   \code{\link{disposition_steps}} and \code{\link{disposition_paths}}. The
   first pull transfers a few hundred MB (a minute or two on an office
-  connection); every later call returns the cached path at once.
+  connection); a later call with \code{refresh = FALSE} and the same
+  \code{dest} reuses that copy and returns at once.
 }
 \description{
 Pulls the consolidated disposition projection
