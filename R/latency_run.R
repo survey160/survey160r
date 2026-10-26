@@ -45,7 +45,10 @@
 #'   the config is auto-built from \code{data}'s header; pass any
 #'   \code{latency_build_config()} overrides (\code{field_timezone},
 #'   \code{project_id}, \code{date_filter}, \code{respondent_id_column})
-#'   through \code{...}. Mutually exclusive with \code{...}.
+#'   through \code{...}. Mutually exclusive with \code{...}. Note
+#'   \code{field_timezone} defaults to \code{"UTC"}: pass the zone the campaign
+#'   fielded in (e.g. \code{"America/New_York"}) or the \code{hour_local} buckets
+#'   are shifted by the offset.
 #' @param run_at Optional \code{POSIXct} timestamp stamped on every
 #'   row's \code{run_at_utc} column. \code{NULL} (default) uses
 #'   \code{Sys.time()}. Fleet runners pass one stamp here so every

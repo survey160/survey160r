@@ -13,7 +13,7 @@ vignette: >
 knitr::opts_chunk$set(collapse = TRUE, comment = "#>", eval = FALSE)
 ```
 
-Measure the campaign funnel -- sent, engaged, opted in, completed -- across the whole fleet, by registration, brand, client, fielding location, or mode, from the consolidated **campaign-metrics projection**. Assumes you have completed First-time setup (see the package README): Cloud Storage access to `s160_analytics_prod`.
+Measure the campaign funnel -- sent, engaged, opted in, completed -- across the whole fleet, by registration, brand, client, fielding location, or mode, from the consolidated **campaign-metrics projection**. Assumes you have completed First-time setup (the package README, or `?s160_gcs_init` from R): Cloud Storage access to `s160_analytics_prod`.
 
 ## Summarize the funnel by dimension
 

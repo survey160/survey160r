@@ -36,6 +36,18 @@ whether to suppress the opted-out numbers, on its own rules. Parallels
 disposition and current opt-out status in one pass, then filter once.
 }
 \examples{
+# Against a tiny local list (no sign-in), so this runs. In practice the
+# dataset is the path opt_out_pull() returns.
+optout <- tempfile(fileext = ".parquet")
+nanoparquet::write_parquet(
+  data.frame(phone = "5559876543", date_added = as.Date("2026-02-01")),
+  optout
+)
+my_sample <- data.frame(phone = c("5551234567", "5559876543", ""),
+                        stratum = c("A", "B", "A"))
+cleaned <- opt_out_screen(my_sample, optout)
+cleaned                                  # columns appended; the blank phone is NA
+subset(cleaned, !(opted_out \%in\% TRUE))  # drop opted-out, keep the NA row to fix
 \dontrun{
 cleaned <- opt_out_screen(my_sample, opt_out_pull())
 # chain with disposition, then drop on the caller's own rules:
@@ -45,5 +57,5 @@ subset(cleaned, !(opted_out \%in\% TRUE |
 }
 }
 \seealso{
-\code{\link{disposition_screen}}
+\code{\link{disposition_screen}}, \code{\link{opt_out_pull}}
 }

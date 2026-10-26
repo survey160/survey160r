@@ -13,7 +13,7 @@ vignette: >
 knitr::opts_chunk$set(collapse = TRUE, comment = "#>", eval = FALSE)
 ```
 
-Screen a phone sample against the **disposition dataset** -- one row per `(phone, campaign_id)` for every recipient Survey160 has contacted across closed campaigns -- to drop numbers already completed, refused, or screened out before you field. Assumes you have completed First-time setup (see the package README): Cloud Storage access to `s160_disposition_prod`.
+Screen a phone sample against the **disposition dataset** -- one row per `(phone, campaign_id)` for every recipient Survey160 has contacted across closed campaigns -- to drop numbers already completed, refused, or screened out before you field. Assumes you have completed First-time setup (the package README, or `?s160_gcs_init` from R): Cloud Storage access to `s160_disposition_prod`.
 
 ## Screen a sample
 
@@ -47,7 +47,7 @@ disposition_summary(dataset, phones = c("2015550101", "2015550102"))
 disposition_records(dataset, campaign_ids = 1234)
 ```
 
-Both take `phones` / `campaign_ids` filters. Phones match digit-normalized: a leading US `1` is dropped, so an 11-digit number matches a stored 10-digit one. `disposition_records()` hands back the stored schema as-is, one row per `(phone, campaign_id)` -- the funnel flags, the recipient's carrier and any delivery error, the Tracker dimensions, and the disposition date. See [Stored record columns](#stored-record-columns).
+Both take `phones` / `campaign_ids` / `date_from` / `date_to` filters; `disposition_summary()` also takes `statuses =` to keep only phones whose latest campaign ended a given way (`statuses = c("refused", "ineligible", "terminated")` for every hard stop). Phones match digit-normalized: a leading US `1` is dropped, so an 11-digit number matches a stored 10-digit one. `disposition_records()` hands back the stored schema as-is, one row per `(phone, campaign_id)` -- the funnel flags, the recipient's carrier and any delivery error, the Tracker dimensions, and the disposition date. See [Stored record columns](#stored-record-columns).
 
 ## Screen several samples
 

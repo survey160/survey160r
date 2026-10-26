@@ -13,7 +13,7 @@ vignette: >
 knitr::opts_chunk$set(collapse = TRUE, comment = "#>", eval = FALSE)
 ```
 
-Turn a campaign's raw results CSV into a per-campaign recipient-latency report -- how fast each message followed the previous one, and what share of recipients hit the fleet's target windows -- so you can tune send timing. Assumes you have completed First-time setup (see the package README) if you read the export from Cloud Storage.
+Turn a campaign's raw results CSV into a per-campaign recipient-latency report -- how fast each message followed the previous one, and what share of recipients hit the fleet's target windows -- so you can tune send timing. Assumes you have completed First-time setup (the package README, or `?s160_gcs_init` from R) if you read the export from Cloud Storage; a local CSV needs no sign-in.
 
 ## Build a report
 
@@ -26,7 +26,7 @@ data   <- s160_gcs_campaign_results_read(1234, hash = TRUE)  # or s160_read_csv(
 result <- latency_run(1234, data, field_timezone = "America/New_York")
 ```
 
-You already read these CSVs in your own scripts; `s160_gcs_campaign_results_read(hash = TRUE)` and `s160_read_csv()` just add the source-hash provenance that `latency_run()` records on `result$meta`. `field_timezone` sets the local time zone for the hour-of-day buckets. `latency_run()` builds the config from the CSV header and returns a list: `consolidated` (the report), `latency_frame` (per-respondent detail), `diagnostics` (parse / NA counts), and `meta` (provenance).
+You already read these CSVs in your own scripts; `s160_gcs_campaign_results_read(hash = TRUE)` and `s160_read_csv()` just add the source-hash provenance that `latency_run()` records on `result$meta`. `field_timezone` sets the local time zone for the hour-of-day buckets; it defaults to `"UTC"`, so pass the zone the campaign fielded in (`"America/New_York"`, `"America/Chicago"`, ...) or `hour_local` is off by the offset. `latency_run()` builds the config from the CSV header and returns a list: `consolidated` (the report), `latency_frame` (per-respondent detail), `diagnostics` (parse / NA counts), and `meta` (provenance).
 
 ## Customize the config
 
