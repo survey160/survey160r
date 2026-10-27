@@ -83,6 +83,18 @@ test_that("the history group counts what came before and names the segment", {
   # a stored completion of unknown outcome (t2w_external) is a reply, not a complete
   g <- d[d$phone == "2015550104", ]
   expect_identical(g$prior_replies, c(0L, 0L))
+  # the clocks: contacts and days since the last reply / complete / undeliverable before this step
+  expect_identical(a$steps_since_reply, c(NA, NA, 0L))               # N E C: E is the previous step of C
+  expect_identical(a$days_since_reply, c(NA, NA, 28L))
+  expect_true(all(is.na(a$steps_since_complete)) && all(is.na(a$days_since_complete)))
+  expect_identical(b$steps_since_undeliverable, c(NA, 0L, 1L, 2L))  # X N N T
+  expect_identical(b$days_since_undeliverable, c(NA, 14L, 31L, 59L))
+  expect_true(all(is.na(b$steps_since_reply)))
+  expect_identical(f$steps_since_complete, c(NA, 0L, 0L))           # C C N
+  expect_identical(f$steps_since_reply, c(NA, 0L, 0L))
+  expect_identical(f$days_since_complete, c(NA, 31L, 28L))
+  expect_identical(g$days_since_reply, c(NA_integer_, NA_integer_))  # never replied; a missing date
+  expect_false("path_so_far" %in% names(d))                        # the clocks read the path but do not expose it
   # the group composes with the others, and the running counts agree with it
   both <- collect_sorted(disposition_steps(write_sequence_parquet(rows), columns = c("so_far", "history")))
   expect_identical(both$prior_replies + as.integer(!both$label %in% c("non_response", "undeliverable")),
@@ -186,6 +198,10 @@ test_that("dataset problems are reported", {
   expect_error(disposition_steps(write_sequence_parquet(rows)),
                "named like the sequence columns these readers add: label", class = "s160_error")
   rows$label <- NULL
+  rows$days_since_reply <- 1L
+  expect_error(disposition_steps(write_sequence_parquet(rows)),
+               "named like the sequence columns these readers add: days_since_reply", class = "s160_error")
+  rows$days_since_reply <- NULL
   rows$S160_CODE <- "C"
   expect_error(disposition_paths(write_sequence_parquet(rows)),
                "named like the sequence columns these readers add: S160_CODE", class = "s160_error")
