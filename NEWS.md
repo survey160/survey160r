@@ -21,7 +21,7 @@
   read keeps as a factor) now orders a phone's campaigns by its labels, so
   `disposition_summary()` / `disposition_screen()` pick the same latest campaign
   on a date tie as the sequence readers; before, the factor's level codes
-  decided.
+  decided (0.78.1).
 
 ## Recency columns on `disposition_steps()`
 
