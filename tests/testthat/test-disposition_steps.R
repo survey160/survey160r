@@ -198,6 +198,10 @@ test_that("dataset problems are reported", {
   expect_error(disposition_steps(write_sequence_parquet(rows)),
                "named like the sequence columns these readers add: label", class = "s160_error")
   rows$label <- NULL
+  rows$days_since_reply <- 1L
+  expect_error(disposition_steps(write_sequence_parquet(rows)),
+               "named like the sequence columns these readers add: days_since_reply", class = "s160_error")
+  rows$days_since_reply <- NULL
   rows$S160_CODE <- "C"
   expect_error(disposition_paths(write_sequence_parquet(rows)),
                "named like the sequence columns these readers add: S160_CODE", class = "s160_error")

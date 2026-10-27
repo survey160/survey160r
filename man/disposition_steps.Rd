@@ -135,10 +135,10 @@ campaigns since the last reply / complete / undeliverable before this one;
 \code{days_since_complete}, \code{days_since_undeliverable} (this step's
 \code{disposition_date} minus that campaign's). All \code{NA} until the
 event has happened. On the 2026 production rows the contact clock, not the
-calendar, is what predicts the next outcome: a number whose last contact was
-a complete completes again about 27\% of the time within 30 days and 8\%
-after two years, but 17\% / 13\% after one / two unanswered contacts in
-between even within 30 days; after an undeliverable the next reply rate
+calendar, is what predicts the next outcome: a number completes 20\% of the
+time when its previous campaign was a complete, 13\% / 10\% / 8\% / 5\%
+after one / two / three / four unanswered campaigns in between and 3\% after
+five, whatever the calendar gap; after an undeliverable the next reply rate
 climbs from 0.3\% within a week to 3.4\% past two years, so
 \code{days_since_undeliverable} is the one calendar clock worth a rule.
 
@@ -172,6 +172,15 @@ disposition_steps(dataset, date_from = "2026-01-01", columns = "history") |>
   summarise(sends = n(), completion = mean(as.integer(
     label \%in\% c("completed", "web_complete")))) |>
   arrange(desc(completion)) |>
+  collect()
+
+# Completion by how many campaigns ago the number last completed (the contact clock)
+disposition_steps(dataset, date_from = "2026-01-01", columns = "history") |>
+  filter(completion_known, !is.na(steps_since_complete)) |>
+  group_by(since = pmin(steps_since_complete, 5L)) |>
+  summarise(sends = n(), completion = mean(as.integer(
+    label \%in\% c("completed", "web_complete")))) |>
+  arrange(since) |>
   collect()
 
 # Reply rate on the next campaign after k non-responses in a row
