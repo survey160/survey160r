@@ -113,6 +113,16 @@
   out
 }
 
+# A campaign id as the number the per-phone orderings compare (the sequence
+# readers' TRY_CAST(campaign_id AS DOUBLE)): a factor id (a dictionary-encoded
+# column, which the nanoparquet read preserves) goes through its labels, not its
+# codes, which follow the level order rather than the id. A non-numeric label is
+# NA, left to the caller's tie-break.
+.disposition_id_number <- function(x) {
+  if (is.factor(x)) x <- as.character(x)
+  suppressWarnings(as.numeric(x))
+}
+
 # One all-zero/NA summary row per never-contacted phone (screened but absent).
 .disposition_never_contacted <- function(phones) {
   n <- length(phones)
@@ -230,7 +240,7 @@
   dd_num <- as.numeric(d$disposition_date)
   dk <- dd_num
   dk[is.na(dk)] <- -Inf
-  cid_num <- as.numeric(d$campaign_id)
+  cid_num <- .disposition_id_number(d$campaign_id)
   by_latest <- order(g, -dk, -cid_num, method = "radix")
   latest <- by_latest[first_pos]
   # Best (furthest-reached) disposition across the phone's campaigns: the highest
@@ -335,7 +345,7 @@
   date <- as.Date(d$disposition_date, tz = "UTC")
   dk <- as.numeric(date)
   dk[is.na(dk)] <- -Inf
-  cid <- suppressWarnings(as.numeric(d$campaign_id))
+  cid <- .disposition_id_number(d$campaign_id)
   cid[is.na(cid)] <- -Inf
   o <- order(d$phone, dk, cid, -seq_len(nrow(d)), method = "radix")
   phone <- d$phone[o]

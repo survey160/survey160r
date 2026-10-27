@@ -17,6 +17,11 @@
   a never-contacted number is at its `first_contact`. Computed in R over the
   sample's own rows (the scoped read), so it runs on either engine and adds
   well under a second per million phones.
+* A factor `campaign_id` (a dictionary-encoded column, which the nanoparquet
+  read keeps as a factor) now orders a phone's campaigns by its labels, so
+  `disposition_summary()` / `disposition_screen()` pick the same latest campaign
+  on a date tie as the sequence readers; before, the factor's level codes
+  decided.
 
 ## Recency columns on `disposition_steps()`
 
