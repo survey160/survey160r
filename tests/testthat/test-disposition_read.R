@@ -580,6 +580,20 @@ test_that("a timestamp-stored disposition_date gives the same history block", {
   expect_identical(out$days_since_reply, c(31L, 31L, 59L, 31L, 59L))
 })
 
+test_that("a factor campaign id orders by its label, not its level code", {
+  rows <- rbind(.sequence_row("2015550101", 9L, "2026-01-01"),
+                .sequence_row("2015550101", 10L, "2026-01-01", engaged = 1L, opted_in = 1L,
+                              completed = 1L))
+  rows$campaign_id <- factor(as.character(rows$campaign_id), levels = c("10", "9"))
+  p <- tempfile(fileext = ".parquet")
+  nanoparquet::write_parquet(rows, p)
+  out <- disposition_screen(data.frame(phone = "2015550101"), p, columns = c("summary", "history"))
+  expect_equal(out$latest_campaign_id, "10")        # campaign 10 is the latest on a date tie
+  expect_equal(out$latest_disposition, "completed")
+  expect_identical(out$steps_since_complete, 0L)
+  expect_identical(out$steps_since_reply, 0L)
+})
+
 test_that("disposition_screen validates the history arguments", {
   p <- .disposition_base()
   sample <- data.frame(phone = "2015550101", stringsAsFactors = FALSE)
