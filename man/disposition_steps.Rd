@@ -46,8 +46,8 @@ counting this step), \code{"run_length"} (how many steps in a row, ending
 here, have this label), \code{"path_so_far"} (the history as letters,
 ending with this step) and \code{"history"} (\code{prior_*} counts, the
 \code{history_segment}, and the \code{steps_since_*} / \code{days_since_*}
-clocks; see below). All by default; each costs a few seconds on the full
-projection.}
+clocks; see below). The default is the first four; \code{"history"} is
+opt-in. Each costs a few seconds on the full projection.}
 
 \item{pattern}{Optional sequence pattern (see \code{\link{disposition_paths}}
 for the syntax); adds \code{history_matched}: whether the history up to and
