@@ -10,7 +10,10 @@ disposition_screen(
   phone_col = "phone",
   campaign_ids = NULL,
   date_from = NULL,
-  date_to = NULL
+  date_to = NULL,
+  columns = "summary",
+  as_of = Sys.Date(),
+  undeliverable_codes = .DISPOSITION_UNDELIVERABLE_CODES
 )
 }
 \arguments{
@@ -24,6 +27,18 @@ disposition_screen(
 \item{campaign_ids, date_from, date_to}{Optional scoping of the disposition
 rows considered (see \code{\link{disposition_summary}}). No \code{statuses}
 or pagination here -- every sample row is returned.}
+
+\item{columns}{Which blocks to append: \code{"summary"} (default; the
+\code{\link{disposition_summary}} columns), \code{"history"} (the
+next-contact history block, see Details), or both.}
+
+\item{as_of}{The date the \code{days_since_*} columns count to (default
+today); a \code{Date} or date string. Only read with \code{"history"}.}
+
+\item{undeliverable_codes}{Delivery-error codes that make a no-reply campaign
+\code{undeliverable} in the history block, as in
+\code{\link{disposition_steps}}; \code{NULL} treats every no-reply row as a
+plain non-response. Only read with \code{"history"}.}
 }
 \value{
 \code{sample} with the \code{\link{disposition_summary}} columns
@@ -39,7 +54,14 @@ or pagination here -- every sample row is returned.}
   (\code{n_campaigns = 0}, the \code{n_*} counts \code{0}, the dates \code{NA},
   \code{latest_disposition = "never_contacted"}, \code{campaigns = NA}); only a
   phone that digit-normalizes to nothing (blank/unparseable) gets an
-  all-\code{NA} block.
+  all-\code{NA} block. With \code{"history"} in \code{columns} the block
+  \code{prior_completes}, \code{prior_replies}, \code{prior_unanswered},
+  \code{history_segment}, \code{steps_since_reply},
+  \code{steps_since_complete}, \code{steps_since_undeliverable},
+  \code{days_since_reply}, \code{days_since_complete},
+  \code{days_since_undeliverable} follows (a never-contacted phone: counts
+  \code{0}, \code{first_contact}, recency \code{NA}); with
+  \code{columns = "history"} alone it is the only block.
 }
 \description{
 Takes a sample data frame (a phone column plus
@@ -48,6 +70,38 @@ with the disposition summary columns appended}, 1:1 with the input rows and
 preserving the original phone formatting. The caller then filters and writes
 it (dropping the numbers already completed or refused). Mirrors the
 "append columns to my uploaded list" screening workflow.
+}
+\details{
+\strong{History.} \code{columns = "history"} (or \code{c("summary", "history")})
+appends instead of, or as well as, the counts what each number's contact
+history says about its \emph{next} send: the \code{prior_completes},
+\code{prior_replies}, \code{prior_unanswered} counts, the
+\code{history_segment} (\code{first_contact} for a number with no campaign in
+scope, else \code{completer_2_plus}, \code{completer_1}, \code{replied},
+\code{unanswered_3_plus} or \code{unanswered_1_2}), and the recency columns
+\code{steps_since_reply} / \code{steps_since_complete} /
+\code{steps_since_undeliverable} (campaigns since the last one; \code{0} when
+it was the latest campaign) and \code{days_since_reply} /
+\code{days_since_complete} / \code{days_since_undeliverable} (\code{as_of}
+minus that campaign's \code{disposition_date}), \code{NA} until the event has
+happened. They are the columns \code{\link{disposition_steps}(columns =
+"history")} carries per step, with the same names and definitions, computed
+here as of the campaign that would come next, so a rule measured on the steps
+table applies to a sample unchanged. On the 2026 production rows the
+segments complete at about 17\% (\code{completer_2_plus}), 9\%
+(\code{completer_1}), 1.1\% (\code{replied}), 0.55\% (\code{first_contact}),
+0.33\% (\code{unanswered_1_2}) and 0.17\% (\code{unanswered_3_plus}) of
+sends, and a number rejected by the carrier (\code{undeliverable}) starts
+replying again only after about two years; the usual rule drops
+\code{unanswered_3_plus} and a recent undeliverable and sends the completers
+first (see Examples). A campaign's letter follows
+\code{\link{disposition_steps}}: a no-reply row whose \code{error} is one of
+\code{undeliverable_codes} is undeliverable, every other label but
+\code{non_response} is a reply, \code{completed} / \code{web_complete} a
+complete; a text-to-web external send (\code{completed} \code{NA}) is a
+reply whose completion is unknown. The \code{campaign_ids} / \code{date_from}
+/ \code{date_to} scope applies to the history too (a number whose campaigns
+all fall outside it is at its \code{first_contact}).
 }
 \section{Memory}{
 
@@ -89,6 +143,11 @@ cleaned[, c("phone", "stratum", "n_campaigns", "n_completed", "n_refused",
 # keep numbers not already finished and not a hard stop
 subset(cleaned, !((n_completed > 0 | n_web_complete > 0) \%in\% TRUE |
                     (n_terminated > 0 | n_refused > 0 | n_ineligible > 0) \%in\% TRUE))
+# the history block: what each number's next send would carry
+history <- disposition_screen(my_sample, dataset, columns = "history",
+                              as_of = "2026-02-01")
+history[, c("phone", "history_segment", "prior_completes",
+            "steps_since_complete", "days_since_complete")]
 \dontrun{
 dataset <- disposition_pull()
 cleaned <- disposition_screen(my_sample, dataset, phone_col = "phone")
@@ -96,6 +155,15 @@ cleaned <- disposition_screen(my_sample, dataset, phone_col = "phone")
 # terminated); blank-phone rows come back all-NA and are kept
 subset(cleaned, !((n_completed > 0 | n_web_complete > 0) \%in\% TRUE |
   (n_terminated > 0 | n_refused > 0 | n_ineligible > 0) \%in\% TRUE))
+
+# the history rule: skip numbers that never answered three or more campaigns
+# or were rejected by the carrier in the last two years, then send the
+# completers first
+cleaned <- disposition_screen(my_sample, dataset, columns = c("summary", "history"))
+keep <- subset(cleaned, !(history_segment == "unanswered_3_plus") \%in\% TRUE &
+  !(days_since_undeliverable < 730) \%in\% TRUE)
+keep[order(keep$history_segment != "completer_2_plus",
+           keep$history_segment != "completer_1"), ]
 }
 }
 \seealso{

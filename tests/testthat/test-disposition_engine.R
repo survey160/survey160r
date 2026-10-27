@@ -52,6 +52,7 @@ test_that("every reader returns the same frame under both engines", {
     function() disposition_records(p, phones = phones, page = 1, page_size = 3),
     function() disposition_screen(sample, p),
     function() disposition_screen(sample, p, campaign_ids = 12L),
+    function() disposition_screen(sample, p, columns = c("summary", "history"), as_of = "2026-04-01"),
     function() disposition_funnel(p, by = "carrier")
   )
   for (call in calls) {

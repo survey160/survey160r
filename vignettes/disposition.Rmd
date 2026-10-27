@@ -38,6 +38,26 @@ kept <- subset(
 
 `disposition_screen()` returns `my_sample` unchanged with the screening columns appended 1:1 (see [What you get back](#what-you-get-back)). The columns are cumulative **counts** across the number's campaigns, so `> 0` means "reached that status at least once". `n_terminated`, `n_refused` (declined), and `n_ineligible` (screened out) are the hard-stop signals; on the prod projection they are set independently -- a number can be flagged `refused` / `ineligible` without a bare `terminated`, and vice versa -- so screen on all three. The `%in% TRUE` guard keeps blank or unparseable phones (they screen to all-`NA`), so they surface for correction rather than vanishing.
 
+## Screen on contact history
+
+The counts say what a number ever did; `columns = "history"` says what its **next** send would carry, so the list-screening rule measured on `disposition_steps()` (below) applies to a sample unchanged. It appends `prior_completes`, `prior_replies`, `prior_unanswered`, the `history_segment` (`first_contact`, `completer_2_plus`, `completer_1`, `replied`, `unanswered_3_plus`, `unanswered_1_2`) and the recency columns `steps_since_reply` / `steps_since_complete` / `steps_since_undeliverable` (campaigns since the last one; `0` when it was the latest campaign) and `days_since_reply` / `days_since_complete` / `days_since_undeliverable` (counted to `as_of`, today by default), `NA` until the event has happened. On the 2026 production rows the segments complete at about 17%, 9%, 1.1%, 0.55% (first contact), 0.33% and 0.17% of sends, and a number the carrier rejected starts replying again only after about two years, so the usual rule is:
+
+```{r}
+cleaned <- disposition_screen(my_sample, dataset, columns = c("summary", "history"))
+
+# skip numbers that never answered three or more campaigns, or were rejected by
+# the carrier in the last two years; then send the completers first
+keep <- subset(
+  cleaned,
+  !(history_segment == "unanswered_3_plus") %in% TRUE &
+    !(days_since_undeliverable < 730) %in% TRUE
+)
+keep <- keep[order(keep$history_segment != "completer_2_plus",
+                   keep$history_segment != "completer_1"), ]
+```
+
+The `campaign_ids` / `date_from` / `date_to` scope applies to the history too: a number with no campaign in scope is at its `first_contact`. A no-reply campaign whose delivery error is one of `undeliverable_codes` (the hard carrier rejections by default) counts as undeliverable; every other outcome but a plain non-response is a reply.
+
 ## Look up specific numbers
 
 `disposition_summary()` runs the per-phone rollup as a standalone query; `disposition_records()` returns the raw stored rows, one per `(phone, campaign_id)`:
@@ -154,6 +174,8 @@ Each campaign gets one label, the furthest step it reached, ordered by `disposit
 | `first_disposition_date` / `last_disposition_date` | Earliest and latest disposition date across its campaigns. |
 
 The counts overlap rather than partition `n_campaigns` -- a completed campaign is also engaged -- so read each as "reached status X in this many campaigns".
+
+`disposition_screen(columns = "history")` appends the next-contact history block instead (or as well, with `c("summary", "history")`): `prior_completes`, `prior_replies`, `prior_unanswered`, `history_segment`, `steps_since_reply`, `steps_since_complete`, `steps_since_undeliverable`, `days_since_reply`, `days_since_complete`, `days_since_undeliverable` -- the columns `disposition_steps(columns = "history")` carries per step, with the same names and definitions, as of the campaign that would come next (see [Screen on contact history](#screen-on-contact-history)). A never-contacted number has counts `0`, segment `first_contact` and every recency column `NA`.
 
 `latest_disposition` and `best_disposition`, least to most advanced: `never_contacted` -> `non_response` -> `engaged` -> `opted_in` -> `terminated` -> `ineligible` -> `refused` -> `completed` -> `web_complete`. The terminal band (`terminated` < `ineligible` < `refused`) sits between `opted_in` and `completed`: `terminated` is the unsplit residual, `ineligible` a screen-out, `refused` a decline. `disposition_records()` returns the stored per-campaign columns instead; see [Stored record columns](#stored-record-columns).
 

@@ -1,5 +1,23 @@
 # survey160r (development version)
 
+## History columns on `disposition_screen()`
+
+* `disposition_screen(columns = "history")` (or `c("summary", "history")`)
+  appends what each number's next send would carry: `prior_completes`,
+  `prior_replies`, `prior_unanswered`, `history_segment` and the recency
+  columns `steps_since_*` / `days_since_*` -- the columns
+  `disposition_steps(columns = "history")` carries per step, with the same
+  names and definitions, computed per phone as of the campaign that would come
+  next, so a rule measured on the steps table (drop `unanswered_3_plus` and a
+  carrier rejection within two years, send the completers first) applies to a
+  sample unchanged. `as_of` (default today) sets the day the `days_since_*`
+  columns count to; `undeliverable_codes` names the delivery errors that make a
+  no-reply campaign undeliverable, as on `disposition_steps()`. The
+  `campaign_ids` / `date_from` / `date_to` scope applies to the history too, and
+  a never-contacted number is at its `first_contact`. Computed in R over the
+  sample's own rows (the scoped read), so it runs on either engine and adds
+  well under a second per million phones.
+
 ## Recency columns on `disposition_steps()`
 
 * `disposition_steps(columns = "history")` adds six recency columns next to the

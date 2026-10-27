@@ -51,6 +51,18 @@
                       "best_disposition", "best_campaign_id",
                       "first_disposition_date", "last_disposition_date")
 
+# The per-phone history block disposition_screen(columns = "history") appends:
+# the same names and meanings as disposition_steps(columns = "history") carry
+# per step, here as of the phone's NEXT contact -- what the prior_* counts, the
+# segment and the recency columns would say on a row sent today -- so a rule
+# written on the steps table applies to a sample unchanged.
+.DISPOSITION_HISTORY_COLS <- c(
+  "prior_completes", "prior_replies", "prior_unanswered", "history_segment",
+  "steps_since_reply", "steps_since_complete", "steps_since_undeliverable",
+  "days_since_reply", "days_since_complete", "days_since_undeliverable")
+
+.DISPOSITION_SCREEN_GROUPS <- c("summary", "history")
+
 # The stored disposition schema, in canonical order -- what
 # disposition_records() returns. `sent`/`survey_mode`/`error`/`carrier` come from
 # disposition_run() (`survey_mode` is the DETECTED mode, matching the latency
@@ -294,6 +306,105 @@
     stringsAsFactors = FALSE
   )
 }
+# One path letter per stored row (the alphabet of disposition_steps(), see
+# .DISPOSITION_PATH_CODES): the derived category's letter, with a no-reply row
+# whose `error` is one of `undeliverable_codes` as X (undeliverable) instead of
+# N. The error code is compared as trimmed text, so a numeric column (an
+# extract) matches its code the way the DuckDB readers match it.
+.disposition_row_codes <- function(d, undeliverable_codes) {
+  code <- unname(.DISPOSITION_PATH_CODES[.disposition_derive_category(d)])
+  if (length(undeliverable_codes) > 0L) {
+    err <- trimws(as.character(d$error))
+    code[code == "N" & !is.na(err) & err %in% undeliverable_codes] <- "X"
+  }
+  code
+}
+
+# The history of each phone as of its NEXT contact, one row per phone (phones in
+# radix order, like .disposition_collapse): the prior_* counts, the segment and
+# the recency columns of disposition_steps(columns = "history"), computed over
+# the phone's campaigns in the same order (date, then id as a number, a missing
+# one oldest, then the LATER stored row as the OLDER step -- so the summary's
+# latest campaign is the last step). days_since_* count from `as_of`.
+# Vectorized over the group index: one radix sort, then tabulate() and a
+# last-row-per-group pick, so a million-phone sample takes well under a second.
+.disposition_history_collapse <- function(d, as_of, undeliverable_codes) {
+  code <- .disposition_row_codes(d, undeliverable_codes)
+  dk <- as.numeric(d$disposition_date)
+  dk[is.na(dk)] <- -Inf
+  cid <- suppressWarnings(as.numeric(d$campaign_id))
+  cid[is.na(cid)] <- -Inf
+  o <- order(d$phone, dk, cid, -seq_len(nrow(d)), method = "radix")
+  phone <- d$phone[o]
+  code <- code[o]
+  date <- d$disposition_date[o]
+  g <- data.table::rleidv(phone)
+  n_groups <- g[length(g)]
+  size <- tabulate(g, nbins = n_groups)
+  first_pos <- cumsum(size) - size + 1L
+  pos <- seq_along(g) - first_pos[g] + 1L   # the step number within the phone
+  is_reply <- !code %in% c("N", "X")
+  is_complete <- code %in% c("C", "W")
+  completes <- tabulate(g[is_complete], nbins = n_groups)
+  replies <- tabulate(g[is_reply], nbins = n_groups)
+  unanswered <- size - replies
+  # the last step with the flag: campaigns after it, and days from its date
+  since <- function(flag) {
+    idx <- which(flag)
+    gi <- g[idx]
+    keep <- !duplicated(gi, fromLast = TRUE)
+    idx <- idx[keep]
+    gi <- gi[keep]
+    steps <- rep(NA_integer_, n_groups)
+    steps[gi] <- size[gi] - pos[idx]
+    days <- rep(NA_integer_, n_groups)
+    days[gi] <- as.integer(as_of - date[idx])
+    list(steps = steps, days = days)
+  }
+  reply <- since(is_reply)
+  complete <- since(is_complete)
+  undeliverable <- since(code == "X")
+  segment <- rep("unanswered_1_2", n_groups)
+  segment[unanswered >= 3L] <- "unanswered_3_plus"
+  segment[replies > 0L] <- "replied"
+  segment[completes == 1L] <- "completer_1"
+  segment[completes >= 2L] <- "completer_2_plus"
+  data.frame(
+    phone = phone[first_pos],
+    prior_completes = completes,
+    prior_replies = replies,
+    prior_unanswered = unanswered,
+    history_segment = segment,
+    steps_since_reply = reply$steps,
+    steps_since_complete = complete$steps,
+    steps_since_undeliverable = undeliverable$steps,
+    days_since_reply = reply$days,
+    days_since_complete = complete$days,
+    days_since_undeliverable = undeliverable$days,
+    stringsAsFactors = FALSE
+  )
+}
+
+# Append the history block to a per-phone summary: a phone with no (filtered)
+# campaigns is at its first contact (counts 0, segment `first_contact`, every
+# recency column NA), the step-1 row of disposition_steps().
+.disposition_history_append <- function(summ, d, as_of, undeliverable_codes) {
+  n <- nrow(summ)
+  h <- if (nrow(d) > 0L) .disposition_history_collapse(d, as_of, undeliverable_codes)
+  idx <- if (is.null(h)) rep(NA_integer_, n) else match(summ$phone, h$phone)
+  absent <- is.na(idx)
+  for (col in .DISPOSITION_HISTORY_COLS) {
+    v <- if (is.null(h)) rep(NA_integer_, n) else h[[col]][idx]
+    if (col == "history_segment") {
+      v[absent] <- "first_contact"
+    } else if (startsWith(col, "prior_")) {
+      v[absent] <- 0L
+    }
+    summ[[col]] <- v
+  }
+  summ
+}
+
 .disposition_paginate <- function(summ, page, page_size, fn = NULL) {
   if (is.null(page) && is.null(page_size)) return(summ)
   ps <- if (is.null(page_size)) max(1L, nrow(summ)) else page_size
@@ -763,7 +874,7 @@
 # there is no is.data.frame() guard here.
 .disposition_rollup <- function(data, phones = NULL, campaign_ids = NULL,
                                 statuses = NULL, date_from = NULL, date_to = NULL,
-                                page = NULL, page_size = NULL, fn) {
+                                page = NULL, page_size = NULL, fn, history = NULL) {
   # disposition_date is optional -- it only orders each phone's latest campaign and
   # backs the date filters -- so an un-enriched disposition_records() frame that
   # omits it still summarizes (mirroring disposition_records(), which tolerates
@@ -821,6 +932,11 @@
   if (!is.null(req)) {
     missing <- setdiff(req, summ$phone)
     if (length(missing) > 0L) summ <- rbind(summ, .disposition_never_contacted(missing))
+  }
+  # `history`: list(as_of, undeliverable_codes) -> the per-phone history block
+  # (disposition_screen(columns = "history")), over the same filtered rows.
+  if (!is.null(history)) {
+    summ <- .disposition_history_append(summ, d, history$as_of, history$undeliverable_codes)
   }
   if (!is.null(statuses)) {
     summ <- summ[summ$latest_disposition %in% as.character(statuses), ,
@@ -1091,6 +1207,37 @@ disposition_records <- function(dataset, phones = NULL, campaign_ids = NULL,
 #' it (dropping the numbers already completed or refused). Mirrors the
 #' "append columns to my uploaded list" screening workflow.
 #'
+#' \strong{History.} \code{columns = "history"} (or \code{c("summary", "history")})
+#' appends instead of, or as well as, the counts what each number's contact
+#' history says about its \emph{next} send: the \code{prior_completes},
+#' \code{prior_replies}, \code{prior_unanswered} counts, the
+#' \code{history_segment} (\code{first_contact} for a number with no campaign in
+#' scope, else \code{completer_2_plus}, \code{completer_1}, \code{replied},
+#' \code{unanswered_3_plus} or \code{unanswered_1_2}), and the recency columns
+#' \code{steps_since_reply} / \code{steps_since_complete} /
+#' \code{steps_since_undeliverable} (campaigns since the last one; \code{0} when
+#' it was the latest campaign) and \code{days_since_reply} /
+#' \code{days_since_complete} / \code{days_since_undeliverable} (\code{as_of}
+#' minus that campaign's \code{disposition_date}), \code{NA} until the event has
+#' happened. They are the columns \code{\link{disposition_steps}(columns =
+#' "history")} carries per step, with the same names and definitions, computed
+#' here as of the campaign that would come next, so a rule measured on the steps
+#' table applies to a sample unchanged. On the 2026 production rows the
+#' segments complete at about 17\% (\code{completer_2_plus}), 9\%
+#' (\code{completer_1}), 1.1\% (\code{replied}), 0.55\% (\code{first_contact}),
+#' 0.33\% (\code{unanswered_1_2}) and 0.17\% (\code{unanswered_3_plus}) of
+#' sends, and a number rejected by the carrier (\code{undeliverable}) starts
+#' replying again only after about two years; the usual rule drops
+#' \code{unanswered_3_plus} and a recent undeliverable and sends the completers
+#' first (see Examples). A campaign's letter follows
+#' \code{\link{disposition_steps}}: a no-reply row whose \code{error} is one of
+#' \code{undeliverable_codes} is undeliverable, every other label but
+#' \code{non_response} is a reply, \code{completed} / \code{web_complete} a
+#' complete; a text-to-web external send (\code{completed} \code{NA}) is a
+#' reply whose completion is unknown. The \code{campaign_ids} / \code{date_from}
+#' / \code{date_to} scope applies to the history too (a number whose campaigns
+#' all fall outside it is at its \code{first_contact}).
+#'
 #' @param sample A data frame with a phone-number column.
 #' @param dataset Path to a disposition Parquet file (the read projection).
 #' @param phone_col Name of the phone column in \code{sample}
@@ -1098,6 +1245,15 @@ disposition_records <- function(dataset, phones = NULL, campaign_ids = NULL,
 #' @param campaign_ids,date_from,date_to Optional scoping of the disposition
 #'   rows considered (see \code{\link{disposition_summary}}). No \code{statuses}
 #'   or pagination here -- every sample row is returned.
+#' @param columns Which blocks to append: \code{"summary"} (default; the
+#'   \code{\link{disposition_summary}} columns), \code{"history"} (the
+#'   next-contact history block, see Details), or both.
+#' @param as_of The date the \code{days_since_*} columns count to (default
+#'   today); a \code{Date} or date string. Only read with \code{"history"}.
+#' @param undeliverable_codes Delivery-error codes that make a no-reply campaign
+#'   \code{undeliverable} in the history block, as in
+#'   \code{\link{disposition_steps}}; \code{NULL} treats every no-reply row as a
+#'   plain non-response. Only read with \code{"history"}.
 #' @return \code{sample} with the \code{\link{disposition_summary}} columns
 #'   appended (see there for their meaning and order): \code{n_campaigns},
 #'   \code{campaigns}, \code{n_engaged}, \code{n_opted_in}, \code{n_completed},
@@ -1111,7 +1267,14 @@ disposition_records <- function(dataset, phones = NULL, campaign_ids = NULL,
 #'   (\code{n_campaigns = 0}, the \code{n_*} counts \code{0}, the dates \code{NA},
 #'   \code{latest_disposition = "never_contacted"}, \code{campaigns = NA}); only a
 #'   phone that digit-normalizes to nothing (blank/unparseable) gets an
-#'   all-\code{NA} block.
+#'   all-\code{NA} block. With \code{"history"} in \code{columns} the block
+#'   \code{prior_completes}, \code{prior_replies}, \code{prior_unanswered},
+#'   \code{history_segment}, \code{steps_since_reply},
+#'   \code{steps_since_complete}, \code{steps_since_undeliverable},
+#'   \code{days_since_reply}, \code{days_since_complete},
+#'   \code{days_since_undeliverable} follows (a never-contacted phone: counts
+#'   \code{0}, \code{first_contact}, recency \code{NA}); with
+#'   \code{columns = "history"} alone it is the only block.
 #' @section Memory:
 #' With the \pkg{duckdb} package installed (Suggests; used automatically), the
 #' sample's phone match runs inside the Parquet scan, so only the sample's rows
@@ -1151,6 +1314,11 @@ disposition_records <- function(dataset, phones = NULL, campaign_ids = NULL,
 #' # keep numbers not already finished and not a hard stop
 #' subset(cleaned, !((n_completed > 0 | n_web_complete > 0) %in% TRUE |
 #'                     (n_terminated > 0 | n_refused > 0 | n_ineligible > 0) %in% TRUE))
+#' # the history block: what each number's next send would carry
+#' history <- disposition_screen(my_sample, dataset, columns = "history",
+#'                               as_of = "2026-02-01")
+#' history[, c("phone", "history_segment", "prior_completes",
+#'             "steps_since_complete", "days_since_complete")]
 #' \dontrun{
 #' dataset <- disposition_pull()
 #' cleaned <- disposition_screen(my_sample, dataset, phone_col = "phone")
@@ -1158,25 +1326,49 @@ disposition_records <- function(dataset, phones = NULL, campaign_ids = NULL,
 #' # terminated); blank-phone rows come back all-NA and are kept
 #' subset(cleaned, !((n_completed > 0 | n_web_complete > 0) %in% TRUE |
 #'   (n_terminated > 0 | n_refused > 0 | n_ineligible > 0) %in% TRUE))
+#'
+#' # the history rule: skip numbers that never answered three or more campaigns
+#' # or were rejected by the carrier in the last two years, then send the
+#' # completers first
+#' cleaned <- disposition_screen(my_sample, dataset, columns = c("summary", "history"))
+#' keep <- subset(cleaned, !(history_segment == "unanswered_3_plus") %in% TRUE &
+#'   !(days_since_undeliverable < 730) %in% TRUE)
+#' keep[order(keep$history_segment != "completer_2_plus",
+#'            keep$history_segment != "completer_1"), ]
 #' }
 #' @export
 disposition_screen <- function(sample, dataset, phone_col = "phone",
-                                    campaign_ids = NULL, date_from = NULL,
-                                    date_to = NULL) {
-  check_data_frame(sample, "sample", fn = "disposition_screen")
+                               campaign_ids = NULL, date_from = NULL,
+                               date_to = NULL, columns = "summary",
+                               as_of = Sys.Date(),
+                               undeliverable_codes = .DISPOSITION_UNDELIVERABLE_CODES) {
+  fn <- "disposition_screen"
+  check_data_frame(sample, "sample", fn = fn)
   if (!is.character(phone_col) || length(phone_col) != 1L ||
         !phone_col %in% names(sample)) {
     stop_s160(sprintf("`phone_col` %s is not a column of `sample` (%s).",
                       deparse(phone_col), .columns_hint(sample, "sample")),
-              fn = "disposition_screen")
+              fn = fn)
   }
-  disposition_cols <- setdiff(.DISPOSITION_SUMMARY_COLS, "phone")
+  if (!is.character(columns) || length(columns) == 0L || anyNA(columns) ||
+        !all(columns %in% .DISPOSITION_SCREEN_GROUPS)) {
+    stop_s160(sprintf("`columns` must be one or both of %s%s.",
+                      paste0("\"", .DISPOSITION_SCREEN_GROUPS, "\"", collapse = ", "),
+                      .not_got(columns)), fn = fn)
+  }
+  history <- if ("history" %in% columns) {
+    if (is.null(as_of)) stop_s160("`as_of` must be a single valid date, not NULL.", fn = fn)
+    list(as_of = .disposition_date_bound(as_of, "as_of"),
+         undeliverable_codes = .disposition_check_terminal_codes(undeliverable_codes, fn))
+  }
+  disposition_cols <- c(if ("summary" %in% columns) setdiff(.DISPOSITION_SUMMARY_COLS, "phone"),
+                        if (!is.null(history)) .DISPOSITION_HISTORY_COLS)
   clash <- intersect(disposition_cols, names(sample))
   if (length(clash) > 0L) {
     stop_s160(sprintf(paste0("`sample` already has disposition column(s) %s; ",
                              "rename or drop them first so the screen can add its own."),
                       paste(clash, collapse = ", ")),
-              fn = "disposition_screen")
+              fn = fn)
   }
   # Normalize the sample once: the deduped set scopes the read (only the sample's
   # rows ever load) and the rollup, and the full vector maps rows back 1:1.
@@ -1186,7 +1378,7 @@ disposition_screen <- function(sample, dataset, phone_col = "phone",
     campaign_ids = campaign_ids, date_from = date_from, date_to = date_to))
   summ <- .disposition_rollup(data, phones = req, campaign_ids = campaign_ids,
                               date_from = date_from, date_to = date_to,
-                              fn = "disposition_screen")
+                              fn = fn, history = history)
   idx <- match(norm, summ$phone)
   for (col in disposition_cols) sample[[col]] <- summ[[col]][idx]
   sample

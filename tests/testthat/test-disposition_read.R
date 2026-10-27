@@ -489,3 +489,98 @@ test_that("a partially-dated dataset relabels a contacted-but-undated phone", {
   expect_equal(undated$n_campaigns, 0L)
   expect_equal(undated$latest_disposition, "never_contacted")
 })
+
+# --- disposition_screen(columns = "history") -------------------------------
+
+test_that("the history block says what each number's next send would carry", {
+  rows <- rbind(sequence_records(),
+                .sequence_row("2015550106", 1L, "2026-01-01", engaged = 1L, opted_in = 1L, completed = 1L),
+                .sequence_row("2015550106", 2L, "2026-02-01", engaged = 1L, opted_in = 1L, completed = 1L),
+                .sequence_row("2015550106", 3L, "2026-03-01"))
+  p <- write_sequence_parquet(rows)
+  sample <- data.frame(phone = c("+1 (201) 555-0101", paste0("201555010", 2:6), "2015559999", ""),
+                       k = 1:8, stringsAsFactors = FALSE)
+  out <- disposition_screen(sample, p, columns = "history", as_of = "2026-04-01")
+  expect_equal(out$phone, sample$phone)
+  expect_equal(out$k, 1:8)
+  expect_false(any(c("n_campaigns", "latest_disposition") %in% names(out)))
+  expect_identical(setdiff(names(out), c("phone", "k")), .DISPOSITION_HISTORY_COLS)
+  # 0101 N E C; 0102 X N N T (T is a reply); 0103 O W on one date; 0104 N (undated,
+  # oldest) then a t2w_external E (a reply, completion unknown); 0105 R I; 0106 C C N
+  expect_identical(out$prior_completes, c(1L, 0L, 1L, 0L, 0L, 2L, 0L, NA))
+  expect_identical(out$prior_replies, c(2L, 1L, 2L, 1L, 2L, 2L, 0L, NA))
+  expect_identical(out$prior_unanswered, c(1L, 3L, 0L, 1L, 0L, 1L, 0L, NA))
+  expect_equal(out$history_segment, c("completer_1", "replied", "completer_1", "replied",
+                                      "replied", "completer_2_plus", "first_contact", NA))
+  expect_identical(out$steps_since_reply, c(0L, 0L, 0L, 0L, 0L, 1L, NA, NA))
+  expect_identical(out$steps_since_complete, c(0L, NA, 0L, NA, NA, 1L, NA, NA))
+  expect_identical(out$steps_since_undeliverable, c(NA, 3L, NA, NA, NA, NA, NA, NA))
+  expect_identical(out$days_since_reply, c(31L, 31L, 59L, 31L, 59L, 59L, NA, NA))
+  expect_identical(out$days_since_complete, c(31L, NA, 59L, NA, NA, 59L, NA, NA))
+  expect_identical(out$days_since_undeliverable, c(NA, 90L, NA, NA, NA, NA, NA, NA))
+
+  # both blocks, in order; as_of as a Date; the codes decide what is undeliverable
+  both <- disposition_screen(sample, p, columns = c("summary", "history"),
+                             as_of = as.Date("2026-04-02"), undeliverable_codes = NULL)
+  expect_identical(setdiff(names(both), c("phone", "k")),
+                   c(setdiff(.DISPOSITION_SUMMARY_COLS, "phone"), .DISPOSITION_HISTORY_COLS))
+  expect_identical(both$n_campaigns[1:2], c(3L, 4L))
+  expect_identical(both$days_since_reply[1], 32L)
+  expect_true(all(is.na(both$steps_since_undeliverable)))
+  expect_identical(both$prior_unanswered[2], 3L)   # a plain non-response is still unanswered
+
+  # the scope applies to the history: nothing in range -> first contact
+  none <- disposition_screen(sample, p, columns = "history", date_from = "2027-01-01")
+  expect_equal(none$history_segment, c(rep("first_contact", 7), NA))
+  expect_identical(none$prior_replies, c(rep(0L, 7), NA))
+  expect_true(all(is.na(none$days_since_reply)))
+  # a sample with no contacted number at all
+  fresh <- disposition_screen(data.frame(phone = c("2015559999", "2015559998")), p,
+                              columns = "history")
+  expect_equal(fresh$history_segment, c("first_contact", "first_contact"))
+  expect_identical(fresh$prior_completes, c(0L, 0L))
+  expect_identical(fresh$steps_since_reply, c(NA_integer_, NA_integer_))
+})
+
+test_that("the history block is the last step's history plus that step", {
+  skip_if_no_sequence()
+  rows <- rbind(sequence_records(),
+                .sequence_row("2015550106", 1L, "2026-01-01", engaged = 1L, opted_in = 1L, completed = 1L),
+                .sequence_row("2015550106", 2L, "2026-02-01", engaged = 1L, opted_in = 1L, completed = 1L),
+                .sequence_row("2015550106", 3L, "2026-03-01"))
+  p <- write_sequence_parquet(rows)
+  steps <- collect_sorted(disposition_steps(p, columns = "history"))
+  last <- steps[!duplicated(steps$phone, fromLast = TRUE), ]
+  out <- disposition_screen(data.frame(phone = last$phone), p, columns = "history",
+                            as_of = "2026-04-01")
+  is_reply <- !last$label %in% c("non_response", "undeliverable")
+  is_complete <- last$label %in% c("completed", "web_complete")
+  expect_identical(out$prior_completes, last$prior_completes + as.integer(is_complete))
+  expect_identical(out$prior_replies, last$prior_replies + as.integer(is_reply))
+  expect_identical(out$prior_unanswered, last$prior_unanswered + as.integer(!is_reply))
+  # the recency columns advance by one step, or restart at the last step itself
+  advance <- function(since, event) ifelse(event, 0L, since + 1L)
+  expect_identical(out$steps_since_reply, advance(last$steps_since_reply, is_reply))
+  expect_identical(out$steps_since_complete, advance(last$steps_since_complete, is_complete))
+  expect_identical(out$steps_since_undeliverable,
+                   advance(last$steps_since_undeliverable, last$label == "undeliverable"))
+  gap <- as.integer(as.Date("2026-04-01") - last$disposition_date)
+  expect_identical(out$days_since_reply, ifelse(is_reply, gap, last$days_since_reply + gap))
+})
+
+test_that("disposition_screen validates the history arguments", {
+  p <- .disposition_base()
+  sample <- data.frame(phone = "2015550101", stringsAsFactors = FALSE)
+  expect_error(disposition_screen(sample, p, columns = "clocks"),
+               "`columns` must be one or both of \"summary\", \"history\"")
+  expect_error(disposition_screen(sample, p, columns = character(0)), "`columns`")
+  expect_error(disposition_screen(sample, p, columns = "history", as_of = NULL),
+               "`as_of` must be a single valid date")
+  expect_error(disposition_screen(sample, p, columns = "history", as_of = "yesterday"),
+               "`as_of` must be a single valid date")
+  expect_error(disposition_screen(sample, p, columns = "history", undeliverable_codes = NA),
+               "`undeliverable_codes`")
+  clash <- data.frame(phone = "2015550101", history_segment = "x", stringsAsFactors = FALSE)
+  expect_error(disposition_screen(clash, p, columns = "history"), "already has")
+  expect_s3_class(disposition_screen(clash, p), "data.frame")   # only the requested block clashes
+})
