@@ -568,6 +568,18 @@ test_that("the history block is the last step's history plus that step", {
   expect_identical(out$days_since_reply, ifelse(is_reply, gap, last$days_since_reply + gap))
 })
 
+test_that("a timestamp-stored disposition_date gives the same history block", {
+  rows <- sequence_records()
+  dated <- write_sequence_parquet(rows)
+  rows$disposition_date <- as.POSIXct(rows$disposition_date, tz = "UTC")
+  stamped <- tempfile(fileext = ".parquet")
+  nanoparquet::write_parquet(rows, stamped)
+  sample <- data.frame(phone = paste0("201555010", 1:5), stringsAsFactors = FALSE)
+  expect_no_warning(out <- disposition_screen(sample, stamped, columns = "history", as_of = "2026-04-01"))
+  expect_identical(out, disposition_screen(sample, dated, columns = "history", as_of = "2026-04-01"))
+  expect_identical(out$days_since_reply, c(31L, 31L, 59L, 31L, 59L))
+})
+
 test_that("disposition_screen validates the history arguments", {
   p <- .disposition_base()
   sample <- data.frame(phone = "2015550101", stringsAsFactors = FALSE)

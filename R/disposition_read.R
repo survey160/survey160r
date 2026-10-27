@@ -330,14 +330,17 @@
 # last-row-per-group pick, so a million-phone sample takes well under a second.
 .disposition_history_collapse <- function(d, as_of, undeliverable_codes) {
   code <- .disposition_row_codes(d, undeliverable_codes)
-  dk <- as.numeric(d$disposition_date)
+  # A timestamp-stored disposition_date reads as POSIXct; the day count and the
+  # order both want the date, as the sequence readers' CAST(... AS DATE).
+  date <- as.Date(d$disposition_date, tz = "UTC")
+  dk <- as.numeric(date)
   dk[is.na(dk)] <- -Inf
   cid <- suppressWarnings(as.numeric(d$campaign_id))
   cid[is.na(cid)] <- -Inf
   o <- order(d$phone, dk, cid, -seq_len(nrow(d)), method = "radix")
   phone <- d$phone[o]
   code <- code[o]
-  date <- d$disposition_date[o]
+  date <- date[o]
   g <- data.table::rleidv(phone)
   n_groups <- g[length(g)]
   size <- tabulate(g, nbins = n_groups)
