@@ -1,21 +1,24 @@
 # survey160r (development version)
 
-## Contact clocks on `disposition_steps()`
+## Recency columns on `disposition_steps()`
 
-* `disposition_steps(columns = "history")` adds six clock columns next to the
+* `disposition_steps(columns = "history")` adds six recency columns next to the
   `prior_*` counts and `history_segment`: `steps_since_reply`,
   `steps_since_complete`, `steps_since_undeliverable` (campaigns since the last
   such step before this one; `0` when it was the previous campaign) and
   `days_since_reply`, `days_since_complete`, `days_since_undeliverable`
   (`disposition_date` minus that step's); `NA` until the event has happened.
-  On the 2026 production rows the contact clock is what predicts the next
+  On the 2026 production rows campaigns, not days, are what predicts the next
   outcome (a number completes 20% of the time when its previous campaign was a
   complete, 13% / 10% / 8% / 5% after one / two / three / four unanswered
   campaigns in between, 3% after five), while the calendar matters mainly for
-  undeliverables, which start replying again after about two years. The `history` group now builds the letter path for the contact
-  clocks, which adds about four seconds on the full production projection
+  undeliverables, which start replying again after about two years. The `history` group now builds the letter path for the
+  recency columns, which adds about four seconds on the full production projection
   (10 s to 14 s for the 2026 rows); a second window layer keyed on `step`
   was tried and cost twice that, the sort being the whole price.
+* 0.77.1: the help page, article and this entry say "recency columns"
+  rather than "clocks" for the `steps_since_*` / `days_since_*` columns; no
+  column or behaviour changed.
 
 ## Documentation and developer experience
 
