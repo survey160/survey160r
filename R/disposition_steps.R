@@ -267,6 +267,8 @@
   "next_date", "gap_prev_days", "gap_next_days", "completes_so_far",
   "non_responses_so_far", "replies_so_far", "run_length", "path_so_far",
   "prior_completes", "prior_replies", "prior_unanswered", "history_segment",
+  "steps_since_reply", "steps_since_complete", "steps_since_undeliverable",
+  "days_since_reply", "days_since_complete", "days_since_undeliverable",
   "history_matched", "path", "shape", "first_date", "last_date",
   "n_unknown_completion", "matched", "match_start", "match_end",
   "match_start_date", "match_end_date")
@@ -418,8 +420,10 @@
     # numbers ("01", "1") or are not numbers fall to the file-order tie-break
     "TRY_CAST(campaign_id AS DOUBLE) ASC NULLS FIRST"
   }
-  paste("WINDOW w AS (PARTITION BY phone ORDER BY disposition_date ASC NULLS FIRST,", id_order,
-        ", s160_row DESC ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)")
+  order_by <- paste("PARTITION BY phone ORDER BY disposition_date ASC NULLS FIRST,", id_order,
+                    ", s160_row DESC ROWS BETWEEN UNBOUNDED PRECEDING AND")
+  # w: the history up to and including this step; w_prior: the steps before it
+  paste0("WINDOW w AS (", order_by, " CURRENT ROW), w_prior AS (", order_by, " 1 PRECEDING)")
 }
 
 # Row filters applied AFTER the history windows (disposition_steps): keeping a
@@ -457,6 +461,11 @@
     sprintf("CAST(sum(CAST(s160_code IN (%s) AS INTEGER)) OVER w AS INTEGER)",
             paste0("'", codes, "'", collapse = ", "))
   }
+  # the date of the last step BEFORE this one with one of these letters (NULL: none yet)
+  last_date <- function(codes, name) {
+    sprintf("max(CASE WHEN s160_code IN (%s) THEN disposition_date END) OVER w_prior AS %s",
+            paste0("'", codes, "'", collapse = ", "), name)
+  }
   c("CAST(row_number() OVER w AS INTEGER) AS step",
     "CAST(count(*) OVER (PARTITION BY phone) AS INTEGER) AS n_campaigns",
     if ("neighbors" %in% groups) {
@@ -472,20 +481,37 @@
     if ("history" %in% groups) {
       # running counts INCLUDING this step; the select subtracts this step's own letter
       c(paste(in_codes(c("C", "W")), "AS s160_comp_sf"),
-        paste(in_codes(c("E", "O", "T", "I", "R", "C", "W")), "AS s160_reply_sf"))
+        paste(in_codes(c("E", "O", "T", "I", "R", "C", "W")), "AS s160_reply_sf"),
+        last_date(c("E", "O", "T", "I", "R", "C", "W"), "s160_last_reply_date"),
+        last_date(c("C", "W"), "s160_last_complete_date"),
+        last_date("X", "s160_last_undeliverable_date"))
     },
     if (need_path) "string_agg(s160_code, '') OVER w AS path_so_far")
 }
 
-# The history group: what came BEFORE this step (prior_* exclude it) and the
-# segment a list-screening rule reads off it. Segments, first match wins:
-# first_contact (step 1), completer_2_plus / completer_1 (prior completes),
-# replied (a prior reply that never completed), unanswered_3_plus /
-# unanswered_1_2 (only non-responses or undeliverables so far).
+# The history group: what came BEFORE this step (prior_* exclude it), the
+# segment a list-screening rule reads off it, and the clocks since the last
+# reply / complete / undeliverable. Segments, first match wins: first_contact
+# (step 1), completer_2_plus / completer_1 (prior completes), replied (a prior
+# reply that never completed), unanswered_3_plus / unanswered_1_2 (only
+# non-responses or undeliverables so far).
+# A steps_since_* clock is the trailing run of OTHER letters on the history
+# before this step (path_so_far minus its last letter): rtrim() strips them, and
+# an empty remainder means the event never happened (NULL). The days_since_*
+# clocks subtract the last such step's date (a w_prior window max).
 .disposition_step_history_sql <- function() {
   comp  <- "(s160_comp_sf - CAST(s160_code IN ('C', 'W') AS INTEGER))"
   reply <- "(s160_reply_sf - CAST(s160_code NOT IN ('N', 'X') AS INTEGER))"
   unans <- sprintf("(step - 1 - %s)", reply)
+  before <- "substr(path_so_far, 1, length(path_so_far) - 1)"
+  steps_since <- function(other, name) {
+    sprintf(paste0("CASE WHEN rtrim(%1$s, '%2$s') = '' THEN NULL ",
+                   "ELSE CAST(length(%1$s) - length(rtrim(%1$s, '%2$s')) AS INTEGER) END AS %3$s"),
+            before, other, name)
+  }
+  days_since <- function(col, name) {
+    sprintf("CAST(disposition_date - %s AS INTEGER) AS %s", col, name)
+  }
   c(sprintf("CAST(%s AS INTEGER) AS prior_completes", comp),
     sprintf("CAST(%s AS INTEGER) AS prior_replies", reply),
     sprintf("CAST(%s AS INTEGER) AS prior_unanswered", unans),
@@ -493,7 +519,13 @@
                    "WHEN %1$s >= 2 THEN 'completer_2_plus' WHEN %1$s = 1 THEN 'completer_1' ",
                    "WHEN %2$s > 0 THEN 'replied' ",
                    "WHEN %3$s >= 3 THEN 'unanswered_3_plus' ELSE 'unanswered_1_2' END AS history_segment"),
-            comp, reply, unans))
+            comp, reply, unans),
+    steps_since("NX", "steps_since_reply"),
+    steps_since("NXEOTIR", "steps_since_complete"),
+    steps_since("NEOTIRCW", "steps_since_undeliverable"),
+    days_since("s160_last_reply_date", "days_since_reply"),
+    days_since("s160_last_complete_date", "days_since_complete"),
+    days_since("s160_last_undeliverable_date", "days_since_undeliverable"))
 }
 
 # The output projection: identity, label, history, then the stored columns. A
@@ -578,6 +610,21 @@
 #' completers the usual priority; group by it to reproduce those rates on a
 #' newer projection.
 #'
+#' \strong{Clocks.} The same group carries how long ago the phone last did
+#' something, counted both in contacts and in days: \code{steps_since_reply},
+#' \code{steps_since_complete}, \code{steps_since_undeliverable} (how many
+#' campaigns since the last reply / complete / undeliverable before this one;
+#' \code{0} means the previous campaign was one) and \code{days_since_reply},
+#' \code{days_since_complete}, \code{days_since_undeliverable} (this step's
+#' \code{disposition_date} minus that campaign's). All \code{NA} until the
+#' event has happened. On the 2026 production rows the contact clock, not the
+#' calendar, is what predicts the next outcome: a number whose last contact was
+#' a complete completes again about 27\% of the time within 30 days and 8\%
+#' after two years, but 17\% / 13\% after one / two unanswered contacts in
+#' between even within 30 days; after an undeliverable the next reply rate
+#' climbs from 0.3\% within a week to 3.4\% past two years, so
+#' \code{days_since_undeliverable} is the one calendar clock worth a rule.
+#'
 #' \strong{Filters.} \code{phones} and \code{sample_frac} keep or drop whole
 #' phones \emph{before} the history is computed. \code{campaign_ids},
 #' \code{date_from} and \code{date_to} drop rows \emph{after} it, so a kept row
@@ -615,8 +662,10 @@
 #'   \code{gap_prev_days}, \code{gap_next_days}), \code{"so_far"}
 #'   (\code{completes_so_far}, \code{non_responses_so_far}, \code{replies_so_far},
 #'   counting this step), \code{"run_length"} (how many steps in a row, ending
-#'   here, have this label) and \code{"path_so_far"} (the history as letters,
-#'   ending with this step). All by default; each costs a few seconds on the full
+#'   here, have this label), \code{"path_so_far"} (the history as letters,
+#'   ending with this step) and \code{"history"} (\code{prior_*} counts, the
+#'   \code{history_segment}, and the \code{steps_since_*} / \code{days_since_*}
+#'   clocks; see below). All by default; each costs a few seconds on the full
 #'   projection.
 #' @param pattern Optional sequence pattern (see \code{\link{disposition_paths}}
 #'   for the syntax); adds \code{history_matched}: whether the history up to and
@@ -692,7 +741,7 @@ disposition_steps <- function(dataset, phones = NULL, sample_frac = NULL,
   after <- .disposition_after_filters(con, source, campaign_ids, date_from, date_to, fn)
   base <- .disposition_base_sql(con, source, phones, sample_frac,
                                 .disposition_label_sql(con, source, terminal, codes))
-  need_path <- any(c("run_length", "path_so_far") %in% columns) || !is.null(pattern_re)
+  need_path <- any(c("run_length", "path_so_far", "history") %in% columns) || !is.null(pattern_re)
   windowed <- paste0("SELECT *, ", paste(.disposition_step_windows(columns, need_path), collapse = ", "),
                      " FROM (", base, ") ", .disposition_sequence_window(source))
   sql <- paste0("SELECT ", paste(.disposition_step_select(con, source$cols, columns, pattern_re),

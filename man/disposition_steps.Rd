@@ -43,8 +43,10 @@ all campaigns).}
 \code{gap_prev_days}, \code{gap_next_days}), \code{"so_far"}
 (\code{completes_so_far}, \code{non_responses_so_far}, \code{replies_so_far},
 counting this step), \code{"run_length"} (how many steps in a row, ending
-here, have this label) and \code{"path_so_far"} (the history as letters,
-ending with this step). All by default; each costs a few seconds on the full
+here, have this label), \code{"path_so_far"} (the history as letters,
+ending with this step) and \code{"history"} (\code{prior_*} counts, the
+\code{history_segment}, and the \code{steps_since_*} / \code{days_since_*}
+clocks; see below). All by default; each costs a few seconds on the full
 projection.}
 
 \item{pattern}{Optional sequence pattern (see \code{\link{disposition_paths}}
@@ -124,6 +126,21 @@ production rows the segments complete at about 17\%, 9\%, 1.1\%, 0.55\%
 a previous \code{undeliverable} are the usual suppression rule and the
 completers the usual priority; group by it to reproduce those rates on a
 newer projection.
+
+\strong{Clocks.} The same group carries how long ago the phone last did
+something, counted both in contacts and in days: \code{steps_since_reply},
+\code{steps_since_complete}, \code{steps_since_undeliverable} (how many
+campaigns since the last reply / complete / undeliverable before this one;
+\code{0} means the previous campaign was one) and \code{days_since_reply},
+\code{days_since_complete}, \code{days_since_undeliverable} (this step's
+\code{disposition_date} minus that campaign's). All \code{NA} until the
+event has happened. On the 2026 production rows the contact clock, not the
+calendar, is what predicts the next outcome: a number whose last contact was
+a complete completes again about 27\% of the time within 30 days and 8\%
+after two years, but 17\% / 13\% after one / two unanswered contacts in
+between even within 30 days; after an undeliverable the next reply rate
+climbs from 0.3\% within a week to 3.4\% past two years, so
+\code{days_since_undeliverable} is the one calendar clock worth a rule.
 
 \strong{Filters.} \code{phones} and \code{sample_frac} keep or drop whole
 phones \emph{before} the history is computed. \code{campaign_ids},

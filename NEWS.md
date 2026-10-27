@@ -1,5 +1,20 @@
 # survey160r (development version)
 
+## Contact clocks on `disposition_steps()`
+
+* `disposition_steps(columns = "history")` adds six clock columns next to the
+  `prior_*` counts and `history_segment`: `steps_since_reply`,
+  `steps_since_complete`, `steps_since_undeliverable` (campaigns since the last
+  such step before this one; `0` when it was the previous campaign) and
+  `days_since_reply`, `days_since_complete`, `days_since_undeliverable`
+  (`disposition_date` minus that step's); `NA` until the event has happened.
+  On the 2026 production rows the contact clock is what predicts the next
+  outcome (a completer converts 27% when the complete was the last contact,
+  17% / 13% after one / two unanswered contacts in between), while the calendar
+  matters mainly for undeliverables, which start replying again after about two
+  years. The `history` group now reads the letter path, so it costs about the
+  same as `run_length`.
+
 ## Documentation and developer experience
 
 Twenty rounds over the README, the articles and the function help, written for
