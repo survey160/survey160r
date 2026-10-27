@@ -46,7 +46,7 @@ counting this step), \code{"run_length"} (how many steps in a row, ending
 here, have this label), \code{"path_so_far"} (the history as letters,
 ending with this step) and \code{"history"} (\code{prior_*} counts, the
 \code{history_segment}, and the \code{steps_since_*} / \code{days_since_*}
-clocks; see below). The default is the first four; \code{"history"} is
+recency columns; see below). The default is the first four; \code{"history"} is
 opt-in. Each costs a few seconds on the full projection.}
 
 \item{pattern}{Optional sequence pattern (see \code{\link{disposition_paths}}
@@ -127,20 +127,20 @@ a previous \code{undeliverable} are the usual suppression rule and the
 completers the usual priority; group by it to reproduce those rates on a
 newer projection.
 
-\strong{Clocks.} The same group carries how long ago the phone last did
-something, counted both in contacts and in days: \code{steps_since_reply},
+\strong{Recency.} The same group carries how long ago the phone last did
+something, counted both in campaigns and in days: \code{steps_since_reply},
 \code{steps_since_complete}, \code{steps_since_undeliverable} (how many
 campaigns since the last reply / complete / undeliverable before this one;
 \code{0} means the previous campaign was one) and \code{days_since_reply},
 \code{days_since_complete}, \code{days_since_undeliverable} (this step's
 \code{disposition_date} minus that campaign's). All \code{NA} until the
-event has happened. On the 2026 production rows the contact clock, not the
-calendar, is what predicts the next outcome: a number completes 20\% of the
+event has happened. On the 2026 production rows campaigns, not days, are
+what predicts the next outcome: a number completes 20\% of the
 time when its previous campaign was a complete, 13\% / 10\% / 8\% / 5\%
 after one / two / three / four unanswered campaigns in between and 3\% after
 five, whatever the calendar gap; after an undeliverable the next reply rate
 climbs from 0.3\% within a week to 3.4\% past two years, so
-\code{days_since_undeliverable} is the one calendar clock worth a rule.
+\code{days_since_undeliverable} is the one day count worth a rule.
 
 \strong{Filters.} \code{phones} and \code{sample_frac} keep or drop whole
 phones \emph{before} the history is computed. \code{campaign_ids},
@@ -174,7 +174,7 @@ disposition_steps(dataset, date_from = "2026-01-01", columns = "history") |>
   arrange(desc(completion)) |>
   collect()
 
-# Completion by how many campaigns ago the number last completed (the contact clock)
+# Completion by how many campaigns ago the number last completed
 disposition_steps(dataset, date_from = "2026-01-01", columns = "history") |>
   filter(completion_known, !is.na(steps_since_complete)) |>
   group_by(since = pmin(steps_since_complete, 5L)) |>
