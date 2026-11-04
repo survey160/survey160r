@@ -16,7 +16,8 @@ frame already read from them.}
 A data frame with columns \code{et_date}, \code{et_hour},
   \code{carrier}, \code{brand}, \code{campaign_id}, \code{error_code},
   \code{n_sent} and \code{n_engaged}. A missing \code{carrier} or
-  \code{brand} reads as \code{"(unknown)"}.
+  \code{brand} reads as \code{"(unknown)"}; a frame without
+  \code{n_engaged} gets it as \code{NA} (no rate uses it).
 }
 \description{
 Reads the day files from \code{\link{live_metrics_pull}} into one frame: one

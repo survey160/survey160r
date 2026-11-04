@@ -110,6 +110,26 @@ test_that("a group with no sends has NA rates, and an empty input is empty", {
   expect_true(all(c("cum_sent", "cum_error_rate", "cum_rate_4780") %in% names(e)))
 })
 
+test_that("records tolerate a frame without n_engaged and counts read back as text", {
+  d <- live_cells()
+  d$n_engaged <- NULL
+  d$n_sent <- factor(d$n_sent)
+  r <- live_metrics_records(d)
+  expect_true(all(is.na(r$n_engaged)))
+  expect_equal(sum(r$n_sent), 255)
+  expect_equal(live_metrics_error_rates(d, by = NULL)$n_sent, c(105, 150))
+})
+
+test_that("duplicated `by` and `codes` collapse; an NA or empty code is rejected", {
+  g <- live_metrics_error_rates(live_cells(), by = c("carrier", "carrier"),
+                                codes = c("4780", "4780"))
+  expect_equal(names(g), c("et_date", "carrier", "n_sent", "n_error", "error_rate",
+                           "cum_sent", "cum_error", "cum_error_rate",
+                           "n_4780", "rate_4780", "cum_rate_4780"))
+  expect_error(live_metrics_error_rates(live_cells(), codes = NA), "non-empty error codes")
+  expect_error(live_metrics_error_rates(live_cells(), codes = ""), "non-empty error codes")
+})
+
 test_that("error rates reject an unknown `by` and a bad `percent`", {
   expect_error(live_metrics_error_rates(live_cells(), by = "zip"), "`by` must be among")
   expect_error(live_metrics_error_rates(live_cells(), percent = NA), "single TRUE or FALSE")
@@ -182,12 +202,48 @@ test_that("pull defaults to the last 30 days in the user cache, and refresh re-f
   expect_match(cap$calls[[1]]$dest, "survey160r")
 })
 
-test_that("pull rejects reversed dates, bad args, and the staging tier", {
+test_that("a missing day is skipped through the real download helper", {
+  # Only the network edge is mocked, so .gcs_pull_cached's own handlers run.
+  dir <- withr::local_tempdir()
+  testthat::local_mocked_bindings(
+    check_gcs_ready = function() NULL,
+    download_with_verify = function(object_name, local_path, ...) {
+      if (grepl("2026-10-02", object_name, fixed = TRUE)) {
+        stop_not_found("object", object_name)
+      }
+      writeLines("x", local_path)
+    })
+  expect_message(p <- live_metrics_pull("2026-10-01", "2026-10-03", dest = dir),
+                 "2 day\\(s\\).*no file for 2026-10-02")
+  expect_equal(names(p), c("2026-10-01", "2026-10-03"))
+})
+
+test_that("a date-time bound is read as its ET day", {
+  cap <- new_capture()
+  stub_live_pull(cap)
+  late <- as.POSIXct("2026-11-01 22:30", tz = "America/New_York")  # Nov 2 in UTC
+  suppressMessages(p <- live_metrics_pull(late, late, dest = withr::local_tempdir()))
+  expect_equal(names(p), "2026-11-01")
+})
+
+test_that("pull rejects reversed, mis-parsed and ancient dates, and bad args", {
   expect_error(live_metrics_pull("2026-11-04", "2026-11-01"), "is after")
-  expect_error(live_metrics_pull("not a date"), "single valid date")
+  expect_error(live_metrics_pull("not a date"), "single date \\(YYYY-MM-DD\\)")
+  expect_error(live_metrics_pull("10/01/2026"), "single date \\(YYYY-MM-DD\\)")
+  expect_error(live_metrics_pull(as.Date("0010-01-20")), "on or after 2020-01-01")
+  expect_error(live_metrics_pull(as.Date(c("2026-10-01", "2026-10-02"))), "single date")
   expect_error(live_metrics_pull(refresh = NA), "single TRUE or FALSE")
   expect_error(live_metrics_pull(dest = ""), "non-empty string")
   expect_error(live_metrics_pull(env = "staging"), "no staging tier")
+})
+
+test_that("pull rejects a dest that is a file, and a cache dir it cannot create", {
+  f <- withr::local_tempfile()
+  writeLines("x", f)
+  expect_error(live_metrics_pull(dest = f), "must be a directory")
+  testthat::local_mocked_bindings(dir.create = function(...) FALSE, .package = "base")
+  expect_error(live_metrics_pull(dest = withr::local_tempdir()),
+               "create the cache directory")
 })
 
 test_that("the ET today helper returns a Date", {

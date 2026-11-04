@@ -825,13 +825,14 @@ s160_gcs_campaign_results_read <- function(campaign_id, filename = NULL,
   tryCatch(
     download_with_verify(object_name = object_name, local_path = local_path,
                          bucket = bucket),
-    s160_not_found = function(e) {
-      stop_not_found("file", gcs_path, fn = fn, hint = sprintf(paste0(
-        "List the campaign's files with s160_gcs_campaign_results_files(%s, ",
-        "env = \"%s\"), or trigger a fresh export with ",
-        "s160_api_campaign_results(%s)."), campaign_id, env, campaign_id))
-    },
+    # One handler: a sibling `s160_not_found =` re-raise would be re-caught here.
     error = function(e) {
+      if (inherits(e, "s160_not_found")) {
+        stop_not_found("file", gcs_path, fn = fn, hint = sprintf(paste0(
+          "List the campaign's files with s160_gcs_campaign_results_files(%s, ",
+          "env = \"%s\"), or trigger a fresh export with ",
+          "s160_api_campaign_results(%s)."), campaign_id, env, campaign_id))
+      }
       stop_failed(sprintf("download %s", gcs_path), conditionMessage(e), fn = fn)
     }
   )
@@ -1157,15 +1158,18 @@ s160_gcs_campaign_results_status <- function(campaign_id,
   # and any existing good copy survives.
   tmp <- tempfile(tmpdir = dirname(local_path), fileext = ".part")
   on.exit(unlink(tmp), add = TRUE)
+  # ONE error handler: tryCatch() nests sibling handlers, so a re-raise from an
+  # `s160_not_found =` handler would be caught again by an `error =` sibling and
+  # lose its class.
   tryCatch(
     download_with_verify(object_name = object_name, local_path = tmp,
                          bucket = bucket, progress = progress),
-    s160_not_found = function(e) {
-      stop_not_found(noun, gcs_path, fn = fn, hint = paste0(
-        "Check `env =` names the environment that publishes it, and that ",
-        "s160_gcs_init() authenticated an account that can read the bucket."))
-    },
     error = function(e) {
+      if (inherits(e, "s160_not_found")) {
+        stop_not_found(noun, gcs_path, fn = fn, hint = paste0(
+          "Check `env =` names the environment that publishes it, and that ",
+          "s160_gcs_init() authenticated an account that can read the bucket."))
+      }
       stop_failed(sprintf("download %s", gcs_path), conditionMessage(e), fn = fn)
     }
   )

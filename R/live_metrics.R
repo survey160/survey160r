@@ -29,6 +29,30 @@
   as.Date(format(Sys.time(), tz = .LIVE_METRICS_TZ))
 }
 
+# Earliest day a bound may name: anything before is a mis-parsed date (e.g.
+# "10/01/2026" read as year 10), which would otherwise loop over centuries.
+.LIVE_METRICS_EARLIEST <- as.Date("2020-01-01")
+
+# Coerce one optional day bound to a Date. A date-time is read in ET (the files'
+# day boundary), a string only as YYYY-MM-DD; NULL passes through.
+.live_metrics_day <- function(x, name, fn) {
+  if (is.null(x)) return(NULL)
+  d <- tryCatch(
+    if (inherits(x, "POSIXt")) {
+      as.Date(format(x, tz = .LIVE_METRICS_TZ))
+    } else if (is.character(x)) {
+      as.Date(x, tryFormats = "%Y-%m-%d")
+    } else {
+      as.Date(x)
+    },
+    error = function(e) NA)
+  if (length(d) != 1L || is.na(d) || d < .LIVE_METRICS_EARLIEST) {
+    stop_s160(sprintf("`%s` must be a single date (YYYY-MM-DD) on or after %s%s.",
+                      name, .LIVE_METRICS_EARLIEST, .not_got(x)), fn = fn)
+  }
+  d
+}
+
 # Whether the cached copy of `day` at `local` is final: downloaded after the
 # pipeline's last rewrite of that day. Keyed on when the copy was written, not
 # on how old the day is, so a copy fetched while the day was still open is
@@ -56,9 +80,10 @@
 #' skipped with a message. Authenticate first with \code{\link{s160_gcs_init}}()
 #' (a fully cached range needs no auth).
 #'
-#' @param date_from,date_to First and last ET day to fetch (anything
-#'   \code{as.Date()} reads). \code{NULL} (default): \code{date_to} is today
-#'   (ET) and \code{date_from} is 30 days before \code{date_to}.
+#' @param date_from,date_to First and last ET day to fetch, both included: a
+#'   \code{Date}, a \code{"YYYY-MM-DD"} string, or a date-time (read as its ET
+#'   day). \code{NULL} (default): \code{date_to} is today (ET) and
+#'   \code{date_from} is 30 days before \code{date_to}.
 #' @param env Environment: \code{"prod"} (default) or \code{"dev"}. There is no
 #'   staging analytics tier.
 #' @param dest Directory to save the files in. \code{NULL} (default) caches
@@ -80,8 +105,8 @@ live_metrics_pull <- function(date_from = NULL, date_to = NULL,
                               refresh = FALSE) {
   fn <- "live_metrics_pull"
   env <- match.arg(env)
-  to <- .disposition_date_bound(date_to, "date_to") %||% .live_metrics_today()
-  from <- .disposition_date_bound(date_from, "date_from") %||% (to - 30)
+  to <- .live_metrics_day(date_to, "date_to", fn) %||% .live_metrics_today()
+  from <- .live_metrics_day(date_from, "date_from", fn) %||% (to - 30)
   if (from > to) {
     stop_s160(sprintf("`date_from` (%s) is after `date_to` (%s).", from, to),
               fn = fn)
@@ -92,8 +117,13 @@ live_metrics_pull <- function(date_from = NULL, date_to = NULL,
 
   if (is.null(dest)) dest <- tools::R_user_dir("survey160r", "cache")
   check_nonempty_string(dest, "dest", fn = fn)
+  if (file.exists(dest) && !dir.exists(dest)) {
+    stop_s160(sprintf("`dest` must be a directory; %s is a file.", dest), fn = fn)
+  }
   dir <- file.path(dest, paste0(loc$bucket, ".live_metrics"))
-  dir.create(dir, recursive = TRUE, showWarnings = FALSE)
+  if (!dir.exists(dir) && !dir.create(dir, recursive = TRUE, showWarnings = FALSE)) {
+    stop_failed("create the cache directory", dir, fn = fn)
+  }
 
   days <- seq(from, to, by = "day")
   paths <- character(0)
@@ -144,7 +174,8 @@ live_metrics_pull <- function(date_from = NULL, date_to = NULL,
 #' @return A data frame with columns \code{et_date}, \code{et_hour},
 #'   \code{carrier}, \code{brand}, \code{campaign_id}, \code{error_code},
 #'   \code{n_sent} and \code{n_engaged}. A missing \code{carrier} or
-#'   \code{brand} reads as \code{"(unknown)"}.
+#'   \code{brand} reads as \code{"(unknown)"}; a frame without
+#'   \code{n_engaged} gets it as \code{NA} (no rate uses it).
 #' @seealso \code{\link{live_metrics_error_rates}}
 #' @examples
 #' cells <- data.frame(
@@ -160,6 +191,8 @@ live_metrics_records <- function(x, campaign_ids = NULL) {
   } else {
     .live_metrics_read(x, fn)
   }
+  # n_engaged is carried through but no rate needs it: optional, NA when absent.
+  if (!"n_engaged" %in% names(d)) d$n_engaged <- rep(NA_integer_, nrow(d))
   miss <- setdiff(.LIVE_METRICS_COLS, names(d))
   if (length(miss)) {
     stop_s160(sprintf("`x` is missing column(s): %s (%s).",
@@ -168,6 +201,10 @@ live_metrics_records <- function(x, campaign_ids = NULL) {
   }
   d <- d[, .LIVE_METRICS_COLS, drop = FALSE]
   d$et_date <- as.Date(d$et_date)
+  # Counts read back from a CSV may be factors or strings.
+  for (col in c("n_sent", "n_engaged")) {
+    if (!is.numeric(d[[col]])) d[[col]] <- as.numeric(as.character(d[[col]]))
+  }
   for (col in c("carrier", "brand")) {
     v <- as.character(d[[col]])
     v[is.na(v) | !nzchar(v)] <- "(unknown)"
@@ -251,14 +288,18 @@ live_metrics_error_rates <- function(x, by = "carrier", codes = "4780",
                                      campaign_ids = NULL, percent = FALSE) {
   fn <- "live_metrics_error_rates"
   d <- live_metrics_records(x, campaign_ids = campaign_ids)
-  by <- as.character(by)
+  by <- unique(as.character(by))
   bad <- setdiff(by, .LIVE_METRICS_DIMS)
   if (length(bad)) {
     stop_s160(sprintf("`by` must be among %s; got %s.",
                       paste(.LIVE_METRICS_DIMS, collapse = ", "),
                       paste(bad, collapse = ", ")), fn = fn)
   }
-  codes <- as.character(codes)
+  codes <- unique(as.character(codes))
+  if (anyNA(codes) || !all(nzchar(codes))) {
+    stop_s160(sprintf("`codes` must be non-empty error codes such as \"4780\"%s.",
+                      .not_got(codes)), fn = fn)
+  }
   .require_single_logical(percent, "percent", fn)
   mult <- if (percent) 100 else 1
   ratio <- function(num, den) ifelse(den > 0, mult * num / den, NA_real_)

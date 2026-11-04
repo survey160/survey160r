@@ -5,7 +5,8 @@
 * `live_metrics_pull()` downloads the daily live-metrics files -- the hourly,
   fleet-wide counts behind the dashboard's Live tab, one row per ET hour,
   carrier, brand, campaign and delivery error code -- for a range of ET days,
-  cached (a past day is final; today and yesterday are re-fetched).
+  cached (a copy downloaded after the day's last hourly rewrite is reused; any
+  other copy is fetched again).
   `live_metrics_records()` reads them into one frame, and
   `live_metrics_error_rates()` rolls them up to daily and cumulative delivery
   error rates by carrier (or brand, campaign, error code, hour), with separate
@@ -17,6 +18,14 @@
   T-Mobile 4780 split out, daily vs cumulative, and plotting a cumulative rate.
   The delivery-error section moves there from `vignette("campaign-metrics")`,
   which now points to it; the README gains a "Delivery error rates" section.
+
+## Bug fixes
+
+* A missing object in Cloud Storage now raises the classed not-found error
+  (`s160_not_found`, with its hint) from `disposition_pull()`, `opt_out_pull()`,
+  `campaign_metrics_pull()` and `s160_gcs_campaign_results_read()`. A sibling
+  `error =` handler re-caught it, so these reported a generic "Failed to
+  download ... not found" and `tryCatch(..., s160_not_found = )` never fired.
 
 ## History columns on `disposition_screen()`
 

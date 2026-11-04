@@ -13,9 +13,10 @@ live_metrics_pull(
 )
 }
 \arguments{
-\item{date_from, date_to}{First and last ET day to fetch (anything
-\code{as.Date()} reads). \code{NULL} (default): \code{date_to} is today
-(ET) and \code{date_from} is 30 days before \code{date_to}.}
+\item{date_from, date_to}{First and last ET day to fetch, both included: a
+\code{Date}, a \code{"YYYY-MM-DD"} string, or a date-time (read as its ET
+day). \code{NULL} (default): \code{date_to} is today (ET) and
+\code{date_from} is 30 days before \code{date_to}.}
 
 \item{env}{Environment: \code{"prod"} (default) or \code{"dev"}. There is no
 staging analytics tier.}
