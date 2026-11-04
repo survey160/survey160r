@@ -80,6 +80,15 @@ reference:
   - campaign_metrics_records
   - campaign_metrics_summary
   - funnel_rates
+- title: Live delivery metrics
+  desc: >
+    Download the hourly, fleet-wide live delivery counts (one file per ET day)
+    from the analytics bucket and roll them up to daily and cumulative delivery
+    error rates by carrier or any other dimension.
+  contents:
+  - live_metrics_pull
+  - live_metrics_records
+  - live_metrics_error_rates
 
 articles:
 - title: Guides

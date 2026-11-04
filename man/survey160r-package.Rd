@@ -125,6 +125,20 @@ and Project Tracker dimensions per campaign, date, and hour
 }
 }
 
+\section{Live delivery metrics}{
+
+Follow delivery errors across every campaign in the live phone lists, from the
+hourly fleet-wide counts (one file per ET day):
+\itemize{
+  \item \code{\link{live_metrics_pull}} -- download a range of days (cached;
+    today and yesterday are re-fetched).
+  \item \code{\link{live_metrics_records}} -- read them into one frame, one
+    row per day, hour, carrier, brand, campaign and error code.
+  \item \code{\link{live_metrics_error_rates}} -- daily and cumulative error
+    rates by carrier (or any dimension), with codes such as 4780 split out.
+}
+}
+
 \section{Utilities}{
 
 \itemize{

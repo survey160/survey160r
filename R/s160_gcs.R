@@ -489,7 +489,8 @@ fast_read_csv <- function(path, columns = NULL, encoding = "UTF-8",
 #' @param refresh If \code{TRUE}, drop the cached config and reload it.
 #' @return A nested list with \code{schema_version} and \code{environments};
 #'   each environment carries an optional \code{api_url} and a \code{datasets}
-#'   map of \code{dataset -> list(bucket, object)}.
+#'   map of \code{dataset -> list(bucket, object)} (a multi-file dataset such
+#'   as \code{live_metrics} carries a \code{prefix} instead of an \code{object}).
 #' @seealso \code{\link{s160_datasets}()} for a tidy \code{(dataset, env)} table.
 #' @examples
 #' config <- s160_config()
@@ -507,7 +508,8 @@ s160_config <- function(refresh = FALSE) {
 #' Lists the datasets survey160r can read and the environments each is available
 #' in -- the values you pass as \code{env =} to the campaign readers, the
 #' \code{disposition_pull()} / \code{opt_out_pull()} /
-#' \code{campaign_metrics_pull()} pulls, and \code{s160_api_auth()}. Use it to discover the valid \code{(dataset, env)}
+#' \code{campaign_metrics_pull()} / \code{live_metrics_pull()} pulls, and
+#' \code{s160_api_auth()}. Use it to discover the valid \code{(dataset, env)}
 #' combinations instead of guessing and hitting a "no <env> tier" error.
 #'
 #' The physical storage location is intentionally not exposed: select data by
@@ -519,8 +521,9 @@ s160_config <- function(refresh = FALSE) {
 #'     \item{\code{dataset}}{Logical dataset name: \code{"campaign_results"}
 #'       (the campaign readers and \code{s160_api_*}), \code{"disposition"}
 #'       (\code{disposition_pull()}), \code{"opt_out"}
-#'       (\code{opt_out_pull()}), or \code{"campaign_metrics"}
-#'       (\code{campaign_metrics_pull()}).}
+#'       (\code{opt_out_pull()}), \code{"campaign_metrics"}
+#'       (\code{campaign_metrics_pull()}), or \code{"live_metrics"}
+#'       (\code{live_metrics_pull()}).}
 #'     \item{\code{env}}{An environment the dataset is available in:
 #'       \code{"prod"}, \code{"staging"}, or \code{"dev"}.}
 #'   }

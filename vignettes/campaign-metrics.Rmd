@@ -63,6 +63,31 @@ The rates come from `funnel_rates()`, the one definition `campaign_metrics_summa
 funnel_rates(data.frame(n_sent = 2000, n_engaged = 180, n_opted_in = 90, n_completed = 35))
 ```
 
+## Delivery error rates by carrier
+
+The live delivery metrics are a separate, smaller dataset: hourly counts for every campaign in the live phone lists, one file per ET day, broken down by carrier, brand, campaign and delivery error code. Pull a range of days and roll them up to daily and cumulative error rates:
+
+```{r}
+paths <- live_metrics_pull(date_from = "2026-10-01")   # past days cached
+rates <- live_metrics_error_rates(paths)               # by carrier and day
+subset(rates, carrier == "TMobile")
+live_metrics_error_rates(paths, by = NULL)             # whole fleet per day
+live_metrics_error_rates(paths, by = "brand", campaign_ids = c(2700, 2740))
+```
+
+Each row is one carrier on one day: `n_sent`, `n_error` and `error_rate` for that day, and `cum_sent`, `cum_error` and `cum_error_rate` from the first day pulled through that day. Codes in `codes` (default `"4780"`, T-Mobile's volume rejection) get their own `n_4780`, `rate_4780` and `cum_rate_4780`. Counts are per recipient: each is counted on the day of their first send, under their latest delivery code, so a rejection that a later retry delivered no longer counts. `live_metrics_records(paths)` gives the cells for your own slicing.
+
+On a frame it does no I/O, so this runs:
+
+```{r live, eval = TRUE}
+cells <- data.frame(
+  et_date = as.Date(c("2026-11-01", "2026-11-01", "2026-11-02", "2026-11-02")),
+  et_hour = 10L, carrier = "TMobile", brand = "B1", campaign_id = 1L,
+  error_code = c("(none)", "4780", "(none)", "4700"),
+  n_sent = c(90L, 10L, 80L, 20L), n_engaged = 0L)
+live_metrics_error_rates(cells)
+```
+
 ## What you get back
 
 `campaign_metrics_summary()` returns one row per `by` group:

@@ -24,6 +24,7 @@ R package for accessing Survey160 campaign data, across these areas:
 | Funnel rates by carrier, mode, topic, or campaign | `disposition_funnel(dataset, by = "carrier")` | [Disposition screening](#disposition-screening) |
 | Follow what each number did campaign after campaign | `disposition_paths()` (one path per phone) / `disposition_steps()` (one row per campaign) | `vignette("disposition")` |
 | Funnel rates across the fleet by registration, brand, client, or mode | `campaign_metrics_pull()` then `campaign_metrics_summary(path, by = )` | [Campaign metrics](#campaign-metrics) |
+| Delivery error rates by carrier and day, daily and cumulative, across every ongoing campaign | `live_metrics_pull()` then `live_metrics_error_rates(paths)` | `vignette("campaign-metrics")` |
 | See how fast each message followed the last one in a campaign | `latency_run(campaign_id, data)` | [Latency analysis](#latency-analysis) |
 | How many recipients reached each question | `question_funnel(data, c("intro", "q1", "close"))` | `vignette("latency")` |
 | Read a campaign's last export | `s160_gcs_campaign_results_read(campaign_id)` | [Raw data access](#raw-data-access) |

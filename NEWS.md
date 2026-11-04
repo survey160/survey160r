@@ -1,5 +1,18 @@
 # survey160r (development version)
 
+## Live delivery metrics
+
+* `live_metrics_pull()` downloads the daily live-metrics files -- the hourly,
+  fleet-wide counts behind the dashboard's Live tab, one row per ET hour,
+  carrier, brand, campaign and delivery error code -- for a range of ET days,
+  cached (a past day is final; today and yesterday are re-fetched).
+  `live_metrics_records()` reads them into one frame, and
+  `live_metrics_error_rates()` rolls them up to daily and cumulative delivery
+  error rates by carrier (or brand, campaign, error code, hour), with separate
+  counts and rates for chosen codes such as `"4780"`. Counts are per recipient:
+  each recipient is counted on their first send day under their latest delivery
+  code. `s160_datasets()` lists the new `live_metrics` dataset (prod, dev).
+
 ## History columns on `disposition_screen()`
 
 * `disposition_screen(columns = "history")` (or `c("summary", "history")`)

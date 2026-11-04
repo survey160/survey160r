@@ -16,6 +16,10 @@
         "campaign_metrics": {
           "bucket": "s160_analytics_prod",
           "object": "campaign_all.parquet"
+        },
+        "live_metrics": {
+          "bucket": "s160_analytics_prod",
+          "prefix": "live/metrics/"
         }
       }
     },
@@ -40,6 +44,10 @@
         "campaign_metrics": {
           "bucket": "s160_analytics_dev",
           "object": "campaign_all.parquet"
+        },
+        "live_metrics": {
+          "bucket": "s160_analytics_dev",
+          "prefix": "live/metrics/"
         }
       }
     }
