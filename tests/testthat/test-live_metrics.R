@@ -27,11 +27,11 @@ write_live_days <- function(dir, d = live_cells()) {
 
 # --- live_metrics_records ---------------------------------------------------
 
-test_that("records fill unknown carrier/brand and a missing code, and filter campaigns", {
+test_that("records leave an unknown carrier/brand NA, fill a missing code, and filter", {
   r <- live_metrics_records(live_cells())
   expect_named(r, survey160r:::.LIVE_METRICS_COLS)
-  expect_equal(r$carrier[[3]], "(unknown)")
-  expect_equal(r$brand[[5]], "(unknown)")
+  expect_true(is.na(r$carrier[[3]]))
+  expect_true(is.na(r$brand[[5]]))
   expect_equal(r$error_code[[6]], "(none)")
   expect_equal(nrow(live_metrics_records(live_cells(), campaign_ids = 2L)), 2L)
 })
@@ -64,8 +64,8 @@ test_that("error rates by carrier: daily, cumulative and per code", {
   g <- live_metrics_error_rates(live_cells())
   expect_equal(names(g), c("et_date", "carrier", "n_sent", "n_error", "error_rate",
                            "cum_sent", "cum_error", "cum_error_rate",
-                           "n_4780", "rate_4780", "cum_rate_4780"))
-  t <- g[g$carrier == "TMobile", ]
+                           "n_4780", "rate_4780", "cum_4780", "cum_rate_4780"))
+  t <- g[g$carrier %in% "TMobile", ]
   expect_equal(t$n_sent, c(100L, 100L))
   expect_equal(t$n_error, c(10L, 20L))
   expect_equal(t$error_rate, c(0.1, 0.2))
@@ -74,27 +74,41 @@ test_that("error rates by carrier: daily, cumulative and per code", {
   expect_equal(t$n_4780, c(10L, 0L))
   expect_equal(t$rate_4780, c(0.1, 0))
   expect_equal(t$cum_rate_4780, c(0.1, 0.05))
-  expect_equal(g$error_rate[g$carrier == "(unknown)"], 0)
-  expect_equal(g$error_rate[g$carrier == "Verizon"], 0)  # NA code = no error
+  expect_equal(g$error_rate[is.na(g$carrier)], 0)
+  expect_equal(g$error_rate[g$carrier %in% "Verizon"], 0)  # NA code = no error
   # Sorted by group then day, and independent of the input row order.
-  expect_equal(g$carrier, c("(unknown)", "TMobile", "TMobile", "Verizon"))
+  expect_equal(g$carrier, c(NA, "TMobile", "TMobile", "Verizon"))
   expect_identical(live_metrics_error_rates(live_cells()[6:1, ]), g)
 })
 
 test_that("percent scales the per-code rates too, and several codes each get a set", {
   g <- live_metrics_error_rates(live_cells(), percent = TRUE, codes = c("4780", "4700"))
-  expect_equal(names(g)[9:14], c("n_4780", "rate_4780", "cum_rate_4780",
-                                 "n_4700", "rate_4700", "cum_rate_4700"))
-  t <- g[g$carrier == "TMobile", ]
+  expect_equal(names(g)[9:16], c("n_4780", "rate_4780", "cum_4780", "cum_rate_4780",
+                                 "n_4700", "rate_4700", "cum_4700", "cum_rate_4700"))
+  t <- g[g$carrier %in% "TMobile", ]
   expect_equal(t$rate_4780, c(10, 0))
+  expect_equal(t$cum_4780, c(10, 10))
   expect_equal(t$cum_rate_4780, c(10, 5))
   expect_equal(t$n_4700, c(0L, 20L))
+  expect_equal(t$cum_4700, c(0, 20))
   expect_equal(t$cum_rate_4700, c(0, 10))
+})
+
+test_that("date_from / date_to keep a day range, and the running totals start there", {
+  r <- live_metrics_records(live_cells(), date_from = "2026-11-02")
+  expect_true(all(r$et_date == as.Date("2026-11-02")))
+  expect_equal(nrow(live_metrics_records(live_cells(), date_to = "2026-11-01")), 3L)
+  g <- live_metrics_error_rates(live_cells(), date_from = as.Date("2026-11-02"))
+  t <- g[g$carrier %in% "TMobile", ]
+  expect_equal(t$cum_sent, 100)
+  expect_equal(t$cum_error_rate, 0.2)
+  expect_error(live_metrics_records(live_cells(), date_to = "11/02/2026"),
+               "single date \\(YYYY-MM-DD\\)")
 })
 
 test_that("campaign_ids scopes the rates, from a frame or from the day files", {
   g <- live_metrics_error_rates(live_cells(), campaign_ids = 2L)
-  expect_setequal(g$carrier, c("(unknown)", "Verizon"))
+  expect_setequal(g$carrier, c(NA, "Verizon"))
   paths <- write_live_days(withr::local_tempdir())
   expect_identical(live_metrics_error_rates(paths, campaign_ids = 2L), g)
 })
@@ -111,7 +125,7 @@ test_that("error rates fleet-wide (by = NULL), in percent, with no codes", {
 test_that("error rates by several dimensions keep each group's running total", {
   g <- live_metrics_error_rates(live_cells(), by = c("carrier", "brand"))
   expect_equal(paste(g$carrier, g$brand, g$et_date),
-               c("(unknown) B2 2026-11-01", "TMobile (unknown) 2026-11-02",
+               c("NA B2 2026-11-01", "TMobile NA 2026-11-02",
                  "TMobile B1 2026-11-01", "TMobile B1 2026-11-02",
                  "Verizon B2 2026-11-02"))
   expect_equal(g$cum_sent, c(5L, 20L, 100L, 180L, 50L))
@@ -128,7 +142,7 @@ test_that("a group with no sends has NA rates, and an empty input is empty", {
   d <- live_cells()
   d$n_sent[d$carrier %in% "Verizon"] <- 0L
   g <- live_metrics_error_rates(d)
-  expect_true(is.na(g$error_rate[g$carrier == "Verizon"]))
+  expect_true(is.na(g$error_rate[g$carrier %in% "Verizon"]))
   e <- live_metrics_error_rates(live_cells()[0, ])
   expect_equal(nrow(e), 0L)
   expect_true(all(c("cum_sent", "cum_error_rate", "cum_rate_4780") %in% names(e)))
@@ -149,7 +163,7 @@ test_that("duplicated `by` and `codes` collapse; an NA or empty code is rejected
                                 codes = c("4780", "4780"))
   expect_equal(names(g), c("et_date", "carrier", "n_sent", "n_error", "error_rate",
                            "cum_sent", "cum_error", "cum_error_rate",
-                           "n_4780", "rate_4780", "cum_rate_4780"))
+                           "n_4780", "rate_4780", "cum_4780", "cum_rate_4780"))
   expect_error(live_metrics_error_rates(live_cells(), codes = NA), "non-empty error codes")
   expect_error(live_metrics_error_rates(live_cells(), codes = ""), "non-empty error codes")
 })
@@ -191,7 +205,7 @@ test_that("pull fetches each day, re-fetching only the last two and missing ones
   stub_live_pull(cap, absent = "dt=2026-11-02")
   expect_message(
     p <- live_metrics_pull("2026-11-01", "2026-11-04", dest = dir),
-    "3 day\\(s\\) \\(2 downloaded, 1 cached\\); no file for 2026-11-02")
+    "3 live-metrics day\\(s\\): 2 downloaded, 1 cached; no file for 2026-11-02\\.")
   expect_equal(names(p), c("2026-11-01", "2026-11-03", "2026-11-04"))
   objects <- vapply(cap$calls, `[[`, "", "object")
   expect_equal(objects[[1]], "live/metrics/dt=2026-11-01.parquet")
@@ -214,7 +228,7 @@ test_that("a day cached while it was still open is fetched again, not kept as fi
   cap <- new_capture()
   stub_live_pull(cap)
   expect_message(live_metrics_pull("2026-10-20", "2026-10-22", dest = dir),
-                 "\\(2 downloaded, 1 cached\\)")
+                 ": 2 downloaded, 1 cached\\.")
   expect_equal(vapply(cap$calls, `[[`, NA, "refresh"), c(TRUE, FALSE, TRUE))
 })
 
@@ -243,7 +257,7 @@ test_that("refresh = TRUE re-fetches a final cached day", {
   cap <- new_capture()
   stub_live_pull(cap)
   expect_message(live_metrics_pull("2026-10-01", "2026-10-01", dest = dir, refresh = TRUE),
-                 "\\(1 downloaded, 0 cached\\)")
+                 ": 1 downloaded, 0 cached\\.")
   expect_true(cap$calls[[1]]$refresh)
 })
 
@@ -252,7 +266,7 @@ test_that("pull defaults to the last 30 days in the user cache, and refresh re-f
   cap <- new_capture()
   stub_live_pull(cap)
   expect_message(p <- live_metrics_pull(refresh = TRUE, env = "dev"),
-                 "31 day\\(s\\) \\(31 downloaded, 0 cached\\)\n")
+                 "31 live-metrics day\\(s\\): 31 downloaded, 0 cached\\.\n")
   expect_equal(names(p)[c(1, 31)], c("2026-10-05", "2026-11-04"))
   expect_true(all(vapply(cap$calls, `[[`, NA, "refresh")))
   expect_equal(cap$calls[[1]]$bucket, "s160_analytics_dev")
@@ -271,7 +285,7 @@ test_that("a missing day is skipped through the real download helper", {
       writeLines("x", local_path)
     })
   expect_message(p <- live_metrics_pull("2026-10-01", "2026-10-03", dest = dir),
-                 "2 day\\(s\\).*no file for 2026-10-02")
+                 "2 live-metrics day\\(s\\).*no file for 2026-10-02")
   expect_equal(names(p), c("2026-10-01", "2026-10-03"))
 })
 

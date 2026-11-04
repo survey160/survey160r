@@ -149,7 +149,7 @@ live_metrics_pull <- function(date_from = NULL, date_to = NULL,
     paths[[day]] <- got
     fetched <- fetched + as.integer(again)
   }
-  message(sprintf("live metrics: %d day(s) (%d downloaded, %d cached)%s",
+  message(sprintf("Pulled %d live-metrics day(s): %d downloaded, %d cached%s.",
                   length(paths), fetched, length(paths) - fetched,
                   if (length(missing)) {
                     sprintf("; no file for %s", paste(missing, collapse = ", "))
@@ -173,11 +173,14 @@ live_metrics_pull <- function(date_from = NULL, date_to = NULL,
 #' @param x The paths returned by \code{\link{live_metrics_pull}}, or a data
 #'   frame already read from them.
 #' @param campaign_ids Optional campaign ids to keep; \code{NULL} keeps all.
+#' @param date_from,date_to Optional first and last ET day to keep (a
+#'   \code{Date}, a \code{"YYYY-MM-DD"} string, or a date-time read as its ET
+#'   day); \code{NULL} keeps every day in \code{x}.
 #' @return A data frame with columns \code{et_date}, \code{et_hour},
 #'   \code{carrier}, \code{brand}, \code{campaign_id}, \code{error_code},
-#'   \code{n_sent} and \code{n_engaged}. A missing \code{carrier} or
-#'   \code{brand} reads as \code{"(unknown)"}; a frame without
-#'   \code{n_engaged} gets it as \code{NA} (no rate uses it).
+#'   \code{n_sent} and \code{n_engaged}. A missing or empty \code{carrier} or
+#'   \code{brand} is \code{NA}; a frame without \code{n_engaged} gets it as
+#'   \code{NA} (no rate uses it).
 #' @seealso \code{\link{live_metrics_error_rates}}
 #' @examples
 #' cells <- data.frame(
@@ -186,8 +189,11 @@ live_metrics_pull <- function(date_from = NULL, date_to = NULL,
 #'   n_sent = c(90L, 10L), n_engaged = c(20L, 0L))
 #' live_metrics_records(cells)
 #' @export
-live_metrics_records <- function(x, campaign_ids = NULL) {
+live_metrics_records <- function(x, campaign_ids = NULL, date_from = NULL,
+                                 date_to = NULL) {
   fn <- "live_metrics_records"
+  from <- .live_metrics_day(date_from, "date_from", fn)
+  to <- .live_metrics_day(date_to, "date_to", fn)
   d <- if (is.data.frame(x)) {
     as.data.frame(x)
   } else {
@@ -209,14 +215,16 @@ live_metrics_records <- function(x, campaign_ids = NULL) {
   }
   for (col in c("carrier", "brand")) {
     v <- as.character(d[[col]])
-    v[is.na(v) | !nzchar(v)] <- "(unknown)"
+    v[!is.na(v) & !nzchar(v)] <- NA_character_
     d[[col]] <- v
   }
   d$error_code <- as.character(d$error_code)
   d$error_code[is.na(d$error_code)] <- .LIVE_METRICS_NO_ERROR
-  if (!is.null(campaign_ids)) {
-    d <- d[d$campaign_id %in% campaign_ids, , drop = FALSE]
-  }
+  keep <- rep(TRUE, nrow(d))
+  if (!is.null(campaign_ids)) keep <- keep & d$campaign_id %in% campaign_ids
+  if (!is.null(from)) keep <- keep & d$et_date >= from
+  if (!is.null(to)) keep <- keep & d$et_date <= to
+  d <- d[keep, , drop = FALSE]
   rownames(d) <- NULL
   d
 }
@@ -292,12 +300,17 @@ live_metrics_records <- function(x, campaign_ids = NULL) {
 #' @param codes Delivery error codes to count separately (default
 #'   \code{"4780"}); \code{character(0)} for none.
 #' @param campaign_ids Optional campaign ids to keep; \code{NULL} keeps all.
+#' @param date_from,date_to Optional first and last ET day to keep, as on
+#'   \code{\link{live_metrics_records}}; the running totals start at
+#'   \code{date_from}.
 #' @param percent \code{TRUE} scales the rates to 0-100.
 #' @return A data frame sorted by \code{by} then \code{et_date}, with
 #'   \code{et_date}, the \code{by} columns, \code{n_sent}, \code{n_error},
 #'   \code{error_rate}, then \code{cum_sent}, \code{cum_error} and
 #'   \code{cum_error_rate}; and for each code \code{c} in \code{codes},
-#'   \code{n_c}, \code{rate_c} and \code{cum_rate_c}.
+#'   \code{n_c}, \code{rate_c}, \code{cum_c} and \code{cum_rate_c}. Counts are
+#'   double. A missing \code{by} value (e.g. an unknown carrier) is \code{NA}
+#'   and groups as its own row.
 #' @seealso \code{\link{live_metrics_pull}}, \code{\link{live_metrics_records}},
 #'   \code{vignette("delivery-errors")}
 #' @examples
@@ -309,9 +322,11 @@ live_metrics_records <- function(x, campaign_ids = NULL) {
 #' live_metrics_error_rates(cells)
 #' @export
 live_metrics_error_rates <- function(x, by = "carrier", codes = "4780",
-                                     campaign_ids = NULL, percent = FALSE) {
+                                     campaign_ids = NULL, date_from = NULL,
+                                     date_to = NULL, percent = FALSE) {
   fn <- "live_metrics_error_rates"
-  d <- live_metrics_records(x, campaign_ids = campaign_ids)
+  d <- live_metrics_records(x, campaign_ids = campaign_ids,
+                            date_from = date_from, date_to = date_to)
   by <- unique(as.character(by))
   bad <- setdiff(by, .LIVE_METRICS_DIMS)
   if (length(bad)) {
@@ -335,11 +350,12 @@ live_metrics_error_rates <- function(x, by = "carrier", codes = "4780",
   g$error_rate <- ratio(g$n_error, g$n_sent)
   g$cum_error_rate <- ratio(g$cum_error, g$cum_sent)
   for (code in codes) {
+    names(g)[names(g) == paste0("cum_n_", code)] <- paste0("cum_", code)
     g[[paste0("rate_", code)]] <- ratio(g[[paste0("n_", code)]], g$n_sent)
-    g[[paste0("cum_rate_", code)]] <- ratio(g[[paste0("cum_n_", code)]], g$cum_sent)
+    g[[paste0("cum_rate_", code)]] <- ratio(g[[paste0("cum_", code)]], g$cum_sent)
   }
   per_code <- unlist(lapply(codes, function(code) {
-    paste0(c("n_", "rate_", "cum_rate_"), code)
+    paste0(c("n_", "rate_", "cum_", "cum_rate_"), code)
   }))
   g[, c("et_date", by, "n_sent", "n_error", "error_rate", "cum_sent",
         "cum_error", "cum_error_rate", per_code), drop = FALSE]

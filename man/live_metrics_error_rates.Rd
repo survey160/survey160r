@@ -9,6 +9,8 @@ live_metrics_error_rates(
   by = "carrier",
   codes = "4780",
   campaign_ids = NULL,
+  date_from = NULL,
+  date_to = NULL,
   percent = FALSE
 )
 }
@@ -25,6 +27,10 @@ live_metrics_error_rates(
 
 \item{campaign_ids}{Optional campaign ids to keep; \code{NULL} keeps all.}
 
+\item{date_from, date_to}{Optional first and last ET day to keep, as on
+\code{\link{live_metrics_records}}; the running totals start at
+\code{date_from}.}
+
 \item{percent}{\code{TRUE} scales the rates to 0-100.}
 }
 \value{
@@ -32,7 +38,9 @@ A data frame sorted by \code{by} then \code{et_date}, with
   \code{et_date}, the \code{by} columns, \code{n_sent}, \code{n_error},
   \code{error_rate}, then \code{cum_sent}, \code{cum_error} and
   \code{cum_error_rate}; and for each code \code{c} in \code{codes},
-  \code{n_c}, \code{rate_c} and \code{cum_rate_c}.
+  \code{n_c}, \code{rate_c}, \code{cum_c} and \code{cum_rate_c}. Counts are
+  double. A missing \code{by} value (e.g. an unknown carrier) is \code{NA}
+  and groups as its own row.
 }
 \description{
 Rolls the live metrics up to one row per ET day and carrier (or any other

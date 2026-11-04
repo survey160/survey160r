@@ -4,20 +4,24 @@
 \alias{live_metrics_records}
 \title{Read live delivery metrics into one data frame}
 \usage{
-live_metrics_records(x, campaign_ids = NULL)
+live_metrics_records(x, campaign_ids = NULL, date_from = NULL, date_to = NULL)
 }
 \arguments{
 \item{x}{The paths returned by \code{\link{live_metrics_pull}}, or a data
 frame already read from them.}
 
 \item{campaign_ids}{Optional campaign ids to keep; \code{NULL} keeps all.}
+
+\item{date_from, date_to}{Optional first and last ET day to keep (a
+\code{Date}, a \code{"YYYY-MM-DD"} string, or a date-time read as its ET
+day); \code{NULL} keeps every day in \code{x}.}
 }
 \value{
 A data frame with columns \code{et_date}, \code{et_hour},
   \code{carrier}, \code{brand}, \code{campaign_id}, \code{error_code},
-  \code{n_sent} and \code{n_engaged}. A missing \code{carrier} or
-  \code{brand} reads as \code{"(unknown)"}; a frame without
-  \code{n_engaged} gets it as \code{NA} (no rate uses it).
+  \code{n_sent} and \code{n_engaged}. A missing or empty \code{carrier} or
+  \code{brand} is \code{NA}; a frame without \code{n_engaged} gets it as
+  \code{NA} (no rate uses it).
 }
 \description{
 Reads the day files from \code{\link{live_metrics_pull}} into one frame: one

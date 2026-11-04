@@ -10,7 +10,9 @@
   `live_metrics_records()` reads them into one frame, and
   `live_metrics_error_rates()` rolls them up to daily and cumulative delivery
   error rates by carrier (or brand, campaign, error code, hour), with separate
-  counts and rates for chosen codes such as `"4780"`. Counts are per recipient:
+  counts, running counts and rates for chosen codes such as `"4780"`, over an
+  optional `date_from` / `date_to` window. An unknown carrier or brand is `NA`,
+  as in `disposition_funnel()`. Counts are per recipient:
   each recipient is counted on their first send day under their latest delivery
   code. `s160_datasets()` lists the new `live_metrics` dataset (prod, dev).
 * New article `vignette("delivery-errors")` ("Delivery error rates by carrier"):
