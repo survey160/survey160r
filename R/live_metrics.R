@@ -232,6 +232,8 @@ live_metrics_records <- function(x, campaign_ids = NULL, date_from = NULL,
   if (!is.null(campaign_ids)) keep <- keep & d$campaign_id %in% campaign_ids
   if (!is.null(from)) keep <- keep & d$et_date >= from
   if (!is.null(to)) keep <- keep & d$et_date <= to
+  # A row with no date (or no campaign) cannot satisfy a filter: NA is not kept.
+  keep[is.na(keep)] <- FALSE
   d <- d[keep, , drop = FALSE]
   rownames(d) <- NULL
   d
