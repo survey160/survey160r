@@ -93,6 +93,13 @@ test_that("error rates by several dimensions keep each group's running total", {
   expect_equal(t$cum_sent, c(100L, 180L))
 })
 
+test_that("a missing `by` value is its own group with a running total", {
+  d <- live_cells()
+  d$campaign_id <- NA_integer_
+  g <- live_metrics_error_rates(d, by = "campaign_id")
+  expect_equal(g$cum_sent, c(105L, 255L))
+})
+
 test_that("a group with no sends has NA rates, and an empty input is empty", {
   d <- live_cells()
   d$n_sent[d$carrier %in% "Verizon"] <- 0L
@@ -144,6 +151,23 @@ test_that("pull fetches each day, re-fetching only the last two and missing ones
   expect_equal(objects[[1]], "live/metrics/dt=2026-11-01.parquet")
   expect_equal(vapply(cap$calls, `[[`, NA, "refresh"), c(FALSE, TRUE, TRUE, TRUE))
   expect_true(all(vapply(cap$calls, `[[`, "", "bucket") == "s160_analytics_prod"))
+})
+
+test_that("a day cached while it was still open is fetched again, not kept as final", {
+  dir <- withr::local_tempdir()
+  cache <- file.path(dir, "s160_analytics_prod.live_metrics")
+  dir.create(cache)
+  early <- file.path(cache, "dt=2026-10-20.parquet")
+  late <- file.path(cache, "dt=2026-10-21.parquet")
+  writeLines("partial", early)
+  writeLines("final", late)
+  Sys.setFileTime(early, as.POSIXct("2026-10-21 23:00", tz = "America/New_York"))
+  Sys.setFileTime(late, as.POSIXct("2026-10-23 02:00", tz = "America/New_York"))
+  cap <- new_capture()
+  stub_live_pull(cap)
+  expect_message(live_metrics_pull("2026-10-20", "2026-10-21", dest = dir),
+                 "\\(1 downloaded, 1 cached\\)")
+  expect_equal(vapply(cap$calls, `[[`, NA, "refresh"), c(TRUE, FALSE))
 })
 
 test_that("pull defaults to the last 30 days in the user cache, and refresh re-fetches all", {

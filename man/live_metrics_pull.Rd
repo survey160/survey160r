@@ -23,8 +23,7 @@ staging analytics tier.}
 \item{dest}{Directory to save the files in. \code{NULL} (default) caches
 under \code{tools::R_user_dir("survey160r", "cache")}.}
 
-\item{refresh}{\code{TRUE} re-downloads every day in the range, not only the
-last two.}
+\item{refresh}{\code{TRUE} re-downloads every day in the range, final or not.}
 }
 \value{
 A character vector of local Parquet paths, named by ET day
@@ -39,9 +38,11 @@ day) covering every campaign in the live phone lists, with sends broken down
 by hour, carrier, brand, campaign and delivery error code.
 }
 \details{
-Files are cached. A past day is final, so a cached copy is reused; today's
-and yesterday's files are still being rewritten, so they are always fetched
-again. A day with no file (no sends, or before the pipeline published it) is
+Files are cached. The pipeline rewrites today's and yesterday's files every
+hour, so a day is final once the second day after it is two hours old (ET).
+A cached copy downloaded after that is reused; any other copy -- today,
+yesterday, or a day cached while it was still open -- is fetched again. A day
+with no file (no sends, or before the pipeline published it) is
 skipped with a message. Authenticate first with \code{\link{s160_gcs_init}}()
 (a fully cached range needs no auth).
 }

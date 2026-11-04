@@ -20,9 +20,23 @@
 .LIVE_METRICS_NO_ERROR <- "(none)"
 .LIVE_METRICS_TZ <- "America/New_York"
 
+# Hours into the second ET day after a day by which the pipeline has written its
+# last copy of that day (it rewrites today and yesterday every hour).
+.LIVE_METRICS_FINAL_HOURS <- 2
+
 # Today's date in ET, the day boundary the files use.
 .live_metrics_today <- function() {
   as.Date(format(Sys.time(), tz = .LIVE_METRICS_TZ))
+}
+
+# Whether the cached copy of `day` at `local` is final: downloaded after the
+# pipeline's last rewrite of that day. Keyed on when the copy was written, not
+# on how old the day is, so a copy fetched while the day was still open is
+# fetched again later instead of being kept as final.
+.live_metrics_final <- function(local, day) {
+  final_at <- as.POSIXct(format(day + 2), tz = .LIVE_METRICS_TZ) +
+    .LIVE_METRICS_FINAL_HOURS * 3600
+  file.exists(local) && file.mtime(local) >= final_at
 }
 
 #' Download the live delivery metrics for a range of days
@@ -34,9 +48,11 @@
 #' day) covering every campaign in the live phone lists, with sends broken down
 #' by hour, carrier, brand, campaign and delivery error code.
 #'
-#' Files are cached. A past day is final, so a cached copy is reused; today's
-#' and yesterday's files are still being rewritten, so they are always fetched
-#' again. A day with no file (no sends, or before the pipeline published it) is
+#' Files are cached. The pipeline rewrites today's and yesterday's files every
+#' hour, so a day is final once the second day after it is two hours old (ET).
+#' A cached copy downloaded after that is reused; any other copy -- today,
+#' yesterday, or a day cached while it was still open -- is fetched again. A day
+#' with no file (no sends, or before the pipeline published it) is
 #' skipped with a message. Authenticate first with \code{\link{s160_gcs_init}}()
 #' (a fully cached range needs no auth).
 #'
@@ -47,8 +63,7 @@
 #'   staging analytics tier.
 #' @param dest Directory to save the files in. \code{NULL} (default) caches
 #'   under \code{tools::R_user_dir("survey160r", "cache")}.
-#' @param refresh \code{TRUE} re-downloads every day in the range, not only the
-#'   last two.
+#' @param refresh \code{TRUE} re-downloads every day in the range, final or not.
 #' @return A character vector of local Parquet paths, named by ET day
 #'   (\code{"YYYY-MM-DD"}), for the days that have a file.
 #' @seealso \code{\link{live_metrics_error_rates}},
@@ -81,7 +96,6 @@ live_metrics_pull <- function(date_from = NULL, date_to = NULL,
   dir.create(dir, recursive = TRUE, showWarnings = FALSE)
 
   days <- seq(from, to, by = "day")
-  final_before <- .live_metrics_today() - 1
   paths <- character(0)
   fetched <- 0L
   missing <- character(0)
@@ -89,7 +103,7 @@ live_metrics_pull <- function(date_from = NULL, date_to = NULL,
     day <- format(days[[i]])
     name <- sprintf("dt=%s.parquet", day)
     local <- file.path(dir, name)
-    again <- refresh || days[[i]] >= final_before || !file.exists(local)
+    again <- refresh || !.live_metrics_final(local, days[[i]])
     got <- tryCatch(
       suppressMessages(.gcs_pull_cached(
         fn = fn, dest = local, bucket = loc$bucket, refresh = again,
@@ -258,19 +272,21 @@ live_metrics_error_rates <- function(x, by = "carrier", codes = "4780",
     dplyr::group_by(d, dplyr::across(dplyr::all_of(c(by, "et_date")))),
     dplyr::across(dplyr::all_of(counts), function(v) sum(v, na.rm = TRUE)),
     .groups = "drop")
-  g <- as.data.frame(dplyr::arrange(g, dplyr::across(dplyr::all_of(c(by, "et_date")))))
+  # Running totals per `by` group in date order. dplyr groups keep an NA key as
+  # its own group (interaction() / ave() would reset it every row).
+  g <- dplyr::arrange(g, dplyr::across(dplyr::all_of(c(by, "et_date"))))
+  g <- dplyr::mutate(
+    dplyr::group_by(g, dplyr::across(dplyr::all_of(by))),
+    dplyr::across(dplyr::all_of(counts), cumsum, .names = "cum_{.col}"))
+  g <- as.data.frame(dplyr::ungroup(g))
+  names(g)[names(g) == "cum_n_error"] <- "cum_error"
+  names(g)[names(g) == "cum_n_sent"] <- "cum_sent"
 
-  key <- if (length(by)) interaction(g[by], drop = TRUE, lex.order = TRUE) else
-    factor(rep(1L, nrow(g)))
-  running <- function(v) if (length(v)) stats::ave(v, key, FUN = cumsum) else v
   g$error_rate <- ratio(g$n_error, g$n_sent)
-  g$cum_sent <- running(g$n_sent)
-  g$cum_error <- running(g$n_error)
   g$cum_error_rate <- ratio(g$cum_error, g$cum_sent)
   for (code in codes) {
-    n <- g[[paste0("n_", code)]]
-    g[[paste0("rate_", code)]] <- ratio(n, g$n_sent)
-    g[[paste0("cum_rate_", code)]] <- ratio(running(n), g$cum_sent)
+    g[[paste0("rate_", code)]] <- ratio(g[[paste0("n_", code)]], g$n_sent)
+    g[[paste0("cum_rate_", code)]] <- ratio(g[[paste0("cum_n_", code)]], g$cum_sent)
   }
   per_code <- unlist(lapply(codes, function(code) {
     paste0(c("n_", "rate_", "cum_rate_"), code)
