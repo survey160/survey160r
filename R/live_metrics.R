@@ -352,6 +352,18 @@ live_metrics_error_rates <- function(x, by = "carrier", codes = "4780",
     stop_s160(sprintf("`codes` must be non-empty error codes such as \"4780\"%s.",
                       .not_got(codes)), fn = fn)
   }
+  # A code whose generated columns collide with the fixed ones (e.g.
+  # "error_rate" -> cum_error_rate) or each other would be silently mixed up.
+  out_names <- c("et_date", by, "n_sent", "n_error", "error_rate", "cum_sent",
+                 "cum_error", "cum_error_rate",
+                 unlist(lapply(codes, function(code) {
+                   paste0(c("n_", "rate_", "cum_", "cum_rate_"), code)
+                 })))
+  if (anyDuplicated(out_names)) {
+    stop_s160(sprintf("`codes` produce result columns that collide: %s.",
+                      paste(unique(out_names[duplicated(out_names)]),
+                            collapse = ", ")), fn = fn)
+  }
   .require_single_logical(percent, "percent", fn)
   mult <- if (percent) 100 else 1
   ratio <- function(num, den) ifelse(den > 0, mult * num / den, NA_real_)
@@ -367,9 +379,5 @@ live_metrics_error_rates <- function(x, by = "carrier", codes = "4780",
     g[[paste0("rate_", code)]] <- ratio(g[[paste0("n_", code)]], g$n_sent)
     g[[paste0("cum_rate_", code)]] <- ratio(g[[paste0("cum_", code)]], g$cum_sent)
   }
-  per_code <- unlist(lapply(codes, function(code) {
-    paste0(c("n_", "rate_", "cum_", "cum_rate_"), code)
-  }))
-  g[, c("et_date", by, "n_sent", "n_error", "error_rate", "cum_sent",
-        "cum_error", "cum_error_rate", per_code), drop = FALSE]
+  g[, out_names, drop = FALSE]
 }

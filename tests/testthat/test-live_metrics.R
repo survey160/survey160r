@@ -173,6 +173,7 @@ test_that("duplicated `by` and `codes` collapse; an NA or empty code is rejected
   expect_error(live_metrics_error_rates(live_cells(), codes = NA), "non-empty error codes")
   expect_error(live_metrics_error_rates(live_cells(), codes = ""), "non-empty error codes")
   expect_error(live_metrics_error_rates(live_cells(), codes = "error"), "non-empty error codes")
+  expect_error(live_metrics_error_rates(live_cells(), codes = "error_rate"), "collide")
 })
 
 test_that("error rates reject an unknown `by` and a bad `percent`", {
