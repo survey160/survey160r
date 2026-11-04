@@ -237,7 +237,8 @@ live_metrics_records <- function(x, campaign_ids = NULL) {
 #'   \code{error_rate}, then \code{cum_sent}, \code{cum_error} and
 #'   \code{cum_error_rate}; and for each code \code{c} in \code{codes},
 #'   \code{n_c}, \code{rate_c} and \code{cum_rate_c}.
-#' @seealso \code{\link{live_metrics_pull}}, \code{\link{live_metrics_records}}
+#' @seealso \code{\link{live_metrics_pull}}, \code{\link{live_metrics_records}},
+#'   \code{vignette("delivery-errors")}
 #' @examples
 #' cells <- data.frame(
 #'   et_date = as.Date(c("2026-11-01", "2026-11-01", "2026-11-02")),

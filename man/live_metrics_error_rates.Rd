@@ -57,5 +57,6 @@ cells <- data.frame(
 live_metrics_error_rates(cells)
 }
 \seealso{
-\code{\link{live_metrics_pull}}, \code{\link{live_metrics_records}}
+\code{\link{live_metrics_pull}}, \code{\link{live_metrics_records}},
+  \code{vignette("delivery-errors")}
 }
