@@ -10,6 +10,7 @@ R package for accessing Survey160 campaign data, across these areas:
 - **[Disposition screening](vignettes/disposition.Rmd)** -- screen a phone sample against every recipient Survey160 has contacted, dropping numbers already completed, refused, or screened out before you field; roll the same dataset up to funnel rates by carrier or mode, or follow each number's campaigns in order.
 - **[Opt-out screening](vignettes/opt-out.Rmd)** -- screen a phone sample against the opt-out list, flagging numbers that have opted out before you field.
 - **[Campaign metrics](vignettes/campaign-metrics.Rmd)** -- download the consolidated per-campaign metrics + recipient-latency projection (`campaign_all.parquet`) with `campaign_metrics_pull()`, read it into analysis-ready cells with `campaign_metrics_records()`, and roll those up to funnel counts and rates by any project dimension with `campaign_metrics_summary()`.
+- **[Delivery error rates](vignettes/delivery-errors.Rmd)** -- download the hourly, fleet-wide live delivery counts (one file per ET day) with `live_metrics_pull()` and roll them up to daily and cumulative delivery error rates by carrier, brand, or campaign, with T-Mobile 4780 split out, with `live_metrics_error_rates()`.
 
 **New here?** Find your task in [Which function do I need?](#which-function-do-i-need) below; to screen a sample before fielding, jump to [Disposition screening](#disposition-screening). First time on this machine, start with [First-time setup](#first-time-setup) -- you need a credential and a bucket grant before any data call works.
 
@@ -24,7 +25,7 @@ R package for accessing Survey160 campaign data, across these areas:
 | Funnel rates by carrier, mode, topic, or campaign | `disposition_funnel(dataset, by = "carrier")` | [Disposition screening](#disposition-screening) |
 | Follow what each number did campaign after campaign | `disposition_paths()` (one path per phone) / `disposition_steps()` (one row per campaign) | `vignette("disposition")` |
 | Funnel rates across the fleet by registration, brand, client, or mode | `campaign_metrics_pull()` then `campaign_metrics_summary(path, by = )` | [Campaign metrics](#campaign-metrics) |
-| Delivery error rates by carrier and day, daily and cumulative, across every ongoing campaign | `live_metrics_pull()` then `live_metrics_error_rates(paths)` | `vignette("campaign-metrics")` |
+| Delivery error rates by carrier and day, daily and cumulative, across every ongoing campaign | `live_metrics_pull()` then `live_metrics_error_rates(paths)` | [Delivery error rates](#delivery-error-rates) |
 | See how fast each message followed the last one in a campaign | `latency_run(campaign_id, data)` | [Latency analysis](#latency-analysis) |
 | How many recipients reached each question | `question_funnel(data, c("intro", "q1", "close"))` | `vignette("latency")` |
 | Read a campaign's last export | `s160_gcs_campaign_results_read(campaign_id)` | [Raw data access](#raw-data-access) |
@@ -176,12 +177,27 @@ campaign_metrics_summary(path, by = c("brand", "mode"), percent = TRUE)
 
 The projection holds counts, not phone numbers, so there is no screen here. To scope a rollup (a date window, a set of campaigns), read the cells with `campaign_metrics_records()`, filter, and pass the frame to `campaign_metrics_summary()`; never sum the raw Parquet yourself, it repeats each count across latency rows. Full walkthrough in the **[campaign-metrics guide](vignettes/campaign-metrics.Rmd)** (`vignette("campaign-metrics")` once installed).
 
+## Delivery error rates
+
+Follow delivery error rates by carrier, day by day and cumulatively, across every ongoing campaign. Pull a range of ET days, then roll them up:
+
+```r
+library(survey160r)
+s160_gcs_init()   # one-time browser sign-in (cached)
+
+paths <- live_metrics_pull(date_from = "2026-10-01")   # one file per ET day; past days cached
+rates <- live_metrics_error_rates(paths)               # by carrier and day, 4780 split out
+subset(rates, carrier == "TMobile")
+```
+
+Counts are per recipient: each is counted on the day of their first send, under their latest delivery code, so a rejection a later retry delivered no longer counts. Full walkthrough -- fleet-wide and per-brand rollups, daily vs cumulative, plotting -- in the **[delivery-errors guide](vignettes/delivery-errors.Rmd)** (`vignette("delivery-errors")` once installed).
+
 ## First-time setup
 
 Before any data call works you need, in order:
 
 1. The **OAuth client secret** -- ask your team lead; you paste it in once (below).
-2. **Access to the bucket you are reading** -- Storage Object Viewer, granted via the `gcp-campaign-readers` group, on `campaign_results` (raw data / latency), `s160_disposition_prod` (disposition and opt-out screening), or `s160_analytics_prod` (campaign metrics). Without it, sign-in still succeeds but the first read returns a **403** -- ask a sysadmin to add you.
+2. **Access to the bucket you are reading** -- Storage Object Viewer, granted via the `gcp-campaign-readers` group, on `campaign_results` (raw data / latency), `s160_disposition_prod` (disposition and opt-out screening), or `s160_analytics_prod` (campaign metrics and delivery error rates). Without it, sign-in still succeeds but the first read returns a **403** -- ask a sysadmin to add you.
 3. For the API path only: your **API user ID and key** -- also from your team lead.
 
 The rest of this section walks through each.
@@ -204,7 +220,7 @@ install the `httpuv` package for a smoother auth experience (say yes).
 Your Google account needs **Storage Object Viewer** permission on the
 source bucket (the campaign-results bucket, `s160_disposition_prod` for
 disposition and opt-out screening, or `s160_analytics_prod` for campaign
-metrics). Persisting latency outputs (via the consumer
+metrics and delivery error rates). Persisting latency outputs (via the consumer
 project's fleet runner) additionally needs **Storage Object Creator** on
 the destination analytics bucket. Contact a sysadmin if you get 403
 errors after authenticating.
@@ -225,7 +241,7 @@ again. Get these from your team lead.
 
 ## Documentation
 
-- **Guides (articles):** [Latency analysis](vignettes/latency.Rmd), [Disposition screening](vignettes/disposition.Rmd), [Opt-out screening](vignettes/opt-out.Rmd), and [Campaign metrics](vignettes/campaign-metrics.Rmd) -- also rendered as Articles on the [package site](https://survey160.r-universe.dev/survey160r). In R: `vignette("latency")` / `vignette("disposition")` / `vignette("opt-out")` / `vignette("campaign-metrics")`.
+- **Guides (articles):** [Latency analysis](vignettes/latency.Rmd), [Disposition screening](vignettes/disposition.Rmd), [Opt-out screening](vignettes/opt-out.Rmd), [Campaign metrics](vignettes/campaign-metrics.Rmd), and [Delivery error rates](vignettes/delivery-errors.Rmd) -- also rendered as Articles on the [package site](https://survey160.r-universe.dev/survey160r). In R: `vignette("latency")` / `vignette("disposition")` / `vignette("opt-out")` / `vignette("campaign-metrics")` / `vignette("delivery-errors")`.
 - **Function reference:** `?survey160r` (every function by task, the local cache, and the error classes), or `help(package = "survey160r")`. Setup from inside R: `?s160_gcs_init` and `?s160_api_auth`.
 - **Changelog:** `NEWS.md` (or `news(package = "survey160r")` after install). Cutting a release: [`RELEASING.md`](RELEASING.md). Project conventions and agent context: `CLAUDE.md`.
 
@@ -252,7 +268,7 @@ Common symptoms and fixes:
 | `argument(s) not accepted by the CSV reader (data.table::fread): filter_open` | The argument belongs to a different function (e.g. `filter_open` is on `s160_api_campaign_results()`, not `s160_gcs_campaign_results_read()`) | Move it to the right function, or drop it |
 | A `date_from` / `date_to` filter drops more rows than expected | A row whose `disposition_date` is `NA` (never populated for that campaign) is dropped by any date bound | Expected -- only dated rows match a date filter; omit the bound to keep undated rows |
 | The browser never opens on `s160_gcs_init()` | R has no default browser (a server, a container, some IDE sessions) | `options(browser = "xdg-open")` (or a browser path) and retry, or `s160_gcs_init(adc = TRUE)` after `gcloud auth application-default login` |
-| `disposition_pull(env = "staging")` (or `opt_out_pull`, `campaign_metrics_pull`) errors with no staging tier | Those datasets exist only for `prod` and `dev`; staging sends fold into prod | Use `env = "prod"`; `s160_datasets()` lists every dataset's environments |
+| `disposition_pull(env = "staging")` (or `opt_out_pull`, `campaign_metrics_pull`, `live_metrics_pull`) errors with no staging tier | Those datasets exist only for `prod` and `dev`; staging sends fold into prod | Use `env = "prod"`; `s160_datasets()` lists every dataset's environments |
 | `disposition_steps()` / `disposition_paths()` say a package is missing | The sequence readers need `duckdb`, `DBI` and `dbplyr`, with no in-R fallback | `install.packages(c("duckdb", "DBI", "dbplyr"))` and restart R |
 | A screen or filter is slow and R's memory balloons | `duckdb` is not installed, so the reader loads the whole projection | `install.packages("duckdb")`; the readers use it automatically |
 | `Using cached disposition projection (12 days old): ...` and you want today's | A cache hit never checks GCS | `disposition_pull(refresh = TRUE)`; same `refresh = TRUE` on the other pulls |
@@ -278,7 +294,7 @@ gargle::gargle_oauth_sitrep()  # list cached tokens and their location
 # delete the cache directory shown above, then restart R
 ```
 
-Clear the downloaded datasets (the disposition projection, opt-out list, and campaign-metrics projection all cache here; the next `*_pull()` re-downloads):
+Clear the downloaded datasets (the disposition projection, opt-out list, campaign-metrics projection, and live-metrics day files all cache here; the next `*_pull()` re-downloads):
 
 ```r
 cache <- tools::R_user_dir("survey160r", "cache")
