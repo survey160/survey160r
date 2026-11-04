@@ -166,6 +166,7 @@ test_that("duplicated `by` and `codes` collapse; an NA or empty code is rejected
                            "n_4780", "rate_4780", "cum_4780", "cum_rate_4780"))
   expect_error(live_metrics_error_rates(live_cells(), codes = NA), "non-empty error codes")
   expect_error(live_metrics_error_rates(live_cells(), codes = ""), "non-empty error codes")
+  expect_error(live_metrics_error_rates(live_cells(), codes = "error"), "non-empty error codes")
 })
 
 test_that("error rates reject an unknown `by` and a bad `percent`", {
@@ -299,6 +300,8 @@ test_that("a date-time bound is read as its ET day", {
 
 test_that("pull rejects reversed, mis-parsed and ancient dates, and bad args", {
   expect_error(live_metrics_pull("2026-11-04", "2026-11-01"), "is after")
+  expect_error(live_metrics_pull("2026-10-01", "2099-01-01"), "is after today")
+  expect_error(live_metrics_pull(20261001), "single date")
   expect_error(live_metrics_pull("not a date"), "single date \\(YYYY-MM-DD\\)")
   expect_error(live_metrics_pull("10/01/2026"), "single date \\(YYYY-MM-DD\\)")
   expect_error(live_metrics_pull(as.Date("0010-01-20")), "on or after 2020-01-01")

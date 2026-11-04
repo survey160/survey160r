@@ -43,8 +43,10 @@
       as.Date(format(x, tz = .LIVE_METRICS_TZ))
     } else if (is.character(x)) {
       as.Date(x, tryFormats = "%Y-%m-%d")
+    } else if (inherits(x, "Date")) {
+      x
     } else {
-      as.Date(x)
+      NA  # a bare number (20261102) is not a day
     },
     error = function(e) NA)
   if (length(d) != 1L || is.na(d) || d < .LIVE_METRICS_EARLIEST) {
@@ -84,8 +86,9 @@
 #'
 #' @param date_from,date_to First and last ET day to fetch, both included: a
 #'   \code{Date}, a \code{"YYYY-MM-DD"} string, or a date-time (read as its ET
-#'   day). \code{NULL} (default): \code{date_to} is today (ET) and
-#'   \code{date_from} is 30 days before \code{date_to}.
+#'   day), from 2020-01-01 through today. \code{NULL} (default):
+#'   \code{date_to} is today (ET) and \code{date_from} is 30 days before
+#'   \code{date_to}.
 #' @param env Environment: \code{"prod"} (default) or \code{"dev"}. There is no
 #'   staging analytics tier.
 #' @param dest Directory to save the files in. \code{NULL} (default) caches
@@ -112,6 +115,11 @@ live_metrics_pull <- function(date_from = NULL, date_to = NULL,
   if (from > to) {
     stop_s160(sprintf("`date_from` (%s) is after `date_to` (%s).", from, to),
               fn = fn)
+  }
+  # A typo'd future year would otherwise request every day up to it.
+  if (to > .live_metrics_today()) {
+    stop_s160(sprintf("`date_to` (%s) is after today (%s, ET).", to,
+                      .live_metrics_today()), fn = fn)
   }
   .require_single_logical(refresh, "refresh", fn)
   loc <- resolve_dataset("live_metrics", env, fn = fn)
@@ -335,7 +343,8 @@ live_metrics_error_rates <- function(x, by = "carrier", codes = "4780",
                       paste(bad, collapse = ", ")), fn = fn)
   }
   codes <- unique(as.character(codes))
-  if (anyNA(codes) || !all(nzchar(codes))) {
+  # "sent" / "error" would collide with the n_sent / n_error columns.
+  if (anyNA(codes) || !all(nzchar(codes)) || any(codes %in% c("sent", "error"))) {
     stop_s160(sprintf("`codes` must be non-empty error codes such as \"4780\"%s.",
                       .not_got(codes)), fn = fn)
   }
