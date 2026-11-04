@@ -374,8 +374,11 @@ live_metrics_error_rates <- function(x, by = "carrier", codes = "4780",
 
   g$error_rate <- ratio(g$n_error, g$n_sent)
   g$cum_error_rate <- ratio(g$cum_error, g$cum_sent)
+  # Rename in one pass: renaming per code could re-match a column an earlier
+  # code just produced (codes "n_4780" and "4780").
+  hit <- match(names(g), paste0("cum_n_", codes))
+  names(g)[!is.na(hit)] <- paste0("cum_", codes)[hit[!is.na(hit)]]
   for (code in codes) {
-    names(g)[names(g) == paste0("cum_n_", code)] <- paste0("cum_", code)
     g[[paste0("rate_", code)]] <- ratio(g[[paste0("n_", code)]], g$n_sent)
     g[[paste0("cum_rate_", code)]] <- ratio(g[[paste0("cum_", code)]], g$cum_sent)
   }

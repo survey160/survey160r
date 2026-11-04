@@ -176,6 +176,14 @@ test_that("duplicated `by` and `codes` collapse; an NA or empty code is rejected
   expect_error(live_metrics_error_rates(live_cells(), codes = "error_rate"), "collide")
 })
 
+test_that("a code that prefixes another's columns keeps its own running count", {
+  d <- live_cells()
+  d$error_code[c(2, 5)] <- c("n_4780", "4780")
+  g <- live_metrics_error_rates(d, by = NULL, codes = c("n_4780", "4780"))
+  expect_equal(g$cum_n_4780, c(10, 10))
+  expect_equal(g$cum_4780, c(0, 20))
+})
+
 test_that("error rates reject an unknown `by` and a bad `percent`", {
   expect_error(live_metrics_error_rates(live_cells(), by = "zip"), "`by` must be among")
   expect_error(live_metrics_error_rates(live_cells(), percent = NA), "single TRUE or FALSE")
