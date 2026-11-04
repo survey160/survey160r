@@ -40,7 +40,7 @@ by hour, carrier, brand, campaign and delivery error code.
 }
 \details{
 Files are cached. The pipeline rewrites today's and yesterday's files every
-hour, so a day is final at 02:00 ET two days after it (Nov 1 at 02:00 ET on
+hour, so a day is final at 03:00 ET two days after it (Nov 1 at 03:00 ET on
 Nov 3). A cached copy downloaded after that is reused; any other copy is
 fetched again on every pull. A day
 with no file (no sends, or before the pipeline published it) is

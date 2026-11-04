@@ -76,6 +76,27 @@ test_that("error rates by carrier: daily, cumulative and per code", {
   expect_equal(t$cum_rate_4780, c(0.1, 0.05))
   expect_equal(g$error_rate[g$carrier == "(unknown)"], 0)
   expect_equal(g$error_rate[g$carrier == "Verizon"], 0)  # NA code = no error
+  # Sorted by group then day, and independent of the input row order.
+  expect_equal(g$carrier, c("(unknown)", "TMobile", "TMobile", "Verizon"))
+  expect_identical(live_metrics_error_rates(live_cells()[6:1, ]), g)
+})
+
+test_that("percent scales the per-code rates too, and several codes each get a set", {
+  g <- live_metrics_error_rates(live_cells(), percent = TRUE, codes = c("4780", "4700"))
+  expect_equal(names(g)[9:14], c("n_4780", "rate_4780", "cum_rate_4780",
+                                 "n_4700", "rate_4700", "cum_rate_4700"))
+  t <- g[g$carrier == "TMobile", ]
+  expect_equal(t$rate_4780, c(10, 0))
+  expect_equal(t$cum_rate_4780, c(10, 5))
+  expect_equal(t$n_4700, c(0L, 20L))
+  expect_equal(t$cum_rate_4700, c(0, 10))
+})
+
+test_that("campaign_ids scopes the rates, from a frame or from the day files", {
+  g <- live_metrics_error_rates(live_cells(), campaign_ids = 2L)
+  expect_setequal(g$carrier, c("(unknown)", "Verizon"))
+  paths <- write_live_days(withr::local_tempdir())
+  expect_identical(live_metrics_error_rates(paths, campaign_ids = 2L), g)
 })
 
 test_that("error rates fleet-wide (by = NULL), in percent, with no codes", {
@@ -89,8 +110,11 @@ test_that("error rates fleet-wide (by = NULL), in percent, with no codes", {
 
 test_that("error rates by several dimensions keep each group's running total", {
   g <- live_metrics_error_rates(live_cells(), by = c("carrier", "brand"))
-  t <- g[g$carrier == "TMobile" & g$brand == "B1", ]
-  expect_equal(t$cum_sent, c(100L, 180L))
+  expect_equal(paste(g$carrier, g$brand, g$et_date),
+               c("(unknown) B2 2026-11-01", "TMobile (unknown) 2026-11-02",
+                 "TMobile B1 2026-11-01", "TMobile B1 2026-11-02",
+                 "Verizon B2 2026-11-02"))
+  expect_equal(g$cum_sent, c(5L, 20L, 100L, 180L, 50L))
 })
 
 test_that("a missing `by` value is its own group with a running total", {
@@ -160,7 +184,9 @@ test_that("pull fetches each day, re-fetching only the last two and missing ones
   dir <- withr::local_tempdir()
   cache <- file.path(dir, "s160_analytics_prod.live_metrics")
   dir.create(cache)
-  writeLines("old", file.path(cache, "dt=2026-11-01.parquet"))
+  final <- file.path(cache, "dt=2026-11-01.parquet")
+  writeLines("old", final)
+  Sys.setFileTime(final, as.POSIXct("2026-11-03 09:00", tz = "America/New_York"))
   cap <- new_capture()
   stub_live_pull(cap, absent = "dt=2026-11-02")
   expect_message(
@@ -177,17 +203,48 @@ test_that("a day cached while it was still open is fetched again, not kept as fi
   dir <- withr::local_tempdir()
   cache <- file.path(dir, "s160_analytics_prod.live_metrics")
   dir.create(cache)
-  early <- file.path(cache, "dt=2026-10-20.parquet")
-  late <- file.path(cache, "dt=2026-10-21.parquet")
-  writeLines("partial", early)
-  writeLines("final", late)
-  Sys.setFileTime(early, as.POSIXct("2026-10-21 23:00", tz = "America/New_York"))
-  Sys.setFileTime(late, as.POSIXct("2026-10-23 02:00", tz = "America/New_York"))
+  copy <- function(day, at) {
+    p <- file.path(cache, sprintf("dt=%s.parquet", day))
+    writeLines("x", p)
+    Sys.setFileTime(p, as.POSIXct(at, tz = "America/New_York"))
+  }
+  copy("2026-10-20", "2026-10-21 23:00")   # during the next day: open
+  copy("2026-10-21", "2026-10-23 03:00")   # at the cutoff: final
+  copy("2026-10-22", "2026-10-24 02:59")   # a minute early: open
   cap <- new_capture()
   stub_live_pull(cap)
-  expect_message(live_metrics_pull("2026-10-20", "2026-10-21", dest = dir),
-                 "\\(1 downloaded, 1 cached\\)")
-  expect_equal(vapply(cap$calls, `[[`, NA, "refresh"), c(TRUE, FALSE))
+  expect_message(live_metrics_pull("2026-10-20", "2026-10-22", dest = dir),
+                 "\\(2 downloaded, 1 cached\\)")
+  expect_equal(vapply(cap$calls, `[[`, NA, "refresh"), c(TRUE, FALSE, TRUE))
+})
+
+test_that("the finality cutoff is 03:00 ET wall-clock on DST days too", {
+  final <- survey160r:::.live_metrics_final
+  p <- withr::local_tempfile()
+  writeLines("x", p)
+  final_if_written <- function(at, day) {
+    Sys.setFileTime(p, as.POSIXct(at, tz = "America/New_York"))
+    final(p, as.Date(day))
+  }
+  expect_false(final_if_written("2026-11-01 02:30", "2026-10-30"))  # fall back
+  expect_true(final_if_written("2026-11-01 03:00", "2026-10-30"))
+  expect_false(final_if_written("2026-03-08 01:59", "2026-03-06"))  # spring forward
+  expect_true(final_if_written("2026-03-08 03:00", "2026-03-06"))
+  expect_false(final(file.path(tempdir(), "absent.parquet"), as.Date("2026-03-06")))
+})
+
+test_that("refresh = TRUE re-fetches a final cached day", {
+  dir <- withr::local_tempdir()
+  cache <- file.path(dir, "s160_analytics_prod.live_metrics")
+  dir.create(cache)
+  p <- file.path(cache, "dt=2026-10-01.parquet")
+  writeLines("x", p)
+  Sys.setFileTime(p, as.POSIXct("2026-10-10 09:00", tz = "America/New_York"))
+  cap <- new_capture()
+  stub_live_pull(cap)
+  expect_message(live_metrics_pull("2026-10-01", "2026-10-01", dest = dir, refresh = TRUE),
+                 "\\(1 downloaded, 0 cached\\)")
+  expect_true(cap$calls[[1]]$refresh)
 })
 
 test_that("pull defaults to the last 30 days in the user cache, and refresh re-fetches all", {

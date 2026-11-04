@@ -20,9 +20,10 @@
 .LIVE_METRICS_NO_ERROR <- "(none)"
 .LIVE_METRICS_TZ <- "America/New_York"
 
-# Hours into the second ET day after a day by which the pipeline has written its
-# last copy of that day (it rewrites today and yesterday every hour).
-.LIVE_METRICS_FINAL_HOURS <- 2
+# ET wall-clock time on the second day after a day by which the pipeline has
+# written its last copy of that day (it rewrites today and yesterday every hour).
+# 03:00 exists on every ET day, DST changes included (02:00 does not in March).
+.LIVE_METRICS_FINAL_AT <- "03:00:00"
 
 # Today's date in ET, the day boundary the files use.
 .live_metrics_today <- function() {
@@ -58,8 +59,9 @@
 # on how old the day is, so a copy fetched while the day was still open is
 # fetched again later instead of being kept as final.
 .live_metrics_final <- function(local, day) {
-  final_at <- as.POSIXct(format(day + 2), tz = .LIVE_METRICS_TZ) +
-    .LIVE_METRICS_FINAL_HOURS * 3600
+  # Wall-clock, not midnight + N hours: on a DST day those differ by an hour.
+  final_at <- as.POSIXct(paste(format(day + 2), .LIVE_METRICS_FINAL_AT),
+                         tz = .LIVE_METRICS_TZ)
   file.exists(local) && file.mtime(local) >= final_at
 }
 
@@ -73,7 +75,7 @@
 #' by hour, carrier, brand, campaign and delivery error code.
 #'
 #' Files are cached. The pipeline rewrites today's and yesterday's files every
-#' hour, so a day is final at 02:00 ET two days after it (Nov 1 at 02:00 ET on
+#' hour, so a day is final at 03:00 ET two days after it (Nov 1 at 03:00 ET on
 #' Nov 3). A cached copy downloaded after that is reused; any other copy is
 #' fetched again on every pull. A day
 #' with no file (no sends, or before the pipeline published it) is
