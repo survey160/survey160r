@@ -38,7 +38,7 @@ library(survey160r)
 cells <- data.frame(
   et_date = as.Date(rep(c("2026-11-01", "2026-11-02"), each = 4)),
   et_hour = 10L, brand = "B1", campaign_id = 1234L,
-  carrier = rep(c("TMobile", "TMobile", "Verizon", "Verizon"), 2),
+  carrier = rep(c("T-Mobile", "T-Mobile", "Verizon", "Verizon"), 2),
   error_code = rep(c("(none)", "4780", "(none)", "4700"), 2),
   n_sent = c(90L, 10L, 195L, 5L, 70L, 30L, 196L, 4L),
   n_engaged = 0L
@@ -73,7 +73,7 @@ live_metrics_error_rates(paths, by = "error_code")   # which codes make up the e
 Each code in `codes` (default `"4780"`) gets its own `n_<code>`, `rate_<code>`, `cum_<code>` and `cum_rate_<code>`, so the volume rejection can be read apart from the other errors:
 
 ```{r tmobile, eval = TRUE}
-tmobile <- subset(rates, carrier == "TMobile")
+tmobile <- subset(rates, carrier == "T-Mobile")
 tmobile[, c("et_date", "n_sent", "n_4780", "rate_4780", "cum_4780", "cum_rate_4780")]
 ```
 
@@ -105,9 +105,9 @@ ggplot(rates, aes(et_date, cum_error_rate, colour = carrier)) +
 Base graphics need nothing extra, one line per carrier:
 
 ```{r}
-tmobile <- subset(rates, carrier == "TMobile")
+tmobile <- subset(rates, carrier == "T-Mobile")
 plot(tmobile$et_date, tmobile$cum_error_rate, type = "l",
-     xlab = "ET day", ylab = "Cumulative error rate", main = "TMobile")
+     xlab = "ET day", ylab = "Cumulative error rate", main = "T-Mobile")
 lines(tmobile$et_date, tmobile$cum_rate_4780, lty = 2)   # the 4780 share
 ```
 

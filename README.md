@@ -187,7 +187,7 @@ s160_gcs_init()   # one-time browser sign-in (cached)
 
 paths <- live_metrics_pull(date_from = "2026-10-01")   # one file per ET day; finished days cached
 rates <- live_metrics_error_rates(paths)               # by carrier and day, 4780 split out
-subset(rates, carrier == "TMobile")
+subset(rates, carrier == "T-Mobile")
 ```
 
 Counts are per recipient: each is counted on the day of their first send, under their latest delivery code, so a rejection a later retry delivered no longer counts. Full walkthrough -- fleet-wide and per-brand rollups, daily vs cumulative, plotting -- in the **[delivery-errors guide](vignettes/delivery-errors.Rmd)** (`vignette("delivery-errors")` once installed).

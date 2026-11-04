@@ -59,7 +59,7 @@ with no sends is \code{NA}.
 \examples{
 cells <- data.frame(
   et_date = as.Date(c("2026-11-01", "2026-11-01", "2026-11-02")),
-  et_hour = 10L, carrier = "TMobile", brand = "B1", campaign_id = 1L,
+  et_hour = 10L, carrier = "T-Mobile", brand = "B1", campaign_id = 1L,
   error_code = c("(none)", "4780", "(none)"),
   n_sent = c(90L, 10L, 100L), n_engaged = 0L)
 live_metrics_error_rates(cells)

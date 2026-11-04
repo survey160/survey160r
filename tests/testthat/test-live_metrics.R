@@ -32,6 +32,12 @@ test_that("records leave an unknown carrier/brand NA, fill a missing code, and f
   expect_named(r, survey160r:::.LIVE_METRICS_COLS)
   expect_true(is.na(r$carrier[[3]]))
   expect_true(is.na(r$brand[[5]]))
+  d <- live_cells()
+  d$carrier[1] <- "(unknown)"   # how the pipeline writes an unknown carrier
+  d$brand[2] <- ""
+  r2 <- live_metrics_records(d)
+  expect_true(is.na(r2$carrier[[1]]))
+  expect_true(is.na(r2$brand[[2]]))
   expect_equal(r$error_code[[6]], "(none)")
   expect_equal(nrow(live_metrics_records(live_cells(), campaign_ids = 2L)), 2L)
 })

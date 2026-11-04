@@ -18,6 +18,7 @@
                         "error_code", "n_sent", "n_engaged")
 .LIVE_METRICS_DIMS <- c("carrier", "brand", "campaign_id", "error_code", "et_hour")
 .LIVE_METRICS_NO_ERROR <- "(none)"
+.LIVE_METRICS_UNKNOWN <- "(unknown)"
 .LIVE_METRICS_TZ <- "America/New_York"
 
 # ET wall-clock time on the second day after a day by which the pipeline has
@@ -192,7 +193,7 @@ live_metrics_pull <- function(date_from = NULL, date_to = NULL,
 #' @seealso \code{\link{live_metrics_error_rates}}
 #' @examples
 #' cells <- data.frame(
-#'   et_date = as.Date("2026-11-01"), et_hour = 10L, carrier = "TMobile",
+#'   et_date = as.Date("2026-11-01"), et_hour = 10L, carrier = "T-Mobile",
 #'   brand = "B1", campaign_id = 1L, error_code = c("(none)", "4780"),
 #'   n_sent = c(90L, 10L), n_engaged = c(20L, 0L))
 #' live_metrics_records(cells)
@@ -223,7 +224,8 @@ live_metrics_records <- function(x, campaign_ids = NULL, date_from = NULL,
   }
   for (col in c("carrier", "brand")) {
     v <- as.character(d[[col]])
-    v[!is.na(v) & !nzchar(v)] <- NA_character_
+    # The pipeline writes an unknown carrier as "(unknown)"; read it as NA.
+    v[!is.na(v) & (!nzchar(v) | v == .LIVE_METRICS_UNKNOWN)] <- NA_character_
     d[[col]] <- v
   }
   d$error_code <- as.character(d$error_code)
@@ -326,7 +328,7 @@ live_metrics_records <- function(x, campaign_ids = NULL, date_from = NULL,
 #' @examples
 #' cells <- data.frame(
 #'   et_date = as.Date(c("2026-11-01", "2026-11-01", "2026-11-02")),
-#'   et_hour = 10L, carrier = "TMobile", brand = "B1", campaign_id = 1L,
+#'   et_hour = 10L, carrier = "T-Mobile", brand = "B1", campaign_id = 1L,
 #'   error_code = c("(none)", "4780", "(none)"),
 #'   n_sent = c(90L, 10L, 100L), n_engaged = 0L)
 #' live_metrics_error_rates(cells)

@@ -36,7 +36,7 @@ delivered no longer shows, and a recipient sent on several days counts once.
 }
 \examples{
 cells <- data.frame(
-  et_date = as.Date("2026-11-01"), et_hour = 10L, carrier = "TMobile",
+  et_date = as.Date("2026-11-01"), et_hour = 10L, carrier = "T-Mobile",
   brand = "B1", campaign_id = 1L, error_code = c("(none)", "4780"),
   n_sent = c(90L, 10L), n_engaged = c(20L, 0L))
 live_metrics_records(cells)
