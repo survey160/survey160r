@@ -32,10 +32,12 @@ test_that("a missing object (gcs 'File not found') gives a clear not-found messa
     }
   )
 
-  expect_error(
+  err <- expect_error(
     suppressMessages(s160_gcs_campaign_results_read(9999)),
-    "file not found.*campaign_results"
+    "file not found.*campaign_results",
+    class = "s160_not_found"
   )
+  expect_match(conditionMessage(err), "s160_gcs_campaign_results_files")  # the hint
 })
 
 test_that("an http_404 error also maps to a clear not-found message", {

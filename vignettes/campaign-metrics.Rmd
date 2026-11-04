@@ -63,6 +63,10 @@ The rates come from `funnel_rates()`, the one definition `campaign_metrics_summa
 funnel_rates(data.frame(n_sent = 2000, n_engaged = 180, n_opted_in = 90, n_completed = 35))
 ```
 
+## Delivery error rates by carrier
+
+Daily and cumulative delivery error rates by carrier, with T-Mobile 4780 split out, come from a separate dataset, the live delivery metrics: see `vignette("delivery-errors")`.
+
 ## What you get back
 
 `campaign_metrics_summary()` returns one row per `by` group:
@@ -94,4 +98,4 @@ The rates are proportions, or `0`-`100` with `percent = TRUE`; `rates = FALSE` d
 
 ## See also
 
-`?campaign_metrics_summary`, `?campaign_metrics_records`, `?campaign_metrics_pull`, `?funnel_rates`, and `?survey160r` for every function by task. For the same funnel per recipient, by carrier or any stored dimension, `disposition_funnel()` in `vignette("disposition")`. To screen a phone sample, `vignette("disposition")` and `vignette("opt-out")`. For per-campaign latency reports, `vignette("latency")`.
+`?campaign_metrics_summary`, `?campaign_metrics_records`, `?campaign_metrics_pull`, `?funnel_rates`, and `?survey160r` for every function by task. For the same funnel per recipient, by carrier or any stored dimension, `disposition_funnel()` in `vignette("disposition")`. To screen a phone sample, `vignette("disposition")` and `vignette("opt-out")`. For delivery error rates by carrier across every ongoing campaign, `vignette("delivery-errors")`. For per-campaign latency reports, `vignette("latency")`.

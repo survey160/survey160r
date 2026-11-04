@@ -489,7 +489,8 @@ fast_read_csv <- function(path, columns = NULL, encoding = "UTF-8",
 #' @param refresh If \code{TRUE}, drop the cached config and reload it.
 #' @return A nested list with \code{schema_version} and \code{environments};
 #'   each environment carries an optional \code{api_url} and a \code{datasets}
-#'   map of \code{dataset -> list(bucket, object)}.
+#'   map of \code{dataset -> list(bucket, object)} (a multi-file dataset such
+#'   as \code{live_metrics} carries a \code{prefix} instead of an \code{object}).
 #' @seealso \code{\link{s160_datasets}()} for a tidy \code{(dataset, env)} table.
 #' @examples
 #' config <- s160_config()
@@ -507,7 +508,8 @@ s160_config <- function(refresh = FALSE) {
 #' Lists the datasets survey160r can read and the environments each is available
 #' in -- the values you pass as \code{env =} to the campaign readers, the
 #' \code{disposition_pull()} / \code{opt_out_pull()} /
-#' \code{campaign_metrics_pull()} pulls, and \code{s160_api_auth()}. Use it to discover the valid \code{(dataset, env)}
+#' \code{campaign_metrics_pull()} / \code{live_metrics_pull()} pulls, and
+#' \code{s160_api_auth()}. Use it to discover the valid \code{(dataset, env)}
 #' combinations instead of guessing and hitting a "no <env> tier" error.
 #'
 #' The physical storage location is intentionally not exposed: select data by
@@ -519,8 +521,9 @@ s160_config <- function(refresh = FALSE) {
 #'     \item{\code{dataset}}{Logical dataset name: \code{"campaign_results"}
 #'       (the campaign readers and \code{s160_api_*}), \code{"disposition"}
 #'       (\code{disposition_pull()}), \code{"opt_out"}
-#'       (\code{opt_out_pull()}), or \code{"campaign_metrics"}
-#'       (\code{campaign_metrics_pull()}).}
+#'       (\code{opt_out_pull()}), \code{"campaign_metrics"}
+#'       (\code{campaign_metrics_pull()}), or \code{"live_metrics"}
+#'       (\code{live_metrics_pull()}).}
 #'     \item{\code{env}}{An environment the dataset is available in:
 #'       \code{"prod"}, \code{"staging"}, or \code{"dev"}.}
 #'   }
@@ -822,13 +825,14 @@ s160_gcs_campaign_results_read <- function(campaign_id, filename = NULL,
   tryCatch(
     download_with_verify(object_name = object_name, local_path = local_path,
                          bucket = bucket),
-    s160_not_found = function(e) {
-      stop_not_found("file", gcs_path, fn = fn, hint = sprintf(paste0(
-        "List the campaign's files with s160_gcs_campaign_results_files(%s, ",
-        "env = \"%s\"), or trigger a fresh export with ",
-        "s160_api_campaign_results(%s)."), campaign_id, env, campaign_id))
-    },
+    # One handler: a sibling `s160_not_found =` re-raise would be re-caught here.
     error = function(e) {
+      if (inherits(e, "s160_not_found")) {
+        stop_not_found("file", gcs_path, fn = fn, hint = sprintf(paste0(
+          "List the campaign's files with s160_gcs_campaign_results_files(%s, ",
+          "env = \"%s\"), or trigger a fresh export with ",
+          "s160_api_campaign_results(%s)."), campaign_id, env, campaign_id))
+      }
       stop_failed(sprintf("download %s", gcs_path), conditionMessage(e), fn = fn)
     }
   )
@@ -1154,15 +1158,18 @@ s160_gcs_campaign_results_status <- function(campaign_id,
   # and any existing good copy survives.
   tmp <- tempfile(tmpdir = dirname(local_path), fileext = ".part")
   on.exit(unlink(tmp), add = TRUE)
+  # ONE error handler: tryCatch() nests sibling handlers, so a re-raise from an
+  # `s160_not_found =` handler would be caught again by an `error =` sibling and
+  # lose its class.
   tryCatch(
     download_with_verify(object_name = object_name, local_path = tmp,
                          bucket = bucket, progress = progress),
-    s160_not_found = function(e) {
-      stop_not_found(noun, gcs_path, fn = fn, hint = paste0(
-        "Check `env =` names the environment that publishes it, and that ",
-        "s160_gcs_init() authenticated an account that can read the bucket."))
-    },
     error = function(e) {
+      if (inherits(e, "s160_not_found")) {
+        stop_not_found(noun, gcs_path, fn = fn, hint = paste0(
+          "Check `env =` names the environment that publishes it, and that ",
+          "s160_gcs_init() authenticated an account that can read the bucket."))
+      }
       stop_failed(sprintf("download %s", gcs_path), conditionMessage(e), fn = fn)
     }
   )

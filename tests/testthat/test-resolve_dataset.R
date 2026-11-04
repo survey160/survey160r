@@ -101,7 +101,8 @@ test_that("s160_datasets lists every registry tier as (dataset, env)", {
     c("campaign_results prod", "campaign_results staging", "campaign_results dev",
       "disposition prod", "disposition dev",
       "opt_out prod", "opt_out dev",
-      "campaign_metrics prod", "campaign_metrics dev")
+      "campaign_metrics prod", "campaign_metrics dev",
+      "live_metrics prod", "live_metrics dev")
   )
   expect_equal(rownames(d), as.character(seq_len(nrow(d))))
 })
@@ -125,7 +126,7 @@ test_that("s160_config returns the bundled environment config", {
   expect_equal(cfg$environments$dev$api_url, "https://dev-api.survey160.com")
   expect_setequal(names(cfg$environments$prod$datasets),
                   c("campaign_results", "disposition", "opt_out",
-                    "campaign_metrics"))
+                    "campaign_metrics", "live_metrics"))
   expect_equal(cfg$environments$prod$datasets$campaign_results$bucket,
                "campaign_results")
 })

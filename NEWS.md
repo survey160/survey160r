@@ -1,5 +1,36 @@
 # survey160r (development version)
 
+## Live delivery metrics
+
+* `live_metrics_pull()` downloads the daily live-metrics files -- the hourly,
+  fleet-wide counts behind the dashboard's Live tab, one row per ET hour,
+  carrier, brand, campaign and delivery error code -- for a range of ET days,
+  cached (a copy downloaded after the day's last hourly rewrite is reused; any
+  other copy is fetched again).
+  `live_metrics_records()` reads them into one frame, and
+  `live_metrics_error_rates()` rolls them up to daily and cumulative delivery
+  error rates by carrier (or brand, campaign, error code, hour), with separate
+  counts, running counts and rates for chosen codes such as `"4780"`, over an
+  optional `date_from` / `date_to` window. An unknown carrier or brand is `NA`,
+  as in `disposition_funnel()`. Counts are per recipient:
+  each recipient is counted on their first send day under their latest delivery
+  code. `s160_datasets()` lists the new `live_metrics` dataset (prod, dev).
+* New article `vignette("delivery-errors")` ("Delivery error rates by carrier"):
+  pull a range of days, rates by carrier, fleet-wide, by brand or campaign,
+  T-Mobile 4780 split out, daily vs cumulative, and plotting a cumulative rate.
+  `vignette("campaign-metrics")` points to it; the README gains a "Delivery error rates" section.
+* survey160r now needs nanoparquet 0.5.1 or later, the first release that reads
+  the empty (zero-row) Parquet files arrow writes, such as a live-metrics day
+  with no sends.
+
+## Bug fixes
+
+* A missing object in Cloud Storage now raises the classed not-found error
+  (`s160_not_found`, with its hint) from `disposition_pull()`, `opt_out_pull()`,
+  `campaign_metrics_pull()` and `s160_gcs_campaign_results_read()`. A sibling
+  `error =` handler re-caught it, so these reported a generic "Failed to
+  download ... not found" and `tryCatch(..., s160_not_found = )` never fired.
+
 ## History columns on `disposition_screen()`
 
 * `disposition_screen(columns = "history")` (or `c("summary", "history")`)

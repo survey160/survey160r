@@ -12,7 +12,8 @@ s160_config(refresh = FALSE)
 \value{
 A nested list with \code{schema_version} and \code{environments};
   each environment carries an optional \code{api_url} and a \code{datasets}
-  map of \code{dataset -> list(bucket, object)}.
+  map of \code{dataset -> list(bucket, object)} (a multi-file dataset such
+  as \code{live_metrics} carries a \code{prefix} instead of an \code{object}).
 }
 \description{
 Returns the configuration survey160r uses to reach Survey160's backends: the

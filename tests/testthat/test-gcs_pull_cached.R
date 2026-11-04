@@ -134,6 +134,12 @@ test_that("a 404 gives a clear not-found error", {
     suppressMessages(do.call(.gcs_pull_cached,
                              gpc_args(dest = withr::local_tempdir()))),
     "not found.*s160_disposition_prod")
+  # ...and keeps its class (a sibling `error =` handler once swallowed it).
+  err <- expect_error(
+    suppressMessages(do.call(.gcs_pull_cached,
+                             gpc_args(dest = withr::local_tempdir()))),
+    class = "s160_not_found")
+  expect_match(conditionMessage(err), "disposition_pull: disposition projection not found")
 })
 
 test_that("a non-404 error gives a download-failed error", {
