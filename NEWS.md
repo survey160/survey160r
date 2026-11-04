@@ -16,8 +16,7 @@
 * New article `vignette("delivery-errors")` ("Delivery error rates by carrier"):
   pull a range of days, rates by carrier, fleet-wide, by brand or campaign,
   T-Mobile 4780 split out, daily vs cumulative, and plotting a cumulative rate.
-  The delivery-error section moves there from `vignette("campaign-metrics")`,
-  which now points to it; the README gains a "Delivery error rates" section.
+  `vignette("campaign-metrics")` points to it; the README gains a "Delivery error rates" section.
 
 ## Bug fixes
 

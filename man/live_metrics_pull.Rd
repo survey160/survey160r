@@ -40,9 +40,9 @@ by hour, carrier, brand, campaign and delivery error code.
 }
 \details{
 Files are cached. The pipeline rewrites today's and yesterday's files every
-hour, so a day is final once the second day after it is two hours old (ET).
-A cached copy downloaded after that is reused; any other copy -- today,
-yesterday, or a day cached while it was still open -- is fetched again. A day
+hour, so a day is final at 02:00 ET two days after it (Nov 1 at 02:00 ET on
+Nov 3). A cached copy downloaded after that is reused; any other copy is
+fetched again on every pull. A day
 with no file (no sends, or before the pipeline published it) is
 skipped with a message. Authenticate first with \code{\link{s160_gcs_init}}()
 (a fully cached range needs no auth).

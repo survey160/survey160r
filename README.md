@@ -10,7 +10,7 @@ R package for accessing Survey160 campaign data, across these areas:
 - **[Disposition screening](vignettes/disposition.Rmd)** -- screen a phone sample against every recipient Survey160 has contacted, dropping numbers already completed, refused, or screened out before you field; roll the same dataset up to funnel rates by carrier or mode, or follow each number's campaigns in order.
 - **[Opt-out screening](vignettes/opt-out.Rmd)** -- screen a phone sample against the opt-out list, flagging numbers that have opted out before you field.
 - **[Campaign metrics](vignettes/campaign-metrics.Rmd)** -- download the consolidated per-campaign metrics + recipient-latency projection (`campaign_all.parquet`) with `campaign_metrics_pull()`, read it into analysis-ready cells with `campaign_metrics_records()`, and roll those up to funnel counts and rates by any project dimension with `campaign_metrics_summary()`.
-- **[Delivery error rates](vignettes/delivery-errors.Rmd)** -- download the hourly, fleet-wide live delivery counts (one file per ET day) with `live_metrics_pull()` and roll them up to daily and cumulative delivery error rates by carrier, brand, or campaign, with T-Mobile 4780 split out, with `live_metrics_error_rates()`.
+- **[Delivery error rates](vignettes/delivery-errors.Rmd)** -- download the hourly, fleet-wide live delivery counts (one file per ET day) with `live_metrics_pull()` and roll them up with `live_metrics_error_rates()` to daily and cumulative delivery error rates by carrier, brand, or campaign, with T-Mobile 4780 split out.
 
 **New here?** Find your task in [Which function do I need?](#which-function-do-i-need) below; to screen a sample before fielding, jump to [Disposition screening](#disposition-screening). First time on this machine, start with [First-time setup](#first-time-setup) -- you need a credential and a bucket grant before any data call works.
 
@@ -185,7 +185,7 @@ Follow delivery error rates by carrier, day by day and cumulatively, across ever
 library(survey160r)
 s160_gcs_init()   # one-time browser sign-in (cached)
 
-paths <- live_metrics_pull(date_from = "2026-10-01")   # one file per ET day; past days cached
+paths <- live_metrics_pull(date_from = "2026-10-01")   # one file per ET day; finished days cached
 rates <- live_metrics_error_rates(paths)               # by carrier and day, 4780 split out
 subset(rates, carrier == "TMobile")
 ```

@@ -23,7 +23,7 @@ The live metrics are one file per ET day, rewritten every hour for today and yes
 library(survey160r)
 s160_gcs_init()   # one browser sign-in, cached
 
-paths <- live_metrics_pull(date_from = "2026-10-01")   # through today (ET); past days cached
+paths <- live_metrics_pull(date_from = "2026-10-01")   # through today (ET); finished days cached
 rates <- live_metrics_error_rates(paths)               # one row per carrier and day
 ```
 
@@ -82,7 +82,7 @@ Add codes to split out more of them, e.g. `codes = c("4780", "4700")`; `codes = 
 ## Daily or cumulative
 
 - **Daily** (`n_sent`, `n_error`, `error_rate`) -- the recipients first sent that day. Use it to spot the day a carrier starts rejecting.
-- **Cumulative** (`cum_sent`, `cum_error`, `cum_error_rate`) -- every recipient first sent from the first day pulled through that day. Use it for the running picture; it moves slowly, so a one-day spike barely shows.
+- **Cumulative** (`cum_sent`, `cum_error`, `cum_error_rate`) -- every recipient first sent from the group's first day pulled through that day (a carrier that first appears later starts its total there). Use it for the running picture; it moves slowly, so a one-day spike barely shows.
 
 The cumulative columns start at the first day in what you pass in. To start the running total at a given day, pull from that day, or filter the cells first:
 
@@ -122,7 +122,7 @@ lines(tmobile$et_date, tmobile$cum_rate_4780, lty = 2)   # the 4780 share
 | the `by` columns | The group, e.g. `carrier`; none with `by = NULL`. |
 | `n_sent` / `n_error` | Recipients first sent that day, and those whose latest delivery code is an error. |
 | `error_rate` | `n_error / n_sent`. |
-| `cum_sent` / `cum_error` | The same counts summed from the first day in `x` through `et_date`. |
+| `cum_sent` / `cum_error` | The same counts summed from the group's first day in `x` through `et_date`. |
 | `cum_error_rate` | `cum_error / cum_sent`. |
 | `n_4780` / `rate_4780` / `cum_rate_4780` | One set per code in `codes`: its count, its daily rate, and its cumulative rate. |
 
@@ -132,7 +132,7 @@ A rate with no sends is `NA`. `live_metrics_records()` returns the cells -- `et_
 
 - **Counts are per recipient, not per message.** Each recipient is counted once, on the day and hour of their *first* send, under their *latest* delivery code. A rejection that a later retry delivered no longer counts as an error, and a recipient sent on several days counts once, on the first.
 - **Recent days still move.** Today's and yesterday's files are rewritten hourly with the latest delivery codes, so read the last two days as provisional.
-- **Caching.** A day is final once the second day after it is two hours old (ET); a cached copy downloaded after that is reused without a network call. Today, yesterday, or a day you cached while it was still open is fetched again on every pull. `refresh = TRUE` re-downloads the whole range.
+- **Caching.** A day is final at 02:00 ET two days after it (Nov 1 at 02:00 ET on Nov 3); a cached copy downloaded after that is reused without a network call. Any other copy (today, yesterday, the day before until 02:00 ET, or a day you cached before it was final) is fetched again on every pull. `refresh = TRUE` re-downloads the whole range.
 - **Missing days.** A day with no file (no sends, or not yet published) is skipped with a message and leaves no row; the running totals continue across the gap.
 - **Unknown carrier or brand.** A missing `carrier` or `brand` reads as `"(unknown)"` and groups as its own row.
 - **Aggregate, not phone-keyed.** The files hold counts, never phone numbers. To screen a sample on past delivery errors, see `vignette("disposition")`.

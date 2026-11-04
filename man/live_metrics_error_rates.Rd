@@ -37,7 +37,7 @@ A data frame sorted by \code{by} then \code{et_date}, with
 \description{
 Rolls the live metrics up to one row per ET day and carrier (or any other
 \code{by} dimension), with the day's error rate and the cumulative rate from
-the first day in \code{x} through that day. This answers "how is each
+the group's first day in \code{x} through that day. This answers "how is each
 carrier's error rate moving, across every ongoing survey?".
 }
 \details{

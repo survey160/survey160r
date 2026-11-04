@@ -7,8 +7,8 @@
 # code ("(none)" when there is none), so counts are per recipient, not per
 # message or delivery attempt. Aggregate counts, no phone: not PII.
 #
-# live_metrics_pull() fetches the day files (a past day is final, so a cached
-# copy is reused; today and yesterday are re-fetched), live_metrics_records()
+# live_metrics_pull() fetches the day files (a copy downloaded after the day's
+# last rewrite is reused, any other is re-fetched), live_metrics_records()
 # reads them into one frame, and live_metrics_error_rates() rolls that up to
 # daily and cumulative error rates by carrier (or any other dimension). Bare
 # names, like campaign_metrics_pull(): a pipeline-derived artifact, not a raw
@@ -73,9 +73,9 @@
 #' by hour, carrier, brand, campaign and delivery error code.
 #'
 #' Files are cached. The pipeline rewrites today's and yesterday's files every
-#' hour, so a day is final once the second day after it is two hours old (ET).
-#' A cached copy downloaded after that is reused; any other copy -- today,
-#' yesterday, or a day cached while it was still open -- is fetched again. A day
+#' hour, so a day is final at 02:00 ET two days after it (Nov 1 at 02:00 ET on
+#' Nov 3). A cached copy downloaded after that is reused; any other copy is
+#' fetched again on every pull. A day
 #' with no file (no sends, or before the pipeline published it) is
 #' skipped with a message. Authenticate first with \code{\link{s160_gcs_init}}()
 #' (a fully cached range needs no auth).
@@ -250,7 +250,7 @@ live_metrics_records <- function(x, campaign_ids = NULL) {
 #'
 #' Rolls the live metrics up to one row per ET day and carrier (or any other
 #' \code{by} dimension), with the day's error rate and the cumulative rate from
-#' the first day in \code{x} through that day. This answers "how is each
+#' the group's first day in \code{x} through that day. This answers "how is each
 #' carrier's error rate moving, across every ongoing survey?".
 #'
 #' A recipient counts as an error when their latest delivery code is anything
