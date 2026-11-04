@@ -19,6 +19,9 @@
   pull a range of days, rates by carrier, fleet-wide, by brand or campaign,
   T-Mobile 4780 split out, daily vs cumulative, and plotting a cumulative rate.
   `vignette("campaign-metrics")` points to it; the README gains a "Delivery error rates" section.
+* survey160r now needs nanoparquet 0.5.1 or later, the first release that reads
+  the empty (zero-row) Parquet files arrow writes, such as a live-metrics day
+  with no sends.
 
 ## Bug fixes
 
