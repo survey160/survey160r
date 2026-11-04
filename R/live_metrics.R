@@ -248,6 +248,28 @@ live_metrics_records <- function(x, campaign_ids = NULL) {
   as.data.frame(dplyr::bind_rows(parts))
 }
 
+# Sum the counts per (by, et_date) and add running totals per `by` group in date
+# order: n_sent, n_error and n_<code> for each code, plus a cum_ twin of each.
+# data.table, not dplyr: a high-cardinality `by` (carrier x brand x campaign
+# over a year, ~1M groups) evaluated per group in R took ~13 s; this takes
+# ~0.4 s. keyby sorts the groups (an NA key is its own group), so the cumsum
+# by group runs in date order and its rows line up with `g`. Counts are double
+# so a long range's running totals cannot overflow an integer.
+.live_metrics_rollup <- function(d, by, codes) {
+  .SD <- NULL
+  sent <- as.numeric(d$n_sent)
+  cols <- list(n_sent = sent, n_error = replace(sent, d$error_code == .LIVE_METRICS_NO_ERROR, 0))
+  for (code in codes) {
+    cols[[paste0("n_", code)]] <- replace(sent, d$error_code != code, 0)
+  }
+  counts <- names(cols)
+  dt <- data.table::setDT(c(as.list(d[c(by, "et_date")]), cols))
+  g <- dt[, lapply(.SD, sum, na.rm = TRUE), keyby = c(by, "et_date"), .SDcols = counts]
+  cum <- g[, lapply(.SD, cumsum), by = by, .SDcols = counts]
+  data.table::set(g, j = paste0("cum_", counts), value = as.list(cum[, counts, with = FALSE]))
+  as.data.frame(g)
+}
+
 #' Daily and cumulative delivery error rates by carrier
 #'
 #' Rolls the live metrics up to one row per ET day and carrier (or any other
@@ -306,23 +328,7 @@ live_metrics_error_rates <- function(x, by = "carrier", codes = "4780",
   mult <- if (percent) 100 else 1
   ratio <- function(num, den) ifelse(den > 0, mult * num / den, NA_real_)
 
-  d$n_error <- ifelse(d$error_code == .LIVE_METRICS_NO_ERROR, 0L, d$n_sent)
-  for (code in codes) {
-    d[[paste0("n_", code)]] <- ifelse(d$error_code == code, d$n_sent, 0L)
-  }
-  # paste0("n_", character(0)) is "n_", not character(0): guard the no-codes case.
-  counts <- c("n_sent", "n_error", if (length(codes)) paste0("n_", codes))
-  g <- dplyr::summarise(
-    dplyr::group_by(d, dplyr::across(dplyr::all_of(c(by, "et_date")))),
-    dplyr::across(dplyr::all_of(counts), function(v) sum(v, na.rm = TRUE)),
-    .groups = "drop")
-  # Running totals per `by` group in date order. dplyr groups keep an NA key as
-  # its own group (interaction() / ave() would reset it every row).
-  g <- dplyr::arrange(g, dplyr::across(dplyr::all_of(c(by, "et_date"))))
-  g <- dplyr::mutate(
-    dplyr::group_by(g, dplyr::across(dplyr::all_of(by))),
-    dplyr::across(dplyr::all_of(counts), cumsum, .names = "cum_{.col}"))
-  g <- as.data.frame(dplyr::ungroup(g))
+  g <- .live_metrics_rollup(d, by, codes)
   names(g)[names(g) == "cum_n_error"] <- "cum_error"
   names(g)[names(g) == "cum_n_sent"] <- "cum_sent"
 
