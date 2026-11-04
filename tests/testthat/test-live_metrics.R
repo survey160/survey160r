@@ -311,6 +311,9 @@ test_that("a date-time bound is read as its ET day", {
   late <- as.POSIXct("2026-11-01 22:30", tz = "America/New_York")  # Nov 2 in UTC
   suppressMessages(p <- live_metrics_pull(late, late, dest = withr::local_tempdir()))
   expect_equal(names(p), "2026-11-01")
+  utc <- as.POSIXlt("2026-11-02 02:30", tz = "UTC")  # Nov 1 in ET, as a POSIXlt
+  suppressMessages(p <- live_metrics_pull(utc, utc, dest = withr::local_tempdir()))
+  expect_equal(names(p), "2026-11-01")
 })
 
 test_that("pull rejects reversed, mis-parsed and ancient dates, and bad args", {

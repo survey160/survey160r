@@ -41,7 +41,8 @@
   if (is.null(x)) return(NULL)
   d <- tryCatch(
     if (inherits(x, "POSIXt")) {
-      as.Date(format(x, tz = .LIVE_METRICS_TZ))
+      # as.POSIXct first: format() on a POSIXlt ignores `tz`.
+      as.Date(format(as.POSIXct(x), tz = .LIVE_METRICS_TZ))
     } else if (is.character(x)) {
       as.Date(x, tryFormats = "%Y-%m-%d")
     } else if (inherits(x, "Date")) {
