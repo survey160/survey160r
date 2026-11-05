@@ -2,10 +2,10 @@
 
 ## Live delivery metrics
 
-* `live_metrics_pull()` downloads the daily live-metrics files -- the hourly,
+* `live_metrics_pull()` downloads the daily live-metrics files -- the hour-by-hour,
   fleet-wide counts behind the dashboard's Live tab, one row per ET hour,
   carrier, brand, campaign and delivery error code -- for a range of ET days,
-  cached (a copy downloaded after the day's last hourly rewrite is reused; any
+  cached (a copy downloaded after the day's last rewrite is reused; any
   other copy is fetched again).
   `live_metrics_records()` reads them into one frame, and
   `live_metrics_error_rates()` rolls them up to daily and cumulative delivery
@@ -22,6 +22,11 @@
 * survey160r now needs nanoparquet 0.5.1 or later, the first release that reads
   the empty (zero-row) Parquet files arrow writes, such as a live-metrics day
   with no sends.
+* Live-metrics docs corrected (0.79.1): the pipeline rewrites today's and
+  yesterday's files on each run (currently 4pm and 9pm ET), not every hour;
+  the files start on 2026-09-29; today has no file before its first run;
+  counts are once per campaign, under the delivery code as of the day's last
+  rewrite; and a campaign archived before then is missing from that day.
 
 ## Bug fixes
 

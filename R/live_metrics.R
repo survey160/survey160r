@@ -1,7 +1,8 @@
-# Live-metrics reader -- the hourly fleet-wide delivery counts.
+# Live-metrics reader -- the hour-by-hour fleet-wide delivery counts.
 #
 # `live/metrics/dt=YYYY-MM-DD.parquet` is one file per ET day in the analytics
-# bucket, rewritten hourly by the pipeline from the live phone lists: one row per
+# bucket, rewritten by each pipeline run (today and yesterday; currently 4pm and
+# 9pm ET) from the live phone lists: one row per
 # (et_hour, carrier, brand, campaign_id, error_code) with n_sent / n_engaged.
 # Recipients are bucketed by their FIRST send and carry their LATEST delivery
 # code ("(none)" when there is none), so counts are per recipient, not per
@@ -22,7 +23,8 @@
 .LIVE_METRICS_TZ <- "America/New_York"
 
 # ET wall-clock time on the second day after a day by which the pipeline has
-# written its last copy of that day (it rewrites today and yesterday every hour).
+# written its last copy of that day (each run rewrites today and yesterday, so
+# the last copy comes from the next day's last run, currently 9pm ET).
 # 03:00 exists on every ET day, DST changes included (02:00 does not in March).
 .LIVE_METRICS_FINAL_AT <- "03:00:00"
 
@@ -71,20 +73,21 @@
 
 #' Download the live delivery metrics for a range of days
 #'
-#' Pulls the daily live-metrics files -- the hourly, fleet-wide counts behind the
-#' dashboard's Live tab -- from the environment's analytics bucket and returns
-#' their local paths, ready for \code{\link{live_metrics_records}} or
+#' Pulls the daily live-metrics files -- the hour-by-hour, fleet-wide counts
+#' behind the dashboard's Live tab -- from the environment's analytics bucket and
+#' returns their local paths, ready for \code{\link{live_metrics_records}} or
 #' \code{\link{live_metrics_error_rates}}. Each day is one file (ET calendar
-#' day) covering every campaign in the live phone lists, with sends broken down
-#' by hour, carrier, brand, campaign and delivery error code.
+#' day, from 2026-09-29) covering every campaign in the live phone lists when it
+#' was written, with sends broken down by hour, carrier, brand, campaign and
+#' delivery error code.
 #'
-#' Files are cached. The pipeline rewrites today's and yesterday's files every
-#' hour, so a day is final at 03:00 ET two days after it (Nov 1 at 03:00 ET on
-#' Nov 3). A cached copy downloaded after that is reused; any other copy is
-#' fetched again on every pull. A day
-#' with no file (no sends, or before the pipeline published it) is
-#' skipped with a message. Authenticate first with \code{\link{s160_gcs_init}}()
-#' (a fully cached range needs no auth).
+#' Files are cached. Each pipeline run (currently 4pm and 9pm ET) rewrites
+#' today's and yesterday's files, so a day is final at 03:00 ET two days after it
+#' (Nov 1 at 03:00 ET on Nov 3). A cached copy downloaded after that is reused;
+#' any other copy is fetched again on every pull. A day with no file (before
+#' 2026-09-29, or today before its first run) is skipped with a message; a day
+#' with no sends has a file with no rows. Authenticate first with
+#' \code{\link{s160_gcs_init}}() (a fully cached range needs no auth).
 #'
 #' @param date_from,date_to First and last ET day to fetch, both included: a
 #'   \code{Date}, a \code{"YYYY-MM-DD"} string, or a date-time (read as its ET
@@ -175,10 +178,11 @@ live_metrics_pull <- function(date_from = NULL, date_to = NULL,
 #' row per ET day, hour, carrier, brand, campaign and delivery error code, with
 #' the number of recipients sent and engaged.
 #'
-#' Counts are per recipient. A recipient is counted on the day and hour of
-#' their \emph{first} send, under their \emph{latest} delivery error code
-#' (\code{"(none)"} when there is none), so a rejection that a later retry
-#' delivered no longer shows, and a recipient sent on several days counts once.
+#' Counts are per recipient, once per campaign. A recipient is counted on the day
+#' and hour of their \emph{first} send, under their \emph{latest} delivery error
+#' code as of the day's last rewrite (\code{"(none)"} when there is none), so a
+#' rejection that a retry delivered by then no longer shows, a code that changes
+#' later is not picked up, and a recipient sent on several days counts once.
 #'
 #' @param x The paths returned by \code{\link{live_metrics_pull}}, or a data
 #'   frame already read from them.

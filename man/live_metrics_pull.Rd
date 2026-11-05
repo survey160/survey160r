@@ -32,21 +32,22 @@ A character vector of local Parquet paths, named by ET day
   (\code{"YYYY-MM-DD"}), for the days that have a file.
 }
 \description{
-Pulls the daily live-metrics files -- the hourly, fleet-wide counts behind the
-dashboard's Live tab -- from the environment's analytics bucket and returns
-their local paths, ready for \code{\link{live_metrics_records}} or
+Pulls the daily live-metrics files -- the hour-by-hour, fleet-wide counts
+behind the dashboard's Live tab -- from the environment's analytics bucket and
+returns their local paths, ready for \code{\link{live_metrics_records}} or
 \code{\link{live_metrics_error_rates}}. Each day is one file (ET calendar
-day) covering every campaign in the live phone lists, with sends broken down
-by hour, carrier, brand, campaign and delivery error code.
+day, from 2026-09-29) covering every campaign in the live phone lists when it
+was written, with sends broken down by hour, carrier, brand, campaign and
+delivery error code.
 }
 \details{
-Files are cached. The pipeline rewrites today's and yesterday's files every
-hour, so a day is final at 03:00 ET two days after it (Nov 1 at 03:00 ET on
-Nov 3). A cached copy downloaded after that is reused; any other copy is
-fetched again on every pull. A day
-with no file (no sends, or before the pipeline published it) is
-skipped with a message. Authenticate first with \code{\link{s160_gcs_init}}()
-(a fully cached range needs no auth).
+Files are cached. Each pipeline run (currently 4pm and 9pm ET) rewrites
+today's and yesterday's files, so a day is final at 03:00 ET two days after it
+(Nov 1 at 03:00 ET on Nov 3). A cached copy downloaded after that is reused;
+any other copy is fetched again on every pull. A day with no file (before
+2026-09-29, or today before its first run) is skipped with a message; a day
+with no sends has a file with no rows. Authenticate first with
+\code{\link{s160_gcs_init}}() (a fully cached range needs no auth).
 }
 \examples{
 \dontrun{
