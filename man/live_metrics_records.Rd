@@ -29,10 +29,12 @@ row per ET day, hour, carrier, brand, campaign and delivery error code, with
 the number of recipients sent and engaged.
 }
 \details{
-Counts are per recipient. A recipient is counted on the day and hour of
-their \emph{first} send, under their \emph{latest} delivery error code
-(\code{"(none)"} when there is none), so a rejection that a later retry
-delivered no longer shows, and a recipient sent on several days counts once.
+Counts are per recipient, once per campaign. A recipient is counted on the day
+and hour of their \emph{first} send, under their \emph{latest} delivery error
+code as of the day's last rewrite (\code{"(none)"} when there is none), so a
+rejection that a retry delivered by then no longer shows, a code that changes
+later is not picked up, and a recipient sent on several days counts once
+within a campaign (a phone in two campaigns counts in each).
 }
 \examples{
 cells <- data.frame(

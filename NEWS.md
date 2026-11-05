@@ -2,19 +2,20 @@
 
 ## Live delivery metrics
 
-* `live_metrics_pull()` downloads the daily live-metrics files -- the hourly,
+* `live_metrics_pull()` downloads the daily live-metrics files -- the hour-by-hour,
   fleet-wide counts behind the dashboard's Live tab, one row per ET hour,
   carrier, brand, campaign and delivery error code -- for a range of ET days,
-  cached (a copy downloaded after the day's last hourly rewrite is reused; any
-  other copy is fetched again).
+  cached (a copy downloaded after the day is final, at 03:00 ET two days
+  later, is reused; any other copy, including one downloaded after the
+  9pm rewrite but before that cutoff, is fetched again).
   `live_metrics_records()` reads them into one frame, and
   `live_metrics_error_rates()` rolls them up to daily and cumulative delivery
   error rates by carrier (or brand, campaign, error code, hour), with separate
   counts, running counts and rates for chosen codes such as `"4780"`, over an
   optional `date_from` / `date_to` window. An unknown carrier or brand is `NA`,
-  as in `disposition_funnel()`. Counts are per recipient:
-  each recipient is counted on their first send day under their latest delivery
-  code. `s160_datasets()` lists the new `live_metrics` dataset (prod, dev).
+  as in `disposition_funnel()`. Counts are per recipient, once per campaign:
+  each recipient is counted on their first send day under their delivery code
+  as of the day's last rewrite. `s160_datasets()` lists the new `live_metrics` dataset (prod, dev).
 * New article `vignette("delivery-errors")` ("Delivery error rates by carrier"):
   pull a range of days, rates by carrier, fleet-wide, by brand or campaign,
   T-Mobile 4780 split out, daily vs cumulative, and plotting a cumulative rate.
@@ -22,6 +23,11 @@
 * survey160r now needs nanoparquet 0.5.1 or later, the first release that reads
   the empty (zero-row) Parquet files arrow writes, such as a live-metrics day
   with no sends.
+* Live-metrics docs corrected (0.79.1): the pipeline rewrites today's and
+  yesterday's files on each run (currently 4pm and 9pm ET), not every hour;
+  the files start on 2026-09-29; today has no file before its first run;
+  counts are once per campaign, under the delivery code as of the day's last
+  rewrite; and a campaign archived before then is missing from that day.
 
 ## Bug fixes
 

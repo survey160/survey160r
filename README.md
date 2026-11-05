@@ -10,7 +10,7 @@ R package for accessing Survey160 campaign data, across these areas:
 - **[Disposition screening](vignettes/disposition.Rmd)** -- screen a phone sample against every recipient Survey160 has contacted, dropping numbers already completed, refused, or screened out before you field; roll the same dataset up to funnel rates by carrier or mode, or follow each number's campaigns in order.
 - **[Opt-out screening](vignettes/opt-out.Rmd)** -- screen a phone sample against the opt-out list, flagging numbers that have opted out before you field.
 - **[Campaign metrics](vignettes/campaign-metrics.Rmd)** -- download the consolidated per-campaign metrics + recipient-latency projection (`campaign_all.parquet`) with `campaign_metrics_pull()`, read it into analysis-ready cells with `campaign_metrics_records()`, and roll those up to funnel counts and rates by any project dimension with `campaign_metrics_summary()`.
-- **[Delivery error rates](vignettes/delivery-errors.Rmd)** -- download the hourly, fleet-wide live delivery counts (one file per ET day) with `live_metrics_pull()` and roll them up with `live_metrics_error_rates()` to daily and cumulative delivery error rates by carrier, brand, or campaign, with T-Mobile 4780 split out.
+- **[Delivery error rates](vignettes/delivery-errors.Rmd)** -- download the hour-by-hour, fleet-wide live delivery counts (one file per ET day) with `live_metrics_pull()` and roll them up with `live_metrics_error_rates()` to daily and cumulative delivery error rates by carrier, brand, or campaign, with T-Mobile 4780 split out.
 
 **New here?** Find your task in [Which function do I need?](#which-function-do-i-need) below; to screen a sample before fielding, jump to [Disposition screening](#disposition-screening). First time on this machine, start with [First-time setup](#first-time-setup) -- you need a credential and a bucket grant before any data call works.
 
@@ -190,7 +190,7 @@ rates <- live_metrics_error_rates(paths)               # by carrier and day, 478
 subset(rates, carrier == "T-Mobile")
 ```
 
-Counts are per recipient: each is counted on the day of their first send, under their latest delivery code, so a rejection a later retry delivered no longer counts. Full walkthrough -- fleet-wide and per-brand rollups, daily vs cumulative, plotting -- in the **[delivery-errors guide](vignettes/delivery-errors.Rmd)** (`vignette("delivery-errors")` once installed).
+Counts are per recipient, once per campaign: each is counted on the day of their first send, under their latest delivery code as of the day's last rewrite, so a rejection a retry delivered by then no longer counts. Full walkthrough -- fleet-wide and per-brand rollups, daily vs cumulative, plotting -- in the **[delivery-errors guide](vignettes/delivery-errors.Rmd)** (`vignette("delivery-errors")` once installed).
 
 ## First-time setup
 

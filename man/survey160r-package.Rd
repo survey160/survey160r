@@ -129,7 +129,7 @@ and Project Tracker dimensions per campaign, date, and hour
 \section{Live delivery metrics}{
 
 Follow delivery errors across every campaign in the live phone lists, from the
-hourly fleet-wide counts (one file per ET day;
+hour-by-hour fleet-wide counts (one file per ET day;
 \code{vignette("delivery-errors")}):
 \itemize{
   \item \code{\link{live_metrics_pull}} -- download a range of days (a
