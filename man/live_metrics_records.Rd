@@ -33,7 +33,8 @@ Counts are per recipient, once per campaign. A recipient is counted on the day
 and hour of their \emph{first} send, under their \emph{latest} delivery error
 code as of the day's last rewrite (\code{"(none)"} when there is none), so a
 rejection that a retry delivered by then no longer shows, a code that changes
-later is not picked up, and a recipient sent on several days counts once.
+later is not picked up, and a recipient sent on several days counts once
+within a campaign (a phone in two campaigns counts in each).
 }
 \examples{
 cells <- data.frame(

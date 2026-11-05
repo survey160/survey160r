@@ -87,7 +87,8 @@
 #' any other copy is fetched again on every pull. A day with no file (before
 #' 2026-09-29, or today before its first run) is skipped with a message; a day
 #' with no sends has a file with no rows. Authenticate first with
-#' \code{\link{s160_gcs_init}}() (a fully cached range needs no auth).
+#' \code{\link{s160_gcs_init}}() (a range of final days, all cached, needs no
+#' auth; a day with no file is asked for again on every pull).
 #'
 #' @param date_from,date_to First and last ET day to fetch, both included: a
 #'   \code{Date}, a \code{"YYYY-MM-DD"} string, or a date-time (read as its ET
@@ -182,7 +183,8 @@ live_metrics_pull <- function(date_from = NULL, date_to = NULL,
 #' and hour of their \emph{first} send, under their \emph{latest} delivery error
 #' code as of the day's last rewrite (\code{"(none)"} when there is none), so a
 #' rejection that a retry delivered by then no longer shows, a code that changes
-#' later is not picked up, and a recipient sent on several days counts once.
+#' later is not picked up, and a recipient sent on several days counts once
+#' within a campaign (a phone in two campaigns counts in each).
 #'
 #' @param x The paths returned by \code{\link{live_metrics_pull}}, or a data
 #'   frame already read from them.

@@ -13,9 +13,9 @@
   error rates by carrier (or brand, campaign, error code, hour), with separate
   counts, running counts and rates for chosen codes such as `"4780"`, over an
   optional `date_from` / `date_to` window. An unknown carrier or brand is `NA`,
-  as in `disposition_funnel()`. Counts are per recipient:
-  each recipient is counted on their first send day under their latest delivery
-  code. `s160_datasets()` lists the new `live_metrics` dataset (prod, dev).
+  as in `disposition_funnel()`. Counts are per recipient, once per campaign:
+  each recipient is counted on their first send day under their delivery code
+  as of the day's last rewrite. `s160_datasets()` lists the new `live_metrics` dataset (prod, dev).
 * New article `vignette("delivery-errors")` ("Delivery error rates by carrier"):
   pull a range of days, rates by carrier, fleet-wide, by brand or campaign,
   T-Mobile 4780 split out, daily vs cumulative, and plotting a cumulative rate.

@@ -47,7 +47,8 @@ today's and yesterday's files, so a day is final at 03:00 ET two days after it
 any other copy is fetched again on every pull. A day with no file (before
 2026-09-29, or today before its first run) is skipped with a message; a day
 with no sends has a file with no rows. Authenticate first with
-\code{\link{s160_gcs_init}}() (a fully cached range needs no auth).
+\code{\link{s160_gcs_init}}() (a range of final days, all cached, needs no
+auth; a day with no file is asked for again on every pull).
 }
 \examples{
 \dontrun{
