@@ -8,8 +8,8 @@
 # code ("(none)" when there is none), so counts are per recipient, not per
 # message or delivery attempt. Aggregate counts, no phone: not PII.
 #
-# live_metrics_pull() fetches the day files (a copy downloaded after the day's
-# last rewrite is reused, any other is re-fetched), live_metrics_records()
+# live_metrics_pull() fetches the day files (a copy downloaded after 03:00 ET
+# two days after the day is reused, any other is re-fetched), live_metrics_records()
 # reads them into one frame, and live_metrics_error_rates() rolls that up to
 # daily and cumulative error rates by carrier (or any other dimension). Bare
 # names, like campaign_metrics_pull(): a pipeline-derived artifact, not a raw
