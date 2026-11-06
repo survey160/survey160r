@@ -18,7 +18,9 @@ completion_records <- function(n_per_campaign = 40L, seed = 1L) {
   pool <- sprintf("201555%04d", seq_len(3L * n_per_campaign))
   modes <- c("Live", "T2W")
   topics <- c("Brand", "Electoral", "Policy")
-  lois <- c(4, 8, 12, 18, 25, NA)
+  # seven LOI values, not six: a 6-cycle would be exactly mode (2) x topic (3)
+  # and the LOI bands collinear with the other dummies
+  lois <- c(4, 8, 12, 18, 25, NA, 14)
   completed_before <- character(0)
   out <- vector("list", n_campaigns)
   for (i in seq_len(n_campaigns)) {
@@ -45,7 +47,7 @@ completion_records <- function(n_per_campaign = 40L, seed = 1L) {
       survey_mode = if (external) "t2w_external" else c(Live = "sms", T2W = "t2w")[[mode_i]],
       tracker_mode = if (external) NA_character_ else mode_i,
       tracker_topic = topics[(i - 1L) %% 3L + 1L],
-      tracker_loi = lois[(i - 1L) %% 6L + 1L],
+      tracker_loi = lois[(i - 1L) %% 7L + 1L],
       disposition_date = dates, stringsAsFactors = FALSE)
     if (!external) completed_before <- union(completed_before, phones[completed == 1L])
   }

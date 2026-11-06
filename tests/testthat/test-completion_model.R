@@ -93,3 +93,123 @@ test_that("level helpers", {
   expect_equal(levels(.completion_loi_band(12))[1], "(10,15]")
   expect_equal(.completion_logit(c(0, 0.5, 1)), qlogis(c(1e-4, 0.5, 1 - 1e-4)))
 })
+
+test_that("fit: returns a completion_model with coefficients, contexts and holdout", {
+  skip_if_no_sequence()
+  p <- write_completion_parquet(completion_records(n_per_campaign = 60L))
+  m <- completion_model_fit(p, train_until = as.Date("2026-10-01"), holdout_months = 6,
+                            min_sent = 10)
+  expect_s3_class(m, "completion_model")
+  expect_equal(m$min_sent, 10)
+  expect_equal(m$settle_days, 7)
+  expect_named(m$models, c("optin", "completion"))
+  expect_true(all(c("(Intercept)", "modeT2W", "sample_score") %in%
+                    m$models$completion$coefficients$term))
+  expect_true("modeT2W external" %in% m$models$optin$coefficients$term)
+  expect_false("modeT2W external" %in% m$models$completion$coefficients$term)
+  expect_equal(m$models$optin$formula, "logit ~ mode + sample_score")
+  expect_equal(m$models$completion$formula,
+               "logit ~ mode + topic + loi_band + sample_score + share_prior_completers + share_cold")
+  expect_named(m$models$completion$residual_sd, c("Live", "T2W"))
+  expect_named(m$models$optin$residual_sd, c("Live", "T2W", "T2W external"))
+  expect_equal(m$windows$data_end, as.Date("2026-09-04"))
+  expect_equal(m$windows$train_until, as.Date("2026-10-01"))
+  expect_equal(m$windows$holdout_from, as.Date("2026-04-01"))
+  expect_equal(m$windows$train_from, as.Date("2025-01-01"))
+  expect_equal(m$counts$campaigns_total, 25L)
+  # completion drops 1-4 (2024: no prior-year table), 8 (zero completes), 25 (unknown + settle lag)
+  expect_equal(m$models$completion$counts$campaigns_fit, 19L)
+  expect_equal(m$models$completion$holdout$n, 5L)  # campaigns 20-24
+  expect_equal(m$models$completion$counts$campaigns_holdout_fit, 14L)
+  # opt-in keeps 8 (it has opt-ins) and still drops 25 (settle lag)
+  expect_equal(m$models$optin$counts$campaigns_fit, 20L)
+  expect_false(anyNA(m$models$completion$residual_sd))
+  expect_true(all(m$models$completion$residual_sd > 0))
+  expect_true(is.na(m$models$optin$residual_sd[["T2W external"]]))
+  expect_true(m$models$completion$holdout$r2_logit >= 0 && m$models$completion$holdout$r2_logit <= 1)
+  expect_true(m$models$completion$holdout$median_ape >= 0)
+  expect_true(m$models$completion$holdout$within_50 >= 0 && m$models$completion$holdout$within_50 <= 1)
+  # a level absent from the training rows is still a term, estimate 0, no standard error
+  ext <- m$models$optin$coefficients[m$models$optin$coefficients$term == "modeT2W external", ]
+  expect_equal(ext$estimate, 0)
+  expect_true(is.na(ext$std_error))
+  expect_true(all(c("sample_score", "mode.T2W", "topic.Brand", "loi_band.(10,15]") %in%
+                    names(m$models$completion$training_means)))
+  expect_equal(unname(m$models$completion$training_means["mode.Live"] +
+                        m$models$completion$training_means["mode.T2W"]), 1)
+  expect_equal(nrow(m$contexts), nrow(unique(m$contexts[c("year", "context")])))
+  expect_equal(m$version, as.character(utils::packageVersion("survey160r")))
+  expect_output(print(m), "opt-in")
+  expect_output(print(m), "2026-04-01")
+  s <- summary(m)
+  expect_true(all(c("model", "term", "odds_multiplier", "std_error") %in% names(s)))
+  expect_equal(s$odds_multiplier[s$model == "completion" & s$term == "(Intercept)"],
+               exp(m$models$completion$coefficients$estimate[1]))
+})
+
+test_that("fit: filters follow the spec", {
+  ct <- data.frame(
+    campaign_id = 1:6,
+    first_date = as.Date(c("2024-03-01", "2025-03-01", "2025-06-01", "2026-01-01", "2026-08-30",
+                           "2026-07-01")),
+    last_date = as.Date(c("2024-03-02", "2025-03-02", "2025-06-02", "2026-01-02", "2026-09-03",
+                          "2026-07-02")),
+    year = c(2024L, 2025L, 2025L, 2026L, 2026L, 2026L), sent = c(50L, 50L, 5L, 50L, 50L, 50L),
+    optins = c(3L, 3L, 3L, 3L, 3L, 3L),
+    completes = c(2L, 2L, 2L, 0L, 2L, 2L), completion_known = c(TRUE, TRUE, TRUE, TRUE, TRUE, FALSE),
+    mode = "Live", topic = "Brand", loi = 12, sample_score = c(NA, -4, -4, -4, -4, -4),
+    share_prior_completers = 0, share_cold = 0, stringsAsFactors = FALSE)
+  rows <- .completion_fit_rows(ct, "completion", train_until = as.Date("2026-10-01"), min_sent = 10,
+                               settle_days = 7, data_end = as.Date("2026-09-04"))
+  # 1: no table; 3: too small; 4: zero completes; 5: within settle lag; 6: unknown
+  expect_equal(rows$campaign_id, 2L)
+  expect_equal(rows$logit, qlogis(2 / 50))
+  rows <- .completion_fit_rows(ct, "optin", train_until = as.Date("2026-10-01"), min_sent = 10,
+                               settle_days = 7, data_end = as.Date("2026-09-04"))
+  # opt-in keeps zero-complete and unknown-completion campaigns
+  expect_equal(rows$campaign_id, c(2L, 4L, 6L))
+  expect_equal(rows$logit, rep(qlogis(3 / 50), 3))
+  # a train_until inside the data cuts the later campaigns
+  rows <- .completion_fit_rows(ct, "optin", train_until = as.Date("2026-01-01"), min_sent = 10,
+                               settle_days = 7, data_end = as.Date("2026-09-04"))
+  expect_equal(rows$campaign_id, 2L)
+  # zero opt-ins drop from the opt-in model
+  ct$optins[2] <- 0L
+  rows <- .completion_fit_rows(ct, "optin", train_until = as.Date("2026-10-01"), min_sent = 10,
+                               settle_days = 7, data_end = as.Date("2026-09-04"))
+  expect_equal(rows$campaign_id, c(4L, 6L))
+})
+
+test_that("fit: thin holdout", {
+  skip_if_no_sequence()
+  p <- write_completion_parquet(completion_records())
+  expect_warning(
+    m <- completion_model_fit(p, train_until = as.Date("2026-10-01"), holdout_months = 1,
+                              min_sent = 10),
+    "holdout")
+  expect_true(all(is.na(m$models$completion$residual_sd)))
+  expect_true(all(is.na(m$models$optin$residual_sd)))
+  expect_true(is.na(m$models$completion$holdout$r2_logit))
+  expect_equal(m$models$completion$holdout$n, 0L)
+  expect_output(print(m), "NA")
+})
+
+test_that("fit: argument checks", {
+  skip_if_no_sequence()
+  p <- write_completion_parquet(completion_records())
+  expect_error(completion_model_fit(p, train_until = "not a date"), "train_until")
+  expect_error(completion_model_fit(p, holdout_months = 0), "holdout_months")
+  expect_error(completion_model_fit(p, min_sent = -1), "min_sent")
+  expect_error(completion_model_fit(p, settle_days = 1.5), "settle_days")
+  expect_error(completion_model_fit(p, train_until = as.Date("2000-01-01")), "no campaign")
+})
+
+test_that("fit: refuses without the DuckDB packages and a data frame dataset", {
+  local_mocked_bindings(.disposition_lazy_missing = function() "duckdb")
+  expect_error(completion_model_fit("x.parquet"), "duckdb")
+})
+
+test_that("fit: refuses a data frame dataset", {
+  skip_if_no_sequence()
+  expect_error(completion_model_fit(data.frame(phone = "1")), "Parquet path")
+})
