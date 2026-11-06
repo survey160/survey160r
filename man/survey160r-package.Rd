@@ -92,6 +92,9 @@ recipients (\code{vignette("disposition")}):
     each number's campaigns in time order: per-campaign history (what
     happened after k non-responses) or one path per phone with sequence
     patterns (no reply, then engaged, then completed).
+  \item \code{\link{completion_model_fit}} / \code{\link{completion_forecast}}
+    -- fit the opt-in and completion rate models from the dataset, then
+    forecast a planned survey's rates from its sample and design.
   \item \code{\link{disposition_run}} / \code{\link{disposition_input_columns}}
     -- build the per-respondent rows from one campaign export (the producer
     side of the dataset).
