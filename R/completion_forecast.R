@@ -75,7 +75,7 @@
   if (is.na(loi)) {
     warnings <- c(warnings, "LOI missing: treated as unknown")
   } else if (band == "unknown") {
-    warnings <- c(warnings, sprintf("LOI %s is outside 0-31 minutes: treated as unknown",
+    warnings <- c(warnings, sprintf("LOI %s is not greater than 0 and at most 31 minutes: treated as unknown",
                                     format(loi)))
   }
   list(topic = topic_level, loi = loi, warnings = warnings)
@@ -150,8 +150,9 @@
 #' @param topic One of \code{"Brand"}, \code{"Electoral"}, \code{"Policy"};
 #'   \code{NULL}, \code{NA} or another value counts as unknown, with a warning
 #'   in the output.
-#' @param loi Length of interview in minutes (0-31); \code{NULL}, \code{NA} or a
-#'   value outside the range counts as unknown, with a warning in the output.
+#' @param loi Length of interview in minutes (greater than 0 and at most 31);
+#'   \code{NULL}, \code{NA}, zero (a tracker placeholder), or a value outside
+#'   the range counts as unknown, with a warning in the output.
 #' @param dataset Path to the disposition Parquet file, e.g. from
 #'   \code{\link{disposition_pull}()}, the sample's history is read from.
 #' @param start_date Planned start (Date or date string; default today): only

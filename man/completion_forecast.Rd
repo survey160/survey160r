@@ -25,8 +25,9 @@ completion_forecast(
 \code{NULL}, \code{NA} or another value counts as unknown, with a warning
 in the output.}
 
-\item{loi}{Length of interview in minutes (0-31); \code{NULL}, \code{NA} or a
-value outside the range counts as unknown, with a warning in the output.}
+\item{loi}{Length of interview in minutes (greater than 0 and at most 31);
+\code{NULL}, \code{NA}, zero (a tracker placeholder), or a value outside
+the range counts as unknown, with a warning in the output.}
 
 \item{dataset}{Path to the disposition Parquet file, e.g. from
 \code{\link{disposition_pull}()}, the sample's history is read from.}
