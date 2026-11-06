@@ -83,6 +83,20 @@ test_that("forecast: the sample is scored on the next contact's context", {
   expect_equal(out$sample_score, .completion_logit(p))
 })
 
+test_that("forecast: history is read up to the planned start only", {
+  skip_if_no_sequence()
+  f <- fit_fixture_model()
+  r <- completion_records(n_per_campaign = 60L)  # the rows the fixture model was fitted on
+  # numbers first contacted by campaign 1 (2024-02-01): on that start date they have no history
+  ph <- unique(r$phone[r$campaign_id == 1L])
+  before <- completion_forecast(f$model, ph, "Live", "Brand", 12, f$path,
+                                start_date = as.Date("2024-02-01"))
+  expect_equal(before$share_with_history, 0)
+  after <- completion_forecast(f$model, ph, "Live", "Brand", 12, f$path,
+                               start_date = as.Date("2024-02-05"))
+  expect_equal(after$share_with_history, 1)
+})
+
 test_that("forecast: year outside the stored tables", {
   skip_if_no_sequence()
   f <- fit_fixture_model()

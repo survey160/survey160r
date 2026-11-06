@@ -14,11 +14,16 @@
 # whether the row is the phone's latest. The optional tracker columns and
 # survey_mode come through as NULL when the file lacks them. `phones` scopes the
 # read to a sample (the forecast path); NULL reads every phone (the fit path).
-.completion_history_sql <- function(con, source, phones = NULL) {
+# `before` (a Date) keeps only rows dated before it: the history a planned
+# start would see, so a past campaign's own outcome never scores its sample.
+.completion_history_sql <- function(con, source, phones = NULL, before = NULL) {
   q <- function(x) as.character(DBI::dbQuoteIdentifier(con, x))
+  pre <- if (!is.null(before)) {
+    paste("disposition_date <", DBI::dbQuoteString(con, format(before, "%Y-%m-%d")))
+  }
   base <- .disposition_base_sql(
     con, source, phones, NULL,
-    .disposition_label_sql(con, source, "raw", .DISPOSITION_UNDELIVERABLE_CODES))
+    .disposition_label_sql(con, source, "raw", .DISPOSITION_UNDELIVERABLE_CODES), pre = pre)
   optional <- function(col) {
     if (col %in% source$cols) paste(q(col), "AS", col) else paste("NULL AS", col)
   }

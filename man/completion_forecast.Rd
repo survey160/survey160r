@@ -31,9 +31,10 @@ value outside the range counts as unknown, with a warning in the output.}
 \item{dataset}{Path to the disposition Parquet file, e.g. from
 \code{\link{disposition_pull}()}, the sample's history is read from.}
 
-\item{start_date}{Planned start (Date or date string; default today): picks
-the context table of that year. A year past the data uses the last table;
-one before the first table uses the first, with a warning.}
+\item{start_date}{Planned start (Date or date string; default today): only
+history before it is read, and it picks the context table of its year. A
+year past the data uses the last table; one before the first table uses
+the first, with a warning.}
 }
 \value{
 A one-row data frame: \code{optin_rate}, \code{optin_lo50},

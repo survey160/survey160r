@@ -7,12 +7,13 @@
 # The sample's history features for its NEXT contact: each phone's latest row
 # (letter, previous three letters, prior counts) shifted one step forward, so
 # the context is `latest letter || the two before it`; a never-contacted number
-# is a first contact (`___`, zero counts). Scored on the context table of
+# is a first contact (`___`, zero counts). Only rows before `start_date` count
+# (the history the planned survey would see). Scored on the context table of
 # `year`, a context unseen in the table taking the year's first-contact rate.
-.completion_sample_features <- function(con, source, phones, contexts, year) {
+.completion_sample_features <- function(con, source, phones, contexts, year, start_date) {
   sql <- paste0(
     "SELECT phone, letter, context, n_prior, prior_completes, prior_replies FROM (",
-    .completion_history_sql(con, source, phones), ") WHERE is_last")
+    .completion_history_sql(con, source, phones, before = start_date), ") WHERE is_last")
   h <- DBI::dbGetQuery(con, sql)
   idx <- match(phones, h$phone)
   seen <- !is.na(idx)
@@ -151,9 +152,10 @@
 #'   value outside the range counts as unknown, with a warning in the output.
 #' @param dataset Path to the disposition Parquet file, e.g. from
 #'   \code{\link{disposition_pull}()}, the sample's history is read from.
-#' @param start_date Planned start (Date or date string; default today): picks
-#'   the context table of that year. A year past the data uses the last table;
-#'   one before the first table uses the first, with a warning.
+#' @param start_date Planned start (Date or date string; default today): only
+#'   history before it is read, and it picks the context table of its year. A
+#'   year past the data uses the last table; one before the first table uses
+#'   the first, with a warning.
 #' @return A one-row data frame: \code{optin_rate}, \code{optin_lo50},
 #'   \code{optin_hi50}, \code{optin_lo95}, \code{optin_hi95}, \code{optins},
 #'   \code{optins_lo95}, \code{optins_hi95}; the same eight for completion
@@ -206,7 +208,8 @@ completion_forecast <- function(model, phones, mode, topic = NULL, loi = NULL, d
   }
   con <- .disposition_lazy_con()
   source <- .disposition_lazy_source(con, dataset, fn)
-  sample <- .completion_sample_features(con, source, req, model$contexts, year$year)
+  sample <- .completion_sample_features(con, source, req, model$contexts, year$year,
+                                       start_date)
   row <- data.frame(mode = mode, topic = levels$topic, loi = levels$loi,
                     sample_score = sample$sample_score,
                     share_prior_completers = sample$share_prior_completers,
