@@ -22,8 +22,8 @@ completion_forecast(
 \item{mode}{One of \code{"Live"}, \code{"T2W"}, \code{"T2W external"}.}
 
 \item{topic}{One of \code{"Brand"}, \code{"Electoral"}, \code{"Policy"};
-\code{NULL} or another value counts as unknown, with a warning in the
-output.}
+\code{NULL}, \code{NA} or another value counts as unknown, with a warning
+in the output.}
 
 \item{loi}{Length of interview in minutes (0-31); \code{NULL}, \code{NA} or a
 value outside the range counts as unknown, with a warning in the output.}

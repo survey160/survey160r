@@ -51,7 +51,9 @@
 # named in a warning.
 .completion_forecast_levels <- function(topic, loi, fn) {
   warnings <- character(0)
-  if (is.null(topic)) {
+  # a missing tracker value arrives as NA of any type: the same as not given
+  missing <- function(x) is.null(x) || (length(x) == 1L && is.na(x))
+  if (missing(topic)) {
     topic_level <- "unknown"
     warnings <- c(warnings, "topic missing: treated as unknown")
   } else {
@@ -64,7 +66,7 @@
                                       paste(.COMPLETION_TOPICS[-4L], collapse = "/")))
     }
   }
-  if (is.null(loi)) loi <- NA_real_
+  if (missing(loi)) loi <- NA_real_
   if (!is.numeric(loi) || length(loi) != 1L) {
     stop_s160(sprintf("`loi` must be a single number of minutes or NULL%s.", .not_got(loi)),
               fn = fn)
@@ -146,8 +148,8 @@
 #' @param phones Character vector of the sample's phone numbers.
 #' @param mode One of \code{"Live"}, \code{"T2W"}, \code{"T2W external"}.
 #' @param topic One of \code{"Brand"}, \code{"Electoral"}, \code{"Policy"};
-#'   \code{NULL} or another value counts as unknown, with a warning in the
-#'   output.
+#'   \code{NULL}, \code{NA} or another value counts as unknown, with a warning
+#'   in the output.
 #' @param loi Length of interview in minutes (0-31); \code{NULL}, \code{NA} or a
 #'   value outside the range counts as unknown, with a warning in the output.
 #' @param dataset Path to the disposition Parquet file, e.g. from

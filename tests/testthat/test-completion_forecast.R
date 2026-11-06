@@ -126,6 +126,13 @@ test_that("forecast: unseen levels warn, bad mode errors", {
                               start_date = as.Date("2026-11-15"))
   expect_true(any(grepl("LOI", out2$warnings[[1]], ignore.case = TRUE)))
   expect_true(any(grepl("topic", out2$warnings[[1]], ignore.case = TRUE)))
+  # a missing tracker value (NA of any type) is the same as NULL
+  out3 <- completion_forecast(f$model, ph, "Live", NA, NA, f$path, start_date = as.Date("2026-11-15"))
+  expect_equal(out3$warnings[[1]], out2$warnings[[1]])
+  expect_equal(out3$completion_rate, out2$completion_rate)
+  out4 <- completion_forecast(f$model, ph, "Live", NA_character_, NA_real_, f$path,
+                              start_date = as.Date("2026-11-15"))
+  expect_equal(out4$warnings[[1]], out2$warnings[[1]])
   # the unknown topic level had no training row: say so
   expect_true(any(grepl("no training campaign", out2$warnings[[1]])))
   expect_error(completion_forecast(f$model, ph, "Phone", "Brand", 12, f$path), "mode")
