@@ -42,3 +42,111 @@
     "lead(phone) OVER w IS NULL AS is_last ",
     "FROM (", lettered, ") ", .disposition_sequence_window(source))
 }
+
+# The factor levels the two fits use. The completion model never sees
+# "T2W external" (completion is not recorded there); the LOI reference band is
+# the commonest one, so the other bands read as multipliers against it.
+.COMPLETION_MODES <- c("Live", "T2W", "T2W external")
+.COMPLETION_TOPICS <- c("Brand", "Electoral", "Policy", "unknown")
+.COMPLETION_LOI_BREAKS <- c(0, 5, 10, 15, 20, 31)
+.COMPLETION_LOI_REFERENCE <- "(10,15]"
+
+# Mode: the tracker's, falling back to the app's survey_mode (sms -> Live,
+# t2w -> T2W); a text-to-web external survey_mode always wins, since the
+# tracker calls those "T2W" and completion is never recorded for them.
+.completion_mode <- function(tracker_mode, survey_mode) {
+  fallback <- c(sms = "Live", t2w = "T2W", t2w_external = "T2W external")
+  out <- unname(fallback[as.character(survey_mode)])
+  tracked <- !is.na(tracker_mode) & tracker_mode %in% .COMPLETION_MODES
+  out[tracked] <- tracker_mode[tracked]
+  external <- !is.na(survey_mode) & survey_mode == "t2w_external"
+  out[external] <- "T2W external"
+  out
+}
+
+.completion_topic <- function(x) {
+  x <- as.character(x)
+  ifelse(!is.na(x) & x %in% .COMPLETION_TOPICS, x, "unknown")
+}
+
+# LOI in minutes -> band factor with the reference band first and `unknown`
+# (missing, zero, negative or over 31 minutes) last. A zero LOI is a tracker
+# placeholder, not a survey length, so it is unknown despite the first band's
+# closed lower bound.
+.completion_loi_band <- function(loi) {
+  loi <- as.numeric(loi)
+  loi[!is.na(loi) & loi <= 0] <- NA_real_
+  band <- as.character(cut(loi, .COMPLETION_LOI_BREAKS, include.lowest = TRUE))
+  band[is.na(band)] <- "unknown"
+  factor(band, levels = .completion_loi_levels())
+}
+
+.completion_loi_levels <- function() {
+  all <- levels(cut(1, .COMPLETION_LOI_BREAKS, include.lowest = TRUE))
+  c(.COMPLETION_LOI_REFERENCE, setdiff(all, .COMPLETION_LOI_REFERENCE), "unknown")
+}
+
+# Logit with the rate clamped away from 0 and 1 (a 0-complete sample would
+# otherwise score -Inf).
+.completion_logit <- function(p) {
+  stats::qlogis(pmin(pmax(p, 1e-4), 1 - 1e-4))
+}
+
+# P(complete | previous three letters), one table per calendar year from the
+# second year in the data to the year after the last: the table for year Y is
+# estimated on the known-completion rows dated before Y, so a campaign scored
+# with its own year's table never sees its own rows, and the last table (every
+# row) scores a survey planned for after the data ends.
+.completion_context_tables <- function(con, history_sql) {
+  years <- DBI::dbGetQuery(con, paste0(
+    "SELECT min(year(disposition_date)) AS first, max(year(disposition_date)) AS last FROM (",
+    history_sql, ")"))
+  sql <- paste0(
+    "SELECT y.year, h.context, avg(CAST(h.letter = 'C' AS DOUBLE)) AS p_complete, ",
+    "CAST(count(*) AS INTEGER) AS n ",
+    "FROM (", history_sql, ") h ",
+    "JOIN (SELECT CAST(range AS INTEGER) AS year FROM range(", years$first + 1L, ", ",
+    years$last + 2L, ")) y ON year(h.disposition_date) < y.year ",
+    "WHERE h.completion_known GROUP BY 1, 2 ORDER BY 1, 2")
+  out <- DBI::dbGetQuery(con, sql)
+  out$year <- as.integer(out$year)
+  out
+}
+
+# One row per campaign: dates, counts, the survey dimensions (tracker values
+# resolved to the model's levels) and the sample-history features scored on the
+# context table of the campaign's start year (a context unseen before that year
+# takes the year's first-contact rate; a campaign in the first year of data,
+# with no table, gets NA).
+.completion_campaign_table <- function(con, history_sql, contexts) {
+  ctx <- .disposition_lazy_register(con, "contexts", contexts)
+  sql <- paste0(
+    "WITH h AS (", history_sql, "), ",
+    "c AS (SELECT campaign_id, min(disposition_date) AS first_date FROM h GROUP BY 1) ",
+    "SELECT h.campaign_id, min(h.disposition_date) AS first_date, ",
+    "max(h.disposition_date) AS last_date, CAST(count(*) AS INTEGER) AS sent, ",
+    "CAST(sum(CAST(h.opted AS INTEGER)) AS INTEGER) AS optins, ",
+    "CAST(sum(CAST(h.letter = 'C' AS INTEGER)) AS INTEGER) AS completes, ",
+    "bool_and(h.completion_known) AS completion_known, ",
+    "any_value(h.survey_mode) AS survey_mode, any_value(h.tracker_mode) AS tracker_mode, ",
+    "any_value(h.tracker_topic) AS tracker_topic, any_value(h.tracker_loi) AS tracker_loi, ",
+    "avg(coalesce(ctx.p_complete, first.p_complete)) AS mean_p, ",
+    "avg(CAST(h.prior_completes > 0 AS DOUBLE)) AS share_prior_completers, ",
+    "avg(CAST(h.n_prior >= 3 AND h.prior_replies = 0 AS DOUBLE)) AS share_cold ",
+    "FROM h JOIN c ON h.campaign_id = c.campaign_id ",
+    "LEFT JOIN ", ctx, " ctx ON ctx.year = year(c.first_date) AND ctx.context = h.context ",
+    "LEFT JOIN ", ctx, " first ON first.year = year(c.first_date) AND first.context = '___' ",
+    "GROUP BY 1 ORDER BY 1")
+  d <- DBI::dbGetQuery(con, sql)
+  data.frame(
+    campaign_id = d$campaign_id, first_date = as.Date(d$first_date),
+    last_date = as.Date(d$last_date), year = as.integer(format(as.Date(d$first_date), "%Y")),
+    sent = d$sent, optins = d$optins, completes = d$completes,
+    completion_known = d$completion_known,
+    mode = .completion_mode(d$tracker_mode, d$survey_mode),
+    topic = .completion_topic(d$tracker_topic),
+    loi = suppressWarnings(as.numeric(d$tracker_loi)),
+    sample_score = .completion_logit(d$mean_p),
+    share_prior_completers = d$share_prior_completers, share_cold = d$share_cold,
+    stringsAsFactors = FALSE)
+}
