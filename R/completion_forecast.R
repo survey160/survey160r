@@ -109,17 +109,33 @@
 # (NA without a residual sd for the mode), the matrix row and the warnings.
 .completion_forecast_rate <- function(model, target, design, mode) {
   m <- model$models[[target]]
+  label <- .COMPLETION_MODELS[[target]]$label
   design <- .completion_fill_means(design, m$training_means)
-  logit <- .completion_predict_logit(m, design)
+  vars <- all.vars(stats::as.formula(m$formula))[-1L]
+  empty <- vars[vapply(vars, function(v) anyNA(design[[v]]), logical(1))]
+  if (length(empty) > 0L) {
+    stop_s160(sprintf(
+      "%s model: the sample's %s is NA and the model has no training mean to fill it with.",
+      label, paste(empty, collapse = ", ")), fn = "completion_forecast")
+  }
+  x <- .completion_model_matrix(m$formula, design)
+  logit <- .completion_predict_logit(m, x)
+  x <- x[1L, ]
   sd <- m$residual_sd[[mode]]
   warnings <- character(0)
-  x <- .completion_model_matrix(m$formula, design)[1L, ]
-  absent <- m$coefficients$term[is.na(m$coefficients$std_error) &
-                                  x[m$coefficients$term] != 0]
-  if (length(absent) > 0L) {
+  # a term with no standard error is aliased: a factor level no training
+  # campaign had, or a numeric feature collinear with the rest
+  aliased <- m$coefficients$term[is.na(m$coefficients$std_error) &
+                                   x[m$coefficients$term] != 0]
+  level <- aliased %in% names(m$training_means) == FALSE
+  if (any(level)) {
     warnings <- c(warnings, sprintf("%s model: no training campaign had %s; its effect is 0",
-                                    .COMPLETION_MODELS[[target]]$label,
-                                    paste(absent, collapse = ", ")))
+                                    label, paste(aliased[level], collapse = ", ")))
+  }
+  if (any(!level)) {
+    warnings <- c(warnings, sprintf(
+      "%s model: %s is aliased in the fit (collinear with the other features); its effect is 0",
+      label, paste(aliased[!level], collapse = ", ")))
   }
   if (is.na(sd)) {
     warnings <- c(warnings, sprintf("%s model has no residual sd for mode %s: no band",

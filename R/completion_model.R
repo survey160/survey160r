@@ -107,10 +107,13 @@
 # year has a block per survey mode (sms, t2w: a context completes at a very
 # different rate under a live texter and on the web) and a pooled block
 # (`survey_mode` NA) the lookups fall back to.
-.completion_context_tables <- function(con, history_sql) {
+.completion_context_tables <- function(con, history_sql, fn = NULL) {
   years <- DBI::dbGetQuery(con, paste0(
     "SELECT min(year(disposition_date)) AS first, max(year(disposition_date)) AS last FROM (",
     history_sql, ")"))
+  if (is.na(years$first)) {
+    stop_s160("the projection has no disposition rows to fit on.", fn = fn)
+  }
   block <- function(mode_col, where) {
     paste0("SELECT y.year, h.context, ", mode_col, " AS survey_mode, ",
            "avg(CAST(h.letter = 'C' AS DOUBLE)) AS p_complete, CAST(count(*) AS INTEGER) AS n ",
@@ -216,12 +219,14 @@
 # a context table for their year (sample_score not NA) and a resolved mode; the
 # completion model also needs known completion and at least one complete (zero
 # completes is an unrecorded campaign), the opt-in model at least one opt-in.
+# A campaign whose mode is not a level of the target model is out.
 # Adds `rate` (the target per sent) and `logit`.
 .completion_fit_rows <- function(ct, target = c("optin", "completion"), train_until, min_sent,
                                  settle_days, data_end) {
   target <- match.arg(target)
   keep <- ct$sent >= min_sent & ct$first_date < train_until &
-    ct$last_date <= data_end - settle_days & !is.na(ct$sample_score) & !is.na(ct$mode)
+    ct$last_date <= data_end - settle_days & !is.na(ct$sample_score) &
+    ct$mode %in% .COMPLETION_MODELS[[target]]$modes
   if (target == "completion") {
     keep <- keep & ct$completion_known & ct$completes > 0
     count <- ct$completes
@@ -256,9 +261,8 @@
 
 # Fit on the explicit model matrix (not a formula on the frame: lm() drops a
 # factor level no training row has, and the model keeps every level as a term).
-.completion_fit_lm <- function(rows, target) {
-  design <- .completion_fill_means(.completion_design(rows, target),
-                                   .completion_training_means(rows, target))
+.completion_fit_lm <- function(rows, target, means) {
+  design <- .completion_fill_means(.completion_design(rows, target), means)
   x <- .completion_model_matrix(.COMPLETION_MODELS[[target]]$formula, design)
   fit <- stats::lm(design$logit ~ x - 1)
   names(fit$coefficients) <- colnames(x)
@@ -302,12 +306,20 @@
   unlist(out)
 }
 
-# Linear predictor from the stored coefficient table: the model matrix of the
-# formula on `newdata` (already through .completion_design) times the estimates.
-.completion_predict_logit <- function(model, newdata) {
-  x <- .completion_model_matrix(model$formula, newdata)
+# Linear predictor from the stored coefficient table: the model matrix rows
+# (.completion_model_matrix on a design frame) times the estimates.
+.completion_predict_logit <- function(model, x) {
   terms <- model$coefficients$term
   as.numeric(x[, terms, drop = FALSE] %*% model$coefficients$estimate)
+}
+
+# The number of columns a model's matrix has: a fit needs more rows than that.
+.completion_n_terms <- function(target) {
+  spec <- .COMPLETION_MODELS[[target]]
+  row <- data.frame(mode = spec$modes[1L], topic = "Brand", loi = 12, sample_score = 0,
+                    share_prior_completers = 0, share_cold = 0, years_since_contact = 0,
+                    prior_optin_score = 0, stringsAsFactors = FALSE)
+  ncol(.completion_model_matrix(spec$formula, .completion_design(row, target)))
 }
 
 # Residual sd per mode: NA when fewer than 2 rows of that mode.
@@ -333,18 +345,22 @@
       if (target == "completion") ", known completion with at least one complete" else
         ", at least one opt-in"), fn = fn)
   }
-  fit <- .completion_fit_lm(rows, target)
+  means <- .completion_training_means(rows, target)
+  fit <- .completion_fit_lm(rows, target, means)
   in_sample_sd <- .completion_sd_by_mode(stats::residuals(fit), rows$mode, spec$modes)
   hold_rows <- .completion_fit_rows(ct, target, holdout_from, min_sent, settle_days, data_end)
   score <- rows[rows$first_date >= holdout_from, , drop = FALSE]
   holdout <- list(n = nrow(score), r2_logit = NA_real_, median_ape = NA_real_,
                   within_50 = NA_real_)
   holdout_sd <- in_sample_sd * NA_real_
-  if (nrow(hold_rows) >= 2L && nrow(score) >= 2L) {
-    hold_model <- list(formula = spec$formula,
-                       coefficients = .completion_coefficients(.completion_fit_lm(hold_rows, target)))
-    pred <- .completion_predict_logit(hold_model, .completion_fill_means(
-      .completion_design(score, target), .completion_training_means(hold_rows, target)))
+  min_fit <- .completion_n_terms(target)
+  if (nrow(hold_rows) >= min_fit && nrow(score) >= 2L) {
+    hold_means <- .completion_training_means(hold_rows, target)
+    hold_model <- list(
+      formula = spec$formula,
+      coefficients = .completion_coefficients(.completion_fit_lm(hold_rows, target, hold_means)))
+    pred <- .completion_predict_logit(hold_model, .completion_model_matrix(
+      spec$formula, .completion_fill_means(.completion_design(score, target), hold_means)))
     ape <- abs(stats::plogis(pred) - score$rate) / score$rate
     holdout$r2_logit <- stats::cor(pred, score$logit)^2
     holdout$median_ape <- stats::median(ape)
@@ -352,28 +368,24 @@
     holdout_sd <- .completion_sd_by_mode(score$logit - pred, score$mode, spec$modes)
   } else {
     holdout$warning <- sprintf(paste0(
-      "%s model: the holdout window from %s has %d campaign(s) to score (%d to fit on); ",
-      "holdout metrics and the residual sd are NA, so forecasts carry no bands. Use a longer ",
-      "`holdout_months` or a later `train_until`."),
-      spec$label, format(holdout_from), nrow(score), nrow(hold_rows))
+      "%s model: the holdout window from %s has %d campaign(s) to score (at least 2) and %d ",
+      "to fit on (at least %d, one per term); holdout metrics and the residual sd are NA, so ",
+      "forecasts carry no bands. Use a longer `holdout_months` or a later `train_until`."),
+      spec$label, format(holdout_from), nrow(score), nrow(hold_rows), min_fit)
   }
   residual_sd <- ifelse(is.na(in_sample_sd) | is.na(holdout_sd), NA_real_,
                         pmax(in_sample_sd, holdout_sd))
   names(residual_sd) <- spec$modes
   list(coefficients = .completion_coefficients(fit), formula = spec$formula,
-       training_means = .completion_training_means(rows, target), residual_sd = residual_sd,
+       training_means = means, residual_sd = residual_sd,
        holdout = holdout,
        counts = list(campaigns_fit = nrow(rows), campaigns_holdout_fit = nrow(hold_rows)),
        train_from = min(rows$first_date))
 }
 
 .completion_check_date <- function(x, name, fn) {
-  d <- tryCatch(as.Date(x), error = function(e) NULL)
-  if (is.null(d) || length(d) != 1L || is.na(d)) {
-    stop_s160(sprintf("`%s` must be a single Date (or date string)%s.", name, .not_got(x)),
-              fn = fn)
-  }
-  d
+  if (is.null(x)) stop_s160(sprintf("`%s` must be a single valid date, not NULL.", name), fn = fn)
+  .disposition_date_bound(x, name, fn)
 }
 
 .completion_check_count <- function(x, name, fn) {
@@ -414,7 +426,9 @@
 #'
 #' The coefficients are refit on every training row; the holdout metrics and
 #' the bands come from a second fit that stops \code{holdout_months} earlier and
-#' is scored on the campaigns in between. The band's residual sd is per mode
+#' is scored on the campaigns in between (the second fit needs at least one
+#' campaign per model term and two to score, else the metrics and the sd are
+#' NA with a warning). The band's residual sd is per mode
 #' and per model: the larger of the shipped fit's in-sample sd and the holdout
 #' sd for that mode. Residuals are skewed and the fleet drifts, so the bands
 #' are approximate: on campaigns from mid 2026 the nominal 95\% band covered
@@ -474,7 +488,7 @@ completion_model_fit <- function(dataset, train_until = Sys.Date(), holdout_mont
   con <- .disposition_lazy_con()
   source <- .disposition_lazy_source(con, dataset, fn)
   history <- .completion_history_sql(con, source)
-  contexts <- .completion_context_tables(con, history)
+  contexts <- .completion_context_tables(con, history, fn)
   ct <- .completion_campaign_table(con, history, contexts)
   data_end <- max(ct$last_date, na.rm = TRUE)
   holdout_from <- lubridate::add_with_rollback(

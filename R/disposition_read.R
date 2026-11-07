@@ -146,11 +146,11 @@
 # Coerce one optional date bound to a single Date, rejecting a multi-value or
 # unparseable bound. A length > 1 bound would silently recycle in the >=/<=
 # comparison below and mis-select rows; NULL passes through untouched.
-.disposition_date_bound <- function(x, name) {
+.disposition_date_bound <- function(x, name, fn = NULL) {
   if (is.null(x)) return(NULL)
   d <- tryCatch(as.Date(x), error = function(e) NA)
   if (length(d) != 1L || is.na(d)) {
-    stop_s160(sprintf("`%s` must be a single valid date%s.", name, .not_got(x)))
+    stop_s160(sprintf("`%s` must be a single valid date%s.", name, .not_got(x)), fn = fn)
   }
   d
 }

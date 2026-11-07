@@ -88,7 +88,9 @@ complete, since a campaign with none is an unrecorded one.
 
 The coefficients are refit on every training row; the holdout metrics and
 the bands come from a second fit that stops \code{holdout_months} earlier and
-is scored on the campaigns in between. The band's residual sd is per mode
+is scored on the campaigns in between (the second fit needs at least one
+campaign per model term and two to score, else the metrics and the sd are
+NA with a warning). The band's residual sd is per mode
 and per model: the larger of the shipped fit's in-sample sd and the holdout
 sd for that mode. Residuals are skewed and the fleet drifts, so the bands
 are approximate: on campaigns from mid 2026 the nominal 95\% band covered

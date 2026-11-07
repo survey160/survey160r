@@ -240,6 +240,60 @@ test_that("fit: filters follow the spec", {
   expect_equal(rows$campaign_id, c(4L, 6L))
 })
 
+test_that("fit: a mode outside the model's levels drops from that fit", {
+  ct <- data.frame(
+    campaign_id = 1:2, first_date = as.Date(c("2025-03-01", "2025-04-01")),
+    last_date = as.Date(c("2025-03-02", "2025-04-02")), year = 2025L, sent = 50L, optins = 3L,
+    completes = 2L, completion_known = TRUE, mode = c("Live", "T2W external"), topic = "Brand",
+    loi = 12, sample_score = -4, share_prior_completers = 0, share_cold = 0,
+    stringsAsFactors = FALSE)
+  args <- list(ct, train_until = as.Date("2026-10-01"), min_sent = 10, settle_days = 7,
+               data_end = as.Date("2026-09-04"))
+  expect_equal(do.call(.completion_fit_rows, c(args, target = "completion"))$campaign_id, 1L)
+  expect_equal(do.call(.completion_fit_rows, c(args, target = "optin"))$campaign_id, 1:2)
+})
+
+test_that("fit: a live campaign the tracker labels T2W external does not break the fit", {
+  skip_if_no_sequence()
+  r <- completion_records()
+  r$tracker_mode[r$campaign_id == 5L] <- "T2W external"
+  p <- write_completion_parquet(r)
+  m <- completion_model_fit(p, train_until = as.Date("2026-10-01"), holdout_months = 6,
+                            min_sent = 10)
+  expect_s3_class(m, "completion_model")
+  # the relabelled campaign leaves the completion fit and stays in the opt-in fit
+  expect_equal(m$models$completion$counts$campaigns_fit, 18L)
+  expect_equal(m$models$optin$counts$campaigns_fit, 20L)
+})
+
+test_that("fit: the holdout needs more campaigns to fit on than the model has terms", {
+  n <- 7L
+  ct <- data.frame(
+    campaign_id = seq_len(n), first_date = as.Date("2026-01-01") + 30 * (seq_len(n) - 1),
+    last_date = as.Date("2026-01-02") + 30 * (seq_len(n) - 1), year = 2026L, sent = 50L,
+    optins = 2:8, completes = 1:7, completion_known = TRUE,
+    mode = rep(c("Live", "T2W", "T2W external"), length.out = n), topic = "Brand", loi = 12,
+    sample_score = seq(-5, -3, length.out = n), share_prior_completers = 0, share_cold = 0,
+    years_since_contact = 1, prior_optin_score = -2, stringsAsFactors = FALSE)
+  # 4 campaigns before the holdout start against 5 opt-in terms: no second fit
+  res <- .completion_fit_model(ct, "optin", train_until = as.Date("2026-12-01"),
+                               holdout_from = as.Date("2026-05-01"), min_sent = 10,
+                               settle_days = 0, data_end = as.Date("2026-12-31"), fn = "f")
+  expect_equal(res$counts$campaigns_holdout_fit, 4L)
+  expect_match(res$holdout$warning, "at least 5")
+  expect_true(is.na(res$holdout$r2_logit))
+  expect_true(all(is.na(res$residual_sd)))
+})
+
+test_that("fit: a projection without disposition rows is refused", {
+  skip_if_no_sequence()
+  expect_error(completion_model_fit(write_completion_parquet(completion_records()[0, ])),
+               "no disposition rows")
+  r <- completion_records()
+  r$phone <- ""
+  expect_error(completion_model_fit(write_completion_parquet(r)), "no disposition rows")
+})
+
 test_that("fit: a campaign whose sample has no prior contact takes the training mean", {
   rows <- data.frame(logit = c(-4, -3, -5, -4.5, -3.5, -4),
                      mode = c("Live", "T2W", "Live", "T2W", "Live", "T2W"),
@@ -249,7 +303,7 @@ test_that("fit: a campaign whose sample has no prior contact takes the training 
   expect_equal(unname(means["prior_optin_score"]), -3)
   filled <- .completion_fill_means(.completion_design(rows, "optin"), means)
   expect_equal(filled$prior_optin_score, c(-3, -2, -4, -3, -2.5, -3.5))
-  fit <- .completion_fit_lm(rows, "optin")
+  fit <- .completion_fit_lm(rows, "optin", means)
   expect_false(anyNA(stats::coef(fit)[c("(Intercept)", "sample_score", "prior_optin_score")]))
   expect_equal(length(stats::residuals(fit)), 6L)
 })
@@ -272,6 +326,7 @@ test_that("fit: argument checks", {
   skip_if_no_sequence()
   p <- write_completion_parquet(completion_records())
   expect_error(completion_model_fit(p, train_until = "not a date"), "train_until")
+  expect_error(completion_model_fit(p, train_until = NULL), "train_until")
   expect_error(completion_model_fit(p, holdout_months = 0), "holdout_months")
   expect_error(completion_model_fit(p, min_sent = -1), "min_sent")
   expect_error(completion_model_fit(p, settle_days = 1.5), "settle_days")

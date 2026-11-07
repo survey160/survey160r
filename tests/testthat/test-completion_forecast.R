@@ -79,8 +79,9 @@ test_that("forecast: never-contacted sample", {
   row <- data.frame(mode = "Live", topic = "Policy", loi = 8, sample_score = out$sample_score,
                     share_prior_completers = 0, share_cold = 0,
                     years_since_contact = means[["years_since_contact"]])
+  cm <- f$model$models$completion
   expect_equal(out$completion_rate, stats::plogis(.completion_predict_logit(
-    f$model$models$completion, .completion_design(row, "completion"))))
+    cm, .completion_model_matrix(cm$formula, .completion_design(row, "completion")))))
 })
 
 test_that("forecast: the sample is scored on the next contact's context", {
@@ -212,6 +213,29 @@ test_that("forecast: small sample warns and bands are NA when the model has no r
   expect_false(is.na(out$optin_lo95))
   expect_true(any(grepl("5 phones", out$warnings[[1]])))
   expect_true(any(grepl("no band", out$warnings[[1]])))
+})
+
+test_that("forecast: a feature the model cannot fill is a clear error", {
+  skip_if_no_sequence()
+  f <- fit_fixture_model()
+  m <- f$model
+  m$models$completion$training_means[["years_since_contact"]] <- NaN
+  expect_error(completion_forecast(m, "3015550001", "Live", "Brand", 12, f$path,
+                                   start_date = as.Date("2026-11-15")),
+               "years_since_contact")
+})
+
+test_that("forecast: an aliased numeric term is reported as such, not as an absent level", {
+  skip_if_no_sequence()
+  f <- fit_fixture_model()
+  m <- f$model
+  co <- m$models$completion$coefficients
+  m$models$completion$coefficients$std_error[co$term == "sample_score"] <- NA_real_
+  ph <- unique(completion_records()$phone)[1:20]
+  out <- completion_forecast(m, ph, "Live", "Brand", 12, f$path, start_date = as.Date("2026-11-15"))
+  w <- out$warnings[[1]]
+  expect_true(any(grepl("sample_score", w) & grepl("aliased", w)))
+  expect_false(any(grepl("no training campaign had sample_score", w)))
 })
 
 test_that("forecast: refuses without the DuckDB packages", {
