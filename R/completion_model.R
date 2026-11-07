@@ -144,8 +144,9 @@
 # context table of the campaign's start year with the lookup order of
 # .completion_context_lookup (a campaign in the first year of data, with no
 # table, gets NA). `years_since_contact` is the mean, over the numbers with a
-# prior contact, of the years from their previous contact to the campaign's
-# start; `prior_optin_score` the logit of the mean opt-in rate of the campaign
+# prior contact before the campaign's start (an overlapping campaign's later
+# row does not count), of the years from that contact to the start;
+# `prior_optin_score` the logit of the mean opt-in rate of the campaign
 # each number was last in (campaigns started before this one). Both are NA when
 # no number in the sample was contacted before.
 .completion_campaign_table <- function(con, history_sql, contexts) {
@@ -164,7 +165,8 @@
     "avg(coalesce(own.p_complete, pooled.p_complete, first.p_complete)) AS mean_p, ",
     "avg(CAST(h.prior_completes > 0 AS DOUBLE)) AS share_prior_completers, ",
     "avg(CAST(h.n_prior >= 3 AND h.prior_replies = 0 AS DOUBLE)) AS share_cold, ",
-    "avg(datediff('day', h.prev_date, c.first_date)) / 365.25 AS years_since_contact, ",
+    "avg(CASE WHEN h.prev_date < c.first_date ",
+    "THEN datediff('day', h.prev_date, c.first_date) END) / 365.25 AS years_since_contact, ",
     "avg(pc.optin_rate) AS prior_optin_rate ",
     "FROM h JOIN c ON h.campaign_id = c.campaign_id ",
     "LEFT JOIN c pc ON pc.campaign_id = h.prev_campaign AND pc.first_date < c.first_date ",

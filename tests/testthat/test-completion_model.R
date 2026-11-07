@@ -117,6 +117,25 @@ test_that("campaign table: tracker columns absent", {
   expect_true(all(is.na(ct$loi)))
 })
 
+test_that("campaign table: a previous contact after the campaign started does not count", {
+  skip_if_no_sequence()
+  # campaign 3 starts 2024-03-01 (phone ...03). Phone ...01's previous row is in
+  # overlapping campaign 2, dated after that start: no gap. Phone ...02's is
+  # 60 days before it. Phone ...03 is a first contact.
+  p <- write_completion_parquet(rbind(
+    .sequence_row("2015550101", 1L, "2024-01-01"),
+    .sequence_row("2015550102", 1L, "2024-01-01"),
+    .sequence_row("2015550101", 2L, "2024-03-05"),
+    .sequence_row("2015550103", 3L, "2024-03-01"),
+    .sequence_row("2015550102", 3L, "2024-03-02"),
+    .sequence_row("2015550101", 3L, "2024-03-10")))
+  con <- .disposition_lazy_con()
+  src <- .disposition_lazy_source(con, p, "test")
+  hs <- .completion_history_sql(con, src)
+  ct <- .completion_campaign_table(con, hs, .completion_context_tables(con, hs))
+  expect_equal(ct$years_since_contact[ct$campaign_id == 3L], 60 / 365.25)
+})
+
 test_that("level helpers", {
   expect_equal(.completion_mode(c("Live", NA, NA, "T2W", NA, "T2W"),
                                 c("sms", "sms", "t2w", "t2w", "t2w_external", "t2w_external")),
