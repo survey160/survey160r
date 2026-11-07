@@ -44,22 +44,28 @@ A one-row data frame: \code{optin_rate}, \code{optin_lo50},
   (\code{completion_rate}, ..., \code{completes}, \code{completes_lo95},
   \code{completes_hi95}); \code{n_phones} (unique numbers),
   \code{share_with_history} (share of them with a prior contact),
-  \code{sample_score} (logit of the mean P(complete | context)),
+  \code{sample_score} (logit of the mean P(complete | context, mode)),
+  \code{years_since_contact} and \code{prior_optin_score} (logit of the
+  previous campaigns' mean opt-in rate; both NA when no number has a prior
+  contact),
   \code{sample_multiplier} and \code{survey_multiplier} (the completion
   model's sample terms and survey terms as odds multipliers against the
   training mix, so typical x sample x survey = the forecast), and
   \code{warnings} (a list column with one character vector: unknown levels,
-  a sample under the fit's minimum sends, a mode without a band, opt-in only
-  for text-to-web external).
+  a sample under the fit's minimum sends, a sample with no prior contact, a
+  mode without a band, opt-in only for text-to-web external).
 }
 \description{
 Scores one planned survey with a model from
 \code{\link{completion_model_fit}}: the sample's history is read from the
 disposition projection and turned into the next contact's features (the
 mean P(complete | previous three outcomes) on the context table of the
-planned year, the share with a prior complete, the share cold), the survey
-design into the model's levels, and both rates are predicted with a 50\% and
-a 95\% band and an expected count.
+planned year and mode, the share with a prior complete, the share cold, the
+mean years since the numbers' previous contact and the mean opt-in rate of
+the campaign each was last in), the survey design into the model's levels,
+and both rates are predicted with a 50\% and a 95\% band and an expected
+count. A sample with no prior contact gets the training mean for the two
+features that need one, with a warning.
 }
 \details{
 The sample is used exactly as given: the function does not screen it (no
@@ -70,8 +76,8 @@ first contact.
 
 The bands are multiplicative on the odds: \code{p x/÷ exp(z * sd)} with
 \code{z = 0.674} (50\%) and \code{1.96} (95\%), where \code{sd} is the
-model's residual sd for the survey's mode. They are approximate (about 92\%
-coverage at the nominal 95\% on 2026 campaigns). For a text-to-web external
+model's residual sd for the survey's mode. They are approximate (about 94\%
+coverage at the nominal 95\% on campaigns from mid 2026). For a text-to-web external
 survey completion is never recorded, so the completion columns are NA and
 only the opt-in forecast stands.
 }

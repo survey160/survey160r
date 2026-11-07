@@ -5,10 +5,13 @@
 * `completion_model_fit()` fits two campaign-level linear models from the
   disposition projection: the opt-in rate per sent and the completion rate per
   sent, each on the logit scale. The completion model reads the survey design
-  (mode, topic, LOI band from the tracker columns) and three sample-history
-  features; the opt-in model reads mode and the sample score only. Both share
-  per-year context tables of P(complete | the number's previous three outcomes),
-  each estimated on the years before it. Training rows are campaigns with at
+  (mode, topic, LOI band from the tracker columns) and four sample-history
+  features (the sample score, the share with a prior complete, the share cold,
+  the mean years since the numbers' previous contact); the opt-in model reads
+  mode, the sample score and the mean opt-in rate of the campaign each number
+  was last in. Both share per-year, per-survey-mode context tables of
+  P(complete | the number's previous three outcomes), each estimated on the
+  years before it, with a pooled block as the fallback. Training rows are campaigns with at
   least `min_sent` sends (2000), started before `train_until`, settled
   `settle_days` (7) before the data end and started after the first year in the
   data; the completion model also needs known completion and at least one
@@ -26,9 +29,9 @@
 * The sample is used exactly as given: no opt-out or eligibility screening, so
   the expected counts are overstated by whatever the caller later removes.
 * Limits: the number of questions is not an input; on campaigns from mid 2026
-  the typical completion error is a factor of about 1.6 either way (opt-in
-  about 1.4), and the 95% band about x4 (opt-in about x3), with the bands
-  approximate (about 92% coverage at the nominal 95%).
+  the typical completion error is a factor of about 1.4 either way (opt-in
+  about 1.25), and the 95% band about x3.5 (opt-in about x2.5), with the bands
+  approximate (about 94% coverage at the nominal 95%).
 
 ## Live delivery metrics
 

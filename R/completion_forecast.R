@@ -2,17 +2,27 @@
 # (completion_model.R): read the sample's history from the projection, build
 # the next contact's features, predict both rates and their bands.
 
-.COMPLETION_SAMPLE_TERMS <- c("sample_score", "share_prior_completers", "share_cold")
+.COMPLETION_SAMPLE_TERMS <- c("sample_score", "share_prior_completers", "share_cold",
+                              "years_since_contact")
+
+# The projection's survey_mode for each planned mode: the block of the context
+# table the sample is scored on.
+.COMPLETION_SURVEY_MODES <- c(Live = "sms", T2W = "t2w", "T2W external" = "t2w_external")
 
 # The sample's history features for its NEXT contact: each phone's latest row
 # (letter, previous three letters, prior counts) shifted one step forward, so
 # the context is `latest letter || the two before it`; a never-contacted number
 # is a first contact (`___`, zero counts). Only rows before `start_date` count
 # (the history the planned survey would see). Scored on the context table of
-# `year`, a context unseen in the table taking the year's first-contact rate.
-.completion_sample_features <- function(con, source, phones, contexts, year, start_date) {
+# `year` for the planned mode's survey_mode (.completion_context_lookup).
+# `years_since_contact` is the mean over the contacted numbers of the years
+# from their latest row to `start_date`; `prior_optin_score` the logit of the
+# mean opt-in rate (from the model's `campaigns` table) of the campaign each
+# was last in. Either is NA when no number qualifies, and the warning says so.
+.completion_sample_features <- function(con, source, phones, model, year, mode, start_date) {
   sql <- paste0(
-    "SELECT phone, letter, context, n_prior, prior_completes, prior_replies FROM (",
+    "SELECT phone, campaign_id, disposition_date, letter, context, n_prior, prior_completes, ",
+    "prior_replies FROM (",
     .completion_history_sql(con, source, phones, before = start_date), ") WHERE is_last")
   h <- DBI::dbGetQuery(con, sql)
   idx <- match(phones, h$phone)
@@ -23,13 +33,27 @@
   n_prior <- ifelse(seen, h$n_prior[idx] + 1L, 0L)
   prior_completes <- ifelse(seen, h$prior_completes[idx] + (letter == "C"), 0L)
   prior_replies <- ifelse(seen, h$prior_replies[idx] + letter %in% c("E", "O", "R", "C"), 0L)
-  ctx <- contexts[contexts$year == year, , drop = FALSE]
-  p <- ctx$p_complete[match(context, ctx$context)]
-  p[is.na(p)] <- ctx$p_complete[ctx$context == "___"]
+  p <- .completion_context_lookup(model$contexts, year, context,
+                                  .COMPLETION_SURVEY_MODES[[mode]])
+  years <- as.numeric(start_date - as.Date(h$disposition_date[idx[seen]])) / 365.25
+  prior_rate <- model$campaigns$optin_rate[match(h$campaign_id[idx[seen]],
+                                                 model$campaigns$campaign_id)]
+  prior_score <- NA_real_
+  if (any(!is.na(prior_rate))) prior_score <- .completion_logit(mean(prior_rate, na.rm = TRUE))
+  warnings <- character(0)
+  if (!any(seen)) {
+    warnings <- paste0("no number in the sample has a prior contact: years_since_contact and ",
+                       "prior_optin_score take the training mean")
+  } else if (all(is.na(prior_rate))) {
+    warnings <- paste0("no number in the sample was last contacted by a campaign the model ",
+                       "knows: prior_optin_score takes the training mean")
+  }
   list(share_with_history = mean(seen),
        sample_score = .completion_logit(mean(p)),
        share_prior_completers = mean(prior_completes > 0),
-       share_cold = mean(n_prior >= 3 & prior_replies == 0))
+       share_cold = mean(n_prior >= 3 & prior_replies == 0),
+       years_since_contact = if (any(seen)) mean(years) else NA_real_,
+       prior_optin_score = prior_score, warnings = warnings)
 }
 
 # The context-table year for a planned start: the last table (every row) for a
@@ -85,6 +109,7 @@
 # (NA without a residual sd for the mode), the matrix row and the warnings.
 .completion_forecast_rate <- function(model, target, design, mode) {
   m <- model$models[[target]]
+  design <- .completion_fill_means(design, m$training_means)
   logit <- .completion_predict_logit(m, design)
   sd <- m$residual_sd[[mode]]
   warnings <- character(0)
@@ -127,9 +152,12 @@
 #' \code{\link{completion_model_fit}}: the sample's history is read from the
 #' disposition projection and turned into the next contact's features (the
 #' mean P(complete | previous three outcomes) on the context table of the
-#' planned year, the share with a prior complete, the share cold), the survey
-#' design into the model's levels, and both rates are predicted with a 50\% and
-#' a 95\% band and an expected count.
+#' planned year and mode, the share with a prior complete, the share cold, the
+#' mean years since the numbers' previous contact and the mean opt-in rate of
+#' the campaign each was last in), the survey design into the model's levels,
+#' and both rates are predicted with a 50\% and a 95\% band and an expected
+#' count. A sample with no prior contact gets the training mean for the two
+#' features that need one, with a warning.
 #'
 #' The sample is used exactly as given: the function does not screen it (no
 #' opt-out or eligibility filtering), so the expected counts are overstated by
@@ -139,8 +167,8 @@
 #'
 #' The bands are multiplicative on the odds: \code{p x/÷ exp(z * sd)} with
 #' \code{z = 0.674} (50\%) and \code{1.96} (95\%), where \code{sd} is the
-#' model's residual sd for the survey's mode. They are approximate (about 92\%
-#' coverage at the nominal 95\% on 2026 campaigns). For a text-to-web external
+#' model's residual sd for the survey's mode. They are approximate (about 94\%
+#' coverage at the nominal 95\% on campaigns from mid 2026). For a text-to-web external
 #' survey completion is never recorded, so the completion columns are NA and
 #' only the opt-in forecast stands.
 #'
@@ -165,13 +193,16 @@
 #'   (\code{completion_rate}, ..., \code{completes}, \code{completes_lo95},
 #'   \code{completes_hi95}); \code{n_phones} (unique numbers),
 #'   \code{share_with_history} (share of them with a prior contact),
-#'   \code{sample_score} (logit of the mean P(complete | context)),
+#'   \code{sample_score} (logit of the mean P(complete | context, mode)),
+#'   \code{years_since_contact} and \code{prior_optin_score} (logit of the
+#'   previous campaigns' mean opt-in rate; both NA when no number has a prior
+#'   contact),
 #'   \code{sample_multiplier} and \code{survey_multiplier} (the completion
 #'   model's sample terms and survey terms as odds multipliers against the
 #'   training mix, so typical x sample x survey = the forecast), and
 #'   \code{warnings} (a list column with one character vector: unknown levels,
-#'   a sample under the fit's minimum sends, a mode without a band, opt-in only
-#'   for text-to-web external).
+#'   a sample under the fit's minimum sends, a sample with no prior contact, a
+#'   mode without a band, opt-in only for text-to-web external).
 #' @seealso \code{\link{completion_model_fit}}
 #' @examples
 #' \dontrun{
@@ -211,12 +242,14 @@ completion_forecast <- function(model, phones, mode, topic = NULL, loi = NULL, d
   }
   con <- .disposition_lazy_con()
   source <- .disposition_lazy_source(con, dataset, fn)
-  sample <- .completion_sample_features(con, source, req, model$contexts, year$year,
-                                       start_date)
+  sample <- .completion_sample_features(con, source, req, model, year$year, mode, start_date)
+  warnings <- c(warnings, sample$warnings)
   row <- data.frame(mode = mode, topic = levels$topic, loi = levels$loi,
                     sample_score = sample$sample_score,
                     share_prior_completers = sample$share_prior_completers,
-                    share_cold = sample$share_cold, stringsAsFactors = FALSE)
+                    share_cold = sample$share_cold,
+                    years_since_contact = sample$years_since_contact,
+                    prior_optin_score = sample$prior_optin_score, stringsAsFactors = FALSE)
   optin <- .completion_forecast_rate(model, "optin", .completion_design(row, "optin"), mode)
   warnings <- c(warnings, optin$warnings)
   na <- NA_real_
@@ -241,7 +274,8 @@ completion_forecast <- function(model, phones, mode, topic = NULL, loi = NULL, d
     completion_hi95 = completion$hi95, completes = count(completion$rate),
     completes_lo95 = count(completion$lo95), completes_hi95 = count(completion$hi95),
     n_phones = n_phones, share_with_history = sample$share_with_history,
-    sample_score = sample$sample_score, sample_multiplier = multipliers[["sample"]],
+    sample_score = sample$sample_score, years_since_contact = sample$years_since_contact,
+    prior_optin_score = sample$prior_optin_score, sample_multiplier = multipliers[["sample"]],
     survey_multiplier = multipliers[["survey"]])
   out$warnings <- list(warnings)
   out

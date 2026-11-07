@@ -21,6 +21,8 @@ test_that("history sql: letters, prior counts and context per row", {
   expect_equal(h$prior_completes, c(0L, 0L, 0L, 1L, 0L))
   expect_equal(h$prior_replies, c(0L, 0L, 1L, 2L, 0L))
   expect_equal(h$is_last, c(FALSE, FALSE, FALSE, TRUE, TRUE))
+  expect_equal(h$prev_campaign, c(NA, 1L, 2L, 3L, NA))
+  expect_equal(as.Date(h$prev_date), as.Date(c(NA, "2024-01-01", "2024-02-01", "2024-03-01", NA)))
   expect_true(all(h$completion_known))
   expect_true(all(is.na(h$tracker_loi)))
 })
@@ -32,11 +34,28 @@ test_that("context tables: one block per year, estimated on earlier years only",
   src <- .disposition_lazy_source(con, p, "test")
   ctx <- .completion_context_tables(con, .completion_history_sql(con, src))
   expect_setequal(unique(ctx$year), 2025:2027)
-  first <- ctx[ctx$context == "___", ]
+  first <- ctx[ctx$context == "___" & is.na(ctx$survey_mode), ]
   expect_equal(nrow(first), 3L)
   # the 2027 block sees every known row; the 2025 block only 2024's
   expect_gt(first$n[first$year == 2027], first$n[first$year == 2025])
   expect_true(all(ctx$p_complete >= 0 & ctx$p_complete <= 1))
+  # one block per survey mode plus a pooled block (survey_mode NA)
+  expect_setequal(unique(ctx$survey_mode), c("sms", "t2w", NA))
+  pooled <- ctx[ctx$year == 2027L & ctx$context == "___" & is.na(ctx$survey_mode), ]
+  by_mode <- ctx[ctx$year == 2027L & ctx$context == "___" & !is.na(ctx$survey_mode), ]
+  expect_equal(nrow(pooled), 1L)
+  expect_equal(pooled$n, sum(by_mode$n))
+  expect_equal(pooled$p_complete, sum(by_mode$p_complete * by_mode$n) / sum(by_mode$n))
+  expect_equal(nrow(ctx), nrow(unique(ctx[c("year", "context", "survey_mode")])))
+})
+
+test_that("context lookup: own mode, then pooled, then the pooled first contact", {
+  ctx <- data.frame(year = 2026L, context = c("N__", "N__", "___", "C__"),
+                    survey_mode = c("sms", NA, NA, "t2w"), p_complete = c(0.1, 0.2, 0.3, 0.4),
+                    n = 1L, stringsAsFactors = FALSE)
+  expect_equal(.completion_context_lookup(ctx, 2026L, c("N__", "N__", "C__", "ZZZ", "N__"),
+                                          c("sms", "t2w", "sms", "sms", NA)),
+               c(0.1, 0.2, 0.3, 0.3, 0.2))
 })
 
 test_that("campaign table: one row per campaign with dimensions and sample features", {
@@ -64,6 +83,22 @@ test_that("campaign table: one row per campaign with dimensions and sample featu
   expect_true(all(ct$share_prior_completers >= 0 & ct$share_prior_completers <= 1))
   expect_true(all(ct$share_cold >= 0 & ct$share_cold <= 1))
   expect_equal(ct$share_prior_completers[1], 0)
+  # the first campaign's sample has no prior contact: the recency and provenance features are NA
+  expect_true(is.na(ct$years_since_contact[1]))
+  expect_true(is.na(ct$prior_optin_score[1]))
+  expect_true(all(!is.na(ct$years_since_contact[-1])))
+  expect_true(all(ct$years_since_contact[-1] > 0 & ct$years_since_contact[-1] < 3))
+  expect_true(all(!is.na(ct$prior_optin_score[-1])))
+  expect_true(all(ct$prior_optin_score[-1] < 0))
+  # the sample score is the mean P(complete | context, survey mode) with the pooled fallbacks:
+  # the SQL agrees with the R lookup the forecast uses
+  con <- .disposition_lazy_con()
+  h <- DBI::dbGetQuery(con, paste("SELECT * FROM (", hs, ") WHERE campaign_id = 6"))
+  ctx <- .completion_context_tables(con, hs)
+  expect_equal(ct$sample_score[6], .completion_logit(mean(
+    .completion_context_lookup(ctx, 2025L, h$context, h$survey_mode))))
+  expect_true(any(.completion_context_lookup(ctx, 2025L, h$context, h$survey_mode) !=
+                    .completion_context_lookup(ctx, 2025L, h$context, NA)))
 })
 
 test_that("campaign table: tracker columns absent", {
@@ -107,9 +142,13 @@ test_that("fit: returns a completion_model with coefficients, contexts and holdo
                     m$models$completion$coefficients$term))
   expect_true("modeT2W external" %in% m$models$optin$coefficients$term)
   expect_false("modeT2W external" %in% m$models$completion$coefficients$term)
-  expect_equal(m$models$optin$formula, "logit ~ mode + sample_score")
-  expect_equal(m$models$completion$formula,
-               "logit ~ mode + topic + loi_band + sample_score + share_prior_completers + share_cold")
+  expect_equal(m$models$optin$formula, "logit ~ mode + sample_score + prior_optin_score")
+  expect_equal(m$models$completion$formula, paste(
+    "logit ~ mode + topic + loi_band + sample_score + share_prior_completers + share_cold +",
+    "years_since_contact"))
+  expect_equal(m$campaigns$campaign_id, 1:25)
+  expect_equal(m$campaigns$optin_rate[1], sum(completion_records(60L)$opted_in[1:60]) / 60)
+  expect_named(m$campaigns, c("campaign_id", "first_date", "optin_rate"))
   expect_named(m$models$completion$residual_sd, c("Live", "T2W"))
   expect_named(m$models$optin$residual_sd, c("Live", "T2W", "T2W external"))
   expect_equal(m$windows$data_end, as.Date("2026-09-04"))
@@ -133,11 +172,13 @@ test_that("fit: returns a completion_model with coefficients, contexts and holdo
   ext <- m$models$optin$coefficients[m$models$optin$coefficients$term == "modeT2W external", ]
   expect_equal(ext$estimate, 0)
   expect_true(is.na(ext$std_error))
-  expect_true(all(c("sample_score", "mode.T2W", "topic.Brand", "loi_band.(10,15]") %in%
-                    names(m$models$completion$training_means)))
+  expect_true(all(c("sample_score", "mode.T2W", "topic.Brand", "loi_band.(10,15]",
+                    "years_since_contact") %in% names(m$models$completion$training_means)))
+  expect_true("prior_optin_score" %in% names(m$models$optin$training_means))
+  expect_false(anyNA(m$models$completion$training_means))
   expect_equal(unname(m$models$completion$training_means["mode.Live"] +
                         m$models$completion$training_means["mode.T2W"]), 1)
-  expect_equal(nrow(m$contexts), nrow(unique(m$contexts[c("year", "context")])))
+  expect_equal(nrow(m$contexts), nrow(unique(m$contexts[c("year", "context", "survey_mode")])))
   expect_equal(m$version, as.character(utils::packageVersion("survey160r")))
   expect_output(print(m), "opt-in")
   expect_output(print(m), "2026-04-01")
@@ -178,6 +219,20 @@ test_that("fit: filters follow the spec", {
   rows <- .completion_fit_rows(ct, "optin", train_until = as.Date("2026-10-01"), min_sent = 10,
                                settle_days = 7, data_end = as.Date("2026-09-04"))
   expect_equal(rows$campaign_id, c(4L, 6L))
+})
+
+test_that("fit: a campaign whose sample has no prior contact takes the training mean", {
+  rows <- data.frame(logit = c(-4, -3, -5, -4.5, -3.5, -4),
+                     mode = c("Live", "T2W", "Live", "T2W", "Live", "T2W"),
+                     topic = "Brand", loi = 12, sample_score = c(-4, -3, -3.5, -2, -5, -4),
+                     prior_optin_score = c(NA, -2, -4, -3, -2.5, -3.5), stringsAsFactors = FALSE)
+  means <- .completion_training_means(rows, "optin")
+  expect_equal(unname(means["prior_optin_score"]), -3)
+  filled <- .completion_fill_means(.completion_design(rows, "optin"), means)
+  expect_equal(filled$prior_optin_score, c(-3, -2, -4, -3, -2.5, -3.5))
+  fit <- .completion_fit_lm(rows, "optin")
+  expect_false(anyNA(stats::coef(fit)[c("(Intercept)", "sample_score", "prior_optin_score")]))
+  expect_equal(length(stats::residuals(fit)), 6L)
 })
 
 test_that("fit: thin holdout", {

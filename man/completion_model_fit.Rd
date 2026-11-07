@@ -42,11 +42,15 @@ An object of class \code{completion_model}: a list with
   \code{models} (\code{optin} and \code{completion}, each with the
   \code{coefficients} table (\code{term}, \code{estimate},
   \code{std_error}), the \code{formula}, the \code{training_means} the
-  forecast's multipliers are centred on, the per-mode \code{residual_sd},
+  forecast's multipliers are centred on (and the fill for a feature a
+  sample cannot provide), the per-mode \code{residual_sd},
   the \code{holdout} metrics (\code{n}, \code{r2_logit}, \code{median_ape},
   \code{within_50}) and \code{counts}), the shared per-year
-  \code{contexts} table (\code{year}, \code{context}, \code{p_complete},
-  \code{n}), the \code{windows} (\code{data_end}, \code{train_from},
+  \code{contexts} table (\code{year}, \code{context}, \code{survey_mode}
+  with NA for the pooled block, \code{p_complete}, \code{n}), the
+  \code{campaigns} table (\code{campaign_id}, \code{first_date},
+  \code{optin_rate}) the forecast reads the previous campaign's opt-in rate
+  from, the \code{windows} (\code{data_end}, \code{train_from},
   \code{train_until}, \code{holdout_from}), \code{counts},
   \code{min_sent}, \code{settle_days} and the package \code{version}.
   \code{print()} shows the windows, counts and holdout metrics;
@@ -58,12 +62,21 @@ An object of class \code{completion_model}: a list with
 Fits two campaign-level linear models from the disposition projection: the
 opt-in rate per sent and the completion rate per sent, each on the logit
 scale, from the campaign's survey design (mode, topic, length of interview
-band) and the history of its sample (the mean P(complete | the number's
-previous three outcomes), the share with a prior complete, the share cold:
-three or more contacts and never a reply). \code{\link{completion_forecast}}
-then scores a planned survey on the same tables.
+band) and the history of its sample: the sample score (the mean P(complete |
+the number's previous three outcomes and the survey mode)), the share with a
+prior complete, the share cold (three or more contacts and never a reply)
+and the mean years since the numbers' previous contact. The opt-in model
+reads mode, the sample score and the mean opt-in rate of the campaign each
+number was last in. \code{\link{completion_forecast}} then scores a planned
+survey on the same tables.
 }
 \details{
+The context tables are per calendar year and per survey mode (a live texter
+and a web survey complete the same context at very different rates), with a
+pooled block each lookup falls back to. The two history features that need
+a prior contact (years since contact, the previous campaign's opt-in rate)
+take the training mean on a campaign whose sample has none.
+
 A training row is a campaign with at least \code{min_sent} sends, started
 before \code{train_until}, whose last activity is at least
 \code{settle_days} before the projection's last date (a campaign still in
@@ -78,8 +91,8 @@ the bands come from a second fit that stops \code{holdout_months} earlier and
 is scored on the campaigns in between. The band's residual sd is per mode
 and per model: the larger of the shipped fit's in-sample sd and the holdout
 sd for that mode. Residuals are skewed and the fleet drifts, so the bands
-are approximate: on 2026 campaigns the nominal 95\% band covered about
-92\%.
+are approximate: on campaigns from mid 2026 the nominal 95\% band covered
+about 94\% and the 50\% band about 70\%.
 
 The fit runs inside DuckDB (\pkg{duckdb}, \pkg{DBI} and \pkg{dbplyr} must be
 installed) and takes about a minute on the full projection.
