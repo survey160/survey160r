@@ -439,10 +439,12 @@
 #'
 #' @param dataset Path to the disposition Parquet file, e.g. from
 #'   \code{\link{disposition_pull}()}.
-#' @param train_until Date (or date string): campaigns starting on or after it
-#'   are left out of the fit. Default today.
-#' @param holdout_months Number of months before \code{train_until} the holdout
-#'   window spans (default 5).
+#' @param train_until Date (or date string): the fit reads the projection's
+#'   rows dated before it only, so a past date refits the model as it could
+#'   have been fitted then (the data end, the settle rule, the context tables
+#'   and the campaign rates all stop there). Default today.
+#' @param holdout_months Whole number of months before \code{train_until} the
+#'   holdout window spans (default 5).
 #' @param min_sent Minimum sends for a campaign to train on (default 2000).
 #' @param settle_days Days a campaign's last activity must precede the data end
 #'   by (default 7).
@@ -482,12 +484,15 @@ completion_model_fit <- function(dataset, train_until = Sys.Date(), holdout_mont
   fn <- "completion_model_fit"
   .disposition_lazy_check(fn)
   train_until <- .completion_check_date(train_until, "train_until", fn)
-  check_positive_number(holdout_months, "holdout_months", fn)
+  holdout_months <- .completion_check_count(holdout_months, "holdout_months", fn)
+  if (holdout_months == 0) {
+    stop_s160("`holdout_months` must be a positive whole number, not 0.", fn = fn)
+  }
   min_sent <- .completion_check_count(min_sent, "min_sent", fn)
   settle_days <- .completion_check_count(settle_days, "settle_days", fn)
   con <- .disposition_lazy_con()
   source <- .disposition_lazy_source(con, dataset, fn)
-  history <- .completion_history_sql(con, source)
+  history <- .completion_history_sql(con, source, before = train_until)
   contexts <- .completion_context_tables(con, history, fn)
   ct <- .completion_campaign_table(con, history, contexts)
   data_end <- max(ct$last_date, na.rm = TRUE)

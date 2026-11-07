@@ -24,7 +24,8 @@
   (a character vector of phones, read against the projection) and its mode,
   topic and LOI: both rates with 50% and 95% multiplicative bands and expected
   counts, the sample and survey odds multipliers, and a `warnings` column for
-  unknown levels, a small sample or a mode without a band. A text-to-web
+  unknown levels, a small sample, a sample with no usable history or a mode
+  without a band. A text-to-web
   external survey gets the opt-in forecast only, with completion NA.
 * The sample is used exactly as given: no opt-out or eligibility screening, so
   the expected counts are overstated by whatever the caller later removes.

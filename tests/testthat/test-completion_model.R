@@ -258,8 +258,10 @@ test_that("fit: a live campaign the tracker labels T2W external does not break t
   r <- completion_records()
   r$tracker_mode[r$campaign_id == 5L] <- "T2W external"
   p <- write_completion_parquet(r)
-  m <- completion_model_fit(p, train_until = as.Date("2026-10-01"), holdout_months = 6,
-                            min_sent = 10)
+  expect_warning(
+    m <- completion_model_fit(p, train_until = as.Date("2026-10-01"), holdout_months = 6,
+                              min_sent = 10),
+    "one per term")
   expect_s3_class(m, "completion_model")
   # the relabelled campaign leaves the completion fit and stays in the opt-in fit
   expect_equal(m$models$completion$counts$campaigns_fit, 18L)
@@ -308,6 +310,26 @@ test_that("fit: a campaign whose sample has no prior contact takes the training 
   expect_equal(length(stats::residuals(fit)), 6L)
 })
 
+test_that("fit: train_until cuts the history, so a past-dated fit sees no later row", {
+  skip_if_no_sequence()
+  p <- write_completion_parquet(completion_records())
+  cut <- as.Date("2026-04-01")
+  m <- completion_model_fit(p, train_until = cut, holdout_months = 6, min_sent = 10)
+  expect_true(m$windows$data_end < cut)
+  expect_equal(m$windows$data_end, as.Date("2026-03-04"))
+  expect_true(all(m$campaigns$first_date < cut))
+  expect_equal(m$counts$campaigns_total, 19L)
+  # the context tables stop at the cut too: no table past the cut year, and the
+  # 2026 table only sees rows before 2026 either way
+  expect_equal(max(m$contexts$year), 2027L)
+  full <- completion_model_fit(p, train_until = as.Date("2026-10-01"), holdout_months = 6,
+                               min_sent = 10)
+  expect_equal(m$contexts[m$contexts$year == 2026L, ], full$contexts[full$contexts$year == 2026L, ],
+               ignore_attr = TRUE)
+  expect_false(isTRUE(all.equal(m$contexts[m$contexts$year == 2027L, "n"],
+                                full$contexts[full$contexts$year == 2027L, "n"])))
+})
+
 test_that("fit: thin holdout", {
   skip_if_no_sequence()
   p <- write_completion_parquet(completion_records())
@@ -328,9 +350,12 @@ test_that("fit: argument checks", {
   expect_error(completion_model_fit(p, train_until = "not a date"), "train_until")
   expect_error(completion_model_fit(p, train_until = NULL), "train_until")
   expect_error(completion_model_fit(p, holdout_months = 0), "holdout_months")
+  expect_error(completion_model_fit(p, holdout_months = 2.5), "holdout_months")
   expect_error(completion_model_fit(p, min_sent = -1), "min_sent")
   expect_error(completion_model_fit(p, settle_days = 1.5), "settle_days")
-  expect_error(completion_model_fit(p, train_until = as.Date("2000-01-01")), "no campaign")
+  # a cut inside the first year: rows exist but no campaign has a context table
+  expect_error(completion_model_fit(p, train_until = as.Date("2024-06-01")), "no campaign")
+  expect_error(completion_model_fit(p, train_until = as.Date("2000-01-01")), "no disposition rows")
 })
 
 test_that("fit: refuses without the DuckDB packages and a data frame dataset", {

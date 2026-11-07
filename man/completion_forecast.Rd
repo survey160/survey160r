@@ -49,11 +49,13 @@ A one-row data frame: \code{optin_rate}, \code{optin_lo50},
   previous campaigns' mean opt-in rate; both NA when no number has a prior
   contact),
   \code{sample_multiplier} and \code{survey_multiplier} (the completion
-  model's sample terms and survey terms as odds multipliers against the
-  training mix, so typical x sample x survey = the forecast), and
+  model's sample terms and survey terms as odds multipliers against a
+  campaign at the training mix: how much the sample and the survey design
+  each move the completion odds), and
   \code{warnings} (a list column with one character vector: unknown levels,
-  a sample under the fit's minimum sends, a sample with no prior contact, a
-  mode without a band, opt-in only for text-to-web external).
+  a sample under the fit's minimum sends, a sample with no prior contact or
+  whose last campaign the model does not know, a context without a table
+  row, a mode without a band, opt-in only for text-to-web external).
 }
 \description{
 Scores one planned survey with a model from

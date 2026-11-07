@@ -225,6 +225,18 @@ test_that("forecast: a feature the model cannot fill is a clear error", {
                "years_since_contact")
 })
 
+test_that("forecast: a context with no table row takes the training mean, with a warning", {
+  skip_if_no_sequence()
+  f <- fit_fixture_model()
+  m <- f$model
+  m$contexts <- m$contexts[!(m$contexts$context == "___" & m$contexts$year == 2026L), ]
+  ph <- c("3015550001", unique(completion_records()$phone)[1:10])
+  out <- completion_forecast(m, ph, "Live", "Brand", 12, f$path, start_date = as.Date("2026-11-15"))
+  expect_true(any(grepl("sample_score", out$warnings[[1]]) & grepl("1 of 11", out$warnings[[1]])))
+  expect_false(is.na(out$sample_score))
+  expect_false(is.na(out$completion_rate))
+})
+
 test_that("forecast: an aliased numeric term is reported as such, not as an absent level", {
   skip_if_no_sequence()
   f <- fit_fixture_model()

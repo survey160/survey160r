@@ -41,15 +41,20 @@
   prior_score <- NA_real_
   if (any(!is.na(prior_rate))) prior_score <- .completion_logit(mean(prior_rate, na.rm = TRUE))
   warnings <- character(0)
+  if (anyNA(p)) {
+    warnings <- sprintf(paste0("%d of %d numbers have a context with no row in the %d table ",
+                               "for mode %s; they are left out of sample_score"),
+                        sum(is.na(p)), length(p), year, mode)
+  }
   if (!any(seen)) {
-    warnings <- paste0("no number in the sample has a prior contact: years_since_contact and ",
-                       "prior_optin_score take the training mean")
+    warnings <- c(warnings, paste0("no number in the sample has a prior contact: ",
+                                   "years_since_contact and prior_optin_score take the training mean"))
   } else if (all(is.na(prior_rate))) {
-    warnings <- paste0("no number in the sample was last contacted by a campaign the model ",
-                       "knows: prior_optin_score takes the training mean")
+    warnings <- c(warnings, paste0("no number in the sample was last contacted by a campaign ",
+                                   "the model knows: prior_optin_score takes the training mean"))
   }
   list(share_with_history = mean(seen),
-       sample_score = .completion_logit(mean(p)),
+       sample_score = .completion_logit(mean(p, na.rm = TRUE)),
        share_prior_completers = mean(prior_completes > 0),
        share_cold = mean(n_prior >= 3 & prior_replies == 0),
        years_since_contact = if (any(seen)) mean(years) else NA_real_,
@@ -214,11 +219,13 @@
 #'   previous campaigns' mean opt-in rate; both NA when no number has a prior
 #'   contact),
 #'   \code{sample_multiplier} and \code{survey_multiplier} (the completion
-#'   model's sample terms and survey terms as odds multipliers against the
-#'   training mix, so typical x sample x survey = the forecast), and
+#'   model's sample terms and survey terms as odds multipliers against a
+#'   campaign at the training mix: how much the sample and the survey design
+#'   each move the completion odds), and
 #'   \code{warnings} (a list column with one character vector: unknown levels,
-#'   a sample under the fit's minimum sends, a sample with no prior contact, a
-#'   mode without a band, opt-in only for text-to-web external).
+#'   a sample under the fit's minimum sends, a sample with no prior contact or
+#'   whose last campaign the model does not know, a context without a table
+#'   row, a mode without a band, opt-in only for text-to-web external).
 #' @seealso \code{\link{completion_model_fit}}
 #' @examples
 #' \dontrun{

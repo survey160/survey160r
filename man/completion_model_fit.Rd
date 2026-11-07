@@ -22,11 +22,13 @@ completion_model_fit(
 \item{dataset}{Path to the disposition Parquet file, e.g. from
 \code{\link{disposition_pull}()}.}
 
-\item{train_until}{Date (or date string): campaigns starting on or after it
-are left out of the fit. Default today.}
+\item{train_until}{Date (or date string): the fit reads the projection's
+rows dated before it only, so a past date refits the model as it could
+have been fitted then (the data end, the settle rule, the context tables
+and the campaign rates all stop there). Default today.}
 
-\item{holdout_months}{Number of months before \code{train_until} the holdout
-window spans (default 5).}
+\item{holdout_months}{Whole number of months before \code{train_until} the
+holdout window spans (default 5).}
 
 \item{min_sent}{Minimum sends for a campaign to train on (default 2000).}
 
