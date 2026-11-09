@@ -55,3 +55,9 @@ completion_records <- function(n_per_campaign = 40L, seed = 1L) {
 }
 
 write_completion_parquet <- function(rows = completion_records()) write_disposition_parquet(rows)
+
+# The model the forecast tests score with: the 60-phone fixture fitted to October 2026.
+fit_fixture_model <- function() {
+  p <- write_completion_parquet(completion_records(n_per_campaign = 60L))
+  list(path = p, model = completion_model_fit(p, train_until = as.Date("2026-10-01"), min_sent = 10))
+}

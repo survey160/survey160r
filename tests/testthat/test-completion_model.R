@@ -367,3 +367,92 @@ test_that("fit: refuses a data frame dataset", {
   skip_if_no_sequence()
   expect_error(completion_model_fit(data.frame(phone = "1")), "Parquet path")
 })
+
+test_that("campaign table: share of the sample contacted in the 30 days before the start", {
+  skip_if_no_sequence()
+  # campaign 3 (2024-03-01): ...02 was contacted 60 days before (not recent), ...03 is a first
+  # contact, ...01's previous row is after the start (not recent). Campaign 4 (2024-03-20):
+  # ...01 and ...02 both within 30 days, ...04 a first contact.
+  p <- write_completion_parquet(rbind(
+    .sequence_row("2015550101", 1L, "2024-01-01"),
+    .sequence_row("2015550102", 1L, "2024-01-01"),
+    .sequence_row("2015550101", 2L, "2024-03-05"),
+    .sequence_row("2015550103", 3L, "2024-03-01"),
+    .sequence_row("2015550102", 3L, "2024-03-02"),
+    .sequence_row("2015550101", 3L, "2024-03-10"),
+    .sequence_row("2015550101", 4L, "2024-03-20"),
+    .sequence_row("2015550102", 4L, "2024-03-20"),
+    .sequence_row("2015550104", 4L, "2024-03-21")))
+  con <- .disposition_lazy_con()
+  src <- .disposition_lazy_source(con, p, "test")
+  hs <- .completion_history_sql(con, src)
+  ct <- .completion_campaign_table(con, hs, .completion_context_tables(con, hs))
+  expect_equal(ct$share_recent_contact[ct$campaign_id == 1L], 0)
+  expect_equal(ct$share_recent_contact[ct$campaign_id == 3L], 0)
+  expect_equal(ct$share_recent_contact[ct$campaign_id == 4L], 2 / 3)
+})
+
+mixed_size_records <- function() {
+  # odd campaigns keep 60 phones, even ones 40: two size bands around a break of 50
+  r <- completion_records(n_per_campaign = 60L)
+  keep <- unlist(lapply(split(seq_len(nrow(r)), r$campaign_id), function(i) {
+    if (r$campaign_id[i[1L]] %% 2L == 0L) i[1:40] else i
+  }))
+  r[sort(keep), ]
+}
+
+test_that("fit: residual sd by mode and size band, re-send summary, size_break argument", {
+  skip_if_no_sequence()
+  p <- write_completion_parquet(mixed_size_records())
+  m <- completion_model_fit(p, train_until = as.Date("2026-10-01"), holdout_months = 6,
+                            min_sent = 10, size_break = 50)
+  expect_equal(m$size_break, 50)
+  sz <- m$models$completion$residual_sd_size
+  expect_named(sz, c("mode", "size", "sd", "n"))
+  expect_setequal(sz$mode, c("Live", "T2W"))
+  expect_setequal(sz$size, c("under", "over"))
+  expect_equal(nrow(sz), 4L)
+  # odd campaigns are Live (60 phones), even ones T2W (40): each mode sits in one band
+  expect_true(all(!is.na(sz$sd[(sz$mode == "Live" & sz$size == "over") |
+                                 (sz$mode == "T2W" & sz$size == "under")])))
+  expect_true(all(is.na(sz$sd[(sz$mode == "Live" & sz$size == "under") |
+                                (sz$mode == "T2W" & sz$size == "over")])))
+  expect_equal(sz$n[sz$mode == "Live" & sz$size == "under"], 0L)
+  # a band with every campaign of its mode has the mode's sd
+  expect_equal(sz$sd[sz$mode == "Live" & sz$size == "over"], m$models$completion$residual_sd[["Live"]])
+  expect_named(m$models$optin$residual_sd_size, c("mode", "size", "sd", "n"))
+  expect_equal(nrow(m$models$optin$residual_sd_size), 6L)
+  rs <- m$models$completion$resend
+  expect_named(rs, c("threshold", "campaigns", "ratio"))
+  expect_equal(rs$threshold, 0.5)
+  expect_named(rs$campaigns, c("Live", "T2W"))
+  expect_named(rs$ratio, c("Live", "T2W"))
+  # the fixture's campaigns never overlap and are a month or more apart: no re-send in training
+  expect_equal(unname(rs$campaigns), c(0L, 0L))
+  expect_true(all(is.na(rs$ratio)))
+  # the default break is 50,000 sends
+  m2 <- completion_model_fit(p, train_until = as.Date("2026-10-01"), holdout_months = 6, min_sent = 10)
+  expect_equal(m2$size_break, 50000)
+  expect_true(all(m2$models$completion$residual_sd_size$n[m2$models$completion$residual_sd_size$size == "over"] == 0L))
+  expect_error(completion_model_fit(p, size_break = -1), "size_break")
+  expect_error(completion_model_fit(p, size_break = c(1, 2)), "size_break")
+  expect_error(completion_model_fit(p, size_break = 0), "size_break")
+})
+
+test_that("fit: re-send summary counts training campaigns whose sample was mostly contacted in the prior 30 days", {
+  skip_if_no_sequence()
+  r <- completion_records(n_per_campaign = 60L)
+  # campaign 24 (2026-08-01) re-sends campaign 23's (2026-07-01) sample: move its rows onto
+  # campaign 23's phones, dated 20 days after campaign 23
+  ph23 <- r$phone[r$campaign_id == 23L]
+  i24 <- which(r$campaign_id == 24L)
+  r$phone[i24] <- ph23
+  r$disposition_date[i24] <- as.Date("2026-07-21")
+  p <- write_completion_parquet(r)
+  m <- completion_model_fit(p, train_until = as.Date("2026-10-01"), holdout_months = 6, min_sent = 10)
+  rs <- m$models$completion$resend
+  # campaign 24 is T2W (even id)
+  expect_equal(unname(rs$campaigns), c(0L, 1L))
+  expect_true(is.na(rs$ratio[["Live"]]))
+  expect_true(is.finite(rs$ratio[["T2W"]]) && rs$ratio[["T2W"]] > 0)
+})

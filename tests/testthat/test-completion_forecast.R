@@ -1,16 +1,11 @@
 # completion_forecast(): one planned survey scored from its sample and design.
 
-fit_fixture_model <- function() {
-  p <- write_completion_parquet(completion_records(n_per_campaign = 60L))
-  list(path = p, model = completion_model_fit(p, train_until = as.Date("2026-10-01"), min_sent = 10))
-}
-
 forecast_columns <- c(
   "optin_rate", "optin_lo50", "optin_hi50", "optin_lo95", "optin_hi95", "optins",
-  "optins_lo95", "optins_hi95", "completion_rate", "completion_lo50", "completion_hi50",
-  "completion_lo95", "completion_hi95", "completes", "completes_lo95", "completes_hi95",
-  "n_phones", "share_with_history", "sample_score", "years_since_contact",
-  "prior_optin_score", "sample_multiplier", "survey_multiplier", "warnings")
+  "optins_lo95", "optins_hi95", "optins_mean", "completion_rate", "completion_lo50", "completion_hi50",
+  "completion_lo95", "completion_hi95", "completes", "completes_lo95", "completes_hi95", "completes_mean",
+  "n_phones", "share_with_history", "share_recent_contact", "sample_score", "years_since_contact",
+  "prior_optin_score", "sample_multiplier", "survey_multiplier", "band_sd", "warnings")
 
 test_that("forecast: one row with rate, bands, completes and drivers", {
   skip_if_no_sequence()
@@ -207,8 +202,10 @@ test_that("forecast: small sample warns and bands are NA when the model has no r
   ph <- unique(completion_records()$phone)[1:5]
   m <- f$model
   m$models$completion$residual_sd[] <- NA_real_
+  m$models$completion$residual_sd_size$sd[] <- NA_real_
   out <- completion_forecast(m, ph, "Live", "Brand", 12, f$path, start_date = as.Date("2026-11-15"))
-  expect_true(is.na(out$completion_lo95) && is.na(out$completes_hi95))
+  expect_true(is.na(out$completion_lo95) && is.na(out$completes_hi95) && is.na(out$band_sd))
+  expect_equal(out$completes_mean, out$completes)
   expect_false(is.na(out$completion_rate))
   expect_false(is.na(out$optin_lo95))
   expect_true(any(grepl("5 phones", out$warnings[[1]])))
@@ -254,4 +251,106 @@ test_that("forecast: refuses without the DuckDB packages", {
   local_mocked_bindings(.disposition_lazy_missing = function() "duckdb")
   m <- structure(list(), class = "completion_model")
   expect_error(completion_forecast(m, "2015550001", "Live", "Brand", 12, "x.parquet"), "duckdb")
+})
+
+test_that("forecast: recent-contact share, mean counts and the band's sd are reported", {
+  skip_if_no_sequence()
+  f <- fit_fixture_model()
+  r <- completion_records(n_per_campaign = 60L)
+  phones <- unique(r$phone[r$campaign_id %in% 9:10])
+  out <- completion_forecast(f$model, phones, mode = "T2W", topic = "Brand", loi = 12,
+                             dataset = f$path, start_date = as.Date("2026-11-15"))
+  expect_true(all(c("share_recent_contact", "completes_mean", "optins_mean", "band_sd") %in% names(out)))
+  # no number in this sample was contacted in the 30 days before the start
+  expect_equal(out$share_recent_contact, 0)
+  # the mean of the band distribution sits above the median forecast, below the 95% high end
+  expect_true(out$completes_mean >= out$completes && out$completes_mean < out$completes_hi95)
+  expect_true(out$optins_mean >= out$optins)
+  # the fixture's campaigns are all under the 50,000 break: the band uses the mode's under-break sd,
+  # which equals the mode sd
+  expect_equal(out$band_sd, f$model$models$completion$residual_sd[["T2W"]])
+  sz <- f$model$models$completion$residual_sd_size
+  expect_equal(out$band_sd, sz$sd[sz$mode == "T2W" & sz$size == "under"])
+  # exact mean under the lognormal-odds band: integrate plogis(logit + sd z) over the normal
+  sd <- out$band_sd
+  l <- stats::qlogis(out$completion_rate)
+  mean_rate <- stats::integrate(function(z) stats::plogis(l + sd * z) * stats::dnorm(z), -Inf, Inf)$value
+  expect_equal(out$completes_mean, round(mean_rate * out$n_phones))
+})
+
+test_that("forecast: a sample over the size break with no sd in that band falls back to the mode sd", {
+  skip_if_no_sequence()
+  f <- fit_fixture_model()
+  m <- f$model
+  sz <- m$models$completion$residual_sd_size
+  # pretend the under-break band has its own, smaller sd
+  m$models$completion$residual_sd_size$sd[sz$mode == "Live" & sz$size == "under"] <- 0.2
+  ph <- unique(completion_records()$phone)[1:20]
+  small <- completion_forecast(m, ph, "Live", "Brand", 12, f$path, start_date = as.Date("2026-11-15"))
+  expect_equal(small$band_sd, 0.2)
+  big <- completion_forecast(m, sprintf("30155%05d", seq_len(50000L)), "Live", "Brand", 12, f$path,
+                             start_date = as.Date("2026-11-15"))
+  expect_equal(big$n_phones, 50000L)
+  expect_equal(big$band_sd, m$models$completion$residual_sd[["Live"]])
+  expect_true(any(grepl("50,000", big$warnings[[1]]) & grepl("mode", big$warnings[[1]])))
+})
+
+test_that("forecast: a re-sent sample is flagged", {
+  skip_if_no_sequence()
+  f <- fit_fixture_model()
+  r <- completion_records(n_per_campaign = 60L)
+  # campaign 24 ran on 2026-08-01: its sample, forecast 20 days later, is a re-send
+  ph <- unique(r$phone[r$campaign_id == 24L])
+  out <- completion_forecast(f$model, ph, "T2W", "Brand", 12, f$path, start_date = as.Date("2026-08-21"))
+  expect_equal(out$share_recent_contact, 1)
+  w <- out$warnings[[1]]
+  expect_true(any(grepl("100% of the sample was contacted in the 30 days before", w)))
+  # the fixture model has no re-send training campaigns: the warning says the model has no comparison
+  expect_true(any(grepl("no training campaign", w) & grepl("re-se", w)))
+  # 34 days after the last fixture campaign (2026-09-01, which shares phones with 24): nothing recent
+  later <- completion_forecast(f$model, ph, "T2W", "Brand", 12, f$path, start_date = as.Date("2026-10-05"))
+  expect_equal(later$share_recent_contact, 0)
+  expect_false(any(grepl("re-se", later$warnings[[1]])))
+  # with a re-send summary in the model, the warning quotes it
+  m <- f$model
+  m$models$completion$resend$campaigns[["T2W"]] <- 12L
+  m$models$completion$resend$ratio[["T2W"]] <- 0.4
+  out2 <- completion_forecast(m, ph, "T2W", "Brand", 12, f$path, start_date = as.Date("2026-08-21"))
+  w2 <- out2$warnings[[1]]
+  expect_true(any(grepl("12 training campaigns", w2) & grepl("0.40", w2)))
+  expect_equal(out2$completion_rate, out$completion_rate)
+})
+
+test_that("forecast: no sample gives a design-only forecast", {
+  skip_if_no_sequence()
+  f <- fit_fixture_model()
+  out <- completion_forecast(f$model, NULL, mode = "T2W", topic = "Brand", loi = 12,
+                             start_date = as.Date("2026-11-15"))
+  expect_equal(nrow(out), 1L)
+  na_cols <- c("n_phones", "completes", "completes_hi95", "optins", "completes_mean", "optins_mean",
+               "share_with_history", "share_recent_contact", "years_since_contact", "prior_optin_score")
+  expect_true(all(is.na(unlist(out[na_cols]))))
+  expect_false(anyNA(unlist(out[c("completion_rate", "optin_rate", "completion_lo95")])))
+  # the sample terms sit at the training mean: the sample multiplier is 1
+  expect_equal(out$sample_multiplier, 1)
+  expect_equal(out$sample_score, f$model$models$completion$training_means[["sample_score"]])
+  expect_true(any(grepl("no sample", out$warnings[[1]])))
+  # the band is the mode's sd (no size known)
+  expect_equal(out$band_sd, f$model$models$completion$residual_sd[["T2W"]])
+  # the same design with a typical sample agrees with the no-sample forecast's logit
+  cm <- f$model$models$completion
+  row <- data.frame(mode = "T2W", topic = "Brand", loi = 12, sample_score = NA, share_prior_completers = NA,
+                    share_cold = NA, years_since_contact = NA, prior_optin_score = NA)
+  d <- .completion_fill_means(.completion_design(row, "completion"), cm$training_means)
+  expect_equal(out$completion_rate, stats::plogis(.completion_predict_logit(
+    cm, .completion_model_matrix(cm$formula, d))))
+})
+
+test_that("forecast: no sample needs no dataset, a sample needs one, external web stays opt-in only", {
+  skip_if_no_sequence()
+  f <- fit_fixture_model()
+  expect_error(completion_forecast(f$model, "2015550001", "T2W", "Brand", 12, start_date = "2026-11-15"),
+               "dataset")
+  ext <- completion_forecast(f$model, NULL, "T2W external", "Brand", 12, start_date = as.Date("2026-11-15"))
+  expect_true(is.na(ext$completion_rate) && !is.na(ext$optin_rate))
 })
