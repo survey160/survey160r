@@ -24,6 +24,7 @@ R package for accessing Survey160 campaign data, across these areas:
 | Look up a few numbers' contact history | `disposition_summary(dataset, phones = )` (one row per phone) / `disposition_records(dataset, phones = )` (one row per campaign) | [Disposition screening](#disposition-screening) |
 | Funnel rates by carrier, mode, topic, or campaign | `disposition_funnel(dataset, by = "carrier")` | [Disposition screening](#disposition-screening) |
 | Follow what each number did campaign after campaign | `disposition_paths()` (one path per phone) / `disposition_steps()` (one row per campaign) | `vignette("disposition")` |
+| Forecast a planned survey's opt-in and completion rates from its sample and design | `completion_model_fit()` (fit from the projection) / `completion_forecast()` (score one survey) | `?completion_forecast` |
 | Funnel rates across the fleet by registration, brand, client, or mode | `campaign_metrics_pull()` then `campaign_metrics_summary(path, by = )` | [Campaign metrics](#campaign-metrics) |
 | Delivery error rates by carrier and day, daily and cumulative, across every ongoing campaign | `live_metrics_pull()` then `live_metrics_error_rates(paths)` | [Delivery error rates](#delivery-error-rates) |
 | See how fast each message followed the last one in a campaign | `latency_run(campaign_id, data)` | [Latency analysis](#latency-analysis) |
