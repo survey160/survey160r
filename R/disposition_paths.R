@@ -248,9 +248,11 @@ disposition_paths <- function(dataset, pattern = NULL, phones = NULL, sample_fra
   if (breaks) {
     target <- "s160_bpath"
     last <- paste0(
-      "SELECT *, array_to_string(list_transform(range(1, len(s160_dates) + 1), i -> ",
-      "CASE WHEN i > 1 AND s160_dates[i] - s160_dates[i - 1] > ", sprintf("%.0f", max_gap_days),
-      " THEN '-' ELSE '' END || path[i]), '') AS s160_bpath FROM (", last, ")")
+      "SELECT *, array_to_string(list_transform(range(1, len(s160_dates) + 1), ",
+      .disposition_lambda("i", paste0(
+        "CASE WHEN i > 1 AND s160_dates[i] - s160_dates[i - 1] > ", sprintf("%.0f", max_gap_days),
+        " THEN '-' ELSE '' END || path[i]")),
+      "), '') AS s160_bpath FROM (", last, ")")
   }
   position <- function(regex) {
     sprintf("CAST(length(replace(regexp_extract(%s, %s, 1), '-', '')) AS INTEGER)", target, regex)
@@ -285,3 +287,11 @@ disposition_paths <- function(dataset, pattern = NULL, phones = NULL, sample_fra
   # here and the SQL gets a plain integer literal (no locale or digits option).
   floor(max_gap_days)
 }
+
+# A one-argument SQL lambda in the installed DuckDB's syntax: `lambda x: body`
+# from 1.3 (2.0 rejects the arrow form), `x -> body` before it.
+.disposition_lambda <- function(arg, body, version = .disposition_duckdb_version()) {
+  if (version >= "1.3.0") sprintf("lambda %s: %s", arg, body) else sprintf("%s -> %s", arg, body)
+}
+
+.disposition_duckdb_version <- function() utils::packageVersion("duckdb")

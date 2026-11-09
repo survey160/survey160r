@@ -167,3 +167,8 @@ test_that("max_gap_days is checked and needs a pattern", {
   m <- function(gap) collect_sorted(disposition_paths(q, "N >> C", max_gap_days = gap))$matched
   expect_equal(c(m(9.9), m(10), m(10.5)), c(FALSE, TRUE, TRUE))
 })
+
+test_that("the gap-limit lambda follows the installed DuckDB's syntax", {
+  expect_identical(.disposition_lambda("i", "i + 1", package_version("1.2.2")), "i -> i + 1")
+  expect_identical(.disposition_lambda("i", "i + 1", package_version("2.0.0")), "lambda i: i + 1")
+})
