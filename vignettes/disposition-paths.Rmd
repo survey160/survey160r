@@ -127,8 +127,11 @@ Scope the paths to your sample with `phones`, then join the flag back:
 
 ```{r}
 my_sample <- data.frame(phone = c("2015550101", "(201) 555-0102"))   # your phone sample
-# the join needs the 10 bare digits the paths are keyed by
-my_sample$phone <- sub("^1", "", gsub("[^0-9]", "", my_sample$phone))
+# the join needs the 10 bare digits the paths are keyed by; drop a leading 1
+# only from an 11-digit number
+digits <- gsub("[^0-9]", "", my_sample$phone)
+my_sample$phone <- ifelse(nchar(digits) == 11 & startsWith(digits, "1"),
+                          substring(digits, 2), digits)
 flags <- disposition_paths(dataset, "non_response|undeliverable{3,}$",
                            phones = my_sample$phone) |>
   select(phone, path, last_three_unanswered = matched) |>
