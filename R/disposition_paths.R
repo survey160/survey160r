@@ -196,9 +196,10 @@
 #' }
 #' @export
 disposition_paths <- function(dataset, pattern = NULL, phones = NULL, sample_frac = NULL,
-                              date_from = NULL, date_to = NULL, max_gap_days = NULL,
+                              date_from = NULL, date_to = NULL,
                               terminal = c("raw", "engaged"),
-                              undeliverable_codes = .DISPOSITION_UNDELIVERABLE_CODES) {
+                              undeliverable_codes = .DISPOSITION_UNDELIVERABLE_CODES,
+                              max_gap_days = NULL) {
   fn <- "disposition_paths"
   terminal <- match.arg(terminal)
   .disposition_lazy_check(fn)
@@ -248,7 +249,7 @@ disposition_paths <- function(dataset, pattern = NULL, phones = NULL, sample_fra
     target <- "s160_bpath"
     last <- paste0(
       "SELECT *, array_to_string(list_transform(range(1, len(s160_dates) + 1), i -> ",
-      "CASE WHEN i > 1 AND s160_dates[i] - s160_dates[i - 1] > ", format(max_gap_days, scientific = FALSE),
+      "CASE WHEN i > 1 AND s160_dates[i] - s160_dates[i - 1] > ", sprintf("%.0f", max_gap_days),
       " THEN '-' ELSE '' END || path[i]), '') AS s160_bpath FROM (", last, ")")
   }
   position <- function(regex) {
@@ -280,5 +281,7 @@ disposition_paths <- function(dataset, pattern = NULL, phones = NULL, sample_fra
     stop_s160(paste0("`max_gap_days` limits what a pattern match may span, so it needs a ",
                      "`pattern`, e.g. pattern = \"N > C\", max_gap_days = 365."), fn = fn)
   }
-  max_gap_days
+  # Date gaps are whole days, so "more than 365.5" is "more than 365": floor it
+  # here and the SQL gets a plain integer literal (no locale or digits option).
+  floor(max_gap_days)
 }

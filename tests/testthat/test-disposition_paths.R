@@ -159,4 +159,11 @@ test_that("max_gap_days is checked and needs a pattern", {
                  class = "s160_error")
   }
   expect_identical(.disposition_pattern_compile("* > N", "f", breaks = TRUE), "[^-][^-]*?[N]")
+  # a fractional limit is the whole-day limit below it, under any number format
+  rows <- rbind(.sequence_row("2015550101", 1L, "2026-01-01"),
+                .sequence_row("2015550101", 2L, "2026-01-11", engaged = 1L, completed = 1L))
+  q <- write_sequence_parquet(rows)
+  withr::local_options(OutDec = ",", digits = 2)
+  m <- function(gap) collect_sorted(disposition_paths(q, "N >> C", max_gap_days = gap))$matched
+  expect_equal(c(m(9.9), m(10), m(10.5)), c(FALSE, TRUE, TRUE))
 })

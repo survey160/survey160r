@@ -532,13 +532,13 @@
 # wanted (prev_<col>, next_<col>). The identity columns already have their own
 # neighbors (step, gap_*_days, next_date), and a generated name must not shadow
 # a stored column. Returned unchanged, or NULL for none.
-.disposition_check_neighbor_columns <- function(neighbor_columns, cols, fn) {
+.disposition_check_neighbors <- function(neighbor_columns, cols, fn) {
   if (is.null(neighbor_columns)) return(NULL)
   if (!is.character(neighbor_columns) || anyNA(neighbor_columns) || anyDuplicated(neighbor_columns) > 0L) {
     stop_s160(sprintf("`neighbor_columns` must be NULL or a character vector of distinct column names%s.",
                       .not_got(neighbor_columns)), fn = fn)
   }
-  identity <- intersect(neighbor_columns, c("phone", "campaign_id", "disposition_date"))
+  identity <- neighbor_columns[tolower(neighbor_columns) %in% c("phone", "campaign_id", "disposition_date")]
   if (length(identity) > 0L) {
     stop_s160(sprintf(paste0("`neighbor_columns` cannot include %s: the history already places ",
                              "each campaign (step, next_date, gap_prev_days, gap_next_days)."),
@@ -549,10 +549,13 @@
     stop_s160(sprintf("`neighbor_columns` names column(s) the dataset does not have: %s. It has: %s.",
                       paste(unknown, collapse = ", "), .preview_values(cols)), fn = fn)
   }
-  clash <- intersect(tolower(.disposition_neighbor_names(neighbor_columns)), tolower(cols))
+  # A generated name must not repeat a stored column or another generated one
+  # (neighbor "date" would add a second next_date beside the neighbors group's).
+  added <- .disposition_neighbor_names(neighbor_columns)
+  clash <- added[tolower(added) %in% tolower(c(cols, .DISPOSITION_SEQUENCE_GENERATED))]
   if (length(clash) > 0L) {
-    stop_s160(sprintf(paste0("`dataset` already has column(s) named like the neighbor columns ",
-                             "`neighbor_columns` adds: %s. Rename them in a copy of the file."),
+    stop_s160(sprintf(paste0("`neighbor_columns` would add column(s) the result already has: %s. ",
+                             "Rename the stored column(s) in a copy of the file."),
                       paste(clash, collapse = ", ")), fn = fn)
   }
   neighbor_columns
@@ -796,9 +799,10 @@
 disposition_steps <- function(dataset, phones = NULL, sample_frac = NULL,
                               campaign_ids = NULL, date_from = NULL, date_to = NULL,
                               columns = c("neighbors", "so_far", "run_length", "path_so_far"),
-                              neighbor_columns = NULL, pattern = NULL,
+                              pattern = NULL,
                               terminal = c("raw", "engaged"),
-                              undeliverable_codes = .DISPOSITION_UNDELIVERABLE_CODES) {
+                              undeliverable_codes = .DISPOSITION_UNDELIVERABLE_CODES,
+                              neighbor_columns = NULL) {
   fn <- "disposition_steps"
   terminal <- match.arg(terminal)
   .disposition_lazy_check(fn)
@@ -815,7 +819,7 @@ disposition_steps <- function(dataset, phones = NULL, sample_frac = NULL,
 
   con <- .disposition_lazy_con()
   source <- .disposition_lazy_source(con, dataset, fn)
-  neighbor_columns <- .disposition_check_neighbor_columns(neighbor_columns, source$cols, fn)
+  neighbor_columns <- .disposition_check_neighbors(neighbor_columns, source$cols, fn)
   after <- .disposition_after_filters(con, source, campaign_ids, date_from, date_to, fn)
   base <- .disposition_base_sql(con, source, phones, sample_frac,
                                 .disposition_label_sql(con, source, terminal, codes))

@@ -486,5 +486,12 @@ test_that("neighbor_columns are checked", {
   rows <- sequence_records()
   rows$next_survey_mode <- "sms"
   expect_error(disposition_steps(write_sequence_parquet(rows), neighbor_columns = "survey_mode"),
-               "named like the neighbor columns.*next_survey_mode", class = "s160_error")
+               "already has: next_survey_mode", class = "s160_error")
+  # a generated name too: neighbor "date" would repeat next_date
+  rows <- sequence_records()
+  rows$date <- "x"
+  expect_error(disposition_steps(write_sequence_parquet(rows), neighbor_columns = "date"),
+               "already has: next_date", class = "s160_error")
+  expect_error(disposition_steps(p, neighbor_columns = "Campaign_ID"), "cannot include Campaign_ID",
+               class = "s160_error")
 })

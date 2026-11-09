@@ -155,8 +155,9 @@ disposition_steps(dataset, date_from = "2025-01-01", columns = "neighbors",
 
 # After a screen-out, the next campaign: same topic or a different one?
 disposition_steps(dataset, date_from = "2025-01-01", columns = "neighbors",
-                  neighbor_columns = "tracker_topic") |>
-  filter(label == "ineligible", !is.na(next_label), completion_known) |>
+                  neighbor_columns = c("tracker_topic", "completed")) |>
+  # the NEXT campaign must report completes (not text-to-web external)
+  filter(label == "ineligible", !is.na(next_label), !is.na(next_completed)) |>
   group_by(same_topic = tracker_topic == next_tracker_topic) |>
   summarise(n = n(), complete_next = mean(as.integer(
     next_label %in% c("completed", "web_complete")), na.rm = TRUE)) |>

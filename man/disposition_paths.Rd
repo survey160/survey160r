@@ -11,9 +11,9 @@ disposition_paths(
   sample_frac = NULL,
   date_from = NULL,
   date_to = NULL,
-  max_gap_days = NULL,
   terminal = c("raw", "engaged"),
-  undeliverable_codes = .DISPOSITION_UNDELIVERABLE_CODES
+  undeliverable_codes = .DISPOSITION_UNDELIVERABLE_CODES,
+  max_gap_days = NULL
 )
 }
 \arguments{
@@ -39,11 +39,6 @@ on prod.}
 \item{date_from, date_to}{Optional \code{Date}/date-string bounds on
 \code{disposition_date} (inclusive): only campaigns in range form the path.}
 
-\item{max_gap_days}{Optional single positive number, with \code{pattern}: a
-match may not span a gap of more than this many days between two
-consecutive campaigns (see Gap limit). Costs ~8 s more on the full
-projection.}
-
 \item{terminal}{How to label an unsplit \code{terminated} row (terminated but
 neither refused nor ineligible): \code{"raw"} (default) keeps
 \code{terminated}, matching \code{\link{disposition_summary}};
@@ -55,6 +50,11 @@ August 2026 rather than respondent behaviour.}
 \code{undeliverable} rather than \code{non_response}. Defaults to the hard
 carrier rejections (4700, 4701, 4702, 4720, 4750, 4753); \code{NULL} labels
 every no-reply row \code{non_response}, as the summary does.}
+
+\item{max_gap_days}{Optional single positive number, with \code{pattern}: a
+match may not span a gap of more than this many days between two
+consecutive campaigns (see Gap limit). Costs ~8 s more on the full
+projection.}
 }
 \value{
 A lazy \pkg{dbplyr} table, one row per phone: \code{phone},

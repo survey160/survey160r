@@ -12,10 +12,10 @@ disposition_steps(
   date_from = NULL,
   date_to = NULL,
   columns = c("neighbors", "so_far", "run_length", "path_so_far"),
-  neighbor_columns = NULL,
   pattern = NULL,
   terminal = c("raw", "engaged"),
-  undeliverable_codes = .DISPOSITION_UNDELIVERABLE_CODES
+  undeliverable_codes = .DISPOSITION_UNDELIVERABLE_CODES,
+  neighbor_columns = NULL
 )
 }
 \arguments{
@@ -50,13 +50,6 @@ ending with this step) and \code{"history"} (\code{prior_*} counts, the
 recency columns; see below). The default is the first four; \code{"history"} is
 opt-in. Each costs a few seconds on the full projection.}
 
-\item{neighbor_columns}{Optional character vector of stored columns, e.g.
-\code{c("survey_mode", "tracker_topic")}: adds \code{prev_<col>} and
-\code{next_<col>}, the value on the phone's previous / next campaign
-(\code{NA} at the ends). Compare them with \pkg{dplyr} --
-\code{tracker_topic == next_tracker_topic} is \code{NA} when either side
-is unknown. Each column costs ~3 s on the full projection.}
-
 \item{pattern}{Optional sequence pattern (see \code{\link{disposition_paths}}
 for the syntax); adds \code{history_matched}: whether the history up to and
 including this step matches. Use a \code{$} anchor for "history ends with",
@@ -73,6 +66,13 @@ August 2026 rather than respondent behaviour.}
 \code{undeliverable} rather than \code{non_response}. Defaults to the hard
 carrier rejections (4700, 4701, 4702, 4720, 4750, 4753); \code{NULL} labels
 every no-reply row \code{non_response}, as the summary does.}
+
+\item{neighbor_columns}{Optional character vector of stored columns, e.g.
+\code{c("survey_mode", "tracker_topic")}: adds \code{prev_<col>} and
+\code{next_<col>}, the value on the phone's previous / next campaign
+(\code{NA} at the ends). Compare them with \pkg{dplyr} --
+\code{tracker_topic == next_tracker_topic} is \code{NA} when either side
+is unknown. Each column costs ~3 s on the full projection.}
 }
 \value{
 A lazy \pkg{dbplyr} table, one row per \code{(phone, campaign_id)}:
