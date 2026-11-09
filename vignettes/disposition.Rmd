@@ -143,6 +143,29 @@ flags <- disposition_paths(dataset, "non_response|undeliverable{3,}$",
                            phones = my_sample$phone) |>
   select(phone, path, matched) |>
   collect()
+
+# Did a channel switch win back a number that did not answer? (2025+)
+disposition_steps(dataset, date_from = "2025-01-01", columns = "neighbors",
+                  neighbor_columns = "survey_mode") |>
+  filter(label == "non_response", !is.na(next_label)) |>
+  group_by(survey_mode, next_survey_mode) |>
+  summarise(n = n(), reply_next = mean(as.integer(
+    !next_label %in% c("non_response", "undeliverable")), na.rm = TRUE)) |>
+  collect()
+
+# After a screen-out, the next campaign: same topic or a different one?
+disposition_steps(dataset, date_from = "2025-01-01", columns = "neighbors",
+                  neighbor_columns = "tracker_topic") |>
+  filter(label == "ineligible", !is.na(next_label), completion_known) |>
+  group_by(same_topic = tracker_topic == next_tracker_topic) |>
+  summarise(n = n(), complete_next = mean(as.integer(
+    next_label %in% c("completed", "web_complete")), na.rm = TRUE)) |>
+  collect()
+
+# No reply, then a complete, with no gap of more than a year along the way
+disposition_paths(dataset, "N > C|W", max_gap_days = 365) |>
+  filter(matched) |>
+  count()
 ```
 
 Each campaign gets one label, the furthest step it reached, ordered by `disposition_date` (a missing date counts as the oldest, as in the summary, so a phone's last step is its `latest_disposition`). A path spells them as letters: N non_response, X undeliverable (no reply and a hard carrier rejection), E engaged, O opted_in, T terminated, I ineligible, R refused, C completed, W web_complete -- `"NNEC"` is two non-responses, engaged, then completed, and its `shape` is `"N+E+C+"`. A pattern joins labels (or letters) with `>` ("later") or `>>` ("the very next campaign"), takes `|` alternatives, `+` / `{m,n}` repeats and `^` / `$` anchors; `?disposition_paths` has the full syntax.
@@ -153,7 +176,20 @@ Each campaign gets one label, the furthest step it reached, ordered by `disposit
 - **Undeliverable is separate from non-response.** After a hard rejection (codes 4700, 4701, 4702, 4720, 4750, 4753) the next campaign gets a reply about 0.7% of the time, against 5.9% after a plain non-response. `undeliverable_codes = NULL` folds them back, as the summary does.
 - **Text-to-web external hides completes.** `completion_known` (steps) and `n_unknown_completion` (paths) mark campaigns where a complete is never reported, so a `completed` step cannot match there.
 - **August 2026 terminals.** Since August 2026 most engaged recipients who did not finish are stored as an unsplit `terminated`. `terminal = "engaged"` labels those by the step they reached instead.
+- **What changed between campaigns.** `neighbor_columns =` on `disposition_steps()` adds `prev_<col>` / `next_<col>` for any stored column (`survey_mode`, `carrier`, `tracker_client`, `tracker_topic`, `tracker_project`, ...), about 3 seconds each on the full projection. Compare them with dplyr: `tracker_topic == next_tracker_topic` is `NA` when either side is unknown, so an unknown pair is its own group rather than a false "different".
+- **Gap limit.** `max_gap_days =` on `disposition_paths()` stops a match from spanning a gap of more than that many days between two consecutive campaigns. It looks at consecutive campaigns, not at the distance from the first matched step, so it counts 1-2% more phones than a strict "within a year of the non-response" rule would.
 - **Memory.** DuckDB works within 4 GB and spills to disk past it (up to ~20 GB on a full-projection query, freed when it finishes). Change it with `options(survey160r.duckdb_memory = "8GB")` or `options(survey160r.duckdb_temp_dir = "/path")`.
+
+### Caveats for sequence questions
+
+Measured on the production projection (November 2026). They shape what a history can tell you:
+
+- **Most histories are cut off on the right.** 49% of numbers were last contacted over a year ago and 56% have a single campaign; only 32% of 2026 campaigns have a later one yet (56-64% for 2021-2025). A rate of "what happened next" must count only steps that have a next campaign (`!is.na(next_label)`), never all steps.
+- **Refusals were barely recorded in 2023 and 2024** (178 and 125 rows, against 22,000-57,000 a year since 2025). Start a refusal question in 2025.
+- **Client and topic start in 2024.** `tracker_client` / `tracker_topic` are empty for every 2021-2023 campaign and 44% of 2024 rows; in 2026 `tracker_client` is empty on 18% of rows (`tracker_topic` 4%). `tracker_topic` holds four broad values (Brand, Electoral, Policy, Other), so "same topic" means the same broad kind of survey.
+- **Carrier labels changed.** Sprint numbers read as T-Mobile from March 2026, so a Sprint-to-T-Mobile step is a relabel, not a ported number; two campaigns' `carrier` holds survey answers ("Strongly approve", "Somewhat disapprove").
+- **A number can change hands.** Leaving aside the Sprint relabel, the carrier changes between consecutive campaigns 1.6% of the time within 90 days, 17% across one to two years and 26% across two years or more. A long gap can join two people's histories; `max_gap_days` keeps a pattern from matching across one.
+- **How the labels reconcile with the summary.** Per phone, `n_campaigns`, the last step's label (`latest_disposition`), and the counts of `web_complete` and `refused` labels equal the summary's. The other counts differ only where one stored row sets two flags: a row flagged both completed and web_complete (about 430,000 since 2024) is one `web_complete` step here and counts in both `n_completed` and `n_web_complete` there.
 
 ## What you get back
 

@@ -11,6 +11,7 @@ disposition_paths(
   sample_frac = NULL,
   date_from = NULL,
   date_to = NULL,
+  max_gap_days = NULL,
   terminal = c("raw", "engaged"),
   undeliverable_codes = .DISPOSITION_UNDELIVERABLE_CODES
 )
@@ -37,6 +38,11 @@ on prod.}
 
 \item{date_from, date_to}{Optional \code{Date}/date-string bounds on
 \code{disposition_date} (inclusive): only campaigns in range form the path.}
+
+\item{max_gap_days}{Optional single positive number, with \code{pattern}: a
+match may not span a gap of more than this many days between two
+consecutive campaigns (see Gap limit). Costs ~8 s more on the full
+projection.}
 
 \item{terminal}{How to label an unsplit \code{terminated} row (terminated but
 neither refused nor ineligible): \code{"raw"} (default) keeps
@@ -89,6 +95,17 @@ takes its whole run (\code{"N+"} on \code{"XNNT"} is steps 2-3) and a
 \code{>} gap stops at the earliest next step (\code{"N > C"} on
 \code{"NCNC"} is steps 1-2).
 
+\strong{Gap limit.} With \code{max_gap_days}, a gap of more than that many
+days between two consecutive campaigns breaks the sequence: no part of a
+match -- a \code{>}, a \code{>>} or a repeat -- may span it, so
+\code{"N > C"} with \code{max_gap_days = 365} needs a complete reached with
+no year-long silence after the non-response. A missing date never breaks.
+The rule looks at consecutive campaigns, not at the distance from the first
+matched step: on prod it finds every phone a strict "within 365 days of the
+non-response" rule finds, plus 1-2\% more. \code{^} / \code{$} still mean
+the phone's first / most recent campaign; \code{path} and \code{shape} are
+unchanged.
+
 \strong{Date window.} Unlike \code{\link{disposition_steps}}, \code{date_from} /
 \code{date_to} choose which campaigns form the path (the phone's 2025+ path,
 say), so they apply before the path is built.
@@ -103,6 +120,10 @@ disposition_paths(dataset) |> count(shape, sort = TRUE) |> head(20) |> collect()
 
 # No reply, then engaged or opted in, then completed
 disposition_paths(dataset, "N > E|O > C|W") |> filter(matched) |> count() |> collect()
+
+# The same, with no gap of more than a year along the way
+disposition_paths(dataset, "N > E|O > C|W", max_gap_days = 365) |>
+  filter(matched) |> count() |> collect()
 
 # Flag a sample's numbers whose last three contacts got no reply
 flags <- disposition_paths(dataset, "non_response|undeliverable{3,}$",
