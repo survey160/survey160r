@@ -20,7 +20,7 @@
 #
 # RE2 (DuckDB's regex engine) has no backreferences, which is why the syntax has
 # no "same label again" form; every step compiles to a character class.
-.disposition_pattern_compile <- function(pattern, fn) {
+.disposition_pattern_compile <- function(pattern, fn, breaks = FALSE) {
   if (!is.character(pattern) || length(pattern) != 1L || is.na(pattern) ||
         !nzchar(trimws(pattern))) {
     stop_s160(sprintf("`pattern` must be a single non-empty string%s.", .not_got(pattern)),
@@ -40,7 +40,7 @@
   if (length(steps) != length(seps) + 1L || any(!nzchar(steps))) {
     bad("has an empty step (a `>` or `>>` with nothing on one side)")
   }
-  regex <- vapply(steps, .disposition_pattern_step, character(1), bad = bad)
+  regex <- vapply(steps, .disposition_pattern_step, character(1), bad = bad, breaks = breaks)
   # Every step must consume at least one campaign: a pattern that can match an
   # empty path ("N{0}", "*{0,2}") matches every phone at no position (match_end
   # 0). Our RE2 subset reads the same under PCRE, so R can test it up front.
@@ -50,7 +50,9 @@
   # `>` is a LAZY gap: it does not change what matches, but it ends
   # match_end at the earliest next step (the first completion after the
   # non-response, not the last one).
-  joins <- c(ifelse(seps == ">", ".*?", ""), "")
+  # With `breaks` the path carries a `-` where a gap exceeds max_gap_days
+  # (disposition_paths()), and no part of a match may cross one.
+  joins <- c(ifelse(seps == ">", if (breaks) "[^-]*?" else ".*?", ""), "")
   paste0(if (start) "^", paste0(regex, joins, collapse = ""), if (end) "$")
 }
 
@@ -65,7 +67,7 @@
 }
 
 # One step ("non_response|undeliverable{3,}") -> its RE2 piece ("[NX]{3,}").
-.disposition_pattern_step <- function(step, bad) {
+.disposition_pattern_step <- function(step, bad, breaks = FALSE) {
   m <- regmatches(step, regexec("^([A-Za-z_*| ]+?)\\s*(\\+|\\{[0-9]+(?:,[0-9]*)?\\})?$",
                                 step, perl = TRUE))[[1]]
   if (length(m) == 0L) bad(sprintf("has a step it cannot read (`%s`)", step))
@@ -82,7 +84,7 @@
     bad(sprintf("has an unknown label `%s`", tok))
   }, character(1))
   class <- if ("." %in% codes) {
-    "."
+    if (breaks) "[^-]" else "."
   } else {
     paste0("[", paste(intersect(.DISPOSITION_PATH_CODES, codes), collapse = ""), "]")
   }
@@ -137,6 +139,17 @@
 #' \code{>} gap stops at the earliest next step (\code{"N > C"} on
 #' \code{"NCNC"} is steps 1-2).
 #'
+#' \strong{Gap limit.} With \code{max_gap_days}, a gap of more than that many
+#' days between two consecutive campaigns breaks the sequence: no part of a
+#' match -- a \code{>}, a \code{>>} or a repeat -- may span it, so
+#' \code{"N > C"} with \code{max_gap_days = 365} needs a complete reached with
+#' no year-long silence after the non-response. A missing date never breaks.
+#' The rule looks at consecutive campaigns, not at the distance from the first
+#' matched step: on prod it finds every phone a strict "within 365 days of the
+#' non-response" rule finds, plus 1-2\% more. \code{^} / \code{$} still mean
+#' the phone's first / most recent campaign; \code{path} and \code{shape} are
+#' unchanged.
+#'
 #' \strong{Date window.} Unlike \code{\link{disposition_steps}}, \code{date_from} /
 #' \code{date_to} choose which campaigns form the path (the phone's 2025+ path,
 #' say), so they apply before the path is built.
@@ -149,6 +162,10 @@
 #'   the matches.
 #' @param date_from,date_to Optional \code{Date}/date-string bounds on
 #'   \code{disposition_date} (inclusive): only campaigns in range form the path.
+#' @param max_gap_days Optional single positive number, with \code{pattern}: a
+#'   match may not span a gap of more than this many days between two
+#'   consecutive campaigns (see Gap limit). Costs ~8 s more on the full
+#'   projection.
 #' @return A lazy \pkg{dbplyr} table, one row per phone: \code{phone},
 #'   \code{n_campaigns}, \code{path}, \code{shape}, \code{first_date},
 #'   \code{last_date}, \code{n_unknown_completion} (campaigns whose completion is
@@ -167,6 +184,10 @@
 #' # No reply, then engaged or opted in, then completed
 #' disposition_paths(dataset, "N > E|O > C|W") |> filter(matched) |> count() |> collect()
 #'
+#' # The same, with no gap of more than a year along the way
+#' disposition_paths(dataset, "N > E|O > C|W", max_gap_days = 365) |>
+#'   filter(matched) |> count() |> collect()
+#'
 #' # Flag a sample's numbers whose last three contacts got no reply
 #' flags <- disposition_paths(dataset, "non_response|undeliverable{3,}$",
 #'                            phones = my_sample$phone) |>
@@ -177,11 +198,14 @@
 disposition_paths <- function(dataset, pattern = NULL, phones = NULL, sample_frac = NULL,
                               date_from = NULL, date_to = NULL,
                               terminal = c("raw", "engaged"),
-                              undeliverable_codes = .DISPOSITION_UNDELIVERABLE_CODES) {
+                              undeliverable_codes = .DISPOSITION_UNDELIVERABLE_CODES,
+                              max_gap_days = NULL) {
   fn <- "disposition_paths"
   terminal <- match.arg(terminal)
   .disposition_lazy_check(fn)
-  pattern_re <- if (!is.null(pattern)) .disposition_pattern_compile(pattern, fn)
+  max_gap_days <- .disposition_check_max_gap(max_gap_days, pattern, fn)
+  breaks <- !is.null(max_gap_days)
+  pattern_re <- if (!is.null(pattern)) .disposition_pattern_compile(pattern, fn, breaks = breaks)
   codes <- .disposition_check_terminal_codes(undeliverable_codes, fn)
   sample_frac <- .disposition_check_sample_frac(sample_frac, fn)
   phones <- .disposition_request_phones(phones)
@@ -214,13 +238,30 @@ disposition_paths <- function(dataset, pattern = NULL, phones = NULL, sample_fra
   re <- function(prefix, suffix = "") {
     DBI::dbQuoteString(con, paste0(prefix, pattern_re, suffix))
   }
+  # With a gap limit the pattern runs on a marked path: a `-` before each step
+  # more than max_gap_days after the previous one. It is built at the phone's
+  # last row from the ordered date list the match dates need anyway -- a lag()
+  # feeding the path's string_agg would nest windows and cost a second sort
+  # (~2x on prod). Positions count letters only, so the markers are stripped
+  # from the prefix before its length is taken.
+  target <- "path"
+  if (breaks) {
+    target <- "s160_bpath"
+    last <- paste0(
+      "SELECT *, array_to_string(list_transform(range(1, len(s160_dates) + 1), ",
+      .disposition_lambda("i", paste0(
+        "CASE WHEN i > 1 AND s160_dates[i] - s160_dates[i - 1] > ", sprintf("%.0f", max_gap_days),
+        " THEN '-' ELSE '' END || path[i]")),
+      "), '') AS s160_bpath FROM (", last, ")")
+  }
+  position <- function(regex) {
+    sprintf("CAST(length(replace(regexp_extract(%s, %s, 1), '-', '')) AS INTEGER)", target, regex)
+  }
   matched <- paste0(
     "SELECT *, ",
-    "CASE WHEN matched THEN CAST(length(regexp_extract(path, ", re("^(.*?)"), ", 1)) + 1 AS INTEGER) ",
-    "END AS match_start, ",
-    "CASE WHEN matched THEN CAST(length(regexp_extract(path, ", re("^(.*?", ")"), ", 1)) AS INTEGER) ",
-    "END AS match_end ",
-    "FROM (SELECT *, regexp_matches(path, ", DBI::dbQuoteString(con, pattern_re), ") AS matched ",
+    "CASE WHEN matched THEN ", position(re("^(.*?)")), " + 1 END AS match_start, ",
+    "CASE WHEN matched THEN ", position(re("^(.*?", ")")), " END AS match_end ",
+    "FROM (SELECT *, regexp_matches(", target, ", ", DBI::dbQuoteString(con, pattern_re), ") AS matched ",
     "FROM (", last, "))")
   sql <- paste0("SELECT ", paste(c(cols, "matched", "match_start", "match_end",
                                    "s160_dates[match_start] AS match_start_date",
@@ -228,3 +269,29 @@ disposition_paths <- function(dataset, pattern = NULL, phones = NULL, sample_fra
                 " FROM (", matched, ")")
   dplyr::tbl(con, dbplyr::sql(sql))
 }
+
+# max_gap_days: NULL, or one positive number -- and only with a pattern, since
+# it limits what a match may span.
+.disposition_check_max_gap <- function(max_gap_days, pattern, fn) {
+  if (is.null(max_gap_days)) return(NULL)
+  if (!is.numeric(max_gap_days) || length(max_gap_days) != 1L || !is.finite(max_gap_days) ||
+        max_gap_days <= 0) {
+    stop_s160(sprintf("`max_gap_days` must be a single positive number%s.", .not_got(max_gap_days)),
+              fn = fn)
+  }
+  if (is.null(pattern)) {
+    stop_s160(paste0("`max_gap_days` limits what a pattern match may span, so it needs a ",
+                     "`pattern`, e.g. pattern = \"N > C\", max_gap_days = 365."), fn = fn)
+  }
+  # Date gaps are whole days, so "more than 365.5" is "more than 365": floor it
+  # here and the SQL gets a plain integer literal (no locale or digits option).
+  floor(max_gap_days)
+}
+
+# A one-argument SQL lambda in the installed DuckDB's syntax: `lambda x: body`
+# from 1.3 (2.0 rejects the arrow form), `x -> body` before it.
+.disposition_lambda <- function(arg, body, version = .disposition_duckdb_version()) {
+  if (version >= "1.3.0") sprintf("lambda %s: %s", arg, body) else sprintf("%s -> %s", arg, body)
+}
+
+.disposition_duckdb_version <- function() utils::packageVersion("duckdb")

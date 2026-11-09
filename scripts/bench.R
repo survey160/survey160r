@@ -76,6 +76,11 @@ if (requireNamespace("duckdb", quietly = TRUE)) {
     measure("steps_run_length", dplyr::collect(dplyr::count(disposition_steps(pq), run_length)))
     measure("paths_pattern", dplyr::collect(dplyr::count(
       dplyr::filter(disposition_paths(pq, "N > E|O > C|W"), matched))))
+    measure("steps_neighbor_columns", dplyr::collect(dplyr::count(
+      disposition_steps(pq, columns = NULL, neighbor_columns = "carrier"),
+      carrier, next_carrier)))
+    measure("paths_max_gap", dplyr::collect(dplyr::count(
+      dplyr::filter(disposition_paths(pq, "N > E|O > C|W", max_gap_days = 365), matched))))
   }
   unlink(pq)
 }

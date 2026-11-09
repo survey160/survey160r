@@ -14,7 +14,8 @@ disposition_steps(
   columns = c("neighbors", "so_far", "run_length", "path_so_far"),
   pattern = NULL,
   terminal = c("raw", "engaged"),
-  undeliverable_codes = .DISPOSITION_UNDELIVERABLE_CODES
+  undeliverable_codes = .DISPOSITION_UNDELIVERABLE_CODES,
+  neighbor_columns = NULL
 )
 }
 \arguments{
@@ -65,13 +66,22 @@ August 2026 rather than respondent behaviour.}
 \code{undeliverable} rather than \code{non_response}. Defaults to the hard
 carrier rejections (4700, 4701, 4702, 4720, 4750, 4753); \code{NULL} labels
 every no-reply row \code{non_response}, as the summary does.}
+
+\item{neighbor_columns}{Optional character vector of stored columns other
+than \code{phone}, \code{campaign_id} and \code{disposition_date}, e.g.
+\code{c("survey_mode", "tracker_topic")}: adds \code{prev_<col>} and
+\code{next_<col>}, the value on the phone's previous / next campaign
+(\code{NA} at the ends). Compare them with \pkg{dplyr} --
+\code{tracker_topic == next_tracker_topic} is \code{NA} when either side
+is unknown. Each column costs ~3 s on the full projection.}
 }
 \value{
 A lazy \pkg{dbplyr} table, one row per \code{(phone, campaign_id)}:
   \code{phone}, \code{campaign_id}, \code{disposition_date}, \code{step},
   \code{n_campaigns}, \code{label}, \code{completion_known} (\code{FALSE} where
   \code{completed} is \code{NA}, i.e. text-to-web external, where a complete is
-  never reported), the requested history columns, \code{history_matched} (with
+  never reported), the requested history columns (with
+  \code{prev_<col>} / \code{next_<col>} after the neighbors group), \code{history_matched} (with
   \code{pattern}), then every other stored column (funnel flags,
   \code{survey_mode}, \code{carrier}, \code{error}, \code{tracker_*}, ...).
 }
@@ -142,6 +152,15 @@ five, whatever the calendar gap; after an undeliverable the next reply rate
 climbs from 0.3\% within a week to 3.4\% past two years, so
 \code{days_since_undeliverable} is the one day count worth a rule.
 
+\strong{Neighbor columns.} \code{neighbor_columns} carries any stored
+column across to the previous and next campaign, for transitions that depend
+on what changed between them: a switch of \code{survey_mode}, the same
+\code{tracker_client} or \code{tracker_topic} again. On prod
+\code{tracker_client} / \code{tracker_topic} are empty before 2024 (and
+\code{tracker_client} on about a fifth of 2026 rows), \code{tracker_topic}
+has four broad values, and \code{carrier} reads Sprint numbers as T-Mobile
+from March 2026 -- a Sprint-to-T-Mobile step is a relabel, not a port.
+
 \strong{Filters.} \code{phones} and \code{sample_frac} keep or drop whole
 phones \emph{before} the history is computed. \code{campaign_ids},
 \code{date_from} and \code{date_to} drop rows \emph{after} it, so a kept row
@@ -181,6 +200,15 @@ disposition_steps(dataset, date_from = "2026-01-01", columns = "history") |>
   summarise(sends = n(), completion = mean(as.integer(
     label \%in\% c("completed", "web_complete")))) |>
   arrange(since) |>
+  collect()
+
+# Reply on the next campaign after a no-reply, by channel switch (2025+)
+disposition_steps(dataset, date_from = "2025-01-01", columns = "neighbors",
+                  neighbor_columns = "survey_mode") |>
+  filter(label == "non_response", !is.na(next_label)) |>
+  group_by(survey_mode, next_survey_mode) |>
+  summarise(n = n(), reply_next = mean(as.integer(
+    !next_label \%in\% c("non_response", "undeliverable")), na.rm = TRUE)) |>
   collect()
 
 # Reply rate on the next campaign after k non-responses in a row

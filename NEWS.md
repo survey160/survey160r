@@ -1,5 +1,23 @@
 # survey160r (development version)
 
+## Sequence readers: neighbor columns and a gap limit
+
+* `disposition_steps(neighbor_columns =)` adds `prev_<col>` / `next_<col>` for
+  any stored column except `phone`, `campaign_id` and `disposition_date`, which
+  the history already places (`survey_mode`, `carrier`, `tracker_client`,
+  `tracker_topic`, ...), the value on the phone's previous / next campaign, for
+  transitions that depend on what changed between campaigns (a channel switch,
+  the same topic again). About 3 s per column on the full projection; compare
+  them with dplyr (`tracker_topic == next_tracker_topic`, `NA` when unknown).
+* `disposition_paths(max_gap_days =)`: with a `pattern`, a match may not span a
+  gap of more than that many days between two consecutive campaigns. `path`,
+  `shape` and the match positions keep counting campaigns.
+* The disposition article gains caveats for sequence questions (right
+  censoring, refusals before 2025, client/topic coverage, the 2026 Sprint
+  relabel, number reuse) and how the step labels reconcile with
+  `disposition_summary()`, plus channel-switch, same-topic and gap-limit
+  examples.
+
 ## Completion forecast
 
 * `completion_model_fit()` fits two campaign-level linear models from the

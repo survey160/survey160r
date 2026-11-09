@@ -416,3 +416,86 @@ test_that("stale spill directories of other sessions are pruned", {
   expect_true(dir.exists(fresh))
   expect_true(dir.exists(other))
 })
+
+test_that("label counts reconcile with disposition_summary(), flag overlaps included", {
+  skip_if_no_sequence()
+  # on top of the fixture: a row flagged both completed and web_complete (0103,
+  # counted twice by the summary), completed + ineligible, and opted_in without engaged
+  rows <- rbind(sequence_records(),
+                .sequence_row("2015550106", 1L, "2026-01-01", engaged = 1L, completed = 1L,
+                              ineligible = 1L),
+                .sequence_row("2015550106", 2L, "2026-02-01", opted_in = 1L))
+  p <- write_sequence_parquet(rows)
+  steps <- collect_sorted(disposition_steps(p, columns = NULL, undeliverable_codes = NULL))
+  summ <- disposition_summary(p)
+  per_phone <- function(x) as.integer(tapply(x, steps$phone, sum)[summ$phone])
+  expect_equal(per_phone(steps$label == "web_complete"), summ$n_web_complete)
+  expect_equal(per_phone(steps$label == "refused"), summ$n_refused)
+  # exact identities on the stored flags; the summary's own n_* differ only where
+  # one row sets two of them
+  rows$phone <- sub("^1", "", rows$phone)
+  flag_count <- function(x) as.integer(tapply(x, rows$phone, sum)[summ$phone])
+  expect_equal(per_phone(steps$label %in% c("completed", "web_complete")),
+               flag_count(rows$completed %in% 1L | rows$web_complete %in% 1L))
+  expect_equal(per_phone(steps$label != "non_response"),
+               flag_count(rows$engaged %in% 1L | rows$opted_in %in% 1L))
+  expect_false(identical(per_phone(steps$label %in% c("completed", "web_complete")),
+                         summ$n_completed + summ$n_web_complete))
+  expect_equal(per_phone(steps$label == "ineligible"), summ$n_ineligible - c(0L, 0L, 0L, 0L, 0L, 1L))
+})
+
+test_that("neighbor_columns carry stored columns to the previous and next campaign", {
+  skip_if_no_sequence()
+  rows <- sequence_records()
+  rows$tracker_topic <- c("Brand", NA, "Brand", "Policy", "Policy", "Brand", "Brand",
+                          "Electoral", "Electoral", NA, NA, "Brand", "Policy")
+  p <- write_sequence_parquet(rows)
+  d <- collect_sorted(disposition_steps(p, neighbor_columns = c("survey_mode", "tracker_topic")))
+  # after the neighbors group, before so_far
+  at <- match("gap_next_days", names(d))
+  expect_equal(names(d)[at + 1:5], c("prev_survey_mode", "next_survey_mode", "prev_tracker_topic",
+                                     "next_tracker_topic", "completes_so_far"))
+  a <- d[d$phone == "2015550101", ]
+  expect_equal(a$prev_tracker_topic, c(NA, "Brand", NA))
+  expect_equal(a$next_tracker_topic, c(NA, "Brand", NA))
+  b <- d[d$phone == "2015550103", ]   # campaign 1 then 2 (same date, id order)
+  expect_equal(b$prev_survey_mode, c(NA, "sms"))
+  expect_equal(b$next_survey_mode, c("t2w", NA))
+  # comparing with dplyr: unknown on either side stays NA
+  same <- collect_sorted(dplyr::mutate(
+    disposition_steps(p, columns = NULL, neighbor_columns = "tracker_topic"),
+    same_topic = tracker_topic == next_tracker_topic))
+  expect_equal(same$same_topic[same$phone == "2015550102"], c(TRUE, FALSE, TRUE, NA))
+  expect_equal(same$same_topic[same$phone == "2015550101"], c(NA, NA, NA))
+  # without the neighbors group they still come, after the label columns
+  d <- collect_sorted(disposition_steps(p, columns = NULL, neighbor_columns = "survey_mode"))
+  expect_equal(names(d)[8:9], c("prev_survey_mode", "next_survey_mode"))
+})
+
+test_that("neighbor_columns are checked", {
+  skip_if_no_sequence()
+  p <- write_sequence_parquet()
+  for (bad in list(1L, NA_character_, c("survey_mode", "survey_mode"))) {
+    expect_error(disposition_steps(p, neighbor_columns = bad), "distinct column names",
+                 class = "s160_error")
+  }
+  expect_error(disposition_steps(p, neighbor_columns = c("survey_mode", "campaign_id")),
+               "cannot include campaign_id", class = "s160_error")
+  expect_error(disposition_steps(p, neighbor_columns = "tracker_topic"),
+               "does not have: tracker_topic", class = "s160_error")
+  rows <- sequence_records()
+  rows$next_survey_mode <- "sms"
+  expect_error(disposition_steps(write_sequence_parquet(rows), neighbor_columns = "survey_mode"),
+               "already has: next_survey_mode", class = "s160_error")
+  # a generated name too: neighbor "date" would repeat next_date
+  rows <- sequence_records()
+  rows$date <- "x"
+  expect_error(disposition_steps(write_sequence_parquet(rows), neighbor_columns = "date"),
+               "already has: next_date", class = "s160_error")
+  # without the neighbors group there is no next_date to collide with
+  d <- collect_sorted(disposition_steps(write_sequence_parquet(rows), columns = "so_far",
+                                        neighbor_columns = "date"))
+  expect_equal(d$next_date[d$phone == "2015550101"], c("x", "x", NA))
+  expect_error(disposition_steps(p, neighbor_columns = "Campaign_ID"), "cannot include Campaign_ID",
+               class = "s160_error")
+})

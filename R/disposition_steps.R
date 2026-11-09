@@ -528,11 +528,57 @@
     days_since("s160_last_undeliverable_date", "days_since_undeliverable"))
 }
 
+# neighbor_columns: stored columns whose previous / next campaign value is
+# wanted (prev_<col>, next_<col>). The identity columns already have their own
+# neighbors (step, gap_*_days, next_date), and a generated name must not shadow
+# a stored column. Returned unchanged, or NULL for none.
+.disposition_check_neighbors <- function(neighbor_columns, cols, groups, fn) {
+  if (is.null(neighbor_columns)) return(NULL)
+  if (!is.character(neighbor_columns) || anyNA(neighbor_columns) || anyDuplicated(neighbor_columns) > 0L) {
+    stop_s160(sprintf("`neighbor_columns` must be NULL or a character vector of distinct column names%s.",
+                      .not_got(neighbor_columns)), fn = fn)
+  }
+  identity <- neighbor_columns[tolower(neighbor_columns) %in% c("phone", "campaign_id", "disposition_date")]
+  if (length(identity) > 0L) {
+    stop_s160(sprintf(paste0("`neighbor_columns` cannot include %s: the history already places ",
+                             "each campaign (step, next_date, gap_prev_days, gap_next_days)."),
+                      paste(identity, collapse = ", ")), fn = fn)
+  }
+  unknown <- setdiff(neighbor_columns, cols)
+  if (length(unknown) > 0L) {
+    stop_s160(sprintf("`neighbor_columns` names column(s) the dataset does not have: %s. It has: %s.",
+                      paste(unknown, collapse = ", "), .preview_values(cols)), fn = fn)
+  }
+  # A generated name must not repeat a stored column, or a prev_/next_ column
+  # the neighbors group adds when requested (neighbor "date" beside next_date).
+  added <- .disposition_neighbor_names(neighbor_columns)
+  taken <- c(cols, if ("neighbors" %in% groups) c("prev_label", "next_label", "next_date"))
+  clash <- added[tolower(added) %in% tolower(taken)]
+  if (length(clash) > 0L) {
+    stop_s160(sprintf(paste0("`neighbor_columns` would add column(s) the result already has: %s. ",
+                             "Rename the stored column(s) in a copy of the file."),
+                      paste(clash, collapse = ", ")), fn = fn)
+  }
+  neighbor_columns
+}
+
+.disposition_neighbor_names <- function(neighbor_columns) {
+  c(rbind(paste0("prev_", neighbor_columns), paste0("next_", neighbor_columns)))
+}
+
+# lag / lead of each neighbor column over the shared window (no extra sort).
+.disposition_neighbor_windows <- function(con, neighbor_columns) {
+  if (length(neighbor_columns) == 0L) return(NULL)
+  q <- function(x) as.character(DBI::dbQuoteIdentifier(con, x))
+  c(rbind(sprintf("lag(%s) OVER w AS %s", q(neighbor_columns), q(paste0("prev_", neighbor_columns))),
+          sprintf("lead(%s) OVER w AS %s", q(neighbor_columns), q(paste0("next_", neighbor_columns)))))
+}
+
 # The output projection: identity, label, history, then the stored columns. A
 # run length is read off the history path -- its trailing run of the current
 # letter -- so it shares the one window sort (a separate (phone, label)
 # partition, the classic gaps-and-islands form, cost ~4x more on prod).
-.disposition_step_select <- function(con, cols, groups, pattern_re) {
+.disposition_step_select <- function(con, cols, groups, pattern_re, neighbor_columns = NULL) {
   q <- function(x) as.character(DBI::dbQuoteIdentifier(con, x))
   stored <- setdiff(cols, c("phone", "campaign_id", "disposition_date"))
   c("phone", "campaign_id", "disposition_date", "step", "n_campaigns",
@@ -545,6 +591,7 @@
         "CAST(disposition_date - s160_prev_date AS INTEGER) AS gap_prev_days",
         "CAST(next_date - disposition_date AS INTEGER) AS gap_next_days")
     },
+    if (length(neighbor_columns) > 0L) q(.disposition_neighbor_names(neighbor_columns)),
     if ("so_far" %in% groups) c("completes_so_far", "non_responses_so_far", "replies_so_far"),
     if ("run_length" %in% groups) {
       "CAST(length(path_so_far) - length(rtrim(path_so_far, s160_code)) AS INTEGER) AS run_length"
@@ -625,6 +672,15 @@
 #' climbs from 0.3\% within a week to 3.4\% past two years, so
 #' \code{days_since_undeliverable} is the one day count worth a rule.
 #'
+#' \strong{Neighbor columns.} \code{neighbor_columns} carries any stored
+#' column across to the previous and next campaign, for transitions that depend
+#' on what changed between them: a switch of \code{survey_mode}, the same
+#' \code{tracker_client} or \code{tracker_topic} again. On prod
+#' \code{tracker_client} / \code{tracker_topic} are empty before 2024 (and
+#' \code{tracker_client} on about a fifth of 2026 rows), \code{tracker_topic}
+#' has four broad values, and \code{carrier} reads Sprint numbers as T-Mobile
+#' from March 2026 -- a Sprint-to-T-Mobile step is a relabel, not a port.
+#'
 #' \strong{Filters.} \code{phones} and \code{sample_frac} keep or drop whole
 #' phones \emph{before} the history is computed. \code{campaign_ids},
 #' \code{date_from} and \code{date_to} drop rows \emph{after} it, so a kept row
@@ -667,6 +723,13 @@
 #'   \code{history_segment}, and the \code{steps_since_*} / \code{days_since_*}
 #'   recency columns; see below). The default is the first four; \code{"history"} is
 #'   opt-in. Each costs a few seconds on the full projection.
+#' @param neighbor_columns Optional character vector of stored columns other
+#'   than \code{phone}, \code{campaign_id} and \code{disposition_date}, e.g.
+#'   \code{c("survey_mode", "tracker_topic")}: adds \code{prev_<col>} and
+#'   \code{next_<col>}, the value on the phone's previous / next campaign
+#'   (\code{NA} at the ends). Compare them with \pkg{dplyr} --
+#'   \code{tracker_topic == next_tracker_topic} is \code{NA} when either side
+#'   is unknown. Each column costs ~3 s on the full projection.
 #' @param pattern Optional sequence pattern (see \code{\link{disposition_paths}}
 #'   for the syntax); adds \code{history_matched}: whether the history up to and
 #'   including this step matches. Use a \code{$} anchor for "history ends with",
@@ -685,7 +748,8 @@
 #'   \code{phone}, \code{campaign_id}, \code{disposition_date}, \code{step},
 #'   \code{n_campaigns}, \code{label}, \code{completion_known} (\code{FALSE} where
 #'   \code{completed} is \code{NA}, i.e. text-to-web external, where a complete is
-#'   never reported), the requested history columns, \code{history_matched} (with
+#'   never reported), the requested history columns (with
+#'   \code{prev_<col>} / \code{next_<col>} after the neighbors group), \code{history_matched} (with
 #'   \code{pattern}), then every other stored column (funnel flags,
 #'   \code{survey_mode}, \code{carrier}, \code{error}, \code{tracker_*}, ...).
 #' @seealso \code{\link{disposition_paths}} (one row per phone),
@@ -715,6 +779,15 @@
 #'   arrange(since) |>
 #'   collect()
 #'
+#' # Reply on the next campaign after a no-reply, by channel switch (2025+)
+#' disposition_steps(dataset, date_from = "2025-01-01", columns = "neighbors",
+#'                   neighbor_columns = "survey_mode") |>
+#'   filter(label == "non_response", !is.na(next_label)) |>
+#'   group_by(survey_mode, next_survey_mode) |>
+#'   summarise(n = n(), reply_next = mean(as.integer(
+#'     !next_label %in% c("non_response", "undeliverable")), na.rm = TRUE)) |>
+#'   collect()
+#'
 #' # Reply rate on the next campaign after k non-responses in a row
 #' steps |>
 #'   filter(label == "non_response", !is.na(next_label)) |>
@@ -730,7 +803,8 @@ disposition_steps <- function(dataset, phones = NULL, sample_frac = NULL,
                               columns = c("neighbors", "so_far", "run_length", "path_so_far"),
                               pattern = NULL,
                               terminal = c("raw", "engaged"),
-                              undeliverable_codes = .DISPOSITION_UNDELIVERABLE_CODES) {
+                              undeliverable_codes = .DISPOSITION_UNDELIVERABLE_CODES,
+                              neighbor_columns = NULL) {
   fn <- "disposition_steps"
   terminal <- match.arg(terminal)
   .disposition_lazy_check(fn)
@@ -747,13 +821,17 @@ disposition_steps <- function(dataset, phones = NULL, sample_frac = NULL,
 
   con <- .disposition_lazy_con()
   source <- .disposition_lazy_source(con, dataset, fn)
+  neighbor_columns <- .disposition_check_neighbors(neighbor_columns, source$cols, columns, fn)
   after <- .disposition_after_filters(con, source, campaign_ids, date_from, date_to, fn)
   base <- .disposition_base_sql(con, source, phones, sample_frac,
                                 .disposition_label_sql(con, source, terminal, codes))
   need_path <- any(c("run_length", "path_so_far", "history") %in% columns) || !is.null(pattern_re)
-  windowed <- paste0("SELECT *, ", paste(.disposition_step_windows(columns, need_path), collapse = ", "),
+  windowed <- paste0("SELECT *, ", paste(c(.disposition_step_windows(columns, need_path),
+                                           .disposition_neighbor_windows(con, neighbor_columns)),
+                                         collapse = ", "),
                      " FROM (", base, ") ", .disposition_sequence_window(source))
-  sql <- paste0("SELECT ", paste(.disposition_step_select(con, source$cols, columns, pattern_re),
+  sql <- paste0("SELECT ", paste(.disposition_step_select(con, source$cols, columns, pattern_re,
+                                                         neighbor_columns),
                                  collapse = ", "),
                 " FROM (", windowed, ")",
                 if (length(after) > 0L) paste(" WHERE", paste(after, collapse = " AND ")))

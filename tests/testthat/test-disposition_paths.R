@@ -108,3 +108,67 @@ test_that("bad patterns say what is wrong and show the syntax", {
   expect_error(disposition_paths(write_sequence_parquet(), "X > Y"),
                "disposition_paths: `pattern` has an unknown label `Y`", class = "s160_error")
 })
+
+test_that("max_gap_days: a match may not span a gap over the limit", {
+  skip_if_no_sequence()
+  # N (Jan) -> N (Feb) -> C (2027): a 400-day gap before the complete
+  rows <- rbind(.sequence_row("2015550101", 1L, "2026-01-01"),
+                .sequence_row("2015550101", 2L, "2026-02-01"),
+                .sequence_row("2015550101", 3L, "2027-03-08", engaged = 1L, completed = 1L),
+                .sequence_row("2015550101", 4L, "2027-04-01"),
+                .sequence_row("2015550101", 5L, "2027-05-01", engaged = 1L, completed = 1L))
+  p <- write_sequence_parquet(rows)
+  d <- collect_sorted(disposition_paths(p, "N > C", max_gap_days = 365))
+  # the path and shape are unchanged; the match is the N -> C after the gap,
+  # positions counted in campaigns
+  expect_equal(c(d$path, d$shape), c("NNCNC", "N+C+N+C+"))
+  expect_equal(c(d$match_start, d$match_end), c(4L, 5L))
+  expect_equal(c(d$match_start_date, d$match_end_date), as.Date(c("2027-04-01", "2027-05-01")))
+  # a limit the gap fits under finds the first match, as without a limit
+  d <- collect_sorted(disposition_paths(p, "N > C", max_gap_days = 400))
+  expect_equal(c(d$match_start, d$match_end), c(1L, 3L))
+  expect_equal(d[c("matched", "match_start", "match_end")],
+               collect_sorted(disposition_paths(p, "N > C"))[c("matched", "match_start", "match_end")])
+  # `>>`, repeats and `*` cannot cross the break either
+  m <- function(pattern, gap = 365) collect_sorted(disposition_paths(p, pattern, max_gap_days = gap))$matched
+  expect_false(m("^N{2} >> C"))
+  expect_true(m("^N{2} >> C", gap = 1000))
+  expect_false(m("^N > * > C"))
+  expect_false(m("^*{3}"))
+  expect_true(m("C$"))
+  # only the first campaign of the match: N C 400 days later never matches
+  d <- collect_sorted(disposition_paths(write_sequence_parquet(rows[c(1, 3), ]), "N > C",
+                                        max_gap_days = 365))
+  expect_equal(c(d$matched, is.na(d$match_start)), c(FALSE, TRUE))
+})
+
+test_that("max_gap_days: a missing date never breaks the sequence", {
+  skip_if_no_sequence()
+  # 0104: missing date (sorts first) then engaged
+  d <- collect_sorted(disposition_paths(write_sequence_parquet(), "N >> E", phones = "2015550104",
+                                        max_gap_days = 1))
+  expect_equal(c(d$path, d$matched), c("NE", "TRUE"))
+})
+
+test_that("max_gap_days is checked and needs a pattern", {
+  skip_if_no_sequence()
+  p <- write_sequence_parquet()
+  expect_error(disposition_paths(p, max_gap_days = 365), "needs a `pattern`", class = "s160_error")
+  for (bad in list(0, -1, NA_real_, Inf, c(1, 2), "365")) {
+    expect_error(disposition_paths(p, "N > C", max_gap_days = bad), "single positive number",
+                 class = "s160_error")
+  }
+  expect_identical(.disposition_pattern_compile("* > N", "f", breaks = TRUE), "[^-][^-]*?[N]")
+  # a fractional limit is the whole-day limit below it, under any number format
+  rows <- rbind(.sequence_row("2015550101", 1L, "2026-01-01"),
+                .sequence_row("2015550101", 2L, "2026-01-11", engaged = 1L, completed = 1L))
+  q <- write_sequence_parquet(rows)
+  withr::local_options(OutDec = ",", digits = 2)
+  m <- function(gap) collect_sorted(disposition_paths(q, "N >> C", max_gap_days = gap))$matched
+  expect_equal(c(m(9.9), m(10), m(10.5)), c(FALSE, TRUE, TRUE))
+})
+
+test_that("the gap-limit lambda follows the installed DuckDB's syntax", {
+  expect_identical(.disposition_lambda("i", "i + 1", package_version("1.2.2")), "i -> i + 1")
+  expect_identical(.disposition_lambda("i", "i + 1", package_version("2.0.0")), "lambda i: i + 1")
+})
