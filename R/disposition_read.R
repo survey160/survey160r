@@ -1423,13 +1423,13 @@ disposition_screen <- function(sample, dataset, phone_col = "phone",
 #'   pass, so refresh to pick up a newer one).
 #' @param progress Show a download progress bar. Defaults to
 #'   \code{interactive()}: a live bar in an interactive session, silent in batch
-#'   or scheduled runs. The projection is a few hundred MB, so an interactive
+#'   or scheduled runs. The projection is nearly 1 GB, so an interactive
 #'   pull otherwise looks stalled while it transfers.
 #' @return The local path to the downloaded Parquet (a single string), ready for
 #'   \code{\link{disposition_screen}}, \code{\link{disposition_summary}},
 #'   \code{\link{disposition_records}}, \code{\link{disposition_funnel}},
 #'   \code{\link{disposition_steps}} and \code{\link{disposition_paths}}. The
-#'   first pull transfers a few hundred MB (a minute or two on an office
+#'   first pull transfers nearly 1 GB (a minute or two on an office
 #'   connection); a later call with \code{refresh = FALSE} and the same
 #'   \code{dest} reuses that copy and returns at once.
 #' @seealso \code{\link{disposition_summary}}, \code{\link{disposition_screen}},

@@ -17,7 +17,7 @@
 #
 # Ordering and labels are shared by the two readers:
 #   * A phone's campaigns are ordered by disposition_date (its last-send date in
-#     that campaign), then campaign_id; a missing date sorts last.
+#     that campaign), then campaign_id; a missing date sorts first (the oldest).
 #   * Each (phone, campaign) gets ONE label, the furthest step reached, by the
 #     same precedence as the summary's latest/best disposition
 #     (.disposition_derive_category), plus `undeliverable`: no reply and a
@@ -754,7 +754,8 @@
 #'   \code{survey_mode}, \code{carrier}, \code{error}, \code{tracker_*}, ...).
 #' @seealso \code{\link{disposition_paths}} (one row per phone),
 #'   \code{\link{disposition_summary}} (per-phone counts),
-#'   \code{\link{disposition_records}} (the stored rows)
+#'   \code{\link{disposition_records}} (the stored rows),
+#'   \code{vignette("disposition-paths")} (worked examples)
 #' @examples
 #' \dontrun{
 #' library(dplyr)
@@ -766,16 +767,16 @@
 #'   filter(completion_known) |>
 #'   group_by(history_segment) |>
 #'   summarise(sends = n(), completion = mean(as.integer(
-#'     label %in% c("completed", "web_complete")))) |>
+#'     label %in% c("completed", "web_complete")), na.rm = TRUE)) |>
 #'   arrange(desc(completion)) |>
 #'   collect()
 #'
 #' # Completion by how many campaigns ago the number last completed
 #' disposition_steps(dataset, date_from = "2026-01-01", columns = "history") |>
 #'   filter(completion_known, !is.na(steps_since_complete)) |>
-#'   group_by(since = pmin(steps_since_complete, 5L)) |>
+#'   group_by(since = pmin(steps_since_complete, 5L, na.rm = TRUE)) |>
 #'   summarise(sends = n(), completion = mean(as.integer(
-#'     label %in% c("completed", "web_complete")))) |>
+#'     label %in% c("completed", "web_complete")), na.rm = TRUE)) |>
 #'   arrange(since) |>
 #'   collect()
 #'
@@ -791,7 +792,7 @@
 #' # Reply rate on the next campaign after k non-responses in a row
 #' steps |>
 #'   filter(label == "non_response", !is.na(next_label)) |>
-#'   group_by(run = pmin(run_length, 5L)) |>
+#'   group_by(run = pmin(run_length, 5L, na.rm = TRUE)) |>
 #'   summarise(n = n(), reply_next = mean(as.integer(
 #'     !next_label %in% c("non_response", "undeliverable")), na.rm = TRUE)) |>
 #'   arrange(run) |>

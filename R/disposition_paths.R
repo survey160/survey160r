@@ -172,7 +172,8 @@
 #'   never reported -- text-to-web external -- so a \code{completed} step there
 #'   cannot match), and with \code{pattern} the match columns.
 #' @seealso \code{\link{disposition_steps}} (per-campaign history),
-#'   \code{\link{disposition_screen}} (screen a sample on counts)
+#'   \code{\link{disposition_screen}} (screen a sample on counts),
+#'   \code{vignette("disposition-paths")} (worked examples)
 #' @examples
 #' \dontrun{
 #' library(dplyr)

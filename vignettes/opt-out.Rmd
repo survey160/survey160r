@@ -8,7 +8,8 @@ vignette: >
 ---
 
 ```{r setup, include = FALSE}
-# Auth/network chunks are shown but not run at build time.
+# Auth/network chunks are shown but not run at build time; the chunk on a small
+# temp-file list below runs, so its output is real.
 knitr::opts_chunk$set(collapse = TRUE, comment = "#>", eval = FALSE)
 ```
 
@@ -28,7 +29,21 @@ cleaned <- opt_out_screen(my_sample, optout)
 kept <- subset(cleaned, !(opted_out %in% TRUE))
 ```
 
-`opt_out_screen()` returns `my_sample` unchanged with two columns appended 1:1 (see [What you get back](#what-you-get-back)). The `%in% TRUE` filter drops the opted-out numbers; a blank or unparseable phone screens to `NA` and is kept, so it surfaces for correction rather than being silently treated as contactable.
+`opt_out_screen()` returns `my_sample` unchanged with two columns appended 1:1 (see [What you get back](#what-you-get-back)). The `%in% TRUE` filter drops the opted-out numbers; a blank or unparseable phone screens to `NA` and is kept, so it surfaces for correction rather than being silently treated as contactable. Against a one-number list written to a temp file, standing in for the pull, this runs:
+
+```{r screen_list, eval = TRUE}
+library(survey160r)
+optout <- tempfile(fileext = ".parquet")
+nanoparquet::write_parquet(
+  data.frame(phone = "5559876543", date_added = as.Date("2026-02-01")),
+  optout
+)
+my_sample <- data.frame(phone = c("5551234567", "5559876543", ""),
+                        stratum = c("A", "B", "A"))
+cleaned <- opt_out_screen(my_sample, optout)
+cleaned
+subset(cleaned, !(opted_out %in% TRUE))
+```
 
 ## Screen for opt-out and prior contact together
 
@@ -66,4 +81,4 @@ Your original phone column and every other column of the sample are returned unt
 
 ## See also
 
-`?opt_out_screen`, `?opt_out_pull`, and `?survey160r` for every function by task. To screen the same sample on prior contact history, `vignette("disposition")`. For latency reports, `vignette("latency")`; for the fleet funnel by registration or brand, `vignette("campaign-metrics")`.
+`?opt_out_screen`, `?opt_out_pull`, and `?survey160r` for every function by task. To screen the same sample on prior contact history, `vignette("disposition")`; to flag it by its sequence of outcomes, `vignette("disposition-paths")`. For latency reports, `vignette("latency")`; for the fleet funnel by registration or brand, `vignette("campaign-metrics")`; for delivery error rates by carrier, `vignette("delivery-errors")`.

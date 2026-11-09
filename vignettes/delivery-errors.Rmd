@@ -140,4 +140,4 @@ A rate with no sends is `NA`. `live_metrics_records()` returns the cells -- `et_
 
 ## See also
 
-`?live_metrics_pull`, `?live_metrics_records`, `?live_metrics_error_rates`, and `?survey160r` for every function by task. For the campaign funnel across the fleet by registration or brand, `vignette("campaign-metrics")`. For the funnel per recipient by carrier, and to screen a sample, `vignette("disposition")`.
+`?live_metrics_pull`, `?live_metrics_records`, `?live_metrics_error_rates`, and `?survey160r` for every function by task. For the campaign funnel across the fleet by registration or brand, `vignette("campaign-metrics")`. For the funnel per recipient by carrier, and to screen a sample, `vignette("disposition")` and `vignette("opt-out")`. For per-campaign latency reports, `vignette("latency")`.

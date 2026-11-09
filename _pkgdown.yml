@@ -51,13 +51,15 @@ reference:
 - title: Disposition screening
   desc: >
     Screen a phone sample against the disposition dataset -- which numbers have
-    been contacted / completed / refused before -- and build that dataset from a
-    raw campaign CSV.
+    been contacted / completed / refused before -- roll it up to funnel rates,
+    follow each number's campaigns in order, forecast a planned survey's rates,
+    and build the dataset from a raw campaign CSV.
   contents:
   - disposition_pull
   - disposition_screen
   - disposition_summary
   - disposition_records
+  - disposition_funnel
   - disposition_steps
   - disposition_paths
   - completion_model_fit
@@ -96,8 +98,9 @@ articles:
 - title: Guides
   navbar: ~
   contents:
-  - latency
   - disposition
+  - disposition-paths
   - opt-out
   - campaign-metrics
   - delivery-errors
+  - latency
