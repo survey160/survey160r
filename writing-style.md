@@ -30,7 +30,7 @@ Every article follows the same skeleton, so knowing one means knowing them all:
 3. **## \<Secondary task\>** (one or more) -- common variations.
 4. **## What you get back** -- the result shape; a compact, task-relevant column table.
 5. **## Notes** -- gotchas, beta limits, performance.
-6. **## See also** -- `?function` links and the sibling article.
+6. **## See also** -- `?function` links, then every related article as `vignette("name")`.
 
 ## Voice and terminology
 
@@ -41,13 +41,13 @@ Every article follows the same skeleton, so knowing one means knowing them all:
 ## Code in articles
 
 - **Terse comments, not narration.** A trailing `# one browser sign-in, cached` beats a sentence.
-- **Runnable vs illustrative.** Chunks needing auth or network are `eval = FALSE` (shown, not run). Prefer a runnable chunk where the inputs allow -- a pure operation on a small in-memory frame (e.g. `disposition_summary()` on a data frame) -- so at least some shown output is real. Some articles legitimately have none (latency's inputs are a real campaign CSV). Never present fabricated output as if it ran.
+- **Runnable vs illustrative.** Chunks needing auth or network are `eval = FALSE` (shown, not run). Prefer a runnable chunk where the inputs allow -- a pure operation on a small in-memory frame (e.g. `disposition_summary()` on a data frame) -- so at least some shown output is real. Latency legitimately has none (its inputs are a real campaign CSV). A reader that needs a Parquet path (the opt-out list, the sequence readers) runs on a tiny frame written to `tempfile(fileext = ".parquet")`, as in the `?fn` examples below. Never present fabricated output as if it ran.
 - **NA-safe idioms.** Filter with `!((n_completed > 0 | n_web_complete > 0) %in% TRUE)`, never `!(n_completed > 0 | n_web_complete > 0)` -- the latter silently drops all-`NA` blank-phone rows.
 - Canonical example values: campaign id `1234`; fictional phone numbers only (`555` / `999` ranges), never real PII.
 
 ## README
 
-The README is the landing page on GitHub and the package site. It opens with the area list, then **"Which function do I need?"**: a task -> call -> guide table, one row per thing a Survey Manager comes to do, in the words they would use ("drop numbers that opted out"), not the function's words. Each area then gets a section with one copy-and-go block and a link to its article; keep the sections parallel (every area has one, in the order of the table). Troubleshooting is a symptom -> cause -> fix table; add a row whenever a support question repeats.
+The README is the landing page on GitHub and the package site. It opens with the area list (followed by a one-line "New here?" pointer), then **"Which function do I need?"**: a task -> call -> guide table, one row per thing a Survey Manager comes to do, in the words they would use ("drop numbers that opted out"), not the function's words. Each area then gets a section with one copy-and-go block and a link to its article; keep the sections parallel (every area has one, in the order of the table). Troubleshooting is a symptom -> cause -> fix table; add a row whenever a support question repeats.
 
 ## Examples in `?fn`
 
@@ -62,4 +62,4 @@ Exhaustive argument and column detail belongs in the function help, not the arti
 - Sentence-case headings, no trailing period.
 - `--` for a parenthetical aside (renders as an en-dash); never the em-dash character.
 - Put wide example output in a plain fenced block, not an R chunk, so lintr's line-length rule does not trip.
-- Cross-link functions as `disposition_screen()` (pkgdown auto-links) and articles as `vignette("disposition")`.
+- Cross-link functions as `disposition_screen()` (pkgdown auto-links) and articles as `vignette("disposition")`. The README links articles by path (`vignettes/disposition.Rmd`), with the `vignette()` call in parentheses for readers in R.

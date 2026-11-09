@@ -1,5 +1,27 @@
 # survey160r (development version)
 
+## Disposition paths article
+
+* New article, `vignette("disposition-paths")`: read each number's path, match
+  a sequence pattern, flag a sample by its history, measure what happens after
+  a step, compare consecutive campaigns, limit the gap between them, and the
+  caveats of the production data. Its examples run on a small temp-file
+  dataset, so their output is real. The sequence section of
+  `vignette("disposition")` now points to it.
+* The README gains a "Disposition paths" section, and its area list, task
+  table, sections and Documentation list share one order: disposition,
+  disposition paths, opt-out, campaign metrics, delivery errors, latency, raw
+  data access. The package site's article menu follows it.
+* `disposition_funnel()` is listed in the package site's reference index.
+* `?survey160r` names disposition paths and delivery error rates, renames
+  "Campaign exports" to "Raw data access", and says how `live_metrics_pull()`
+  caches.
+* `?disposition_pull` gives the download as nearly 1 GB, not a few hundred MB.
+* `vignette("opt-out")` gains a runnable screen against a temp-file list, and
+  every article's See also links each related article.
+* The `disposition_steps()` examples pass `na.rm = TRUE` to `mean()` and
+  `pmin()`, so they no longer warn.
+
 ## Sequence readers: neighbor columns and a gap limit
 
 * `disposition_steps(neighbor_columns =)` adds `prev_<col>` / `next_<col>` for
