@@ -532,7 +532,7 @@
 # wanted (prev_<col>, next_<col>). The identity columns already have their own
 # neighbors (step, gap_*_days, next_date), and a generated name must not shadow
 # a stored column. Returned unchanged, or NULL for none.
-.disposition_check_neighbors <- function(neighbor_columns, cols, fn) {
+.disposition_check_neighbors <- function(neighbor_columns, cols, groups, fn) {
   if (is.null(neighbor_columns)) return(NULL)
   if (!is.character(neighbor_columns) || anyNA(neighbor_columns) || anyDuplicated(neighbor_columns) > 0L) {
     stop_s160(sprintf("`neighbor_columns` must be NULL or a character vector of distinct column names%s.",
@@ -549,10 +549,11 @@
     stop_s160(sprintf("`neighbor_columns` names column(s) the dataset does not have: %s. It has: %s.",
                       paste(unknown, collapse = ", "), .preview_values(cols)), fn = fn)
   }
-  # A generated name must not repeat a stored column or another generated one
-  # (neighbor "date" would add a second next_date beside the neighbors group's).
+  # A generated name must not repeat a stored column, or a prev_/next_ column
+  # the neighbors group adds when requested (neighbor "date" beside next_date).
   added <- .disposition_neighbor_names(neighbor_columns)
-  clash <- added[tolower(added) %in% tolower(c(cols, .DISPOSITION_SEQUENCE_GENERATED))]
+  taken <- c(cols, if ("neighbors" %in% groups) c("prev_label", "next_label", "next_date"))
+  clash <- added[tolower(added) %in% tolower(taken)]
   if (length(clash) > 0L) {
     stop_s160(sprintf(paste0("`neighbor_columns` would add column(s) the result already has: %s. ",
                              "Rename the stored column(s) in a copy of the file."),
@@ -722,7 +723,8 @@
 #'   \code{history_segment}, and the \code{steps_since_*} / \code{days_since_*}
 #'   recency columns; see below). The default is the first four; \code{"history"} is
 #'   opt-in. Each costs a few seconds on the full projection.
-#' @param neighbor_columns Optional character vector of stored columns, e.g.
+#' @param neighbor_columns Optional character vector of stored columns other
+#'   than \code{phone}, \code{campaign_id} and \code{disposition_date}, e.g.
 #'   \code{c("survey_mode", "tracker_topic")}: adds \code{prev_<col>} and
 #'   \code{next_<col>}, the value on the phone's previous / next campaign
 #'   (\code{NA} at the ends). Compare them with \pkg{dplyr} --
@@ -819,7 +821,7 @@ disposition_steps <- function(dataset, phones = NULL, sample_frac = NULL,
 
   con <- .disposition_lazy_con()
   source <- .disposition_lazy_source(con, dataset, fn)
-  neighbor_columns <- .disposition_check_neighbors(neighbor_columns, source$cols, fn)
+  neighbor_columns <- .disposition_check_neighbors(neighbor_columns, source$cols, columns, fn)
   after <- .disposition_after_filters(con, source, campaign_ids, date_from, date_to, fn)
   base <- .disposition_base_sql(con, source, phones, sample_frac,
                                 .disposition_label_sql(con, source, terminal, codes))

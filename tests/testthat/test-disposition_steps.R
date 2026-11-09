@@ -492,6 +492,10 @@ test_that("neighbor_columns are checked", {
   rows$date <- "x"
   expect_error(disposition_steps(write_sequence_parquet(rows), neighbor_columns = "date"),
                "already has: next_date", class = "s160_error")
+  # without the neighbors group there is no next_date to collide with
+  d <- collect_sorted(disposition_steps(write_sequence_parquet(rows), columns = "so_far",
+                                        neighbor_columns = "date"))
+  expect_equal(d$next_date[d$phone == "2015550101"], c("x", "x", NA))
   expect_error(disposition_steps(p, neighbor_columns = "Campaign_ID"), "cannot include Campaign_ID",
                class = "s160_error")
 })

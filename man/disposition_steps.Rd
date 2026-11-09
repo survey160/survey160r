@@ -67,7 +67,8 @@ August 2026 rather than respondent behaviour.}
 carrier rejections (4700, 4701, 4702, 4720, 4750, 4753); \code{NULL} labels
 every no-reply row \code{non_response}, as the summary does.}
 
-\item{neighbor_columns}{Optional character vector of stored columns, e.g.
+\item{neighbor_columns}{Optional character vector of stored columns other
+than \code{phone}, \code{campaign_id} and \code{disposition_date}, e.g.
 \code{c("survey_mode", "tracker_topic")}: adds \code{prev_<col>} and
 \code{next_<col>}, the value on the phone's previous / next campaign
 (\code{NA} at the ends). Compare them with \pkg{dplyr} --
