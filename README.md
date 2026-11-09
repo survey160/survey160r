@@ -5,12 +5,13 @@
 
 R package for accessing Survey160 campaign data, across these areas:
 
-- **[Raw data access](#raw-data-access)** -- read campaign results from Google Cloud Storage (`s160_gcs_*`) and trigger fresh exports via the API (`s160_api_*`).
-- **[Latency analysis](vignettes/latency.Rmd)** -- compute a per-campaign recipient-latency report from a raw campaign CSV, as an in-memory R object.
-- **[Disposition screening](vignettes/disposition.Rmd)** -- screen a phone sample against every recipient Survey160 has contacted, dropping numbers already completed, refused, or screened out before you field; roll the same dataset up to funnel rates by carrier or mode, or follow each number's campaigns in order.
+- **[Disposition screening](vignettes/disposition.Rmd)** -- screen a phone sample against every recipient Survey160 has contacted, dropping numbers already completed, refused, or screened out before you field; roll the same dataset up to funnel rates by carrier or mode.
+- **[Disposition paths](vignettes/disposition-paths.Rmd)** -- follow each number's campaigns in order and match sequences (no reply, then engaged, then completed), or measure what happens after a given step.
 - **[Opt-out screening](vignettes/opt-out.Rmd)** -- screen a phone sample against the opt-out list, flagging numbers that have opted out before you field.
 - **[Campaign metrics](vignettes/campaign-metrics.Rmd)** -- download the consolidated per-campaign metrics + recipient-latency projection (`campaign_all.parquet`) with `campaign_metrics_pull()`, read it into analysis-ready cells with `campaign_metrics_records()`, and roll those up to funnel counts and rates by any project dimension with `campaign_metrics_summary()`.
 - **[Delivery error rates](vignettes/delivery-errors.Rmd)** -- download the hour-by-hour, fleet-wide live delivery counts (one file per ET day) with `live_metrics_pull()` and roll them up with `live_metrics_error_rates()` to daily and cumulative delivery error rates by carrier, brand, or campaign, with T-Mobile 4780 split out.
+- **[Latency analysis](vignettes/latency.Rmd)** -- compute a per-campaign recipient-latency report from a raw campaign CSV, as an in-memory R object.
+- **[Raw data access](#raw-data-access)** -- read campaign results from Google Cloud Storage (`s160_gcs_*`) and trigger fresh exports via the API (`s160_api_*`).
 
 **New here?** Find your task in [Which function do I need?](#which-function-do-i-need) below; to screen a sample before fielding, jump to [Disposition screening](#disposition-screening). First time on this machine, start with [First-time setup](#first-time-setup) -- you need a credential and a bucket grant before any data call works.
 
@@ -20,15 +21,15 @@ R package for accessing Survey160 campaign data, across these areas:
 |---|---|---|
 | Drop numbers that already completed, refused, or screened out before I field | `disposition_pull()` then `disposition_screen(my_sample, dataset)`, then `subset()` on the appended `n_*` counts | [Disposition screening](#disposition-screening) |
 | Skip numbers that never answered three or more campaigns, and send past completers first | `disposition_screen(my_sample, dataset, columns = "history")`, then `subset()` on `history_segment` and `days_since_undeliverable` | [Disposition screening](#disposition-screening) |
-| Drop numbers that opted out | `opt_out_pull()` then `opt_out_screen(my_sample, optout)`, then `subset()` on the appended `opted_out` | [Opt-out screening](#opt-out-screening) |
 | Look up a few numbers' contact history | `disposition_summary(dataset, phones = )` (one row per phone) / `disposition_records(dataset, phones = )` (one row per campaign) | [Disposition screening](#disposition-screening) |
 | Funnel rates by carrier, mode, topic, or campaign | `disposition_funnel(dataset, by = "carrier")` | [Disposition screening](#disposition-screening) |
-| Follow what each number did campaign after campaign | `disposition_paths()` (one path per phone) / `disposition_steps()` (one row per campaign) | `vignette("disposition")` |
+| Follow what each number did campaign after campaign | `disposition_paths()` (one path per phone) / `disposition_steps()` (one row per campaign) | [Disposition paths](#disposition-paths) |
 | Forecast a planned survey's opt-in and completion rates from its sample and design, or the sends a target number of completes needs | `completion_model_fit()` (fit from the projection) / `completion_forecast()` (score one survey, with or without a list) / `completion_sample_size()` (sends for a target) | `?completion_forecast` |
+| Drop numbers that opted out | `opt_out_pull()` then `opt_out_screen(my_sample, optout)`, then `subset()` on the appended `opted_out` | [Opt-out screening](#opt-out-screening) |
 | Funnel rates across the fleet by registration, brand, client, or mode | `campaign_metrics_pull()` then `campaign_metrics_summary(path, by = )` | [Campaign metrics](#campaign-metrics) |
 | Delivery error rates by carrier and day, daily and cumulative, across every ongoing campaign | `live_metrics_pull()` then `live_metrics_error_rates(paths)` | [Delivery error rates](#delivery-error-rates) |
 | See how fast each message followed the last one in a campaign | `latency_run(campaign_id, data)` | [Latency analysis](#latency-analysis) |
-| How many recipients reached each question | `question_funnel(data, c("intro", "q1", "close"))` | `vignette("latency")` |
+| How many recipients reached each question | `question_funnel(data, c("intro", "q1", "close"))` | [Latency analysis](#latency-analysis) |
 | Read a campaign's last export | `s160_gcs_campaign_results_read(campaign_id)` | [Raw data access](#raw-data-access) |
 | Get an export fresher than the last one on GCS | `s160_api_auth()` then `s160_api_campaign_results(campaign_id)` | [Raw data access](#raw-data-access) |
 
@@ -73,6 +74,93 @@ disposition_summary(records, phones = c("5551234567", "5550000000"))
 ```
 
 Everything else -- reading GCS, pulling the disposition dataset, the API -- needs the [access below](#first-time-setup).
+
+## Disposition screening
+
+Screen a phone sample against every recipient Survey160 has contacted, dropping numbers already completed, refused, or screened out before you field. Pull the shared dataset once, then screen in place:
+
+```r
+library(survey160r)
+s160_gcs_init()   # one-time browser sign-in (cached)
+
+my_sample <- data.frame(phone = c("2015550101", "2015550102"))  # your list; extra columns are kept
+dataset   <- disposition_pull()                     # nearly 1 GB the first time, then cached
+cleaned   <- disposition_screen(my_sample, dataset) # screening columns appended 1:1
+# drop already-completed (SMS or web) and every hard stop; blank-phone rows come
+# back all-NA and are kept
+subset(cleaned, !((n_completed > 0 | n_web_complete > 0) %in% TRUE |
+                    (n_terminated > 0 | n_refused > 0 | n_ineligible > 0) %in% TRUE))
+```
+
+Full walkthrough -- the appended columns, ad-hoc queries, the `refused` / `ineligible` split, and the read-once tip -- in the **[disposition guide](vignettes/disposition.Rmd)** (`vignette("disposition")` once installed).
+
+## Disposition paths
+
+Follow each number's campaigns in order, from the same dataset. `disposition_paths()` spells each phone's campaigns as letters (`"NNEC"`: two non-responses, engaged, completed) and matches sequence patterns; `disposition_steps()` gives one row per campaign with the history up to it, to measure what happens after a given step:
+
+```r
+library(survey160r)
+library(dplyr)
+s160_gcs_init()   # one-time browser sign-in (cached)
+
+dataset <- disposition_pull()
+
+# Numbers that did not answer, later engaged, then completed
+disposition_paths(dataset, "N > E|O > C|W") |> filter(matched) |> count() |> collect()
+```
+
+Both need `duckdb`, `DBI` and `dbplyr` (see [Installation](#installation)) and return a lazy table: aggregate with `dplyr` verbs, then `collect()`. Full walkthrough -- the pattern syntax, flagging a sample by its history, comparing consecutive campaigns, the gap limit, and the caveats of the production data -- in the **[disposition-paths guide](vignettes/disposition-paths.Rmd)** (`vignette("disposition-paths")` once installed).
+
+## Opt-out screening
+
+Screen a phone sample against the opt-out list, flagging numbers that have opted out before you field. Pull the shared list once, then screen in place:
+
+```r
+library(survey160r)
+s160_gcs_init()   # one-time browser sign-in (cached)
+
+my_sample <- data.frame(phone = c("2015550101", "2015550102"))  # your list; extra columns are kept
+optout    <- opt_out_pull()                       # small download, then cached
+cleaned   <- opt_out_screen(my_sample, optout)    # opted_out + opt_out_date appended 1:1
+# drop opted-out numbers; blank-phone rows screen to NA and are kept
+subset(cleaned, !(opted_out %in% TRUE))
+```
+
+The opt-out list lives in the same `s160_disposition_prod` bucket as the disposition dataset, so the same access covers both, and the two screens chain (annotate for opt-out and prior contact, then filter once). Full walkthrough in the **[opt-out guide](vignettes/opt-out.Rmd)** (`vignette("opt-out")` once installed).
+
+## Campaign metrics
+
+Measure the funnel -- sent, engaged, opted in, completed -- across the whole fleet, by registration, brand, client, fielding location, or mode. Pull the consolidated projection once, then roll it up:
+
+```r
+library(survey160r)
+s160_gcs_init()   # one-time browser sign-in (cached)
+
+path <- campaign_metrics_pull()                        # cached after the first download
+campaign_metrics_summary(path, by = "registration_id")
+campaign_metrics_summary(path, by = c("brand", "mode"), percent = TRUE)
+```
+
+The projection holds counts, not phone numbers, so there is no screen here. To scope a rollup (a date window, a set of campaigns), read the cells with `campaign_metrics_records()`, filter, and pass the frame to `campaign_metrics_summary()`; never sum the raw Parquet yourself, it repeats each count across latency rows. Full walkthrough in the **[campaign-metrics guide](vignettes/campaign-metrics.Rmd)** (`vignette("campaign-metrics")` once installed).
+
+## Delivery error rates
+
+Follow delivery error rates by carrier, day by day and cumulatively, across every ongoing campaign. Pull a range of ET days, then roll them up:
+
+```r
+library(survey160r)
+s160_gcs_init()   # one-time browser sign-in (cached)
+
+paths <- live_metrics_pull(date_from = "2026-10-01")   # one file per ET day; finished days cached
+rates <- live_metrics_error_rates(paths)               # by carrier and day, 4780 split out
+subset(rates, carrier == "T-Mobile")
+```
+
+Counts are per recipient, once per campaign: each is counted on the day of their first send, under their latest delivery code as of the day's last rewrite, so a rejection a retry delivered by then no longer counts. Full walkthrough -- fleet-wide and per-brand rollups, daily vs cumulative, plotting -- in the **[delivery-errors guide](vignettes/delivery-errors.Rmd)** (`vignette("delivery-errors")` once installed).
+
+## Latency analysis
+
+Compute a per-campaign recipient-latency report from a raw campaign CSV, returned as an in-memory R object -- `latency_run()` (the one-campaign runner) or the pure `latency_report()`. Reduce the report to the funnel counts with `latency_funnel()`, or get the per-question reached funnel straight from the export with `question_funnel()`. Full walkthrough -- inputs, result schema, config, validation, and the funnel views -- in the **[latency guide](vignettes/latency.Rmd)** (`vignette("latency")` once installed).
 
 ## Raw data access
 
@@ -123,76 +211,6 @@ df_stg  <- s160_api_campaign_results(campaign_id, conn = stg)
 
 A conn-less call uses the most recent `s160_api_auth()`.
 
-## Latency analysis
-
-Compute a per-campaign recipient-latency report from a raw campaign CSV, returned as an in-memory R object -- `latency_run()` (the one-campaign runner) or the pure `latency_report()`. Reduce the report to the funnel counts with `latency_funnel()`, or get the per-question reached funnel straight from the export with `question_funnel()`. Full walkthrough -- inputs, result schema, config, validation, and the funnel views -- in the **[latency guide](vignettes/latency.Rmd)** (`vignette("latency")` once installed).
-
-## Disposition screening
-
-Screen a phone sample against every recipient Survey160 has contacted, dropping numbers already completed, refused, or screened out before you field. Pull the shared dataset once, then screen in place:
-
-```r
-library(survey160r)
-s160_gcs_init()   # one-time browser sign-in (cached)
-
-my_sample <- data.frame(phone = c("2015550101", "2015550102"))  # your list; extra columns are kept
-dataset   <- disposition_pull()                     # downloads a few hundred MB the first time, then cached
-cleaned   <- disposition_screen(my_sample, dataset) # screening columns appended 1:1
-# drop already-completed (SMS or web) and every hard stop; blank-phone rows come
-# back all-NA and are kept
-subset(cleaned, !((n_completed > 0 | n_web_complete > 0) %in% TRUE |
-                    (n_terminated > 0 | n_refused > 0 | n_ineligible > 0) %in% TRUE))
-```
-
-Full walkthrough -- the appended columns, ad-hoc queries, the `refused` / `ineligible` split, and the read-once tip -- in the **[disposition guide](vignettes/disposition.Rmd)** (`vignette("disposition")` once installed).
-
-## Opt-out screening
-
-Screen a phone sample against the opt-out list, flagging numbers that have opted out before you field. Pull the shared list once, then screen in place:
-
-```r
-library(survey160r)
-s160_gcs_init()   # one-time browser sign-in (cached)
-
-my_sample <- data.frame(phone = c("2015550101", "2015550102"))  # your list; extra columns are kept
-optout    <- opt_out_pull()                       # small download, then cached
-cleaned   <- opt_out_screen(my_sample, optout)    # opted_out + opt_out_date appended 1:1
-# drop opted-out numbers; blank-phone rows screen to NA and are kept
-subset(cleaned, !(opted_out %in% TRUE))
-```
-
-The opt-out list lives in the same `s160_disposition_prod` bucket as the disposition dataset, so the same access covers both, and the two screens chain (annotate for opt-out and prior contact, then filter once). Full walkthrough in the **[opt-out guide](vignettes/opt-out.Rmd)** (`vignette("opt-out")` once installed).
-
-## Campaign metrics
-
-Measure the funnel -- sent, engaged, opted in, completed -- across the whole fleet, by registration, brand, client, fielding location, or mode. Pull the consolidated projection once, then roll it up:
-
-```r
-library(survey160r)
-s160_gcs_init()   # one-time browser sign-in (cached)
-
-path <- campaign_metrics_pull()                        # cached after the first download
-campaign_metrics_summary(path, by = "registration_id")
-campaign_metrics_summary(path, by = c("brand", "mode"), percent = TRUE)
-```
-
-The projection holds counts, not phone numbers, so there is no screen here. To scope a rollup (a date window, a set of campaigns), read the cells with `campaign_metrics_records()`, filter, and pass the frame to `campaign_metrics_summary()`; never sum the raw Parquet yourself, it repeats each count across latency rows. Full walkthrough in the **[campaign-metrics guide](vignettes/campaign-metrics.Rmd)** (`vignette("campaign-metrics")` once installed).
-
-## Delivery error rates
-
-Follow delivery error rates by carrier, day by day and cumulatively, across every ongoing campaign. Pull a range of ET days, then roll them up:
-
-```r
-library(survey160r)
-s160_gcs_init()   # one-time browser sign-in (cached)
-
-paths <- live_metrics_pull(date_from = "2026-10-01")   # one file per ET day; finished days cached
-rates <- live_metrics_error_rates(paths)               # by carrier and day, 4780 split out
-subset(rates, carrier == "T-Mobile")
-```
-
-Counts are per recipient, once per campaign: each is counted on the day of their first send, under their latest delivery code as of the day's last rewrite, so a rejection a retry delivered by then no longer counts. Full walkthrough -- fleet-wide and per-brand rollups, daily vs cumulative, plotting -- in the **[delivery-errors guide](vignettes/delivery-errors.Rmd)** (`vignette("delivery-errors")` once installed).
-
 ## First-time setup
 
 Before any data call works you need, in order:
@@ -242,7 +260,7 @@ again. Get these from your team lead.
 
 ## Documentation
 
-- **Guides (articles):** [Latency analysis](vignettes/latency.Rmd), [Disposition screening](vignettes/disposition.Rmd), [Opt-out screening](vignettes/opt-out.Rmd), [Campaign metrics](vignettes/campaign-metrics.Rmd), and [Delivery error rates](vignettes/delivery-errors.Rmd) -- also rendered as Articles on the [package site](https://survey160.r-universe.dev/survey160r). In R: `vignette("latency")` / `vignette("disposition")` / `vignette("opt-out")` / `vignette("campaign-metrics")` / `vignette("delivery-errors")`.
+- **Guides (articles):** [Disposition screening](vignettes/disposition.Rmd), [Disposition paths](vignettes/disposition-paths.Rmd), [Opt-out screening](vignettes/opt-out.Rmd), [Campaign metrics](vignettes/campaign-metrics.Rmd), [Delivery error rates by carrier](vignettes/delivery-errors.Rmd), and [Latency analysis](vignettes/latency.Rmd) -- also rendered as Articles on the [package site](https://survey160.r-universe.dev/survey160r). In R: `vignette("disposition")` / `vignette("disposition-paths")` / `vignette("opt-out")` / `vignette("campaign-metrics")` / `vignette("delivery-errors")` / `vignette("latency")`.
 - **Function reference:** `?survey160r` (every function by task, the local cache, and the error classes), or `help(package = "survey160r")`. Setup from inside R: `?s160_gcs_init` and `?s160_api_auth`.
 - **Changelog:** `NEWS.md` (or `news(package = "survey160r")` after install). Cutting a release: [`RELEASING.md`](RELEASING.md). Project conventions and agent context: `CLAUDE.md`.
 

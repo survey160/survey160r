@@ -1,6 +1,10 @@
 Package: survey160r
 Title: R Client for Survey160 Data
+<<<<<<< HEAD
 Version: 0.82.0
+=======
+Version: 0.82.0
+>>>>>>> origin/docs-disposition-paths-article
 Authors@R: c(
     person("Lennon", "Shimokawa", email = "lshimokawa@survey160.com", role = c("aut", "cre"))
     )

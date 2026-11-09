@@ -134,5 +134,6 @@ flags <- disposition_paths(dataset, "non_response|undeliverable{3,}$",
 }
 \seealso{
 \code{\link{disposition_steps}} (per-campaign history),
-  \code{\link{disposition_screen}} (screen a sample on counts)
+  \code{\link{disposition_screen}} (screen a sample on counts),
+  \code{vignette("disposition-paths")} (worked examples)
 }

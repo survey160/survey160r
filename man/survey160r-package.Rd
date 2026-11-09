@@ -10,12 +10,13 @@ Access Survey160 campaign data from R. The \code{s160_*} functions reach
 Survey160's own systems -- Google Cloud Storage, the Survey160 API, and raw
 campaign-export CSVs. The rest work on what those return or on datasets
 survey160r produces: \strong{latency} reports, \strong{disposition} and
-\strong{opt-out} screening of phone samples, and \strong{campaign metrics}.
+\strong{opt-out} screening of phone samples, each number's \strong{disposition
+paths}, \strong{campaign metrics}, and \strong{delivery error rates}.
 Every function, grouped by task, is listed below. The articles
-(\code{vignette("latency")}, \code{vignette("disposition")},
+(\code{vignette("disposition")}, \code{vignette("disposition-paths")},
 \code{vignette("opt-out")}, \code{vignette("campaign-metrics")},
-\code{vignette("delivery-errors")}) walk
-through each task.
+\code{vignette("delivery-errors")}, \code{vignette("latency")})
+walk through each task.
 }
 \section{First-time setup}{
 
@@ -24,15 +25,15 @@ Functions that touch Survey160 data need a one-time sign-in:
   \item \code{\link{s160_gcs_init}} -- authenticate to Google Cloud Storage
     (a browser sign-in on first run, then cached; \code{adc = TRUE} for a
     non-interactive run). Needed to read campaign exports and to download
-    the disposition dataset, the opt-out list, and the campaign-metrics
-    projection (a cache hit needs no sign-in).
+    the disposition dataset, the opt-out list, the campaign-metrics
+    projection and the live delivery metrics (a cache hit needs no sign-in).
   \item \code{\link{s160_api_auth}} -- authenticate to the Survey160 API.
     Needed only to trigger a fresh export with
     \code{\link{s160_api_campaign_results}}.
 }
 }
 
-\section{Campaign exports}{
+\section{Raw data access}{
 
 Read a campaign's raw results:
 \itemize{
@@ -91,12 +92,11 @@ recipients (\code{vignette("disposition")}):
   \item \code{\link{disposition_steps}} / \code{\link{disposition_paths}} --
     each number's campaigns in time order: per-campaign history (what
     happened after k non-responses) or one path per phone with sequence
-    patterns (no reply, then engaged, then completed).
-  \item \code{\link{completion_model_fit}} / \code{\link{completion_forecast}} /
-    \code{\link{completion_sample_size}}
+    patterns (no reply, then engaged, then completed;
+    \code{vignette("disposition-paths")}).
+  \item \code{\link{completion_model_fit}} / \code{\link{completion_forecast}}
     -- fit the opt-in and completion rate models from the dataset, then
-    forecast a planned survey's rates from its sample and design, or the
-    sends a target number of completes needs.
+    forecast a planned survey's rates from its sample and design.
   \item \code{\link{disposition_run}} / \code{\link{disposition_input_columns}}
     -- build the per-respondent rows from one campaign export (the producer
     side of the dataset).
@@ -162,7 +162,9 @@ hour-by-hour fleet-wide counts (one file per ET day;
 later calls, saying how old the copy is (\dQuote{Using cached disposition
 projection (3 days old): ...}). A cache hit needs no sign-in and never checks
 Cloud Storage, so pass \code{refresh = TRUE} for today's data, or
-\code{dest =} to keep a copy elsewhere. Remove the directory to start clean.
+\code{dest =} to keep a copy elsewhere. \code{\link{live_metrics_pull}} caches
+a day only once it is final and fetches recent days again on every pull (see
+\code{vignette("delivery-errors")}). Remove the directory to start clean.
 }
 
 \section{Errors and messages}{

@@ -1,0 +1,287 @@
+---
+title: "Disposition paths"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Disposition paths}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+# Auth/network chunks are shown but not run at build time; the chunks on the
+# small temp-file dataset below run when duckdb, DBI and dbplyr are installed,
+# so their output is real.
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>", eval = FALSE)
+sequence_ready <- all(vapply(c("duckdb", "DBI", "dbplyr"), requireNamespace,
+                             logical(1), quietly = TRUE))
+```
+
+Follow each number's campaigns in order -- what it did first, next and last -- to answer what the per-phone counts in `vignette("disposition")` cannot, such as whether a number that ignored three campaigns ever replies. Assumes you have completed First-time setup (the package README, or `?s160_gcs_init` from R): Cloud Storage access to `s160_disposition_prod`, plus `duckdb`, `DBI` and `dbplyr` installed.
+
+## Read each number's path
+
+`disposition_paths()` returns one row per phone, its campaigns in time order spelled as letters:
+
+```{r}
+library(survey160r)
+library(dplyr)
+s160_gcs_init()   # one browser sign-in, cached
+dataset <- disposition_pull()
+
+# The commonest path shapes
+disposition_paths(dataset) |> count(shape, sort = TRUE) |> head(20) |> collect()
+```
+
+The result is a lazy table that DuckDB computes: aggregate with `dplyr` verbs, then `collect()`. To see the shape of it, here is a four-number dataset written to a temp file, standing in for the pull:
+
+```{r toy, eval = sequence_ready}
+library(survey160r)
+library(dplyr, warn.conflicts = FALSE)
+toy <- data.frame(
+  phone       = rep(c("5550000001", "5550000002", "5550000003", "5550000004"),
+                    c(4, 3, 3, 2)),
+  campaign_id = c(101L, 102L, 103L, 104L, 101L, 102L, 104L,
+                  101L, 102L, 104L, 99L, 104L),
+  disposition_date = as.Date(c(
+    "2025-01-10", "2025-03-05", "2025-06-12", "2025-09-20",
+    "2025-01-10", "2025-03-05", "2025-09-20",
+    "2025-01-10", "2025-03-05", "2025-09-20",
+    "2023-02-01", "2025-09-20")),
+  survey_mode  = c("sms", "sms", "t2w", "t2w", "sms", "sms", "t2w",
+                   "sms", "sms", "t2w", "sms", "t2w"),
+  engaged      = c(0L, 0L, 1L, 1L, 0L, 0L, 0L, 1L, 0L, 1L, 0L, 1L),
+  opted_in     = c(0L, 0L, 0L, 1L, 0L, 0L, 0L, 1L, 0L, 1L, 0L, 1L),
+  completed    = c(0L, 0L, 0L, 1L, 0L, 0L, 0L, 1L, 0L, 1L, 0L, 1L),
+  web_complete = c(0L, 0L, 0L, 1L, 0L, 0L, 0L, 0L, 0L, 1L, 0L, 1L),
+  refused = 0L, ineligible = 0L, terminated = 0L,
+  error = c(NA, NA, NA, NA, NA, "4700", NA, NA, NA, NA, NA, NA)
+)
+dataset <- tempfile(fileext = ".parquet")
+nanoparquet::write_parquet(toy, dataset)
+
+disposition_paths(dataset) |>
+  select(phone, n_campaigns, path, shape) |>
+  arrange(phone) |>
+  collect()
+```
+
+Each campaign gets one label, the furthest step it reached, and one letter:
+
+| Letter | Label | The campaign ended with |
+|---|---|---|
+| N | `non_response` | No reply. |
+| X | `undeliverable` | No reply, and a hard carrier rejection (by default codes 4700, 4701, 4702, 4720, 4750, 4753; see `undeliverable_codes`). |
+| E | `engaged` | A reply, no consent. |
+| O | `opted_in` | Consent, no close. |
+| T | `terminated` | Stopped early, with no decline or screen-out recorded. |
+| I | `ineligible` | A screen-out. |
+| R | `refused` | A decline. |
+| C | `completed` | Completed in the SMS conversation. |
+| W | `web_complete` | Completed on the web (text-to-web). |
+
+`5550000001`'s `"NNEW"` is two non-responses, a reply, then a web complete; its `shape`, `"N+E+W+"`, collapses each run to one letter, so every number that went quiet, then replied, then completed shares it however many campaigns each run took. `5550000002`'s second campaign was rejected by the carrier (error `4700`), so it is `X`, not `N`. Campaigns are ordered by `disposition_date`, the last send to that number; a missing date counts as the oldest, so a phone's last letter is its `latest_disposition` in `disposition_summary()` (where an `X` reads `non_response`).
+
+## Match a sequence pattern
+
+Pass a `pattern` to mark which paths contain a sequence. Steps are label names or letters, joined by `>`:
+
+```{r match, eval = sequence_ready}
+disposition_paths(dataset, "non_response > completed|web_complete") |>
+  select(phone, path, matched, match_start, match_end) |>
+  arrange(phone) |>
+  collect()
+```
+
+`5550000003` is `"CNW"`: it has a non-response and a later web complete, so it matches at steps 2-3 -- the pattern needs the complete *after* the non-response, not anywhere in the path. `"N > C|W"` is the same pattern in letters.
+
+| Pattern | Means |
+|---|---|
+| `a > b` | `b` comes later than `a`; other campaigns may sit between. |
+| `a >> b` | `b` is the very next campaign. |
+| `a\|b` | Either label. |
+| `a+`, `a{3}`, `a{3,}`, `a{2,4}` | Repeats in a row; a repeat covers the whole `\|` group, so `a\|b{3,}` is three or more of either. |
+| `*` | Any label. |
+| `^` / `$` at the start / end | The phone's first / most recent campaign (in the date window, when one is set). |
+
+On the full dataset, count the matches and keep the work inside DuckDB until the last step:
+
+```{r}
+# Numbers that did not answer, later engaged, then completed
+disposition_paths(dataset, "N > E|O > C|W") |>
+  filter(matched) |>
+  count() |>
+  collect()
+
+# Numbers with two or more campaigns whose first and latest were both completes
+disposition_paths(dataset, "^C|W > C|W$") |>
+  filter(matched) |>
+  count() |>
+  collect()
+```
+
+Every phone comes back with a pattern; `filter(matched)` keeps the matches. `match_start` / `match_end` are step positions in the path of the leftmost match, and `match_start_date` / `match_end_date` their dates.
+
+## Flag a sample by its history
+
+Scope the paths to your sample with `phones`, then join the flag back:
+
+```{r}
+my_sample <- data.frame(phone = c("2015550101", "(201) 555-0102"))   # your phone sample
+# the join needs the 10 bare digits the paths are keyed by
+my_sample$phone <- sub("^1", "", gsub("[^0-9]", "", my_sample$phone))
+flags <- disposition_paths(dataset, "non_response|undeliverable{3,}$",
+                           phones = my_sample$phone) |>
+  select(phone, path, last_three_unanswered = matched) |>
+  collect()
+
+flagged <- left_join(my_sample, flags, by = "phone")
+kept <- subset(flagged, !(last_three_unanswered %in% TRUE))
+```
+
+`$` anchors the run to the most recent campaign, so this flags numbers whose last three or more contacts got no reply of either kind. A number that was never contacted has no path and joins to `NA`, which the `%in% TRUE` filter keeps. `phones` matches digit-normalized (punctuation and a leading US `1` are ignored), but the result is keyed by the bare 10 digits, hence the first line: a sample phone in any other form would join to `NA` and pass the filter unflagged. To screen on counts or on the history segment instead, `disposition_screen()` in `vignette("disposition")` does it without a join.
+
+## Ask what happens after a step
+
+`disposition_steps()` returns one row per campaign, with the phone's history up to it and its next label. Group the rows by what came before to measure what comes next:
+
+```{r steps, eval = sequence_ready}
+disposition_steps(dataset) |>
+  filter(phone == "5550000001") |>
+  select(step, label, prev_label, next_label, run_length, path_so_far) |>
+  arrange(step) |>
+  collect()
+```
+
+`run_length` counts the steps in a row with this label (the second non-response in a row is `2`; an undeliverable in between restarts the count) and `path_so_far` is the path up to and including this step. For "campaigns since the last reply of any kind", use `steps_since_reply` from `columns = "history"`. On the full dataset:
+
+```{r}
+# Reply rate on the next campaign after k non-responses in a row
+disposition_steps(dataset, sample_frac = 0.1) |>
+  filter(label == "non_response", !is.na(next_label)) |>
+  group_by(run = pmin(run_length, 5L, na.rm = TRUE)) |>
+  summarise(n = n(), reply_next = mean(as.integer(
+    !next_label %in% c("non_response", "undeliverable")), na.rm = TRUE)) |>
+  arrange(run) |>
+  collect()
+
+# Completion of 2026 sends by what the number did before (history still spans 2021+)
+disposition_steps(dataset, date_from = "2026-01-01", columns = "history") |>
+  filter(completion_known) |>
+  group_by(history_segment) |>
+  summarise(sends = n(), completion = mean(as.integer(
+    label %in% c("completed", "web_complete")), na.rm = TRUE)) |>
+  arrange(desc(completion)) |>
+  collect()
+```
+
+Always filter `!is.na(next_label)` for a "what happened next" rate: a step with no later campaign has no next outcome yet, and counting it as a miss drags the rate down (see [Notes](#notes)). `completion_known` drops text-to-web external campaigns, where a complete is never reported.
+
+`columns` picks the history groups: `"neighbors"`, `"so_far"`, `"run_length"` and `"path_so_far"` by default, and `"history"` on request -- the prior counts, the `history_segment` and the recency columns that `disposition_screen(columns = "history")` appends to a sample (see [What you get back](#what-you-get-back)). Ask only for the groups you use; each costs a few seconds on the full dataset.
+
+## Compare consecutive campaigns
+
+`neighbor_columns` carries any stored column to the previous and next campaign as `prev_<col>` / `next_<col>`, for questions about what changed between them:
+
+```{r neighbors, eval = sequence_ready}
+disposition_steps(dataset, columns = "neighbors", neighbor_columns = "survey_mode") |>
+  filter(label == "non_response", !is.na(next_label)) |>
+  select(phone, step, survey_mode, next_survey_mode, next_label) |>
+  arrange(phone, step) |>
+  collect()
+```
+
+On the full dataset, group instead of listing:
+
+```{r}
+# Did a channel switch win back a number that did not answer? (2025+)
+disposition_steps(dataset, date_from = "2025-01-01", columns = "neighbors",
+                  neighbor_columns = "survey_mode") |>
+  filter(label == "non_response", !is.na(next_label)) |>
+  group_by(survey_mode, next_survey_mode) |>
+  summarise(n = n(), reply_next = mean(as.integer(
+    !next_label %in% c("non_response", "undeliverable")), na.rm = TRUE),
+    .groups = "drop") |>
+  collect()
+
+# After a screen-out, the next campaign: same topic or a different one?
+disposition_steps(dataset, date_from = "2025-01-01", columns = "neighbors",
+                  neighbor_columns = c("tracker_topic", "completed")) |>
+  # the next campaign must report completes (not text-to-web external)
+  filter(label == "ineligible", !is.na(next_label), !is.na(next_completed)) |>
+  group_by(same_topic = tracker_topic == next_tracker_topic) |>
+  summarise(n = n(), complete_next = mean(as.integer(
+    next_label %in% c("completed", "web_complete")), na.rm = TRUE)) |>
+  collect()
+```
+
+Any stored column works except `phone`, `campaign_id` and `disposition_date` (the `gap_prev_days` / `gap_next_days` / `next_date` columns cover the date). A comparison such as `tracker_topic == next_tracker_topic` is `NA` when either side is unknown, so an unknown pair is its own group rather than a false "different". Each column costs about 3 seconds on the full dataset.
+
+## Limit the gap between campaigns
+
+A history can span years. `max_gap_days` stops a match from spanning a long silence:
+
+```{r gap, eval = sequence_ready}
+disposition_paths(dataset, "N > C|W", max_gap_days = 365) |>
+  select(phone, path, matched) |>
+  arrange(phone) |>
+  collect()
+```
+
+`5550000004` did not answer in February 2023 and completed in September 2025, so it matches `"N > C|W"` without the limit and not with it. A gap of more than `max_gap_days` between two consecutive campaigns breaks the sequence: no `>`, `>>` or repeat of a match may span it. A missing date never breaks it, and `max_gap_days` needs a `pattern`. The rule looks at consecutive campaigns, not at the distance from the first matched step, so on production data it counts 1-2% more phones than a strict "within a year of the non-response" rule would. `path` and `shape` are unchanged, and `^` / `$` still mean the phone's first / most recent campaign.
+
+`disposition_steps()` has no `max_gap_days`; filter on `gap_prev_days` / `gap_next_days` there.
+
+## Scope a query
+
+- **Sample for exploration.** A query over the full dataset takes about 15-25 seconds. `sample_frac = 0.1` keeps the same 10% of numbers on every run and machine and takes seconds; on production data its rates match the full data to within 0.02 points.
+- **Phones.** `phones =` keeps whole phones, every campaign of each, before anything is computed: seconds for up to millions of phones. Rows with a blank phone are always dropped.
+- **Dates mean different things.** On `disposition_steps()`, `campaign_ids` / `date_from` / `date_to` drop rows *after* the history is computed, so a 2026 row still counts its 2025 non-responses. On `disposition_paths()` the dates choose which campaigns form the path (the phone's 2025+ path, say): `n_campaigns`, `first_date` and the `^` / `$` anchors then refer to the window, and campaigns with no date drop out. `disposition_paths()` has no `campaign_ids`.
+- **Aggregate before `collect()`.** The full steps table is about 16 GB in R; a grouped summary is a few rows.
+
+## What you get back
+
+`disposition_paths()` returns one row per phone:
+
+| Column | Meaning |
+|---|---|
+| `phone` | The digit-normalized number. |
+| `n_campaigns` | Its campaigns (in the date window, when one is set). |
+| `path` / `shape` | The labels as letters, in time order, and the same with each run collapsed (`"NNEW"`, `"N+E+W+"`). |
+| `first_date` / `last_date` | The first and last `disposition_date` on the path. |
+| `n_unknown_completion` | Campaigns that never report a complete (text-to-web external), where a `completed` step cannot match. |
+| `matched` | With `pattern`: whether the path matches. |
+| `match_start` / `match_end` | With `pattern`: the step positions of the leftmost match, `NA` without one. |
+| `match_start_date` / `match_end_date` | With `pattern`: the dates of those steps. |
+
+`disposition_steps()` returns one row per `(phone, campaign_id)`: `phone`, `campaign_id`, `disposition_date`, `step` and `n_campaigns` (its position and the phone's total, over the whole history even when a filter drops rows), `label` and `completion_known`, then the history groups in `columns`:
+
+| Group | Columns |
+|---|---|
+| `"neighbors"` | `prev_label`, `next_label`, `next_date`, `gap_prev_days`, `gap_next_days`; then any `prev_<col>` / `next_<col>` from `neighbor_columns`. |
+| `"so_far"` | `completes_so_far`, `non_responses_so_far`, `replies_so_far`, counting this step. |
+| `"run_length"` | `run_length`: steps in a row, ending here, with this label. |
+| `"path_so_far"` | `path_so_far`: the path up to and including this step. |
+| `"history"` | Before this step: `prior_completes`, `prior_replies`, `prior_unanswered`, `history_segment`, and the recency columns `steps_since_reply` / `steps_since_complete` / `steps_since_undeliverable` (campaigns since the last one; `0` when it was the previous campaign) and `days_since_reply` / `days_since_complete` / `days_since_undeliverable`, all `NA` until the event has happened. |
+
+With `pattern`, `history_matched` says whether the history up to and including the step matches (use `$` for "the history ends with"). Every other stored column follows: the funnel flags, `survey_mode`, `carrier`, `error`, the `tracker_*` dimensions. Rows come back unordered; `arrange()` when order matters. `?disposition_steps` and `?disposition_paths` have the full definitions.
+
+## Notes
+
+The production figures below are from the dataset as of November 2026.
+
+- **Most histories are cut off on the right.** 49% of numbers were last contacted over a year ago and 56% have a single campaign; only 32% of 2026 campaigns have a later one yet (56-64% for 2021-2025). A "what happened next" rate must count only steps that have a next campaign (`!is.na(next_label)`), never all steps.
+- **Undeliverable is separate from non-response.** After a hard rejection the next campaign gets a reply about 0.7% of the time, against 5.9% after a plain non-response. `undeliverable_codes = NULL` labels every no-reply campaign `non_response`, as `disposition_summary()` does.
+- **Refusals were barely recorded in 2023 and 2024** (178 and 125 rows, against 22,000-57,000 a year since 2025). Start a refusal question in 2025.
+- **August 2026 terminals.** Since August 2026 most engaged recipients who did not finish are stored as an unsplit `terminated`. `terminal = "engaged"` labels those by the step they reached instead.
+- **Client and topic start in 2024.** `tracker_client` / `tracker_topic` are empty for every 2021-2023 campaign and 44% of 2024 rows; in 2026 `tracker_client` is empty on 18% of rows (`tracker_topic` 4%). `tracker_topic` holds four broad values (Brand, Electoral, Policy, Other), so "same topic" means the same broad kind of survey.
+- **Carrier labels changed.** Sprint numbers read as T-Mobile from March 2026, so a Sprint-to-T-Mobile step is a relabel, not a ported number; two campaigns' `carrier` holds survey answers ("Strongly approve", "Somewhat disapprove").
+- **A number can change hands.** Leaving the Sprint relabel aside, the carrier changes between consecutive campaigns 1.6% of the time within 90 days, 17% across one to two years and 26% across two years or more. A long gap can join two people's histories; `max_gap_days` keeps a pattern from matching across one.
+- **Overlapping campaigns.** Two campaigns that fielded at the same time can come out in either order (0.5% of consecutive pairs, all under 30 days apart).
+- **How the labels reconcile with the summary.** On an unfiltered steps table, per phone, `n_campaigns` and the counts of `web_complete` and `refused` labels equal `disposition_summary()`'s, and so does the last step's label (`latest_disposition`), except that a final `undeliverable` step is `non_response` in the summary (`undeliverable_codes = NULL` makes them agree). The other counts differ only where one stored row sets two flags: a row flagged both completed and web complete (about 430,000 since 2024) is one `web_complete` step here and counts in both `n_completed` and `n_web_complete` there, and a row flagged both terminated and refused is one `refused` step here but counts in both there. A `campaign_ids` / `date_from` / `date_to` filter applies after the history, so a filtered table's `n_campaigns` can exceed the equally scoped summary's.
+- **Memory.** DuckDB works within 4 GB and spills to disk past it (up to about 20 GB on a full-dataset query, freed when it finishes). Change it with `options(survey160r.duckdb_memory = "8GB")` or `options(survey160r.duckdb_temp_dir = "/path")`.
+- **A path, not a frame.** Both readers take the Parquet path from `disposition_pull()`, never an in-memory frame; write a frame with `nanoparquet::write_parquet()` first, as above. Without `duckdb`, `DBI` and `dbplyr` they stop and say what to install (there is no fallback engine).
+- **Stale cache.** `disposition_pull(refresh = TRUE)` downloads the current dataset.
+
+## See also
+
+`?disposition_paths`, `?disposition_steps`, `?disposition_pull`, and `?survey160r` for every function by task. To screen a sample on counts or on its contact history, and for funnel rates by any dimension, `vignette("disposition")`. To forecast a planned survey's completion rate from the same dataset, `?completion_forecast`. To screen the sample against the opt-out list, `vignette("opt-out")`; for the fleet funnel by registration or brand, `vignette("campaign-metrics")`.
