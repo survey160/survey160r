@@ -3,7 +3,8 @@
 ## Sequence readers: neighbor columns and a gap limit
 
 * `disposition_steps(neighbor_columns =)` adds `prev_<col>` / `next_<col>` for
-  any stored column (`survey_mode`, `carrier`, `tracker_client`,
+  any stored column except `phone`, `campaign_id` and `disposition_date`, which
+  the history already places (`survey_mode`, `carrier`, `tracker_client`,
   `tracker_topic`, ...), the value on the phone's previous / next campaign, for
   transitions that depend on what changed between campaigns (a channel switch,
   the same topic again). About 3 s per column on the full projection; compare
