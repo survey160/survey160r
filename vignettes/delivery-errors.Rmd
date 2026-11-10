@@ -96,7 +96,7 @@ live_metrics_error_rates(paths, by = c("carrier", "et_hour"),
 live_metrics_error_rates(paths, by = "brand")
 live_metrics_error_rates(paths, by = c("carrier", "brand"))
 live_metrics_error_rates(paths, by = "carrier", campaign_ids = c(1234, 1235))
-live_metrics_error_rates(paths, by = "error_code")   # which codes make up the errors
+live_metrics_error_rates(paths, by = "error_code")   # read n_sent per code; each row's error_rate is 0 or 1
 ```
 
 ## Across the whole fleet

@@ -1,5 +1,21 @@
 # survey160r (development version)
 
+## Delivery error rates article
+
+* `vignette("delivery-errors")` gains "Find the day a block started" (the daily
+  code rate against a threshold, then by `et_hour`), puts "Daily or cumulative"
+  before the tasks that depend on it, prints the fleet rates as readable
+  percentages, plots the daily 4780 rate against its running rate, and says
+  plainly that the error rates are a floor (a retried rejection drops out).
+* The notes and `?live_metrics_pull` say only prod is written on a schedule (dev
+  has a file only for days its job was run by hand); `?live_metrics_records`
+  says `"(unknown)"` carrier or brand reads as `NA`;
+  `?live_metrics_error_rates` warns that with `et_hour` in `by` the running
+  totals run per hour. Every live-metrics help page links the article.
+* README: a troubleshooting row for "no file for today" and the last two days
+  changing between pulls. The package site calls the counts hour-by-hour, not
+  hourly (the files are rewritten at 4pm and 9pm ET).
+
 ## Completion forecast: sample size, re-send flag, size bands, mean counts
 
 * `completion_sample_size()`: the sends a target number of completes needs,
