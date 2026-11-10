@@ -47,14 +47,15 @@ rates <- live_metrics_error_rates(cells)
 rates[, c("et_date", "carrier", "n_sent", "n_error", "error_rate", "cum_error_rate")]
 ```
 
-T-Mobile's day rate jumps from 10% to 30% on the second day, while its cumulative rate (both days together) reads 20%. With real data, `cells` is `paths` from the pull.
+T-Mobile's day rate jumps from 10% to 30% on the second day, while its cumulative rate (both days together) reads 20%. With real data, pass `paths` from the pull in place of `cells`.
 
 ## Across the whole fleet
 
-`by = NULL` gives one row per day for every carrier together:
+`by = NULL` gives one row per day for every carrier together; `percent = TRUE` reads easier:
 
 ```{r fleet, eval = TRUE}
-live_metrics_error_rates(cells, by = NULL)[, c("et_date", "n_sent", "error_rate", "cum_error_rate")]
+fleet <- live_metrics_error_rates(cells, by = NULL, percent = TRUE)
+print(fleet[, c("et_date", "n_sent", "error_rate", "cum_error_rate")], digits = 3)
 ```
 
 ## By brand or campaign
