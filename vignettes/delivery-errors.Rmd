@@ -79,6 +79,23 @@ tmobile[, c("et_date", "n_sent", "n_4780", "rate_4780", "cum_4780", "cum_rate_47
 
 Add codes to split out more of them, e.g. `codes = c("4780", "4700")`; `codes = character(0)` adds none. `percent = TRUE` scales every rate to `0`-`100`.
 
+## Find the day a block started
+
+Read the daily rate, not the cumulative one: keep the days a carrier's code rate crosses a threshold you choose, and the first of them is the onset:
+
+```{r onset, eval = TRUE}
+subset(rates, rate_4780 >= 0.2)[, c("et_date", "carrier", "n_sent", "rate_4780")]
+```
+
+To narrow it to the hour, break the day down by `et_hour` and read the daily columns (with `et_hour` in `by`, the running totals run per hour across days, which is rarely what you want):
+
+```{r}
+live_metrics_error_rates(paths, by = c("carrier", "et_hour"),
+                         date_from = "2026-11-02", date_to = "2026-11-02")
+```
+
+`et_hour` is the ET hour of each recipient's first send, not the hour the rejection came back.
+
 ## Daily or cumulative
 
 - **Daily** (`n_sent`, `n_error`, `error_rate`) -- the recipients first sent that day. Use it to spot the day a carrier starts rejecting.
