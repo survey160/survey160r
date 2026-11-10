@@ -17,7 +17,7 @@ Follow delivery error rates by carrier, day by day and cumulatively, across ever
 
 ## Pull a range of days
 
-The live metrics are one file per ET day, starting 2026-09-29. Each run of the pipeline (currently 4pm and 9pm ET) rewrites today's and yesterday's files. Pull the days you want, then roll them up:
+The live metrics are one file per ET day, starting 2026-09-29; the last two days are provisional (see Notes). Pull the days you want, then roll them up:
 
 ```{r}
 library(survey160r)
@@ -147,9 +147,10 @@ A rate with no sends is `NA`. `live_metrics_records()` returns the cells -- `et_
 
 ## Notes
 
-- **Counts are per recipient, not per message.** Each recipient is counted once per campaign, on the day and hour of their *first* send, under their *latest* delivery code as of the day's last rewrite (9pm ET the next day). A rejection that a retry delivered by then no longer counts as an error, a code that changes after it is not picked up, and a recipient sent on several days counts once, on the first. A phone in two campaigns counts in each, so a fleet-wide rollup counts it twice. Because a retried rejection drops out, the error rates are a floor, not the share of messages rejected.
-- **Recent days still move.** Today's and yesterday's files are rewritten on each run with the latest delivery codes, so read the last two days as provisional. Today has no file until the day's first run (4pm ET), so a pull before then reports no file for today.
-- **Caching.** A day is final at 03:00 ET two days after it (Nov 1 at 03:00 ET on Nov 3, after its last rewrite at 9pm ET on Nov 2); a cached copy downloaded after that is reused without a network call. Any other copy (today, yesterday, the day before until 03:00 ET, or a day you cached before it was final) is fetched again on every pull. `refresh = TRUE` re-downloads the whole range.
+- **Counts are per recipient, not per message.** Each recipient is counted once per campaign, on the day and hour of their *first* send, under their *latest* delivery code as of the day's last rewrite (9pm ET the next day). A code that changes after that is not picked up, and a recipient sent on several days counts once, on the first. A phone in two campaigns counts in each, so a fleet-wide rollup counts it twice.
+- **The error rates are a floor.** A rejection that a retry delivered by the last rewrite no longer counts as an error, so the rates understate the share of messages rejected.
+- **Recent days still move.** Each pipeline run (4pm and 9pm ET) rewrites today's and yesterday's files with the latest delivery codes, so read the last two days as provisional, or end the range two days back. Today has no file until 4pm ET, so a pull before then reports no file for today.
+- **Caching.** A day is final at 03:00 ET two days after it (Nov 1 is final at 03:00 ET on Nov 3). A copy downloaded after that is reused without a network call; any other copy is fetched again on every pull. `refresh = TRUE` re-downloads the whole range.
 - **Missing days.** A day with no file (before 2026-09-29, or not yet written) is skipped with a message; a day with no sends has a file with no rows. Neither gives the day a row in the rates (not a row with `n_sent = 0`), and the running totals continue across the gap.
 - **Coverage.** A file covers the campaigns in the live phone lists when it was written; a campaign archived before its day's last rewrite is missing from that day.
 - **Unknown carrier or brand.** The files write a missing carrier or brand as `"(unknown)"`; the readers turn it into `NA`, which groups as its own row, as in `disposition_funnel()`. Filter it with `is.na()`.
