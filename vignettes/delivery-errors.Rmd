@@ -108,25 +108,25 @@ fleet <- live_metrics_error_rates(cells, by = NULL, percent = TRUE)
 print(fleet[, c("et_date", "n_sent", "error_rate", "cum_error_rate")], digits = 3)
 ```
 
-## Plot a cumulative rate
+## Plot the rates
 
-ggplot2 is not a survey160r dependency; with it installed:
+ggplot2 is not a survey160r dependency; with it installed, one line per carrier:
 
 ```{r}
 library(ggplot2)
 ggplot(rates, aes(et_date, cum_error_rate, colour = carrier)) +
   geom_line() +
-  scale_y_continuous(labels = scales::percent) +
+  scale_y_continuous(labels = scales::percent) +   # rates are 0-1 unless percent = TRUE
   labs(x = "ET day", y = "Cumulative delivery error rate", colour = NULL)
 ```
 
-Base graphics need nothing extra, one line per carrier:
+Base graphics need nothing extra. For one carrier, the daily 4780 rate against its running rate shows both the spike and the trend:
 
 ```{r}
 tmobile <- subset(rates, carrier == "T-Mobile")
-plot(tmobile$et_date, tmobile$cum_error_rate, type = "l",
-     xlab = "ET day", ylab = "Cumulative error rate", main = "T-Mobile")
-lines(tmobile$et_date, tmobile$cum_rate_4780, lty = 2)   # the 4780 share
+plot(tmobile$et_date, tmobile$rate_4780, type = "l",
+     xlab = "ET day", ylab = "4780 rate", main = "T-Mobile")
+lines(tmobile$et_date, tmobile$cum_rate_4780, lty = 2)   # running rate
 ```
 
 ## What you get back
