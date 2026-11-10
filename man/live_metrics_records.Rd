@@ -35,7 +35,9 @@ code as of the day's last rewrite (\code{"(none)"} when there is none), so a
 rejection that a retry delivered by then no longer shows, a code that changes
 later is not picked up, and a recipient sent on several days counts once
 within a campaign (a phone in two campaigns counts in each). Error rates
-built on these counts are therefore a floor.
+built on these counts are the share of recipients whose latest code at the
+last rewrite was an error. They can sit below the share who ever had an error
+(a retry delivered), and a later status change can move them either way.
 }
 \examples{
 cells <- data.frame(

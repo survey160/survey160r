@@ -6,7 +6,8 @@
   code rate against a threshold, then by `et_hour`), puts "Daily or cumulative"
   before the tasks that depend on it, prints the fleet rates as readable
   percentages, plots the daily 4780 rate against its running rate, and says
-  plainly that the error rates are a floor (a retried rejection drops out).
+  plainly that the error rates are per recipient by latest code (a retried
+  rejection drops out).
 * The notes and `?live_metrics_pull` say only prod is written on a schedule (dev
   has a file only for days its job was run by hand); `?live_metrics_records`
   says `"(unknown)"` carrier or brand reads as `NA`;
