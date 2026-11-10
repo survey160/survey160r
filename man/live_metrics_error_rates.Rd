@@ -20,7 +20,9 @@ live_metrics_error_rates(
 
 \item{by}{Dimension(s) to break the days down by: any of \code{"carrier"}
 (default), \code{"brand"}, \code{"campaign_id"}, \code{"error_code"},
-\code{"et_hour"}, or \code{NULL} for one fleet-wide row per day.}
+\code{"et_hour"}, or \code{NULL} for one fleet-wide row per day. With
+\code{"et_hour"} the running totals run per hour across days, so read the
+daily columns.}
 
 \item{codes}{Delivery error codes to count separately (default
 \code{"4780"}); \code{character(0)} for none.}

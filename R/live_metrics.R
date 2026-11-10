@@ -104,7 +104,8 @@
 #' @return A character vector of local Parquet paths, named by ET day
 #'   (\code{"YYYY-MM-DD"}), for the days that have a file.
 #' @seealso \code{\link{live_metrics_error_rates}},
-#'   \code{\link{live_metrics_records}}, \code{\link{s160_gcs_init}}
+#'   \code{\link{live_metrics_records}}, \code{\link{s160_gcs_init}},
+#'   \code{vignette("delivery-errors")}
 #' @examples
 #' \dontrun{
 #' s160_gcs_init()
@@ -199,7 +200,8 @@ live_metrics_pull <- function(date_from = NULL, date_to = NULL,
 #'   \code{n_sent} and \code{n_engaged}. A missing, empty or
 #'   \code{"(unknown)"} \code{carrier} or \code{brand} is \code{NA}; a frame without \code{n_engaged} gets it as
 #'   \code{NA} (no rate uses it).
-#' @seealso \code{\link{live_metrics_error_rates}}
+#' @seealso \code{\link{live_metrics_pull}},
+#'   \code{\link{live_metrics_error_rates}}, \code{vignette("delivery-errors")}
 #' @examples
 #' cells <- data.frame(
 #'   et_date = as.Date("2026-11-01"), et_hour = 10L, carrier = "T-Mobile",
@@ -317,7 +319,9 @@ live_metrics_records <- function(x, campaign_ids = NULL, date_from = NULL,
 #'   \code{\link{live_metrics_records}}.
 #' @param by Dimension(s) to break the days down by: any of \code{"carrier"}
 #'   (default), \code{"brand"}, \code{"campaign_id"}, \code{"error_code"},
-#'   \code{"et_hour"}, or \code{NULL} for one fleet-wide row per day.
+#'   \code{"et_hour"}, or \code{NULL} for one fleet-wide row per day. With
+#'   \code{"et_hour"} the running totals run per hour across days, so read the
+#'   daily columns.
 #' @param codes Delivery error codes to count separately (default
 #'   \code{"4780"}); \code{character(0)} for none.
 #' @param campaign_ids Optional campaign ids to keep; \code{NULL} keeps all.
