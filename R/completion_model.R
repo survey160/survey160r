@@ -170,6 +170,8 @@
     "avg(CAST(h.n_prior >= 3 AND h.prior_replies = 0 AS DOUBLE)) AS share_cold, ",
     "avg(CASE WHEN h.prev_date < c.first_date ",
     "THEN datediff('day', h.prev_date, c.first_date) END) / 365.25 AS years_since_contact, ",
+    "avg(CAST(coalesce(h.prev_date < c.first_date AND h.prev_date >= c.first_date - INTERVAL ",
+    .COMPLETION_RECENT_DAYS, " DAY, FALSE) AS DOUBLE)) AS share_recent_contact, ",
     "avg(pc.optin_rate) AS prior_optin_rate ",
     "FROM h JOIN c ON h.campaign_id = c.campaign_id ",
     "LEFT JOIN c pc ON pc.campaign_id = h.prev_campaign AND pc.first_date < c.first_date ",
@@ -192,8 +194,22 @@
     sample_score = .completion_logit(d$mean_p),
     share_prior_completers = d$share_prior_completers, share_cold = d$share_cold,
     years_since_contact = d$years_since_contact,
+    share_recent_contact = d$share_recent_contact,
     prior_optin_score = .completion_logit(d$prior_optin_rate),
     stringsAsFactors = FALSE)
+}
+
+# A sample contact within this many days before a campaign's start is "recent";
+# a campaign whose sample is mostly recent contacts (share over
+# .COMPLETION_RESEND_SHARE) is a re-send of a list.
+.COMPLETION_RECENT_DAYS <- 30L
+.COMPLETION_RESEND_SHARE <- 0.5
+
+# The two sample-size bands the band sd is also kept by: sends under / at or
+# over `size_break` (small samples spread about twice as much).
+.COMPLETION_SIZE_LABELS <- c("under", "over")
+.completion_size_band <- function(n, size_break) {
+  ifelse(n >= size_break, "over", "under")
 }
 
 # The two fits: formula, the mode levels the model sees and the label print()
@@ -330,11 +346,42 @@
   }, numeric(1))
 }
 
+# Residual sd per mode and sample-size band: one row per (mode, under/over),
+# `sd` NA with fewer than 2 rows in the cell, `n` the rows in it.
+.completion_sd_by_size <- function(residuals, mode, sent, modes, size_break) {
+  band <- .completion_size_band(sent, size_break)
+  cells <- expand.grid(mode = modes, size = .COMPLETION_SIZE_LABELS, stringsAsFactors = FALSE)
+  cells$sd <- NA_real_
+  cells$n <- 0L
+  for (i in seq_len(nrow(cells))) {
+    r <- residuals[!is.na(mode) & mode == cells$mode[i] & band == cells$size[i]]
+    cells$n[i] <- length(r)
+    if (length(r) >= 2L) cells$sd[i] <- stats::sd(r)
+  }
+  cells
+}
+
+# The re-send summary of a fit: how many training campaigns of each mode had a
+# sample mostly contacted in the .COMPLETION_RECENT_DAYS before their start,
+# and the median of their actual-to-fitted ratio (exp of the median residual;
+# NA for a mode with no such campaign). The forecast quotes it when a sample
+# looks like a re-send.
+.completion_resend_summary <- function(residuals, rows, modes) {
+  recent <- !is.na(rows$share_recent_contact) &
+    rows$share_recent_contact > .COMPLETION_RESEND_SHARE
+  campaigns <- vapply(modes, function(m) sum(recent & rows$mode == m), integer(1))
+  ratio <- vapply(modes, function(m) {
+    r <- residuals[recent & rows$mode == m]
+    if (length(r) == 0L) NA_real_ else exp(stats::median(r))
+  }, numeric(1))
+  list(threshold = .COMPLETION_RESEND_SHARE, campaigns = campaigns, ratio = ratio)
+}
+
 # Fit one model: the shipped coefficients on every training row before
 # `train_until`, and a second fit ending at `holdout_from` scored on the
 # campaigns in between for the holdout metrics and the band's sd.
 .completion_fit_model <- function(ct, target, train_until, holdout_from, min_sent, settle_days,
-                                  data_end, fn) {
+                                  data_end, size_break = 50000, fn) {
   spec <- .COMPLETION_MODELS[[target]]
   rows <- .completion_fit_rows(ct, target, train_until, min_sent, settle_days, data_end)
   if (nrow(rows) == 0L) {
@@ -348,11 +395,16 @@
   means <- .completion_training_means(rows, target)
   fit <- .completion_fit_lm(rows, target, means)
   in_sample_sd <- .completion_sd_by_mode(stats::residuals(fit), rows$mode, spec$modes)
+  in_sample_size <- .completion_sd_by_size(stats::residuals(fit), rows$mode, rows$sent, spec$modes,
+                                           size_break)
+  resend <- .completion_resend_summary(stats::residuals(fit), rows, spec$modes)
   hold_rows <- .completion_fit_rows(ct, target, holdout_from, min_sent, settle_days, data_end)
   score <- rows[rows$first_date >= holdout_from, , drop = FALSE]
   holdout <- list(n = nrow(score), r2_logit = NA_real_, median_ape = NA_real_,
                   within_50 = NA_real_)
   holdout_sd <- in_sample_sd * NA_real_
+  holdout_size <- in_sample_size
+  holdout_size$sd <- NA_real_
   min_fit <- .completion_n_terms(target)
   if (nrow(hold_rows) >= min_fit && nrow(score) >= 2L) {
     hold_means <- .completion_training_means(hold_rows, target)
@@ -366,6 +418,8 @@
     holdout$median_ape <- stats::median(ape)
     holdout$within_50 <- mean(ape <= 0.5)
     holdout_sd <- .completion_sd_by_mode(score$logit - pred, score$mode, spec$modes)
+    holdout_size <- .completion_sd_by_size(score$logit - pred, score$mode, score$sent, spec$modes,
+                                           size_break)
   } else {
     holdout$warning <- sprintf(paste0(
       "%s model: the holdout window from %s has %d campaign(s) to score (at least 2) and %d ",
@@ -376,9 +430,13 @@
   residual_sd <- ifelse(is.na(in_sample_sd) | is.na(holdout_sd), NA_real_,
                         pmax(in_sample_sd, holdout_sd))
   names(residual_sd) <- spec$modes
+  # the same rule per (mode, size band): the larger of the two sds, NA when either is
+  residual_sd_size <- in_sample_size
+  residual_sd_size$sd <- ifelse(is.na(in_sample_size$sd) | is.na(holdout_size$sd), NA_real_,
+                                pmax(in_sample_size$sd, holdout_size$sd))
   list(coefficients = .completion_coefficients(fit), formula = spec$formula,
-       training_means = means, residual_sd = residual_sd,
-       holdout = holdout,
+       training_means = means, residual_sd = residual_sd, residual_sd_size = residual_sd_size,
+       resend = resend, holdout = holdout,
        counts = list(campaigns_fit = nrow(rows), campaigns_holdout_fit = nrow(hold_rows)),
        train_from = min(rows$first_date))
 }
@@ -430,9 +488,21 @@
 #' campaign per model term and two to score, else the metrics and the sd are
 #' NA with a warning). The band's residual sd is per mode
 #' and per model: the larger of the shipped fit's in-sample sd and the holdout
-#' sd for that mode. Residuals are skewed and the fleet drifts, so the bands
-#' are approximate: on campaigns from mid 2026 the nominal 95\% band covered
-#' about 94\% and the 50\% band about 70\%.
+#' sd for that mode. The same sd is also kept per mode and sample-size band
+#' (sends under or at least \code{size_break}; campaigns under 50,000 sends
+#' spread about twice as much as larger ones), and the forecast uses the band
+#' of its sample when that cell has one. Residuals are skewed and the fleet
+#' drifts, so the bands are approximate: on campaigns from mid 2026 the nominal
+#' 95\% band covered about 94\% and the 50\% band about 70\%.
+#'
+#' Each model also keeps a re-send summary: how many training campaigns of each
+#' mode had a sample mostly (over half) contacted in the 30 days before their
+#' start, and the median ratio of their actual rate to the fitted one. A list
+#' sent again within days completes well below its previous send (about 0.4
+#' times on web in 2025 to 2026, about 0.9 on live) and such campaigns were
+#' the most frequent large misses; the sample terms carry part of that, the
+#' ratio says how much was left. \code{\link{completion_forecast}} flags such
+#' a sample and quotes the summary.
 #'
 #' The fit runs inside DuckDB (\pkg{duckdb}, \pkg{DBI} and \pkg{dbplyr} must be
 #' installed) and takes about a minute on the full projection.
@@ -448,6 +518,8 @@
 #' @param min_sent Minimum sends for a campaign to train on (default 2000).
 #' @param settle_days Days a campaign's last activity must precede the data end
 #'   by (default 7).
+#' @param size_break Sends at which a campaign counts as a large sample for the
+#'   per-size band sd (default 50000).
 #' @param x,object A \code{completion_model}.
 #' @param ... Unused.
 #' @return An object of class \code{completion_model}: a list with
@@ -455,7 +527,11 @@
 #'   \code{coefficients} table (\code{term}, \code{estimate},
 #'   \code{std_error}), the \code{formula}, the \code{training_means} the
 #'   forecast's multipliers are centred on (and the fill for a feature a
-#'   sample cannot provide), the per-mode \code{residual_sd},
+#'   sample cannot provide), the per-mode \code{residual_sd}, the per mode and
+#'   size band \code{residual_sd_size} table (\code{mode}, \code{size} under /
+#'   over the break, \code{sd}, \code{n}), the \code{resend} summary
+#'   (\code{threshold}, \code{campaigns} and \code{ratio} per mode, the
+#'   ratio being actual odds over fitted odds, not a rate multiplier),
 #'   the \code{holdout} metrics (\code{n}, \code{r2_logit}, \code{median_ape},
 #'   \code{within_50}) and \code{counts}), the shared per-year
 #'   \code{contexts} table (\code{year}, \code{context}, \code{survey_mode}
@@ -464,7 +540,8 @@
 #'   \code{optin_rate}) the forecast reads the previous campaign's opt-in rate
 #'   from, the \code{windows} (\code{data_end}, \code{train_from},
 #'   \code{train_until}, \code{holdout_from}), \code{counts},
-#'   \code{min_sent}, \code{settle_days} and the package \code{version}.
+#'   \code{min_sent}, \code{settle_days}, \code{size_break} and the package
+#'   \code{version}.
 #'   \code{print()} shows the windows, counts and holdout metrics;
 #'   \code{summary()} returns the coefficients of both models as odds
 #'   multipliers (one data frame: \code{model}, \code{term},
@@ -480,7 +557,7 @@
 #' }
 #' @export
 completion_model_fit <- function(dataset, train_until = Sys.Date(), holdout_months = 5,
-                                 min_sent = 2000, settle_days = 7) {
+                                 min_sent = 2000, settle_days = 7, size_break = 50000) {
   fn <- "completion_model_fit"
   .disposition_lazy_check(fn)
   train_until <- .completion_check_date(train_until, "train_until", fn)
@@ -490,6 +567,8 @@ completion_model_fit <- function(dataset, train_until = Sys.Date(), holdout_mont
   }
   min_sent <- .completion_check_count(min_sent, "min_sent", fn)
   settle_days <- .completion_check_count(settle_days, "settle_days", fn)
+  size_break <- .completion_check_count(size_break, "size_break", fn)
+  if (size_break == 0) stop_s160("`size_break` must be a positive whole number, not 0.", fn = fn)
   con <- .disposition_lazy_con()
   source <- .disposition_lazy_source(con, dataset, fn)
   history <- .completion_history_sql(con, source, before = train_until)
@@ -500,7 +579,7 @@ completion_model_fit <- function(dataset, train_until = Sys.Date(), holdout_mont
     train_until, lubridate::period(-holdout_months, "months"))
   models <- lapply(stats::setNames(nm = names(.COMPLETION_MODELS)), function(target) {
     .completion_fit_model(ct, target, train_until, holdout_from, min_sent, settle_days,
-                          data_end, fn)
+                          data_end, size_break, fn)
   })
   train_from <- min(models$optin$train_from, models$completion$train_from)
   thin <- unlist(lapply(models, function(m) m$holdout$warning))
@@ -516,6 +595,7 @@ completion_model_fit <- function(dataset, train_until = Sys.Date(), holdout_mont
     windows = list(data_end = data_end, train_from = train_from, train_until = train_until,
                    holdout_from = holdout_from),
     counts = list(campaigns_total = nrow(ct)), min_sent = min_sent, settle_days = settle_days,
+    size_break = size_break,
     version = as.character(utils::packageVersion("survey160r"))),
     class = "completion_model")
 }

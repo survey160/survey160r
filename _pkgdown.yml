@@ -64,6 +64,7 @@ reference:
   - disposition_paths
   - completion_model_fit
   - completion_forecast
+  - completion_sample_size
   - disposition_run
   - disposition_input_columns
 - title: Opt-out screening

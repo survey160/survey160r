@@ -1,5 +1,29 @@
 # survey160r (development version)
 
+## Completion forecast: sample size, re-send flag, size bands, mean counts
+
+* `completion_sample_size()`: the sends a target number of completes needs,
+  at the forecast rate and at the low end of the 50% and 95% bands, before a
+  list exists (design only) or on a list (with `list_covers`: the lowest rate
+  at which the list still reaches the target). The client fixes the
+  completes; this sizes the sample.
+* `completion_forecast(phones = NULL)` forecasts from the survey design alone
+  (sample terms at the training mean, counts NA, a warning); `dataset` is then
+  optional. New columns: `share_recent_contact` (share of the sample contacted
+  in the 30 days before the start), `optins_mean` / `completes_mean` (the mean
+  of the band's distribution, for totals over many campaigns; the point
+  forecast stays the median) and `band_sd`.
+* A sample mostly contacted in the previous 30 days is a re-sent list and gets
+  a warning quoting the model's re-send summary (`models$*$resend`: training
+  re-sends per mode and their median actual-to-fitted ratio). A web list sent
+  again within days completed at about 0.4 times its previous send in 2025 to
+  2026 and such campaigns were the most frequent large misses; the forecast is
+  not adjusted for it.
+* `completion_model_fit(size_break = 50000)`: the residual sd is also kept per
+  mode and sample-size band (`residual_sd_size`), and the forecast's band uses
+  the sample's cell when it has one (small samples spread about twice as much).
+  The campaign table carries `share_recent_contact`.
+
 ## Disposition paths article
 
 * New article, `vignette("disposition-paths")`: read each number's path, match

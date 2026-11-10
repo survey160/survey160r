@@ -6,18 +6,19 @@
 \usage{
 completion_forecast(
   model,
-  phones,
+  phones = NULL,
   mode,
   topic = NULL,
   loi = NULL,
-  dataset,
+  dataset = NULL,
   start_date = Sys.Date()
 )
 }
 \arguments{
 \item{model}{A \code{completion_model} from \code{\link{completion_model_fit}}.}
 
-\item{phones}{Character vector of the sample's phone numbers.}
+\item{phones}{Character vector of the sample's phone numbers, or \code{NULL}
+(the default) for a forecast from the survey design alone.}
 
 \item{mode}{One of \code{"Live"}, \code{"T2W"}, \code{"T2W external"}.}
 
@@ -30,7 +31,8 @@ in the output.}
 the range counts as unknown, with a warning in the output.}
 
 \item{dataset}{Path to the disposition Parquet file, e.g. from
-\code{\link{disposition_pull}()}, the sample's history is read from.}
+\code{\link{disposition_pull}()}, the sample's history is read from;
+required with \code{phones}, unused without.}
 
 \item{start_date}{Planned start (Date or date string; default today): only
 history before it is read, and it picks the context table of its year. A
@@ -40,10 +42,13 @@ the first, with a warning.}
 \value{
 A one-row data frame: \code{optin_rate}, \code{optin_lo50},
   \code{optin_hi50}, \code{optin_lo95}, \code{optin_hi95}, \code{optins},
-  \code{optins_lo95}, \code{optins_hi95}; the same eight for completion
-  (\code{completion_rate}, ..., \code{completes}, \code{completes_lo95},
-  \code{completes_hi95}); \code{n_phones} (unique numbers),
+  \code{optins_lo95}, \code{optins_hi95}, \code{optins_mean}; the same nine
+  for completion (\code{completion_rate}, ..., \code{completes},
+  \code{completes_lo95}, \code{completes_hi95}, \code{completes_mean});
+  \code{n_phones} (unique numbers),
   \code{share_with_history} (share of them with a prior contact),
+  \code{share_recent_contact} (share contacted in the 30 days before the
+  start),
   \code{sample_score} (logit of the mean P(complete | context, mode)),
   \code{years_since_contact} and \code{prior_optin_score} (logit of the
   previous campaigns' mean opt-in rate; both NA when no number has a prior
@@ -51,11 +56,13 @@ A one-row data frame: \code{optin_rate}, \code{optin_lo50},
   \code{sample_multiplier} and \code{survey_multiplier} (the completion
   model's sample terms and survey terms as odds multipliers against a
   campaign at the training mix: how much the sample and the survey design
-  each move the completion odds), and
+  each move the completion odds), \code{band_sd} (the residual sd the
+  completion band used) and
   \code{warnings} (a list column with one character vector: unknown levels,
-  a sample under the fit's minimum sends, a sample with no prior contact or
-  whose last campaign the model does not know, a context without a table
-  row, a mode without a band, opt-in only for text-to-web external).
+  no sample, a sample under the fit's minimum sends, a re-sent sample, a
+  sample with no prior contact or whose last campaign the model does not
+  know, a context without a table row, a size band or a mode without an sd,
+  opt-in only for text-to-web external).
 }
 \description{
 Scores one planned survey with a model from
@@ -78,10 +85,27 @@ first contact.
 
 The bands are multiplicative on the odds: \code{p x/÷ exp(z * sd)} with
 \code{z = 0.674} (50\%) and \code{1.96} (95\%), where \code{sd} is the
-model's residual sd for the survey's mode. They are approximate (about 94\%
+model's residual sd for the survey's mode and the sample's size band (under
+or over the fit's \code{size_break}), the mode's alone when that cell has
+none or no sample is given. They are approximate (about 94\%
 coverage at the nominal 95\% on campaigns from mid 2026). For a text-to-web external
 survey completion is never recorded, so the completion columns are NA and
 only the opt-in forecast stands.
+
+The point forecast is the median of the band's distribution; the
+\code{*_mean} counts are its mean, higher because the odds band is skewed.
+Quote one campaign with the median; add the means when summing expected
+completes over many campaigns.
+
+Without \code{phones} the forecast is the survey design's alone: the sample
+terms take the training mean (a typical campaign's mix), the count and
+sample columns are NA and a warning says so. Its error is wider (about a
+third more than with a list on 2026 campaigns); use it to quote before a
+list exists and re-forecast when it arrives. A sample mostly contacted in
+the 30 days before the start is a re-sent list and gets a warning with the
+model's re-send summary: such lists completed well below their previous
+send and were the most frequent large misses (see
+\code{\link{completion_model_fit}}); the forecast is not adjusted for it.
 }
 \examples{
 \dontrun{
@@ -93,5 +117,6 @@ completion_forecast(m, sample$phone, mode = "T2W", topic = "Policy", loi = 12,
 }
 }
 \seealso{
-\code{\link{completion_model_fit}}
+\code{\link{completion_model_fit}},
+  \code{\link{completion_sample_size}} (the sends a target needs)
 }

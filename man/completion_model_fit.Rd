@@ -11,7 +11,8 @@ completion_model_fit(
   train_until = Sys.Date(),
   holdout_months = 5,
   min_sent = 2000,
-  settle_days = 7
+  settle_days = 7,
+  size_break = 50000
 )
 
 \method{print}{completion_model}(x, ...)
@@ -35,6 +36,9 @@ holdout window spans (default 5).}
 \item{settle_days}{Days a campaign's last activity must precede the data end
 by (default 7).}
 
+\item{size_break}{Sends at which a campaign counts as a large sample for the
+per-size band sd (default 50000).}
+
 \item{x, object}{A \code{completion_model}.}
 
 \item{...}{Unused.}
@@ -45,7 +49,11 @@ An object of class \code{completion_model}: a list with
   \code{coefficients} table (\code{term}, \code{estimate},
   \code{std_error}), the \code{formula}, the \code{training_means} the
   forecast's multipliers are centred on (and the fill for a feature a
-  sample cannot provide), the per-mode \code{residual_sd},
+  sample cannot provide), the per-mode \code{residual_sd}, the per mode and
+  size band \code{residual_sd_size} table (\code{mode}, \code{size} under /
+  over the break, \code{sd}, \code{n}), the \code{resend} summary
+  (\code{threshold}, \code{campaigns} and \code{ratio} per mode, the
+  ratio being actual odds over fitted odds, not a rate multiplier),
   the \code{holdout} metrics (\code{n}, \code{r2_logit}, \code{median_ape},
   \code{within_50}) and \code{counts}), the shared per-year
   \code{contexts} table (\code{year}, \code{context}, \code{survey_mode}
@@ -54,7 +62,8 @@ An object of class \code{completion_model}: a list with
   \code{optin_rate}) the forecast reads the previous campaign's opt-in rate
   from, the \code{windows} (\code{data_end}, \code{train_from},
   \code{train_until}, \code{holdout_from}), \code{counts},
-  \code{min_sent}, \code{settle_days} and the package \code{version}.
+  \code{min_sent}, \code{settle_days}, \code{size_break} and the package
+  \code{version}.
   \code{print()} shows the windows, counts and holdout metrics;
   \code{summary()} returns the coefficients of both models as odds
   multipliers (one data frame: \code{model}, \code{term},
@@ -94,9 +103,21 @@ is scored on the campaigns in between (the second fit needs at least one
 campaign per model term and two to score, else the metrics and the sd are
 NA with a warning). The band's residual sd is per mode
 and per model: the larger of the shipped fit's in-sample sd and the holdout
-sd for that mode. Residuals are skewed and the fleet drifts, so the bands
-are approximate: on campaigns from mid 2026 the nominal 95\% band covered
-about 94\% and the 50\% band about 70\%.
+sd for that mode. The same sd is also kept per mode and sample-size band
+(sends under or at least \code{size_break}; campaigns under 50,000 sends
+spread about twice as much as larger ones), and the forecast uses the band
+of its sample when that cell has one. Residuals are skewed and the fleet
+drifts, so the bands are approximate: on campaigns from mid 2026 the nominal
+95\% band covered about 94\% and the 50\% band about 70\%.
+
+Each model also keeps a re-send summary: how many training campaigns of each
+mode had a sample mostly (over half) contacted in the 30 days before their
+start, and the median ratio of their actual rate to the fitted one. A list
+sent again within days completes well below its previous send (about 0.4
+times on web in 2025 to 2026, about 0.9 on live) and such campaigns were
+the most frequent large misses; the sample terms carry part of that, the
+ratio says how much was left. \code{\link{completion_forecast}} flags such
+a sample and quotes the summary.
 
 The fit runs inside DuckDB (\pkg{duckdb}, \pkg{DBI} and \pkg{dbplyr} must be
 installed) and takes about a minute on the full projection.
