@@ -1,5 +1,13 @@
 # survey160r (development version)
 
+## Carrier notes
+
+* `vignette("disposition-paths")` and `vignette("disposition")` say that
+  `carrier` comes from three versions of the list data (only lists from May 2026
+  on match the delivery codes), so a carrier change between campaigns is not
+  evidence of a ported or reused number, and a carrier funnel over earlier
+  periods mixes versions.
+
 ## Delivery error rates article
 
 * `vignette("delivery-errors")` gains "Find the day a block started" (the daily
