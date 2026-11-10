@@ -19,8 +19,8 @@ day); \code{NULL} keeps every day in \code{x}.}
 \value{
 A data frame with columns \code{et_date}, \code{et_hour},
   \code{carrier}, \code{brand}, \code{campaign_id}, \code{error_code},
-  \code{n_sent} and \code{n_engaged}. A missing or empty \code{carrier} or
-  \code{brand} is \code{NA}; a frame without \code{n_engaged} gets it as
+  \code{n_sent} and \code{n_engaged}. A missing, empty or
+  \code{"(unknown)"} \code{carrier} or \code{brand} is \code{NA}; a frame without \code{n_engaged} gets it as
   \code{NA} (no rate uses it).
 }
 \description{
@@ -34,7 +34,8 @@ and hour of their \emph{first} send, under their \emph{latest} delivery error
 code as of the day's last rewrite (\code{"(none)"} when there is none), so a
 rejection that a retry delivered by then no longer shows, a code that changes
 later is not picked up, and a recipient sent on several days counts once
-within a campaign (a phone in two campaigns counts in each).
+within a campaign (a phone in two campaigns counts in each). Error rates
+built on these counts are therefore a floor.
 }
 \examples{
 cells <- data.frame(

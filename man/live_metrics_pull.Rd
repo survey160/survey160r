@@ -20,7 +20,8 @@ day), from 2020-01-01 through today. \code{NULL} (default):
 \code{date_to}.}
 
 \item{env}{Environment: \code{"prod"} (default) or \code{"dev"}. There is no
-staging analytics tier.}
+staging analytics tier. Only prod is written on a schedule; dev has a file
+only for days its job was run by hand.}
 
 \item{dest}{Directory to save the files in. \code{NULL} (default) caches
 under \code{tools::R_user_dir("survey160r", "cache")}.}
