@@ -198,7 +198,8 @@
       "no training campaign of mode %s was a re-send, so the model has no comparison for it", mode)))
   }
   paste0(head, sprintf(paste0(
-    "on the %d training campaigns like it (%s) actual completion was %.2fx the model's fit; ",
+    "on the %d training campaigns like it (%s) actual completion odds were %.2fx the model's ",
+    "fitted odds (an odds ratio, not a rate multiplier); ",
     "the forecast is not adjusted"), n, mode, m$resend$ratio[[mode]]))
 }
 

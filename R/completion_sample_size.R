@@ -66,7 +66,11 @@ completion_sample_size <- function(model, target, mode, topic = NULL, loi = NULL
                      "completion rate to size a sample with."), fn = fn)
   }
   fc <- completion_forecast(model, phones, mode, topic, loi, dataset, start_date)
-  sends <- function(p) if (is.na(p)) NA_real_ else ceiling(target / p)
+  sends <- function(p) {
+    if (!is.finite(p) || p <= 0) return(NA_real_)
+    n <- ceiling(target / p)
+    if (is.finite(n)) n else NA_real_
+  }
   covers <- .completion_list_covers(fc$n_phones, target, fc$completion_rate, fc$completion_lo50,
                                     fc$completion_lo95)
   warnings <- fc$warnings[[1]]

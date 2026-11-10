@@ -530,7 +530,8 @@
 #'   sample cannot provide), the per-mode \code{residual_sd}, the per mode and
 #'   size band \code{residual_sd_size} table (\code{mode}, \code{size} under /
 #'   over the break, \code{sd}, \code{n}), the \code{resend} summary
-#'   (\code{threshold}, \code{campaigns} and \code{ratio} per mode),
+#'   (\code{threshold}, \code{campaigns} and \code{ratio} per mode, the
+#'   ratio being actual odds over fitted odds, not a rate multiplier),
 #'   the \code{holdout} metrics (\code{n}, \code{r2_logit}, \code{median_ape},
 #'   \code{within_50}) and \code{counts}), the shared per-year
 #'   \code{contexts} table (\code{year}, \code{context}, \code{survey_mode}
