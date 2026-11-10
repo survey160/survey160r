@@ -17,7 +17,7 @@ Follow delivery error rates by carrier, day by day and cumulatively, across ever
 
 ## Pull a range of days
 
-The live metrics are one file per ET day, starting 2026-09-29. Each run of the pipeline (currently 4pm and 9pm ET) rewrites today's and yesterday's files. Pull the days you want, then roll them up:
+The live metrics are one file per ET day, starting 2026-09-29; the last two days are provisional (see Notes). Pull the days you want, then roll them up:
 
 ```{r}
 library(survey160r)
@@ -47,25 +47,17 @@ rates <- live_metrics_error_rates(cells)
 rates[, c("et_date", "carrier", "n_sent", "n_error", "error_rate", "cum_error_rate")]
 ```
 
-T-Mobile's day rate jumps from 10% to 30% on the second day, while its cumulative rate (both days together) reads 20%. With real data, `cells` is `paths` from the pull.
+T-Mobile's day rate jumps from 10% to 30% on the second day, while its cumulative rate (both days together) reads 20%. With real data, pass `paths` from the pull in place of `cells`.
 
-## Across the whole fleet
+## Daily or cumulative
 
-`by = NULL` gives one row per day for every carrier together:
+- **Daily** (`n_sent`, `n_error`, `error_rate`) -- the recipients first sent that day. Use it to spot the day a carrier starts rejecting.
+- **Cumulative** (`cum_sent`, `cum_error`, `cum_error_rate`) -- every recipient first sent from the group's first day pulled through that day (a carrier that first appears later starts its total there). Use it for the running picture; it moves slowly, so a one-day spike barely shows.
 
-```{r fleet, eval = TRUE}
-live_metrics_error_rates(cells, by = NULL)[, c("et_date", "n_sent", "error_rate", "cum_error_rate")]
-```
-
-## By brand or campaign
-
-`by` takes any of `"carrier"`, `"brand"`, `"campaign_id"`, `"error_code"` and `"et_hour"`, alone or together. `campaign_ids` scopes the rollup to a set of campaigns:
+The cumulative columns start at the first day in what you pass in. To start the running total at a given day, pass `date_from` (and `date_to` to end it):
 
 ```{r}
-live_metrics_error_rates(paths, by = "brand")
-live_metrics_error_rates(paths, by = c("carrier", "brand"))
-live_metrics_error_rates(paths, by = "carrier", campaign_ids = c(1234, 1235))
-live_metrics_error_rates(paths, by = "error_code")   # which codes make up the errors
+live_metrics_error_rates(paths, date_from = "2026-10-15")
 ```
 
 ## Follow T-Mobile 4780
@@ -79,36 +71,62 @@ tmobile[, c("et_date", "n_sent", "n_4780", "rate_4780", "cum_4780", "cum_rate_47
 
 Add codes to split out more of them, e.g. `codes = c("4780", "4700")`; `codes = character(0)` adds none. `percent = TRUE` scales every rate to `0`-`100`.
 
-## Daily or cumulative
+## Find the day a block started
 
-- **Daily** (`n_sent`, `n_error`, `error_rate`) -- the recipients first sent that day. Use it to spot the day a carrier starts rejecting.
-- **Cumulative** (`cum_sent`, `cum_error`, `cum_error_rate`) -- every recipient first sent from the group's first day pulled through that day (a carrier that first appears later starts its total there). Use it for the running picture; it moves slowly, so a one-day spike barely shows.
+Read the daily rate, not the cumulative one: keep the days a carrier's code rate crosses a threshold you choose, and the first of them is the onset:
 
-The cumulative columns start at the first day in what you pass in. To start the running total at a given day, pass `date_from` (and `date_to` to end it):
-
-```{r}
-live_metrics_error_rates(paths, date_from = "2026-10-15")
+```{r onset, eval = TRUE}
+subset(rates, rate_4780 >= 0.2)[, c("et_date", "carrier", "n_sent", "rate_4780")]
 ```
 
-## Plot a cumulative rate
+To narrow it to the hour, break the day down by `et_hour` and read the daily columns (with `et_hour` in `by`, the running totals run per hour across days, which is rarely what you want):
 
-ggplot2 is not a survey160r dependency; with it installed:
+```{r}
+live_metrics_error_rates(paths, by = c("carrier", "et_hour"),
+                         date_from = "2026-11-02", date_to = "2026-11-02")
+```
+
+`et_hour` is the ET hour of each recipient's first send, not the hour the rejection came back.
+
+## By brand or campaign
+
+`by` takes any of `"carrier"`, `"brand"`, `"campaign_id"`, `"error_code"` and `"et_hour"`, alone or together. `campaign_ids` scopes the rollup to a set of campaigns:
+
+```{r}
+live_metrics_error_rates(paths, by = "brand")
+live_metrics_error_rates(paths, by = c("carrier", "brand"))
+live_metrics_error_rates(paths, by = "carrier", campaign_ids = c(1234, 1235))
+live_metrics_error_rates(paths, by = "error_code")   # read n_sent per code; each row's error_rate is 0 or 1
+```
+
+## Across the whole fleet
+
+`by = NULL` gives one row per day for every carrier together; `percent = TRUE` reads easier:
+
+```{r fleet, eval = TRUE}
+fleet <- live_metrics_error_rates(cells, by = NULL, percent = TRUE)
+print(fleet[, c("et_date", "n_sent", "error_rate", "cum_error_rate")], digits = 3)
+```
+
+## Plot the rates
+
+ggplot2 is not a survey160r dependency; with it installed, one line per carrier:
 
 ```{r}
 library(ggplot2)
 ggplot(rates, aes(et_date, cum_error_rate, colour = carrier)) +
   geom_line() +
-  scale_y_continuous(labels = scales::percent) +
+  scale_y_continuous(labels = scales::percent) +   # rates are 0-1 unless percent = TRUE
   labs(x = "ET day", y = "Cumulative delivery error rate", colour = NULL)
 ```
 
-Base graphics need nothing extra, one line per carrier:
+Base graphics need nothing extra. For one carrier, the daily 4780 rate against its running rate shows both the spike and the trend:
 
 ```{r}
 tmobile <- subset(rates, carrier == "T-Mobile")
-plot(tmobile$et_date, tmobile$cum_error_rate, type = "l",
-     xlab = "ET day", ylab = "Cumulative error rate", main = "T-Mobile")
-lines(tmobile$et_date, tmobile$cum_rate_4780, lty = 2)   # the 4780 share
+plot(tmobile$et_date, tmobile$rate_4780, type = "l",
+     xlab = "ET day", ylab = "4780 rate", main = "T-Mobile")
+lines(tmobile$et_date, tmobile$cum_rate_4780, lty = 2)   # running rate
 ```
 
 ## What you get back
@@ -129,14 +147,15 @@ A rate with no sends is `NA`. `live_metrics_records()` returns the cells -- `et_
 
 ## Notes
 
-- **Counts are per recipient, not per message.** Each recipient is counted once per campaign, on the day and hour of their *first* send, under their *latest* delivery code as of the day's last rewrite (9pm ET the next day). A rejection that a retry delivered by then no longer counts as an error, a code that changes after it is not picked up, and a recipient sent on several days counts once, on the first. A phone in two campaigns counts in each, so a fleet-wide rollup counts it twice.
-- **Recent days still move.** Today's and yesterday's files are rewritten on each run with the latest delivery codes, so read the last two days as provisional. Today has no file until the day's first run (4pm ET), so a pull before then reports no file for today.
-- **Caching.** A day is final at 03:00 ET two days after it (Nov 1 at 03:00 ET on Nov 3, after its last rewrite at 9pm ET on Nov 2); a cached copy downloaded after that is reused without a network call. Any other copy (today, yesterday, the day before until 03:00 ET, or a day you cached before it was final) is fetched again on every pull. `refresh = TRUE` re-downloads the whole range.
+- **Counts are per recipient, not per message.** Each recipient is counted once per campaign, on the day and hour of their *first* send, under their *latest* delivery code as of the day's last rewrite (9pm ET the next day). A code that changes after that is not picked up, and a recipient sent on several days counts once, on the first. A phone in two campaigns counts in each, so a fleet-wide rollup counts it twice.
+- **The error rates are per recipient, by latest code.** A rejection that a retry delivered by the last rewrite no longer counts as an error, so delivered retries hide earlier rejections. The rate is not a bound on a per-message rejection rate.
+- **Recent days still move.** Each pipeline run (4pm and 9pm ET) rewrites today's and yesterday's files with the latest delivery codes, so read the last two days as provisional, or end the range two days back. Today has no file until 4pm ET, so a pull before then reports no file for today.
+- **Caching.** A day is final at 03:00 ET two days after it (Nov 1 is final at 03:00 ET on Nov 3). A copy downloaded after that is reused without a network call; any other copy is fetched again on every pull. `refresh = TRUE` re-downloads the whole range.
 - **Missing days.** A day with no file (before 2026-09-29, or not yet written) is skipped with a message; a day with no sends has a file with no rows. Neither gives the day a row in the rates (not a row with `n_sent = 0`), and the running totals continue across the gap.
 - **Coverage.** A file covers the campaigns in the live phone lists when it was written; a campaign archived before its day's last rewrite is missing from that day.
-- **Unknown carrier or brand.** A missing `carrier` or `brand` is `NA` and groups as its own row, as in `disposition_funnel()`; filter it with `is.na()`.
+- **Unknown carrier or brand.** The files write a missing carrier or brand as `"(unknown)"`; the readers turn it into `NA`, which groups as its own row, as in `disposition_funnel()`. Filter it with `is.na()`.
 - **Aggregate, not phone-keyed.** The files hold counts, never phone numbers. To screen a sample on past delivery errors, see `vignette("disposition")`.
-- **`env`.** `live_metrics_pull()` reads `"prod"` (default) or `"dev"` -- there is no `staging` tier, so `env = "staging"` errors. Run `s160_datasets()` to see every dataset's environments.
+- **`env`.** `live_metrics_pull()` reads `"prod"` (default) or `"dev"` -- there is no `staging` tier, so `env = "staging"` errors. Only prod runs on a schedule; dev has a file only for the days its job was run by hand, so a dev pull mostly reports days with no file. Run `s160_datasets()` to see every dataset's environments.
 
 ## See also
 

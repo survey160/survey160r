@@ -96,14 +96,17 @@
 #'   \code{date_to} is today (ET) and \code{date_from} is 30 days before
 #'   \code{date_to}.
 #' @param env Environment: \code{"prod"} (default) or \code{"dev"}. There is no
-#'   staging analytics tier.
+#'   staging analytics tier. Only prod is written on a schedule; dev has a file
+#'   only for days its job was run by hand (a manual run also rewrites today's
+#'   and yesterday's files, so a file need not come from a run on its own day).
 #' @param dest Directory to save the files in. \code{NULL} (default) caches
 #'   under \code{tools::R_user_dir("survey160r", "cache")}.
 #' @param refresh \code{TRUE} re-downloads every day in the range, final or not.
 #' @return A character vector of local Parquet paths, named by ET day
 #'   (\code{"YYYY-MM-DD"}), for the days that have a file.
 #' @seealso \code{\link{live_metrics_error_rates}},
-#'   \code{\link{live_metrics_records}}, \code{\link{s160_gcs_init}}
+#'   \code{\link{live_metrics_records}}, \code{\link{s160_gcs_init}},
+#'   \code{vignette("delivery-errors")}
 #' @examples
 #' \dontrun{
 #' s160_gcs_init()
@@ -184,7 +187,10 @@ live_metrics_pull <- function(date_from = NULL, date_to = NULL,
 #' code as of the day's last rewrite (\code{"(none)"} when there is none), so a
 #' rejection that a retry delivered by then no longer shows, a code that changes
 #' later is not picked up, and a recipient sent on several days counts once
-#' within a campaign (a phone in two campaigns counts in each).
+#' within a campaign (a phone in two campaigns counts in each). Error rates
+#' built on these counts are the share of recipients whose latest code at the
+#' last rewrite was an error. They can sit below the share who ever had an error
+#' (a retry delivered), and a later status change can move them either way.
 #'
 #' @param x The paths returned by \code{\link{live_metrics_pull}}, or a data
 #'   frame already read from them.
@@ -194,10 +200,11 @@ live_metrics_pull <- function(date_from = NULL, date_to = NULL,
 #'   day); \code{NULL} keeps every day in \code{x}.
 #' @return A data frame with columns \code{et_date}, \code{et_hour},
 #'   \code{carrier}, \code{brand}, \code{campaign_id}, \code{error_code},
-#'   \code{n_sent} and \code{n_engaged}. A missing or empty \code{carrier} or
-#'   \code{brand} is \code{NA}; a frame without \code{n_engaged} gets it as
+#'   \code{n_sent} and \code{n_engaged}. A missing, empty or
+#'   \code{"(unknown)"} \code{carrier} or \code{brand} is \code{NA}; a frame without \code{n_engaged} gets it as
 #'   \code{NA} (no rate uses it).
-#' @seealso \code{\link{live_metrics_error_rates}}
+#' @seealso \code{\link{live_metrics_pull}},
+#'   \code{\link{live_metrics_error_rates}}, \code{vignette("delivery-errors")}
 #' @examples
 #' cells <- data.frame(
 #'   et_date = as.Date("2026-11-01"), et_hour = 10L, carrier = "T-Mobile",
@@ -315,7 +322,9 @@ live_metrics_records <- function(x, campaign_ids = NULL, date_from = NULL,
 #'   \code{\link{live_metrics_records}}.
 #' @param by Dimension(s) to break the days down by: any of \code{"carrier"}
 #'   (default), \code{"brand"}, \code{"campaign_id"}, \code{"error_code"},
-#'   \code{"et_hour"}, or \code{NULL} for one fleet-wide row per day.
+#'   \code{"et_hour"}, or \code{NULL} for one fleet-wide row per day. With
+#'   \code{"et_hour"} the running totals run per hour across days, so read the
+#'   daily columns.
 #' @param codes Delivery error codes to count separately (default
 #'   \code{"4780"}); \code{character(0)} for none.
 #' @param campaign_ids Optional campaign ids to keep; \code{NULL} keeps all.
