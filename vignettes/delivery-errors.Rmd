@@ -49,24 +49,15 @@ rates[, c("et_date", "carrier", "n_sent", "n_error", "error_rate", "cum_error_ra
 
 T-Mobile's day rate jumps from 10% to 30% on the second day, while its cumulative rate (both days together) reads 20%. With real data, pass `paths` from the pull in place of `cells`.
 
-## Across the whole fleet
+## Daily or cumulative
 
-`by = NULL` gives one row per day for every carrier together; `percent = TRUE` reads easier:
+- **Daily** (`n_sent`, `n_error`, `error_rate`) -- the recipients first sent that day. Use it to spot the day a carrier starts rejecting.
+- **Cumulative** (`cum_sent`, `cum_error`, `cum_error_rate`) -- every recipient first sent from the group's first day pulled through that day (a carrier that first appears later starts its total there). Use it for the running picture; it moves slowly, so a one-day spike barely shows.
 
-```{r fleet, eval = TRUE}
-fleet <- live_metrics_error_rates(cells, by = NULL, percent = TRUE)
-print(fleet[, c("et_date", "n_sent", "error_rate", "cum_error_rate")], digits = 3)
-```
-
-## By brand or campaign
-
-`by` takes any of `"carrier"`, `"brand"`, `"campaign_id"`, `"error_code"` and `"et_hour"`, alone or together. `campaign_ids` scopes the rollup to a set of campaigns:
+The cumulative columns start at the first day in what you pass in. To start the running total at a given day, pass `date_from` (and `date_to` to end it):
 
 ```{r}
-live_metrics_error_rates(paths, by = "brand")
-live_metrics_error_rates(paths, by = c("carrier", "brand"))
-live_metrics_error_rates(paths, by = "carrier", campaign_ids = c(1234, 1235))
-live_metrics_error_rates(paths, by = "error_code")   # which codes make up the errors
+live_metrics_error_rates(paths, date_from = "2026-10-15")
 ```
 
 ## Follow T-Mobile 4780
@@ -97,15 +88,24 @@ live_metrics_error_rates(paths, by = c("carrier", "et_hour"),
 
 `et_hour` is the ET hour of each recipient's first send, not the hour the rejection came back.
 
-## Daily or cumulative
+## By brand or campaign
 
-- **Daily** (`n_sent`, `n_error`, `error_rate`) -- the recipients first sent that day. Use it to spot the day a carrier starts rejecting.
-- **Cumulative** (`cum_sent`, `cum_error`, `cum_error_rate`) -- every recipient first sent from the group's first day pulled through that day (a carrier that first appears later starts its total there). Use it for the running picture; it moves slowly, so a one-day spike barely shows.
-
-The cumulative columns start at the first day in what you pass in. To start the running total at a given day, pass `date_from` (and `date_to` to end it):
+`by` takes any of `"carrier"`, `"brand"`, `"campaign_id"`, `"error_code"` and `"et_hour"`, alone or together. `campaign_ids` scopes the rollup to a set of campaigns:
 
 ```{r}
-live_metrics_error_rates(paths, date_from = "2026-10-15")
+live_metrics_error_rates(paths, by = "brand")
+live_metrics_error_rates(paths, by = c("carrier", "brand"))
+live_metrics_error_rates(paths, by = "carrier", campaign_ids = c(1234, 1235))
+live_metrics_error_rates(paths, by = "error_code")   # which codes make up the errors
+```
+
+## Across the whole fleet
+
+`by = NULL` gives one row per day for every carrier together; `percent = TRUE` reads easier:
+
+```{r fleet, eval = TRUE}
+fleet <- live_metrics_error_rates(cells, by = NULL, percent = TRUE)
+print(fleet[, c("et_date", "n_sent", "error_rate", "cum_error_rate")], digits = 3)
 ```
 
 ## Plot a cumulative rate
