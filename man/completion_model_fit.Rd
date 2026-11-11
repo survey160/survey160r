@@ -12,7 +12,8 @@ completion_model_fit(
   holdout_months = 5,
   min_sent = 2000,
   settle_days = 7,
-  size_break = 50000
+  size_break = 50000,
+  targets = .COMPLETION_DEFAULT_TARGETS
 )
 
 \method{print}{completion_model}(x, ...)
@@ -39,13 +40,17 @@ by (default 7).}
 \item{size_break}{Sends at which a campaign counts as a large sample for the
 per-size band sd (default 50000).}
 
+\item{targets}{The rates to fit, distinct names among \code{"optin"},
+\code{"completion"}, \code{"reply"} and \code{"engage"} (default the
+first two). The estimate's columns follow the fitted targets.}
+
 \item{x, object}{A \code{completion_model}.}
 
 \item{...}{Unused.}
 }
 \value{
 An object of class \code{completion_model}: a list with
-  \code{models} (\code{optin} and \code{completion}, each with the
+  \code{models} (one entry per fitted target, each with the
   \code{coefficients} table (\code{term}, \code{estimate},
   \code{std_error}), the \code{formula}, the \code{training_means} the
   estimate's multipliers are centred on (and the fill for a feature a
@@ -57,7 +62,8 @@ An object of class \code{completion_model}: a list with
   the \code{holdout} metrics (\code{n}, \code{r2_logit}, \code{median_ape},
   \code{within_50}) and \code{counts}), the shared per-year
   \code{contexts} table (\code{year}, \code{context}, \code{survey_mode}
-  with NA for the pooled block, \code{p_complete}, \code{n}), the
+  with NA for the pooled block, \code{p_complete}, \code{p_reply},
+  \code{n}), the
   \code{campaigns} table (\code{campaign_id}, \code{first_date},
   \code{optin_rate}) the estimate reads the previous campaign's opt-in rate
   from, the \code{windows} (\code{data_end}, \code{train_from},
@@ -65,26 +71,32 @@ An object of class \code{completion_model}: a list with
   \code{min_sent}, \code{settle_days}, \code{size_break} and the package
   \code{version}.
   \code{print()} shows the windows, counts and holdout metrics;
-  \code{summary()} returns the coefficients of both models as odds
+  \code{summary()} returns the coefficients of every model as odds
   multipliers (one data frame: \code{model}, \code{term},
   \code{odds_multiplier}, \code{std_error}).
 }
 \description{
-Fits two campaign-level linear models from the disposition projection: the
-opt-in rate per sent and the completion rate per sent, each on the logit
-scale, from the campaign's survey design (mode, topic, length of interview
-band) and the history of its sample: the sample score (the mean P(complete |
-the number's previous three outcomes and the survey mode)), the share with a
-prior complete, the share cold (three or more contacts and never a reply)
-and the mean years since the numbers' previous contact. The opt-in model
-reads mode, the sample score and the mean opt-in rate of the campaign each
-number was last in. \code{\link{completion_estimate}} then scores a planned
-survey on the same tables.
+Fits one campaign-level linear model per target rate from the disposition
+projection, each on the logit scale of the rate per sent. The default
+\code{targets} are the opt-in rate and the completion rate; \code{"reply"}
+(any response: engaged, opted in, refused or completed) and \code{"engage"}
+(engaged, the first step of the funnel) can be added, and both are fitted
+for text-to-web external surveys too. The completion, reply and engagement
+models read the campaign's survey design (mode, topic, length of interview
+band) and the history of its sample: the sample score (the mean
+P(complete | the number's previous three outcomes and the survey mode) for
+completion; the mean P(reply | ...) for reply and engagement), the share
+with a prior complete, the share cold (three or more contacts and never a
+reply) and the mean years since the numbers' previous contact. The opt-in
+model reads mode, the sample score and the mean opt-in rate of the campaign
+each number was last in. \code{\link{completion_estimate}} then scores a
+planned survey on the same tables.
 }
 \details{
 The context tables are per calendar year and per survey mode (a live texter
 and a web survey complete the same context at very different rates), with a
-pooled block each lookup falls back to. The two history features that need
+pooled block each lookup falls back to; \code{p_complete} averages the rows
+with a known completion, \code{p_reply} every row. The two history features that need
 a prior contact (years since contact, the previous campaign's opt-in rate)
 take the training mean on a campaign whose sample has none.
 

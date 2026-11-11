@@ -2,7 +2,7 @@
 % Please edit documentation in R/completion_estimate.R
 \name{completion_estimate}
 \alias{completion_estimate}
-\title{Estimate a planned survey's opt-in and completion rates}
+\title{Estimate a planned survey's opt-in, completion (and reply) rates}
 \usage{
 completion_estimate(
   model,
@@ -40,16 +40,22 @@ year past the data uses the last table; one before the first table uses
 the first, with a warning.}
 }
 \value{
-A one-row data frame: \code{optin_rate}, \code{optin_lo50},
+A one-row data frame with nine columns per fitted target, in the
+  model's order: \code{optin_rate}, \code{optin_lo50},
   \code{optin_hi50}, \code{optin_lo95}, \code{optin_hi95}, \code{optins},
-  \code{optins_lo95}, \code{optins_hi95}, \code{optins_mean}; the same nine
+  \code{optins_lo95}, \code{optins_hi95}, \code{optins_mean}; the same
   for completion (\code{completion_rate}, ..., \code{completes},
-  \code{completes_lo95}, \code{completes_hi95}, \code{completes_mean});
+  \code{completes_lo95}, \code{completes_hi95}, \code{completes_mean}),
+  reply (\code{reply_rate}, ..., \code{replies}, ...) and engagement
+  (\code{engage_rate}, ..., \code{engaged}, ...) when fitted (NA with a
+  warning for a target not fitted for the mode: completion on a text-to-web
+  external survey); then
   \code{n_phones} (unique numbers),
   \code{share_with_history} (share of them with a prior contact),
   \code{share_recent_contact} (share contacted in the 30 days before the
   start),
   \code{sample_score} (logit of the mean P(complete | context, mode)),
+  \code{reply_score} (logit of the mean P(reply | context, mode)),
   \code{years_since_contact} and \code{prior_optin_score} (logit of the
   previous campaigns' mean opt-in rate; both NA when no number has a prior
   contact),
@@ -62,18 +68,18 @@ A one-row data frame: \code{optin_rate}, \code{optin_lo50},
   no sample, a sample under the fit's minimum sends, a re-sent sample, a
   sample with no prior contact or whose last campaign the model does not
   know, a context without a table row, a size band or a mode without an sd,
-  opt-in only for text-to-web external).
+  a target not fitted for the mode).
 }
 \description{
 Scores one planned survey with a model from
 \code{\link{completion_model_fit}}: the sample's history is read from the
 disposition projection and turned into the next contact's features (the
-mean P(complete | previous three outcomes) on the context table of the
-planned year and mode, the share with a prior complete, the share cold, the
-mean years since the numbers' previous contact and the mean opt-in rate of
-the campaign each was last in), the survey design into the model's levels,
-and both rates are predicted with a 50\% and a 95\% band and an expected
-count. A sample with no prior contact gets the training mean for the two
+mean P(complete | previous three outcomes) and P(reply | ...) on the
+context table of the planned year and mode, the share with a prior
+complete, the share cold, the mean years since the numbers' previous
+contact and the mean opt-in rate of the campaign each was last in), the
+survey design into the model's levels, and every rate the model was fitted
+on is predicted with a 50\% and a 95\% band and an expected count. A sample with no prior contact gets the training mean for the two
 features that need one, with a warning.
 }
 \details{

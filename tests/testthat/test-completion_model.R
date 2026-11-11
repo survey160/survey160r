@@ -38,14 +38,20 @@ test_that("context tables: one block per year, estimated on earlier years only",
   expect_equal(nrow(first), 3L)
   # the 2027 block sees every known row; the 2025 block only 2024's
   expect_gt(first$n[first$year == 2027], first$n[first$year == 2025])
-  expect_true(all(ctx$p_complete >= 0 & ctx$p_complete <= 1))
-  # one block per survey mode plus a pooled block (survey_mode NA)
-  expect_setequal(unique(ctx$survey_mode), c("sms", "t2w", NA))
+  known <- !is.na(ctx$p_complete)
+  expect_true(all(ctx$p_complete[known] >= 0 & ctx$p_complete[known] <= 1))
+  # one block per survey mode plus a pooled block (survey_mode NA); the external
+  # block has no known completion, so its p_complete is NA
+  expect_setequal(unique(ctx$survey_mode), c("sms", "t2w", "t2w_external", NA))
+  expect_true(all(is.na(ctx$p_complete[ctx$survey_mode %in% "t2w_external"])))
   pooled <- ctx[ctx$year == 2027L & ctx$context == "___" & is.na(ctx$survey_mode), ]
   by_mode <- ctx[ctx$year == 2027L & ctx$context == "___" & !is.na(ctx$survey_mode), ]
   expect_equal(nrow(pooled), 1L)
   expect_equal(pooled$n, sum(by_mode$n))
-  expect_equal(pooled$p_complete, sum(by_mode$p_complete * by_mode$n) / sum(by_mode$n))
+  expect_equal(pooled$p_reply, sum(by_mode$p_reply * by_mode$n) / sum(by_mode$n))
+  # p_complete pools the known rows only: the two known blocks weighted by their rows
+  kn <- by_mode[!is.na(by_mode$p_complete), ]
+  expect_equal(pooled$p_complete, sum(kn$p_complete * kn$n) / sum(kn$n))
   expect_equal(nrow(ctx), nrow(unique(ctx[c("year", "context", "survey_mode")])))
 })
 
@@ -455,4 +461,84 @@ test_that("fit: re-send summary counts training campaigns whose sample was mostl
   expect_equal(unname(rs$campaigns), c(0L, 1L))
   expect_true(is.na(rs$ratio[["Live"]]))
   expect_true(is.finite(rs$ratio[["T2W"]]) && rs$ratio[["T2W"]] > 0)
+})
+
+test_that("registry: every target names its label, count, formula, modes and score", {
+  expect_named(.COMPLETION_MODELS, c("optin", "completion", "reply", "engage"))
+  for (spec in .COMPLETION_MODELS) {
+    expect_true(all(c("label", "count", "formula", "modes", "score") %in% names(spec)))
+    expect_true(all(c("context", "term") %in% names(spec$score)))
+    expect_true(all(spec$modes %in% .COMPLETION_MODES))
+  }
+  expect_equal(.COMPLETION_MODELS$completion$require, "completion_known")
+  expect_null(.COMPLETION_MODELS$reply$require)
+  expect_equal(.COMPLETION_MODELS$reply$score[["context"]], "p_reply")
+  expect_equal(.COMPLETION_MODELS$reply$score[["term"]], "reply_score")
+  expect_equal(.COMPLETION_MODELS$reply$modes, .COMPLETION_MODES)
+  expect_equal(.COMPLETION_DEFAULT_TARGETS, c("optin", "completion"))
+})
+
+test_that("context tables and campaign table carry the reply score", {
+  skip_if_no_sequence()
+  p <- write_completion_parquet(completion_records())
+  con <- .disposition_lazy_con()
+  src <- .disposition_lazy_source(con, p, "test")
+  history <- .completion_history_sql(con, src)
+  ctx <- .completion_context_tables(con, history)
+  expect_true(all(c("p_complete", "p_reply") %in% names(ctx)))
+  expect_true(all(ctx$p_reply >= 0 & ctx$p_reply <= 1))
+  # a reply is at least as common as a complete in every block whose rows all have a known completion
+  known <- ctx$survey_mode %in% c("sms", "t2w")
+  expect_true(all(ctx$p_reply[known] >= ctx$p_complete[known]))
+  # the external campaign's rows (completion unknown) still count for the reply table
+  ext <- ctx[ctx$year == 2027L & ctx$survey_mode %in% "t2w_external", ]
+  expect_gt(nrow(ext), 0L)
+  expect_true(all(is.na(ext$p_complete)))
+  ct <- .completion_campaign_table(con, history, ctx)
+  expect_true(all(c("replies", "engaged", "reply_score") %in% names(ct)))
+  r <- completion_records()
+  expect_equal(ct$engaged[1], sum(r$engaged[r$campaign_id == 1] == 1 & r$opted_in[r$campaign_id == 1] == 0 &
+                                    is.na(r$error[r$campaign_id == 1])))
+  expect_equal(ct$replies[1], sum(r$engaged[r$campaign_id == 1] == 1 & is.na(r$error[r$campaign_id == 1])))
+  expect_true(all(ct$replies >= ct$optins))
+  expect_false(anyNA(ct$reply_score[ct$year > 2024]))
+})
+
+test_that("fit rows: a target's count, filter and modes come from the registry", {
+  ct <- data.frame(
+    campaign_id = 1:3, first_date = as.Date(c("2025-03-01", "2025-04-01", "2025-05-01")),
+    last_date = as.Date(c("2025-03-02", "2025-04-02", "2025-05-02")), year = 2025L, sent = 50L,
+    optins = c(3L, 0L, 2L), completes = c(2L, 0L, 1L), replies = c(10L, 4L, 0L), engaged = c(7L, 4L, 0L),
+    completion_known = c(TRUE, FALSE, TRUE), mode = c("Live", "T2W external", "T2W"), topic = "Brand",
+    loi = 12, sample_score = -4, reply_score = c(-2, NA, -2), share_prior_completers = 0, share_cold = 0,
+    stringsAsFactors = FALSE)
+  args <- list(ct, train_until = as.Date("2026-10-01"), min_sent = 10, settle_days = 7,
+               data_end = as.Date("2026-09-04"))
+  # reply keeps the external campaign if its score is known; drops 3 (no replies) and 2 (no score)
+  expect_equal(do.call(.completion_fit_rows, c(args, target = "reply"))$campaign_id, 1L)
+  ct$reply_score[2] <- -2
+  args[[1]] <- ct
+  rows <- do.call(.completion_fit_rows, c(args, target = "reply"))
+  expect_equal(rows$campaign_id, 1:2)
+  expect_equal(rows$rate, c(10, 4) / 50)
+  expect_equal(do.call(.completion_fit_rows, c(args, target = "engage"))$campaign_id, 1:2)
+  expect_error(do.call(.completion_fit_rows, c(args, target = "refuse")), "arg")
+})
+
+test_that("fit: targets selects the models", {
+  skip_if_no_sequence()
+  p <- write_completion_parquet(completion_records(n_per_campaign = 60L))
+  m <- completion_model_fit(p, train_until = as.Date("2026-10-01"), min_sent = 10,
+                            targets = c("reply", "engage", "optin"))
+  expect_named(m$models, c("reply", "engage", "optin"))
+  expect_true("reply_score" %in% m$models$reply$coefficients$term)
+  expect_true("modeT2W external" %in% m$models$engage$coefficients$term)
+  expect_named(m$models$reply$residual_sd, .COMPLETION_MODES)
+  expect_true(m$models$reply$counts$campaigns_fit >= 20L)
+  expect_equal(m$windows$train_from, as.Date("2025-01-01"))
+  expect_output(print(m), "reply model")
+  expect_true(all(c("reply", "engage", "optin") %in% summary(m)$model))
+  expect_error(completion_model_fit(p, targets = "refuse"), "targets")
+  expect_error(completion_model_fit(p, targets = character(0)), "targets")
+  expect_error(completion_model_fit(p, targets = c("optin", "optin")), "targets")
 })
