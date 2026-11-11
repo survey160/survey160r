@@ -191,7 +191,7 @@
 
 # The re-send flag: a sample mostly contacted in the recent-days window before
 # the start, with the model's re-send summary for the mode when it has one.
-.completion_resend_warning <- function(m, share, mode, start_date) {
+.completion_resend_warning <- function(m, share, mode, start_date, label = "completion") {
   if (is.na(share) || share <= m$resend$threshold) return(character(0))
   head <- sprintf("%.0f%% of the sample was contacted in the %d days before %s: a re-sent list; ",
                   100 * share, .COMPLETION_RECENT_DAYS, format(start_date))
@@ -201,9 +201,9 @@
       "no training campaign of mode %s was a re-send, so the model has no comparison for it", mode)))
   }
   paste0(head, sprintf(paste0(
-    "on the %d training campaigns like it (%s) actual completion odds were %.2fx the model's ",
+    "on the %d training campaigns like it (%s) actual %s odds were %.2fx the model's ",
     "fitted odds (an odds ratio, not a rate multiplier); ",
-    "the estimate is not adjusted"), n, mode, m$resend$ratio[[mode]]))
+    "the estimate is not adjusted"), n, mode, label, m$resend$ratio[[mode]]))
 }
 
 # The two drivers as odds multipliers: each term's coefficient times the estimate
@@ -442,7 +442,8 @@ completion_estimate <- function(model, phones = NULL, mode, topic = NULL, loi = 
   }
   if (length(lead) == 1L) {
     warnings <- c(warnings, .completion_resend_warning(model$models[[lead]],
-                                                       sample$share_recent_contact, mode, start_date))
+                                                       sample$share_recent_contact, mode, start_date,
+                                                       .COMPLETION_MODELS[[lead]]$label))
   }
   if (!with_sample) sample <- .completion_fill_scores(model, sample)
   out <- data.frame(c(
