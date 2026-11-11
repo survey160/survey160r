@@ -1,5 +1,18 @@
 # survey160r (development version)
 
+## `completion_forecast()` renamed to `completion_estimate()`
+
+* The function that scores a planned survey is now `completion_estimate()`
+  (the file, its internal helpers and its tests follow). The rate it returns
+  is a regression estimate from the survey design and the sample's history,
+  not a time-series forecast, and "estimated rate" / "expected completes" is
+  the wording Survey Managers and the project tracker already use. No alias:
+  the function had no callers outside this package.
+* `completion_sample_size()`: the `sends_at_forecast` column is
+  `sends_at_estimate`, and the `list_covers` level `"forecast"` is
+  `"estimate"`.
+* Documentation and messages say estimate where they said forecast.
+
 ## Carrier notes
 
 * `vignette("disposition-paths")` and `vignette("disposition")` say that

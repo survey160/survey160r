@@ -1,24 +1,24 @@
 # completion_sample_size(): the sends a target number of completes needs, from
-# completion_forecast()'s rate and band read the other way round. The client
+# completion_estimate()'s rate and band read the other way round. The client
 # fixes the completes; the Survey Manager has to size the sample.
 
-# Which level of the forecast a list of `n_phones` covers for `target`
+# Which level of the estimate a list of `n_phones` covers for `target`
 # completes: "95% band" when it reaches the target even at the 95% low end,
-# "50% band" at the 50% low end, "forecast" at the point forecast, "none"
+# "50% band" at the 50% low end, "estimate" at the point estimate, "none"
 # otherwise. NA without a list; a level without a band cannot be reached.
 .completion_list_covers <- function(n_phones, target, rate, lo50, lo95) {
   if (is.na(n_phones)) return(NA_character_)
   reaches <- function(p) !is.na(p) && n_phones * p >= target
   if (reaches(lo95)) return("95% band")
   if (reaches(lo50)) return("50% band")
-  if (reaches(rate)) return("forecast")
+  if (reaches(rate)) return("estimate")
   "none"
 }
 
 #' Sends needed for a target number of completes
 #'
-#' Reads \code{\link{completion_forecast}} the other way round: given the
-#' number of completes a client needs, the sends it takes at the forecast
+#' Reads \code{\link{completion_estimate}} the other way round: given the
+#' number of completes a client needs, the sends it takes at the estimate
 #' completion rate and at the low end of the 50\% and 95\% bands, so a quote
 #' can carry a margin. Without \code{phones} the rate is the survey design's
 #' alone (quote before a list exists); with a list the rate is the list's and
@@ -26,19 +26,19 @@
 #' sees whether to ask for more sample. Completion is never recorded for
 #' text-to-web external surveys, so that mode has no sample size.
 #'
-#' @inheritParams completion_forecast
+#' @inheritParams completion_estimate
 #' @param target The number of completes required (a positive whole number).
 #' @return A one-row data frame: \code{target}; \code{completion_rate},
-#'   \code{completion_lo50}, \code{completion_lo95} (the forecast and the low
-#'   ends of its bands); \code{sends_at_forecast}, \code{sends_at_lo50},
+#'   \code{completion_lo50}, \code{completion_lo95} (the estimate and the low
+#'   ends of its bands); \code{sends_at_estimate}, \code{sends_at_lo50},
 #'   \code{sends_at_lo95} (the sends the target needs at each rate, rounded
 #'   up; NA where the model has no band); \code{n_phones} (the list's unique
 #'   numbers, NA without one); \code{list_covers} (\code{"95\% band"},
-#'   \code{"50\% band"}, \code{"forecast"} or \code{"none"}: the lowest rate at
+#'   \code{"50\% band"}, \code{"estimate"} or \code{"none"}: the lowest rate at
 #'   which the list still reaches the target; NA without a list); and
-#'   \code{warnings} (the forecast's, plus a note when the list is short of the
-#'   target at the point forecast).
-#' @seealso \code{\link{completion_forecast}}, \code{\link{completion_model_fit}}
+#'   \code{warnings} (the estimate's, plus a note when the list is short of the
+#'   target at the point estimate).
+#' @seealso \code{\link{completion_estimate}}, \code{\link{completion_model_fit}}
 #' @examples
 #' \dontrun{
 #' dataset <- disposition_pull()
@@ -65,7 +65,7 @@ completion_sample_size <- function(model, target, mode, topic = NULL, loi = NULL
     stop_s160(paste0("completion is not recorded for text-to-web external surveys, so there is no ",
                      "completion rate to size a sample with."), fn = fn)
   }
-  fc <- completion_forecast(model, phones, mode, topic, loi, dataset, start_date)
+  fc <- completion_estimate(model, phones, mode, topic, loi, dataset, start_date)
   sends <- function(p) {
     if (!is.finite(p) || p <= 0) return(NA_real_)
     n <- ceiling(target / p)
@@ -76,13 +76,13 @@ completion_sample_size <- function(model, target, mode, topic = NULL, loi = NULL
   warnings <- fc$warnings[[1]]
   if (identical(covers, "none")) {
     warnings <- c(warnings, sprintf(
-      "the list's %s numbers are short of %s completes at the forecast rate (%s needed)",
+      "the list's %s numbers are short of %s completes at the estimated rate (%s needed)",
       format(fc$n_phones, big.mark = ","), format(target, big.mark = ","),
       format(sends(fc$completion_rate), big.mark = ",")))
   }
   out <- data.frame(
     target = target, completion_rate = fc$completion_rate, completion_lo50 = fc$completion_lo50,
-    completion_lo95 = fc$completion_lo95, sends_at_forecast = sends(fc$completion_rate),
+    completion_lo95 = fc$completion_lo95, sends_at_estimate = sends(fc$completion_rate),
     sends_at_lo50 = sends(fc$completion_lo50), sends_at_lo95 = sends(fc$completion_lo95),
     n_phones = fc$n_phones, list_covers = covers, stringsAsFactors = FALSE)
   out$warnings <- list(warnings)

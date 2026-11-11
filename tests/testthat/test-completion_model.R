@@ -91,7 +91,7 @@ test_that("campaign table: one row per campaign with dimensions and sample featu
   expect_true(all(!is.na(ct$prior_optin_score[-1])))
   expect_true(all(ct$prior_optin_score[-1] < 0))
   # the sample score is the mean P(complete | context, survey mode) with the pooled fallbacks:
-  # the SQL agrees with the R lookup the forecast uses
+  # the SQL agrees with the R lookup the estimate uses
   con <- .disposition_lazy_con()
   h <- DBI::dbGetQuery(con, paste("SELECT * FROM (", hs, ") WHERE campaign_id = 6"))
   ctx <- .completion_context_tables(con, hs)

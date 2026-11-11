@@ -1,4 +1,4 @@
-# completion_forecast(): score one planned survey with a completion_model
+# completion_estimate(): score one planned survey with a completion_model
 # (completion_model.R): read the sample's history from the projection, build
 # the next contact's features, predict both rates and their bands.
 
@@ -66,7 +66,7 @@
 
 # The context-table year for a planned start: the last table (every row) for a
 # date past the data, the first table (with a warning) for one before it.
-.completion_forecast_year <- function(start_date, contexts) {
+.completion_estimate_year <- function(start_date, contexts) {
   year <- as.integer(format(start_date, "%Y"))
   years <- range(contexts$year)
   warning <- character(0)
@@ -81,7 +81,7 @@
 
 # The survey's topic and LOI resolved to the model's levels, each fallback
 # named in a warning.
-.completion_forecast_levels <- function(topic, loi, fn) {
+.completion_estimate_levels <- function(topic, loi, fn) {
   warnings <- character(0)
   # a missing tracker value arrives as NA of any type: the same as not given
   missing <- function(x) is.null(x) || (length(x) == 1L && is.na(x))
@@ -113,7 +113,7 @@
   list(topic = topic_level, loi = loi, warnings = warnings)
 }
 
-# The band's sd for a forecast: the cell of the sample's size band when the
+# The band's sd for an estimate: the cell of the sample's size band when the
 # model has one, else the mode's sd (with a warning when a size was known and
 # its cell had none). NA when the mode has none either.
 .completion_band_sd <- function(m, label, mode, n_phones, size_break) {
@@ -135,17 +135,17 @@
 }
 
 # The mean of the band's distribution of the rate: plogis(logit + sd Z) over a
-# standard normal Z. Above the median (the point forecast) because the odds
+# standard normal Z. Above the median (the point estimate) because the odds
 # band is skewed: expected counts summed over many campaigns want this one.
 .completion_mean_rate <- function(logit, sd) {
   if (is.na(sd)) return(stats::plogis(logit))
   stats::integrate(function(z) stats::plogis(logit + sd * z) * stats::dnorm(z), -Inf, Inf)$value
 }
 
-# One model's prediction on the forecast row: the rate, its four band edges
+# One model's prediction on the estimate row: the rate, its four band edges
 # (NA without a residual sd), the band's mean, the sd used, the matrix row and
 # the warnings. `n_phones` (NA without a sample) picks the sd's size band.
-.completion_forecast_rate <- function(model, target, design, mode, n_phones) {
+.completion_estimate_rate <- function(model, target, design, mode, n_phones) {
   m <- model$models[[target]]
   label <- .COMPLETION_MODELS[[target]]$label
   design <- .completion_fill_means(design, m$training_means)
@@ -154,7 +154,7 @@
   if (length(empty) > 0L) {
     stop_s160(sprintf(
       "%s model: the sample's %s is NA and the model has no training mean to fill it with.",
-      label, paste(empty, collapse = ", ")), fn = "completion_forecast")
+      label, paste(empty, collapse = ", ")), fn = "completion_estimate")
   }
   x <- .completion_model_matrix(m$formula, design)
   logit <- .completion_predict_logit(m, x)
@@ -200,10 +200,10 @@
   paste0(head, sprintf(paste0(
     "on the %d training campaigns like it (%s) actual completion odds were %.2fx the model's ",
     "fitted odds (an odds ratio, not a rate multiplier); ",
-    "the forecast is not adjusted"), n, mode, m$resend$ratio[[mode]]))
+    "the estimate is not adjusted"), n, mode, m$resend$ratio[[mode]]))
 }
 
-# The two drivers as odds multipliers: each term's estimate times the forecast
+# The two drivers as odds multipliers: each term's coefficient times the estimate
 # row's distance from the training mean (a numeric term) or share (a factor
 # level), summed over the sample terms and over the survey terms.
 .completion_multipliers <- function(m, x) {
@@ -219,7 +219,7 @@
   c(sample = exp(sum(effect[sample])), survey = exp(sum(effect[!sample])))
 }
 
-#' Forecast a planned survey's opt-in and completion rates
+#' Estimate a planned survey's opt-in and completion rates
 #'
 #' Scores one planned survey with a model from
 #' \code{\link{completion_model_fit}}: the sample's history is read from the
@@ -245,26 +245,26 @@
 #' none or no sample is given. They are approximate (about 94\%
 #' coverage at the nominal 95\% on campaigns from mid 2026). For a text-to-web external
 #' survey completion is never recorded, so the completion columns are NA and
-#' only the opt-in forecast stands.
+#' only the opt-in estimate stands.
 #'
-#' The point forecast is the median of the band's distribution; the
+#' The point estimate is the median of the band's distribution; the
 #' \code{*_mean} counts are its mean, higher because the odds band is skewed.
 #' Quote one campaign with the median; add the means when summing expected
 #' completes over many campaigns.
 #'
-#' Without \code{phones} the forecast is the survey design's alone: the sample
+#' Without \code{phones} the estimate is the survey design's alone: the sample
 #' terms take the training mean (a typical campaign's mix), the count and
 #' sample columns are NA and a warning says so. Its error is wider (about a
 #' third more than with a list on 2026 campaigns); use it to quote before a
-#' list exists and re-forecast when it arrives. A sample mostly contacted in
+#' list exists and re-estimate when it arrives. A sample mostly contacted in
 #' the 30 days before the start is a re-sent list and gets a warning with the
 #' model's re-send summary: such lists completed well below their previous
 #' send and were the most frequent large misses (see
-#' \code{\link{completion_model_fit}}); the forecast is not adjusted for it.
+#' \code{\link{completion_model_fit}}); the estimate is not adjusted for it.
 #'
 #' @param model A \code{completion_model} from \code{\link{completion_model_fit}}.
 #' @param phones Character vector of the sample's phone numbers, or \code{NULL}
-#'   (the default) for a forecast from the survey design alone.
+#'   (the default) for an estimate from the survey design alone.
 #' @param mode One of \code{"Live"}, \code{"T2W"}, \code{"T2W external"}.
 #' @param topic One of \code{"Brand"}, \code{"Electoral"}, \code{"Policy"};
 #'   \code{NULL}, \code{NA} or another value counts as unknown, with a warning
@@ -309,13 +309,13 @@
 #' dataset <- disposition_pull()
 #' m <- completion_model_fit(dataset)
 #' sample <- read.csv("client_sample.csv")
-#' completion_forecast(m, sample$phone, mode = "T2W", topic = "Policy", loi = 12,
+#' completion_estimate(m, sample$phone, mode = "T2W", topic = "Policy", loi = 12,
 #'                     dataset = dataset, start_date = "2026-12-01")
 #' }
 #' @export
-completion_forecast <- function(model, phones = NULL, mode, topic = NULL, loi = NULL, dataset = NULL,
+completion_estimate <- function(model, phones = NULL, mode, topic = NULL, loi = NULL, dataset = NULL,
                                 start_date = Sys.Date()) {
-  fn <- "completion_forecast"
+  fn <- "completion_estimate"
   if (!inherits(model, "completion_model")) {
     stop_s160(sprintf("`model` must be a completion_model from completion_model_fit()%s.",
                       .not_got(model)), fn = fn)
@@ -325,7 +325,7 @@ completion_forecast <- function(model, phones = NULL, mode, topic = NULL, loi = 
   req <- if (is.character(phones)) .disposition_request_phones(phones) else character(0)
   if (with_sample && length(req) == 0L) {
     stop_s160(sprintf(paste0("`phones` must be a character vector with at least one phone number, ",
-                             "or NULL for a forecast from the survey design alone%s."),
+                             "or NULL for an estimate from the survey design alone%s."),
                       .not_got(phones)), fn = fn)
   }
   if (with_sample && is.null(dataset)) {
@@ -337,9 +337,9 @@ completion_forecast <- function(model, phones = NULL, mode, topic = NULL, loi = 
                       paste(sprintf('"%s"', .COMPLETION_MODES), collapse = ", "), .not_got(mode)),
               fn = fn)
   }
-  levels <- .completion_forecast_levels(topic, loi, fn)
+  levels <- .completion_estimate_levels(topic, loi, fn)
   start_date <- .completion_check_date(start_date, "start_date", fn)
-  year <- .completion_forecast_year(start_date, model$contexts)
+  year <- .completion_estimate_year(start_date, model$contexts)
   warnings <- c(year$warning, levels$warnings)
   na <- NA_real_
   if (with_sample) {
@@ -359,7 +359,7 @@ completion_forecast <- function(model, phones = NULL, mode, topic = NULL, loi = 
                    prior_optin_score = na)
     warnings <- c(warnings, paste0(
       "no sample given: the sample terms take the training mean (the mix of a typical campaign), ",
-      "so the forecast is the survey design's alone and its error is wider than with a list"))
+      "so the estimate is the survey design's alone and its error is wider than with a list"))
   }
   row <- data.frame(mode = mode, topic = levels$topic, loi = levels$loi,
                     sample_score = sample$sample_score,
@@ -367,7 +367,7 @@ completion_forecast <- function(model, phones = NULL, mode, topic = NULL, loi = 
                     share_cold = sample$share_cold,
                     years_since_contact = sample$years_since_contact,
                     prior_optin_score = sample$prior_optin_score, stringsAsFactors = FALSE)
-  optin <- .completion_forecast_rate(model, "optin", .completion_design(row, "optin"), mode, n_phones)
+  optin <- .completion_estimate_rate(model, "optin", .completion_design(row, "optin"), mode, n_phones)
   warnings <- c(warnings, optin$warnings)
   completion <- list(rate = na, lo50 = na, hi50 = na, lo95 = na, hi95 = na, mean = na, sd = na)
   multipliers <- c(sample = na, survey = na)
@@ -376,7 +376,7 @@ completion_forecast <- function(model, phones = NULL, mode, topic = NULL, loi = 
     warnings <- c(warnings,
                   "completion is not recorded for text-to-web external surveys: opt-in only")
   } else {
-    completion <- .completion_forecast_rate(model, "completion",
+    completion <- .completion_estimate_rate(model, "completion",
                                             .completion_design(row, "completion"), mode, n_phones)
     warnings <- c(warnings, completion$warnings)
     multipliers <- .completion_multipliers(model$models$completion, completion$x)
@@ -386,7 +386,7 @@ completion_forecast <- function(model, phones = NULL, mode, topic = NULL, loi = 
                                                      start_date))
   count <- function(p) if (is.na(n_phones)) NA_real_ else round(p * n_phones)
   if (!with_sample) {
-    # the filled-in sample terms are what the design-only forecast used
+    # the filled-in sample terms are what the design-only estimate used
     sample$sample_score <- model$models$completion$training_means[["sample_score"]]
   }
   out <- data.frame(

@@ -52,7 +52,7 @@ reference:
   desc: >
     Screen a phone sample against the disposition dataset -- which numbers have
     been contacted / completed / refused before -- roll it up to funnel rates,
-    follow each number's campaigns in order, forecast a planned survey's rates,
+    follow each number's campaigns in order, estimate a planned survey's rates,
     and build the dataset from a raw campaign CSV.
   contents:
   - disposition_pull
@@ -63,7 +63,7 @@ reference:
   - disposition_steps
   - disposition_paths
   - completion_model_fit
-  - completion_forecast
+  - completion_estimate
   - completion_sample_size
   - disposition_run
   - disposition_input_columns
