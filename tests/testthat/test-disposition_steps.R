@@ -158,25 +158,39 @@ test_that("phones and sample_frac scope whole phones before the history", {
   expect_error(disposition_steps(p, sample_frac = c(0.1, 0.2)), "`sample_frac`", class = "s160_error")
 })
 
-test_that("campaign and date filters keep rows after the history is computed", {
+test_that("campaign and date filters scope the history, as in the other readers", {
   skip_if_no_sequence()
   p <- write_sequence_parquet()
-  d <- collect_sorted(disposition_steps(p, campaign_ids = 3, phones = "2015550101"))
-  expect_equal(d$step, 3L)
-  expect_equal(d$path_so_far, "NEC")
+  d <- collect_sorted(disposition_steps(p, campaign_ids = c(2, 3), phones = "2015550101"))
+  expect_equal(d$step, 1:2)
+  expect_equal(d$n_campaigns, c(2L, 2L))
+  expect_equal(d$path_so_far, c("E", "EC"))
   d <- collect_sorted(disposition_steps(p, date_from = "2026-02-15", date_to = as.Date("2026-03-01"),
                                         phones = "2015550102"))
+  expect_equal(d$step, 1L)
+  expect_equal(d$non_responses_so_far, 0L)
+  expect_true(is.na(d$prev_label))
+  # the full history for some rows: filter the result instead
+  d <- collect_sorted(dplyr::filter(disposition_steps(p, phones = "2015550102"),
+                                    disposition_date >= as.Date("2026-02-15")))
   expect_equal(d$step, 4L)
   expect_equal(d$non_responses_so_far, 3L)
+  # a scoped table reconciles with the equally scoped summary
+  s <- disposition_summary(p, date_from = "2026-02-01")
+  st <- collect_sorted(disposition_steps(p, date_from = "2026-02-01"))
+  st <- st[st$step == st$n_campaigns, ]
+  expect_equal(st$n_campaigns, s$n_campaigns[match(st$phone, s$phone)])
   # a DOUBLE id column (an extract built from c(1, 2)) still matches campaign_ids = 3
   rows <- sequence_records()
   rows$campaign_id <- as.numeric(rows$campaign_id)
   d <- collect_sorted(disposition_steps(write_sequence_parquet(rows), campaign_ids = 3,
                                         phones = "2015550101"))
-  expect_equal(d$path_so_far, "NEC")
+  expect_equal(d$path_so_far, "C")
+  expect_error(disposition_steps(p, date_from = "2026-03-01", date_to = "2026-02-01"),
+               "is after `date_to`", class = "s160_error")
   expect_error(disposition_steps(p, campaign_ids = c(1, NA)), "`campaign_ids` must be a vector",
                class = "s160_error")
-  expect_error(disposition_steps(p, date_from = "not a date"), "`date_from` must be a single valid date",
+  expect_error(disposition_steps(p, date_from = "not a date"), "`date_from` must be a single date",
                class = "s160_error")
 })
 
@@ -380,7 +394,7 @@ test_that("DECIMAL ids filter as numbers; ids tied as numbers keep the summary's
     "FROM read_parquet('%s')) TO '%s' (FORMAT parquet)"), src, dec))
   DBI::dbDisconnect(con, shutdown = TRUE)
   d <- collect_sorted(disposition_steps(dec, campaign_ids = 3, phones = "2015550101"))
-  expect_equal(d$path_so_far, "NEC")
+  expect_equal(d$path_so_far, "C")
   # "01" and "1" are the same campaign number: the first stored row is the latest
   rows <- rbind(.sequence_row("2015550101", 1L, "2026-01-01", engaged = 1L),
                 .sequence_row("2015550101", 1L, "2026-01-01"))

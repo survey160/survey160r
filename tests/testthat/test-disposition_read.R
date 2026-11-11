@@ -279,8 +279,10 @@ test_that("a date bound on empty data does not warn (nothing to drop)", {
 test_that("each date bound must be a single valid date", {
   d <- .disposition_row("2015550101", 2339, engaged = 1, disposition_date = "2026-03-01")
   expect_error(disposition_summary(d, date_from = c("2026-01-01", "2026-02-01")),
-               "single valid date")
-  expect_error(disposition_summary(d, date_to = "not-a-date"), "single valid date")
+               "single date")
+  expect_error(disposition_summary(d, date_to = "not-a-date"), "single date")
+  expect_error(disposition_summary(d, date_from = "2026-03-01", date_to = "2026-02-01"),
+               "is after `date_to`", class = "s160_error")
 })
 
 test_that("derived disposition follows funnel precedence", {
@@ -601,9 +603,9 @@ test_that("disposition_screen validates the history arguments", {
                "`columns` must be one or both of \"summary\", \"history\"")
   expect_error(disposition_screen(sample, p, columns = character(0)), "`columns`")
   expect_error(disposition_screen(sample, p, columns = "history", as_of = NULL),
-               "`as_of` must be a single valid date")
+               "`as_of` must be a single date")
   expect_error(disposition_screen(sample, p, columns = "history", as_of = "yesterday"),
-               "`as_of` must be a single valid date")
+               "`as_of` must be a single date")
   expect_error(disposition_screen(sample, p, columns = "history", undeliverable_codes = NA),
                "`undeliverable_codes`")
   clash <- data.frame(phone = "2015550101", history_segment = "x", stringsAsFactors = FALSE)

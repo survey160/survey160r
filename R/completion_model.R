@@ -466,7 +466,7 @@
 }
 
 .completion_check_date <- function(x, name, fn) {
-  if (is.null(x)) stop_s160(sprintf("`%s` must be a single valid date, not NULL.", name), fn = fn)
+  if (is.null(x)) stop_s160(sprintf("`%s` must be a single date (a Date or \"YYYY-MM-DD\"), not NULL.", name), fn = fn)
   .disposition_date_bound(x, name, fn)
 }
 

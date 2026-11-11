@@ -351,10 +351,10 @@
 # `phone` digit-normalized, `disposition_date` as a DATE, plus the label letter
 # (`s160_code`) and whether the row's completion is known (`completion_known`:
 # FALSE where `completed` is NA -- a t2w_external send, whose completes are
-# never reported). Scoping happens HERE, before the history windows, only by
-# whole phones -- `phones` and `sample_frac` keep or drop all of a number's
-# campaigns -- so a step's history is never cut short. `pre` adds row predicates
-# (disposition_paths()' date window, which deliberately shapes the path).
+# never reported). Scoping happens HERE, before the history windows:
+# `phones` and `sample_frac` keep or drop all of a number's campaigns, and `pre`
+# adds the campaign / date scope (.disposition_scope_filters()), which removes
+# campaigns from the history itself.
 .disposition_base_sql <- function(con, source, phones, sample_frac, label_sql, pre = NULL) {
   q <- function(x) as.character(DBI::dbQuoteIdentifier(con, x))
   others <- setdiff(source$cols, c("phone", "disposition_date"))
@@ -426,32 +426,49 @@
   paste0("WINDOW w AS (", order_by, " CURRENT ROW), w_prior AS (", order_by, " 1 PRECEDING)")
 }
 
-# Row filters applied AFTER the history windows (disposition_steps): keeping a
-# campaign or a date range must not reset the history the kept rows carry, so a
-# 2026 row still counts the phone's 2025 non-responses.
-.disposition_after_filters <- function(con, source, campaign_ids, date_from, date_to, fn) {
+# The campaign / date scope as row predicates, applied to the base rows BEFORE
+# the history windows -- the meaning date_from / date_to / campaign_ids have in
+# every reader (disposition_summary(), disposition_screen(), ...): only campaigns
+# in scope exist, so a step's history, a path and its anchors are the scoped
+# ones. A caller who wants some rows with their full history filters the result.
+.disposition_scope_filters <- function(con, source, campaign_ids, date_from, date_to, fn) {
   where <- character(0)
   if (!is.null(campaign_ids)) {
     if (!(is.character(campaign_ids) || is.numeric(campaign_ids)) || anyNA(campaign_ids)) {
       stop_s160(sprintf("`campaign_ids` must be a vector of campaign ids with no NA%s.",
                         .not_got(campaign_ids)), fn = fn)
     }
-    # A numeric id column (a DOUBLE extract stores 1 as 1.0, which casts to the
-    # text "1.0") is matched as numbers; a text id column as text, like
-    # disposition_records()' as.character() match.
+    # The other readers keep a row when as.character(its id) is one of
+    # as.character(campaign_ids) (.disposition_filter). A text id column is
+    # matched as that text. A numeric one is matched as numbers -- SQL casts a
+    # DOUBLE 1 to "1.0", not R's "1" -- keeping only the values R spells the same
+    # way, so "01" and "1.0" match nothing here either.
+    txt <- as.character(campaign_ids)
     numeric_id <- .disposition_numeric_type(source$types[["campaign_id"]])
-    ids <- .disposition_lazy_register(con, "campaigns", data.frame(
-      id = unique(if (numeric_id) suppressWarnings(as.numeric(campaign_ids)) else as.character(campaign_ids)),
-      stringsAsFactors = FALSE))
+    id <- txt
+    if (numeric_id) {
+      id <- suppressWarnings(as.numeric(txt))
+      # Values that are all non-numbers ("2026-02-01" passed by position, a
+      # typo) would only return an empty table: say so. A mixed list keeps the
+      # ids that match, as in the other readers.
+      if (length(id) > 0L && all(is.na(id))) {
+        stop_s160(sprintf("`campaign_ids` must be campaign numbers (the dataset's ids are numeric): %s.",
+                          .preview_values(campaign_ids)), fn = fn)
+      }
+      id <- id[!is.na(id) & as.character(id) == txt]
+    }
+    ids <- .disposition_lazy_register(con, "campaigns", data.frame(id = unique(id), stringsAsFactors = FALSE))
     where <- c(where, sprintf("%s IN (SELECT id FROM %s)",
                               if (numeric_id) "CAST(campaign_id AS DOUBLE)" else "CAST(campaign_id AS VARCHAR)",
                               ids))
   }
-  date_bound <- function(x, name, op) {
-    d <- .disposition_date_bound(x, name)
+  from <- .disposition_date_bound(date_from, "date_from", fn)
+  to <- .disposition_date_bound(date_to, "date_to", fn)
+  .check_day_range(from, to, fn)
+  date_bound <- function(d, op) {
     if (!is.null(d)) sprintf("disposition_date %s DATE '%s'", op, format(d))
   }
-  c(where, date_bound(date_from, "date_from", ">="), date_bound(date_to, "date_to", "<="))
+  c(where, date_bound(from, ">="), date_bound(to, "<="))
 }
 
 # The window columns for each requested group, over the base rows' letters. The
@@ -681,11 +698,14 @@
 #' has four broad values, and \code{carrier} reads Sprint numbers as T-Mobile
 #' from March 2026 -- a Sprint-to-T-Mobile step is a relabel, not a port.
 #'
-#' \strong{Filters.} \code{phones} and \code{sample_frac} keep or drop whole
-#' phones \emph{before} the history is computed. \code{campaign_ids},
-#' \code{date_from} and \code{date_to} drop rows \emph{after} it, so a kept row
-#' still carries its full history (a 2026 row counts the phone's 2025
-#' non-responses).
+#' \strong{Scope.} Every filter applies \emph{before} the history is computed,
+#' as in every other disposition reader: \code{phones} and \code{sample_frac}
+#' keep or drop whole phones, and \code{campaign_ids}, \code{date_from} and
+#' \code{date_to} decide which campaigns exist at all -- with
+#' \code{date_from = "2025-01-01"} a phone's first 2025 campaign is its step 1
+#' and its history starts there. To keep some rows but give them their full
+#' history (2026 sends, with every earlier campaign counted), filter the result
+#' instead: \code{filter(disposition_date >= as.Date("2026-01-01"))}.
 #'
 #' \strong{Resources.} The connection uses a 4 GB DuckDB \code{memory_limit} and
 #' spills to disk past it (a full-projection query can spill ~20 GB, freed when it
@@ -708,11 +728,13 @@
 #'   machine and DuckDB version). \code{0.1} makes full-projection exploration
 #'   ~10x cheaper; the 10\% sample matches the full data to within 0.02 points
 #'   on prod.
-#' @param campaign_ids Optional vector; keep rows of these campaigns (history
-#'   still covers all campaigns).
-#' @param date_from,date_to Optional \code{Date}/date-string bounds on
-#'   \code{disposition_date} (inclusive); keep rows in range (history still covers
-#'   all campaigns).
+#' @param campaign_ids Optional vector of campaign ids: only these campaigns
+#'   are read, so the history covers only them (see Scope).
+#' @param date_from,date_to Optional inclusive bounds on \code{disposition_date},
+#'   each a \code{Date} or a \code{"YYYY-MM-DD"} string (a date-time is
+#'   converted to its America/New_York day, so \code{2026-02-01 02:00 UTC} is
+#'   January 31): only campaigns in range are read, so the history starts at
+#'   \code{date_from} (see Scope).
 #' @param columns Which history column groups to compute: any of
 #'   \code{"neighbors"} (\code{prev_label}, \code{next_label}, \code{next_date},
 #'   \code{gap_prev_days}, \code{gap_next_days}), \code{"so_far"}
@@ -762,9 +784,10 @@
 #' dataset <- disposition_pull()
 #' steps <- disposition_steps(dataset, sample_frac = 0.1)
 #'
-#' # Completion of sends in 2026 by what the number did before (history still spans 2021+)
-#' disposition_steps(dataset, date_from = "2026-01-01", columns = "history") |>
-#'   filter(completion_known) |>
+#' # Completion of sends in 2026 by what the number did before: read every
+#' # campaign (the history spans 2021+), then keep the 2026 rows
+#' disposition_steps(dataset, columns = "history") |>
+#'   filter(disposition_date >= as.Date("2026-01-01"), completion_known) |>
 #'   group_by(history_segment) |>
 #'   summarise(sends = n(), completion = mean(as.integer(
 #'     label %in% c("completed", "web_complete")), na.rm = TRUE)) |>
@@ -772,15 +795,17 @@
 #'   collect()
 #'
 #' # Completion by how many campaigns ago the number last completed
-#' disposition_steps(dataset, date_from = "2026-01-01", columns = "history") |>
-#'   filter(completion_known, !is.na(steps_since_complete)) |>
+#' disposition_steps(dataset, columns = "history") |>
+#'   filter(disposition_date >= as.Date("2026-01-01"), completion_known,
+#'          !is.na(steps_since_complete)) |>
 #'   group_by(since = pmin(steps_since_complete, 5L, na.rm = TRUE)) |>
 #'   summarise(sends = n(), completion = mean(as.integer(
 #'     label %in% c("completed", "web_complete")), na.rm = TRUE)) |>
 #'   arrange(since) |>
 #'   collect()
 #'
-#' # Reply on the next campaign after a no-reply, by channel switch (2025+)
+#' # Reply on the next campaign after a no-reply, by channel switch (2025+
+#' # campaigns only)
 #' disposition_steps(dataset, date_from = "2025-01-01", columns = "neighbors",
 #'                   neighbor_columns = "survey_mode") |>
 #'   filter(label == "non_response", !is.na(next_label)) |>
@@ -823,9 +848,9 @@ disposition_steps <- function(dataset, phones = NULL, sample_frac = NULL,
   con <- .disposition_lazy_con()
   source <- .disposition_lazy_source(con, dataset, fn)
   neighbor_columns <- .disposition_check_neighbors(neighbor_columns, source$cols, columns, fn)
-  after <- .disposition_after_filters(con, source, campaign_ids, date_from, date_to, fn)
+  scope <- .disposition_scope_filters(con, source, campaign_ids, date_from, date_to, fn)
   base <- .disposition_base_sql(con, source, phones, sample_frac,
-                                .disposition_label_sql(con, source, terminal, codes))
+                                .disposition_label_sql(con, source, terminal, codes), pre = scope)
   need_path <- any(c("run_length", "path_so_far", "history") %in% columns) || !is.null(pattern_re)
   windowed <- paste0("SELECT *, ", paste(c(.disposition_step_windows(columns, need_path),
                                            .disposition_neighbor_windows(con, neighbor_columns)),
@@ -834,7 +859,6 @@ disposition_steps <- function(dataset, phones = NULL, sample_frac = NULL,
   sql <- paste0("SELECT ", paste(.disposition_step_select(con, source$cols, columns, pattern_re,
                                                          neighbor_columns),
                                  collapse = ", "),
-                " FROM (", windowed, ")",
-                if (length(after) > 0L) paste(" WHERE", paste(after, collapse = " AND ")))
+                " FROM (", windowed, ")")
   dplyr::tbl(con, dbplyr::sql(sql))
 }

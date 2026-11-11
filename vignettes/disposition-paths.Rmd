@@ -167,9 +167,10 @@ disposition_steps(dataset, sample_frac = 0.1) |>
   arrange(run) |>
   collect()
 
-# Completion of 2026 sends by what the number did before (history still spans 2021+)
-disposition_steps(dataset, date_from = "2026-01-01", columns = "history") |>
-  filter(completion_known) |>
+# Completion of 2026 sends by what the number did before: read every campaign
+# (the history spans 2021+), then keep the 2026 rows
+disposition_steps(dataset, columns = "history") |>
+  filter(disposition_date >= as.Date("2026-01-01"), completion_known) |>
   group_by(history_segment) |>
   summarise(sends = n(), completion = mean(as.integer(
     label %in% c("completed", "web_complete")), na.rm = TRUE)) |>
@@ -238,7 +239,7 @@ disposition_paths(dataset, "N > C|W", max_gap_days = 365) |>
 
 - **Sample for exploration.** A query over the full dataset takes about 15-25 seconds. `sample_frac = 0.1` keeps the same 10% of numbers on every run and machine and takes seconds; on production data its rates match the full data to within 0.02 points.
 - **Phones.** `phones =` keeps whole phones, every campaign of each, before anything is computed: seconds for up to millions of phones. Rows with a blank phone are always dropped.
-- **Dates mean different things.** On `disposition_steps()`, `campaign_ids` / `date_from` / `date_to` drop rows *after* the history is computed, so a 2026 row still counts its 2025 non-responses. On `disposition_paths()` the dates choose which campaigns form the path (the phone's 2025+ path, say): `n_campaigns`, `first_date` and the `^` / `$` anchors then refer to the window, and campaigns with no date drop out. `disposition_paths()` has no `campaign_ids`.
+- **Campaigns and dates scope the history.** `campaign_ids` / `date_from` / `date_to` decide which campaigns exist for the query, as on every disposition reader: with `date_from = "2025-01-01"` a phone's first 2025 campaign is its step 1, and on `disposition_paths()` its 2025+ campaigns form the path, so `n_campaigns`, `first_date` and the `^` / `$` anchors refer to them. Campaigns with no date drop out of a dated query. To keep some rows but give them their full history (2026 sends with every earlier campaign counted), read every campaign and `filter(disposition_date >= as.Date("2026-01-01"))` the result, as in the completion example above.
 - **Aggregate before `collect()`.** The full steps table is about 16 GB in R; a grouped summary is a few rows.
 
 ## What you get back
@@ -280,7 +281,7 @@ The production figures below are from the dataset as of November 2026.
 - **Carrier comes from the list, in three versions.** `carrier` is the value supplied with each uploaded list, and the carrier lookup behind the lists changed twice: lists sent to January 2026 still show about 18% Sprint, lists from late January to April 2026 show no Sprint and about 10% Metro PCS, and lists from late April 2026 show neither. Within one version a number's carrier almost never changes (under 0.4% at any gap); between versions it disagrees on 19-53% of numbers. Only the newest version matches the carrier-specific delivery codes (4780 on T-Mobile, 4702 on Verizon: 98-100%, against 4-89% for the older two across the carrier-specific codes), so compare `carrier` across campaigns only within lists from May 2026 on. Two 2025 campaigns' `carrier` holds survey answers ("Strongly approve", "Somewhat disapprove").
 - **A long gap can join two people's histories.** A number can be reassigned, and the dataset cannot show when: a carrier change between campaigns is not reliable evidence of a list-version change, a port or a reassignment. `max_gap_days` keeps a pattern from matching across a long gap.
 - **Overlapping campaigns.** Two campaigns that fielded at the same time can come out in either order (0.5% of consecutive pairs, all under 30 days apart).
-- **How the labels reconcile with the summary.** On an unfiltered steps table, per phone, `n_campaigns` and the counts of `web_complete` and `refused` labels equal `disposition_summary()`'s, and so does the last step's label (`latest_disposition`), except that a final `undeliverable` step is `non_response` in the summary (`undeliverable_codes = NULL` makes them agree). The other counts differ only where one stored row sets two flags: a row flagged both completed and web complete (about 430,000 since 2024) is one `web_complete` step here and counts in both `n_completed` and `n_web_complete` there, and a row flagged both terminated and refused is one `refused` step here but counts in both there. A `campaign_ids` / `date_from` / `date_to` filter applies after the history, so a filtered table's `n_campaigns` can exceed the equally scoped summary's.
+- **How the labels reconcile with the summary.** On an unfiltered steps table, per phone, `n_campaigns` and the counts of `web_complete` and `refused` labels equal `disposition_summary()`'s, and so does the last step's label (`latest_disposition`), except that a final `undeliverable` step is `non_response` in the summary (`undeliverable_codes = NULL` makes them agree). The other counts differ only where one stored row sets two flags: a row flagged both completed and web complete (about 430,000 since 2024) is one `web_complete` step here and counts in both `n_completed` and `n_web_complete` there, and a row flagged both terminated and refused is one `refused` step here but counts in both there. A `campaign_ids` / `date_from` / `date_to` scope applies to both in the same way, so a scoped steps table reconciles with the equally scoped summary; a `filter()` on the result does not change `n_campaigns`.
 - **Memory.** DuckDB works within 4 GB and spills to disk past it (up to about 20 GB on a full-dataset query, freed when it finishes). Change it with `options(survey160r.duckdb_memory = "8GB")` or `options(survey160r.duckdb_temp_dir = "/path")`.
 - **A path, not a frame.** Both readers take the Parquet path from `disposition_pull()`, never an in-memory frame; write a frame with `nanoparquet::write_parquet()` first, as above. Without `duckdb`, `DBI` and `dbplyr` they stop and say what to install (there is no fallback engine).
 - **Stale cache.** `disposition_pull(refresh = TRUE)` downloads the current dataset.

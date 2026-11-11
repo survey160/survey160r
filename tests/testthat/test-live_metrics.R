@@ -109,7 +109,9 @@ test_that("date_from / date_to keep a day range, and the running totals start th
   expect_equal(t$cum_sent, 100)
   expect_equal(t$cum_error_rate, 0.2)
   expect_error(live_metrics_records(live_cells(), date_to = "11/02/2026"),
-               "single date \\(YYYY-MM-DD\\)")
+               "single date \\(a Date or \"YYYY-MM-DD\"\\)")
+  expect_error(live_metrics_records(live_cells(), date_from = "2026-11-02", date_to = "2026-11-01"),
+               "`date_from` \\(2026-11-02\\) is after `date_to`")
 })
 
 test_that("campaign_ids scopes the rates, from a frame or from the day files", {
@@ -320,9 +322,9 @@ test_that("pull rejects reversed, mis-parsed and ancient dates, and bad args", {
   expect_error(live_metrics_pull("2026-11-04", "2026-11-01"), "is after")
   expect_error(live_metrics_pull("2026-10-01", "2099-01-01"), "is after today")
   expect_error(live_metrics_pull(20261001), "single date")
-  expect_error(live_metrics_pull("not a date"), "single date \\(YYYY-MM-DD\\)")
-  expect_error(live_metrics_pull("10/01/2026"), "single date \\(YYYY-MM-DD\\)")
-  expect_error(live_metrics_pull(as.Date("0010-01-20")), "on or after 2020-01-01")
+  expect_error(live_metrics_pull("not a date"), "single date")
+  expect_error(live_metrics_pull("10/01/2026"), "single date")
+  expect_error(live_metrics_pull(as.Date("0010-01-20")), "is before 2020-01-01")
   expect_error(live_metrics_pull(as.Date(c("2026-10-01", "2026-10-02"))), "single date")
   expect_error(live_metrics_pull(refresh = NA), "single TRUE or FALSE")
   expect_error(live_metrics_pull(dest = ""), "non-empty string")

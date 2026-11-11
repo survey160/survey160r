@@ -28,6 +28,32 @@
   table adds `replies`, `engaged` and `reply_score`. Sample scores, opt-in
   and completion estimates are unchanged.
 
+## Dates and campaigns scope every reader the same way
+
+* **Behaviour change:** `disposition_steps()`' `campaign_ids`, `date_from` and
+  `date_to` now scope the history, as they already did in
+  `disposition_summary()`, `disposition_screen()`, `disposition_records()` and
+  `disposition_paths()`: only campaigns in scope are read, so with
+  `date_from = "2025-01-01"` a phone's first 2025 campaign is its step 1.
+  Before, they dropped rows after a full-history computation. For some rows with
+  their full history, read every campaign and `filter()` the result
+  (`filter(disposition_date >= as.Date("2026-01-01"))`); the examples and
+  `vignette("disposition-paths")` do so. A scoped steps table now reconciles
+  with the equally scoped summary.
+* `disposition_paths()` gains `campaign_ids` (a path through chosen campaigns);
+  `^` / `$` are documented as the first / last campaign in the path. It is the
+  last argument, so positional date bounds keep their meaning. In steps and
+  paths, `campaign_ids` matches as in the other readers, and one made only of
+  non-numbers (a date passed by position) against numeric ids is an error
+  instead of an empty table.
+* Every date argument (`date_from`, `date_to`, `as_of`, `train_until`,
+  `start_date`, and the live-metrics bounds) is read the same way: a `Date`, a
+  `"YYYY-MM-DD"` string, or a date-time as its Eastern-time day. Other
+  spellings (`"2026/03/01"`, `"03/01/2026"`, a bare number, trailing text) are
+  now an error instead of a guess, and `date_from` after `date_to` is an error
+  in every reader (only `live_metrics_pull()` checked it before) instead of an
+  empty result.
+
 ## `completion_forecast()` renamed to `completion_estimate()`
 
 * The function that scores a planned survey is now `completion_estimate()`
