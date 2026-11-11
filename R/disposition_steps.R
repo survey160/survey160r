@@ -442,9 +442,14 @@
     # text "1.0") is matched as numbers; a text id column as text, like
     # disposition_records()' as.character() match.
     numeric_id <- .disposition_numeric_type(source$types[["campaign_id"]])
-    ids <- .disposition_lazy_register(con, "campaigns", data.frame(
-      id = unique(if (numeric_id) suppressWarnings(as.numeric(campaign_ids)) else as.character(campaign_ids)),
-      stringsAsFactors = FALSE))
+    id <- if (numeric_id) suppressWarnings(as.numeric(campaign_ids)) else as.character(campaign_ids)
+    # Against numeric ids a value that is not a number ("2026-02-01" passed by
+    # position, a typo) would match nothing and return an empty table: say so.
+    if (anyNA(id)) {
+      stop_s160(sprintf("`campaign_ids` must be campaign numbers (the dataset's ids are numeric): %s.",
+                        .preview_values(campaign_ids[is.na(id)])), fn = fn)
+    }
+    ids <- .disposition_lazy_register(con, "campaigns", data.frame(id = unique(id), stringsAsFactors = FALSE))
     where <- c(where, sprintf("%s IN (SELECT id FROM %s)",
                               if (numeric_id) "CAST(campaign_id AS DOUBLE)" else "CAST(campaign_id AS VARCHAR)",
                               ids))

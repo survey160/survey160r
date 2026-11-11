@@ -72,6 +72,11 @@ test_that("campaign ids scope the path and its anchors", {
   expect_equal(d$matched, c(TRUE, FALSE, FALSE, FALSE, FALSE))
   expect_error(disposition_paths(p, date_from = "2026-03-01", date_to = "2026-02-01"),
                "is after `date_to`", class = "s160_error")
+  # a date passed by position lands in campaign_ids: an error, not an empty table
+  expect_error(disposition_paths(p, NULL, NULL, NULL, "2026-02-01"),
+               "`campaign_ids` must be campaign numbers.*2026-02-01", class = "s160_error")
+  expect_error(disposition_steps(p, campaign_ids = c("3", "x")), "must be campaign numbers.*x",
+               class = "s160_error")
 })
 
 test_that("the date window shapes the path; phones scope it", {
