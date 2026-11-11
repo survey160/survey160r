@@ -1,5 +1,22 @@
 # survey160r (development version)
 
+## One definition of a phone's history: steps, context, lazy plumbing
+
+* `disposition_steps(columns = "context")` adds `context`: the phone's previous
+  three outcomes, newest first, in the coarse letters (terminated reads as
+  engaged, ineligible as refused, a web complete as a complete), padded with
+  `_`. It is the cell the completion model's context tables are keyed by, so a
+  Survey Manager can see which cell a number is scored on and reproduce
+  P(complete | context) on a newer projection.
+* The completion model reads its per-row history (coarse letter, prior counts,
+  context, previous campaign) off the steps table instead of a window pass of
+  its own, so the model and `disposition_steps()` share one definition of
+  reply, complete and context. Coefficients, context tables, sample features
+  and estimates are unchanged (gated on the production projection).
+* The lazy DuckDB plumbing (session connection, lazy source, phone and label
+  SQL, base rows, sequence window, scope filters) moves from
+  `R/disposition_steps.R` to `R/disposition_lazy.R`; no behaviour change.
+
 ## Completion model: a registry of targets, `targets =`, reply and engagement
 
 * `completion_model_fit(targets =)` picks the rates to fit from a registry

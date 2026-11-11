@@ -49,8 +49,10 @@ counting this step), \code{"run_length"} (how many steps in a row, ending
 here, have this label), \code{"path_so_far"} (the history as letters,
 ending with this step) and \code{"history"} (\code{prior_*} counts, the
 \code{history_segment}, and the \code{steps_since_*} / \code{days_since_*}
-recency columns; see below). The default is the first four; \code{"history"} is
-opt-in. Each costs a few seconds on the full projection.}
+recency columns; see below) and \code{"context"} (the previous three
+outcomes, newest first, in the coarse letters; see below). The default is
+the first four; \code{"history"} and \code{"context"} are opt-in. Each costs
+a few seconds on the full projection.}
 
 \item{pattern}{Optional sequence pattern (see \code{\link{disposition_paths}}
 for the syntax); adds \code{history_matched}: whether the history up to and
@@ -153,6 +155,17 @@ after one / two / three / four unanswered campaigns in between and 3\% after
 five, whatever the calendar gap; after an undeliverable the next reply rate
 climbs from 0.3\% within a week to 3.4\% past two years, so
 \code{days_since_undeliverable} is the one day count worth a rule.
+
+\strong{Context.} With \code{columns = "context"} each row carries
+\code{context}: the phone's previous three outcomes, newest first, as three
+coarse letters padded with \code{_} (\code{___} on a first contact,
+\code{N__} after one no-reply, \code{CEN} after a complete, an engaged and a
+no-reply before that). The coarse letters fold the path alphabet to six:
+\code{T} (terminated) reads as \code{E}, \code{I} (ineligible) as \code{R}
+and \code{W} (web complete) as \code{C}. This is the cell the completion
+model's context tables are keyed by (\code{\link{completion_model_fit}}): group
+by it to reproduce P(complete | context) on a newer projection, or to see
+which cell a number in a sample is scored on.
 
 \strong{Neighbor columns.} \code{neighbor_columns} carries any stored
 column across to the previous and next campaign, for transitions that depend
