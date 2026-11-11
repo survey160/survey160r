@@ -4,7 +4,7 @@
 \alias{completion_model_fit}
 \alias{print.completion_model}
 \alias{summary.completion_model}
-\title{Fit the completion forecast model from the disposition projection}
+\title{Fit the completion model from the disposition projection}
 \usage{
 completion_model_fit(
   dataset,
@@ -48,7 +48,7 @@ An object of class \code{completion_model}: a list with
   \code{models} (\code{optin} and \code{completion}, each with the
   \code{coefficients} table (\code{term}, \code{estimate},
   \code{std_error}), the \code{formula}, the \code{training_means} the
-  forecast's multipliers are centred on (and the fill for a feature a
+  estimate's multipliers are centred on (and the fill for a feature a
   sample cannot provide), the per-mode \code{residual_sd}, the per mode and
   size band \code{residual_sd_size} table (\code{mode}, \code{size} under /
   over the break, \code{sd}, \code{n}), the \code{resend} summary
@@ -59,7 +59,7 @@ An object of class \code{completion_model}: a list with
   \code{contexts} table (\code{year}, \code{context}, \code{survey_mode}
   with NA for the pooled block, \code{p_complete}, \code{n}), the
   \code{campaigns} table (\code{campaign_id}, \code{first_date},
-  \code{optin_rate}) the forecast reads the previous campaign's opt-in rate
+  \code{optin_rate}) the estimate reads the previous campaign's opt-in rate
   from, the \code{windows} (\code{data_end}, \code{train_from},
   \code{train_until}, \code{holdout_from}), \code{counts},
   \code{min_sent}, \code{settle_days}, \code{size_break} and the package
@@ -78,7 +78,7 @@ the number's previous three outcomes and the survey mode)), the share with a
 prior complete, the share cold (three or more contacts and never a reply)
 and the mean years since the numbers' previous contact. The opt-in model
 reads mode, the sample score and the mean opt-in rate of the campaign each
-number was last in. \code{\link{completion_forecast}} then scores a planned
+number was last in. \code{\link{completion_estimate}} then scores a planned
 survey on the same tables.
 }
 \details{
@@ -105,7 +105,7 @@ NA with a warning). The band's residual sd is per mode
 and per model: the larger of the shipped fit's in-sample sd and the holdout
 sd for that mode. The same sd is also kept per mode and sample-size band
 (sends under or at least \code{size_break}; campaigns under 50,000 sends
-spread about twice as much as larger ones), and the forecast uses the band
+spread about twice as much as larger ones), and the estimate uses the band
 of its sample when that cell has one. Residuals are skewed and the fleet
 drifts, so the bands are approximate: on campaigns from mid 2026 the nominal
 95\% band covered about 94\% and the 50\% band about 70\%.
@@ -116,7 +116,7 @@ start, and the median ratio of their actual rate to the fitted one. A list
 sent again within days completes well below its previous send (about 0.4
 times on web in 2025 to 2026, about 0.9 on live) and such campaigns were
 the most frequent large misses; the sample terms carry part of that, the
-ratio says how much was left. \code{\link{completion_forecast}} flags such
+ratio says how much was left. \code{\link{completion_estimate}} flags such
 a sample and quotes the summary.
 
 The fit runs inside DuckDB (\pkg{duckdb}, \pkg{DBI} and \pkg{dbplyr} must be
@@ -131,6 +131,6 @@ summary(m)
 }
 }
 \seealso{
-\code{\link{completion_forecast}} (score a planned survey),
+\code{\link{completion_estimate}} (score a planned survey),
   \code{\link{disposition_paths}} (the history letters)
 }

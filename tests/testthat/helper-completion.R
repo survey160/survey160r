@@ -1,11 +1,11 @@
-# Fixture for the completion forecast (completion_model_fit / completion_forecast):
+# Fixture for the completion estimate (completion_model_fit / completion_estimate):
 # a small synthetic projection of 25 campaigns over three years, so the per-year
 # context tables, the time holdout and the two fits all have rows. Dates: 2024
 # quarterly (ids 1-4), 2025 monthly (5-16), 2026 January to September (17-25).
 # Campaign 8 has zero completes (unrecorded completion); campaign 25 is a
 # text-to-web external survey (completion never reported). Campaigns never
 # overlap in time, so a phone's last row before a later campaign's start is
-# the same row the training window sees (the forecast and training paths agree).
+# the same row the training window sees (the estimate and training paths agree).
 .completion_campaign_dates <- function() {
   as.Date(c("2024-02-01", "2024-05-01", "2024-08-01", "2024-11-01",
             sprintf("2025-%02d-01", 1:12), sprintf("2026-%02d-01", 1:9)))
@@ -56,7 +56,7 @@ completion_records <- function(n_per_campaign = 40L, seed = 1L) {
 
 write_completion_parquet <- function(rows = completion_records()) write_disposition_parquet(rows)
 
-# The model the forecast tests score with: the 60-phone fixture fitted to October 2026.
+# The model the estimate tests score with: the 60-phone fixture fitted to October 2026.
 fit_fixture_model <- function() {
   p <- write_completion_parquet(completion_records(n_per_campaign = 60L))
   list(path = p, model = completion_model_fit(p, train_until = as.Date("2026-10-01"), min_sent = 10))

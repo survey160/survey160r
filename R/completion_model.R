@@ -1,9 +1,9 @@
-# Completion forecast: fit two campaign-level linear models (opt-ins per sent,
+# Completion estimate: fit two campaign-level linear models (opt-ins per sent,
 # completes per sent) from the disposition projection. The per-row history
 # (letter, previous three letters, prior counts) is one DuckDB window pass over
 # the lazy-reader plumbing in disposition_steps.R; a second pass groups it to one
 # row per campaign; the fits are ordinary least squares on the logit of each
-# rate. completion_forecast() (completion_forecast.R) scores a planned survey on
+# rate. completion_estimate() (completion_estimate.R) scores a planned survey on
 # the same context tables.
 
 # The per-row history: one row per stored (phone, campaign) with the collapsed
@@ -14,7 +14,7 @@
 # whether the row is the phone's latest, plus the previous row's date and
 # campaign (`prev_date`, `prev_campaign`: NULL on a first contact). The optional tracker columns and
 # survey_mode come through as NULL when the file lacks them. `phones` scopes the
-# read to a sample (the forecast path); NULL reads every phone (the fit path).
+# read to a sample (the estimate path); NULL reads every phone (the fit path).
 # `before` (a Date) keeps only rows dated before it: the history a planned
 # start would see, so a past campaign's own outcome never scores its sample.
 .completion_history_sql <- function(con, source, phones = NULL, before = NULL) {
@@ -214,7 +214,7 @@
 
 # The two fits: formula, the mode levels the model sees and the label print()
 # uses. One shared design (.completion_design) sets the factor levels, so a
-# forecast row builds the same model matrix the fit did.
+# estimate row builds the same model matrix the fit did.
 .COMPLETION_MODELS <- list(
   optin = list(
     label = "opt-in", formula = "logit ~ mode + sample_score + prior_optin_score",
@@ -258,7 +258,7 @@
 }
 
 # Set the factor columns a model's formula reads, with the levels fixed at fit
-# time so a forecast row (one level each) still expands to every column.
+# time so an estimate row (one level each) still expands to every column.
 .completion_design <- function(rows, target) {
   rows$mode <- factor(rows$mode, levels = .COMPLETION_MODELS[[target]]$modes)
   rows$topic <- factor(.completion_topic(rows$topic), levels = .COMPLETION_TOPICS)
@@ -267,7 +267,7 @@
 }
 
 # A numeric term NA on a row (a sample with no prior contact) takes the
-# training mean of that term, at fit time and on a forecast row.
+# training mean of that term, at fit time and on an estimate row.
 .completion_fill_means <- function(design, means) {
   for (term in intersect(names(means), names(design))) {
     design[[term]][is.na(design[[term]])] <- means[[term]]
@@ -291,7 +291,7 @@
 
 # The coefficient table the model object stores instead of the lm: every term
 # of the model matrix, with an aliased term (a level absent from the training
-# rows) at estimate 0 and no standard error, so a forecast on that level is
+# rows) at estimate 0 and no standard error, so an estimate on that level is
 # visible rather than impossible.
 .completion_coefficients <- function(fit) {
   estimate <- stats::coef(fit)
@@ -305,7 +305,7 @@
 
 # The training mean of each numeric term and the training share of each factor
 # level (names `mode.T2W`, `topic.Brand`, `loi_band.(10,15]`): the centre the
-# forecast's multipliers are read against.
+# estimate's multipliers are read against.
 .completion_training_means <- function(rows, target) {
   d <- .completion_design(rows, target)
   terms <- attr(stats::terms(stats::as.formula(.COMPLETION_MODELS[[target]]$formula)),
@@ -364,7 +364,7 @@
 # The re-send summary of a fit: how many training campaigns of each mode had a
 # sample mostly contacted in the .COMPLETION_RECENT_DAYS before their start,
 # and the median of their actual-to-fitted ratio (exp of the median residual;
-# NA for a mode with no such campaign). The forecast quotes it when a sample
+# NA for a mode with no such campaign). The estimate quotes it when a sample
 # looks like a re-send.
 .completion_resend_summary <- function(residuals, rows, modes) {
   recent <- !is.na(rows$share_recent_contact) &
@@ -424,7 +424,7 @@
     holdout$warning <- sprintf(paste0(
       "%s model: the holdout window from %s has %d campaign(s) to score (at least 2) and %d ",
       "to fit on (at least %d, one per term); holdout metrics and the residual sd are NA, so ",
-      "forecasts carry no bands. Use a longer `holdout_months` or a later `train_until`."),
+      "estimates carry no bands. Use a longer `holdout_months` or a later `train_until`."),
       spec$label, format(holdout_from), nrow(score), nrow(hold_rows), min_fit)
   }
   residual_sd <- ifelse(is.na(in_sample_sd) | is.na(holdout_sd), NA_real_,
@@ -454,7 +454,7 @@
   as.numeric(x)
 }
 
-#' Fit the completion forecast model from the disposition projection
+#' Fit the completion model from the disposition projection
 #'
 #' Fits two campaign-level linear models from the disposition projection: the
 #' opt-in rate per sent and the completion rate per sent, each on the logit
@@ -464,7 +464,7 @@
 #' prior complete, the share cold (three or more contacts and never a reply)
 #' and the mean years since the numbers' previous contact. The opt-in model
 #' reads mode, the sample score and the mean opt-in rate of the campaign each
-#' number was last in. \code{\link{completion_forecast}} then scores a planned
+#' number was last in. \code{\link{completion_estimate}} then scores a planned
 #' survey on the same tables.
 #'
 #' The context tables are per calendar year and per survey mode (a live texter
@@ -490,7 +490,7 @@
 #' and per model: the larger of the shipped fit's in-sample sd and the holdout
 #' sd for that mode. The same sd is also kept per mode and sample-size band
 #' (sends under or at least \code{size_break}; campaigns under 50,000 sends
-#' spread about twice as much as larger ones), and the forecast uses the band
+#' spread about twice as much as larger ones), and the estimate uses the band
 #' of its sample when that cell has one. Residuals are skewed and the fleet
 #' drifts, so the bands are approximate: on campaigns from mid 2026 the nominal
 #' 95\% band covered about 94\% and the 50\% band about 70\%.
@@ -501,7 +501,7 @@
 #' sent again within days completes well below its previous send (about 0.4
 #' times on web in 2025 to 2026, about 0.9 on live) and such campaigns were
 #' the most frequent large misses; the sample terms carry part of that, the
-#' ratio says how much was left. \code{\link{completion_forecast}} flags such
+#' ratio says how much was left. \code{\link{completion_estimate}} flags such
 #' a sample and quotes the summary.
 #'
 #' The fit runs inside DuckDB (\pkg{duckdb}, \pkg{DBI} and \pkg{dbplyr} must be
@@ -526,7 +526,7 @@
 #'   \code{models} (\code{optin} and \code{completion}, each with the
 #'   \code{coefficients} table (\code{term}, \code{estimate},
 #'   \code{std_error}), the \code{formula}, the \code{training_means} the
-#'   forecast's multipliers are centred on (and the fill for a feature a
+#'   estimate's multipliers are centred on (and the fill for a feature a
 #'   sample cannot provide), the per-mode \code{residual_sd}, the per mode and
 #'   size band \code{residual_sd_size} table (\code{mode}, \code{size} under /
 #'   over the break, \code{sd}, \code{n}), the \code{resend} summary
@@ -537,7 +537,7 @@
 #'   \code{contexts} table (\code{year}, \code{context}, \code{survey_mode}
 #'   with NA for the pooled block, \code{p_complete}, \code{n}), the
 #'   \code{campaigns} table (\code{campaign_id}, \code{first_date},
-#'   \code{optin_rate}) the forecast reads the previous campaign's opt-in rate
+#'   \code{optin_rate}) the estimate reads the previous campaign's opt-in rate
 #'   from, the \code{windows} (\code{data_end}, \code{train_from},
 #'   \code{train_until}, \code{holdout_from}), \code{counts},
 #'   \code{min_sent}, \code{settle_days}, \code{size_break} and the package
@@ -546,7 +546,7 @@
 #'   \code{summary()} returns the coefficients of both models as odds
 #'   multipliers (one data frame: \code{model}, \code{term},
 #'   \code{odds_multiplier}, \code{std_error}).
-#' @seealso \code{\link{completion_forecast}} (score a planned survey),
+#' @seealso \code{\link{completion_estimate}} (score a planned survey),
 #'   \code{\link{disposition_paths}} (the history letters)
 #' @examples
 #' \dontrun{
@@ -606,7 +606,7 @@ print.completion_model <- function(x, ...) {
   w <- x$windows
   pct <- function(v) if (is.na(v)) "NA" else sprintf("%.0f%%", 100 * v)
   num <- function(v) if (is.na(v)) "NA" else sprintf("%.2f", v)
-  cat(sprintf("Completion forecast model (survey160r %s)\n", x$version))
+  cat(sprintf("Completion model (survey160r %s)\n", x$version))
   cat(sprintf("Data end %s; %d campaigns in the projection\n", format(w$data_end),
               x$counts$campaigns_total))
   cat(sprintf("Trained on campaigns starting %s to %s; holdout from %s\n",

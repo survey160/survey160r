@@ -438,16 +438,24 @@
       stop_s160(sprintf("`campaign_ids` must be a vector of campaign ids with no NA%s.",
                         .not_got(campaign_ids)), fn = fn)
     }
-    # A numeric id column (a DOUBLE extract stores 1 as 1.0, which casts to the
-    # text "1.0") is matched as numbers; a text id column as text, like
-    # disposition_records()' as.character() match.
+    # The other readers keep a row when as.character(its id) is one of
+    # as.character(campaign_ids) (.disposition_filter). A text id column is
+    # matched as that text. A numeric one is matched as numbers -- SQL casts a
+    # DOUBLE 1 to "1.0", not R's "1" -- keeping only the values R spells the same
+    # way, so "01" and "1.0" match nothing here either.
+    txt <- as.character(campaign_ids)
     numeric_id <- .disposition_numeric_type(source$types[["campaign_id"]])
-    id <- if (numeric_id) suppressWarnings(as.numeric(campaign_ids)) else as.character(campaign_ids)
-    # Against numeric ids a value that is not a number ("2026-02-01" passed by
-    # position, a typo) would match nothing and return an empty table: say so.
-    if (anyNA(id)) {
-      stop_s160(sprintf("`campaign_ids` must be campaign numbers (the dataset's ids are numeric): %s.",
-                        .preview_values(campaign_ids[is.na(id)])), fn = fn)
+    id <- txt
+    if (numeric_id) {
+      id <- suppressWarnings(as.numeric(txt))
+      # Values that are all non-numbers ("2026-02-01" passed by position, a
+      # typo) would only return an empty table: say so. A mixed list keeps the
+      # ids that match, as in the other readers.
+      if (length(id) > 0L && all(is.na(id))) {
+        stop_s160(sprintf("`campaign_ids` must be campaign numbers (the dataset's ids are numeric): %s.",
+                          .preview_values(campaign_ids)), fn = fn)
+      }
+      id <- id[!is.na(id) & as.character(id) == txt]
     }
     ids <- .disposition_lazy_register(con, "campaigns", data.frame(id = unique(id), stringsAsFactors = FALSE))
     where <- c(where, sprintf("%s IN (SELECT id FROM %s)",

@@ -13,7 +13,11 @@
   `vignette("disposition-paths")` do so. A scoped steps table now reconciles
   with the equally scoped summary.
 * `disposition_paths()` gains `campaign_ids` (a path through chosen campaigns);
-  `^` / `$` are documented as the first / last campaign in the path.
+  `^` / `$` are documented as the first / last campaign in the path. It is the
+  last argument, so positional date bounds keep their meaning. In steps and
+  paths, `campaign_ids` matches as in the other readers, and one made only of
+  non-numbers (a date passed by position) against numeric ids is an error
+  instead of an empty table.
 * Every date argument (`date_from`, `date_to`, `as_of`, `train_until`,
   `start_date`, and the live-metrics bounds) is read the same way: a `Date`, a
   `"YYYY-MM-DD"` string, or a date-time as its Eastern-time day. Other
@@ -21,6 +25,19 @@
   now an error instead of a guess, and `date_from` after `date_to` is an error
   in every reader (only `live_metrics_pull()` checked it before) instead of an
   empty result.
+
+## `completion_forecast()` renamed to `completion_estimate()`
+
+* The function that scores a planned survey is now `completion_estimate()`
+  (the file, its internal helpers and its tests follow). The rate it returns
+  is a regression estimate from the survey design and the sample's history,
+  not a time-series forecast, and "estimated rate" / "expected completes" is
+  the wording Survey Managers and the project tracker already use. No alias:
+  the function had no callers outside this package.
+* `completion_sample_size()`: the `sends_at_forecast` column is
+  `sends_at_estimate`, and the `list_covers` level `"forecast"` is
+  `"estimate"`.
+* Documentation and messages say estimate where they said forecast.
 
 ## Carrier notes
 

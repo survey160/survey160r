@@ -77,8 +77,16 @@ test_that("campaign ids scope the path and its anchors", {
   expect_equal(d$path, "NE")
   d <- collect_sorted(disposition_paths(p, NULL, "2015550101", NULL, "2026-02-01"))
   expect_equal(d$path, "EC")
-  expect_error(disposition_steps(p, campaign_ids = c("3", "x")), "must be campaign numbers.*x",
-               class = "s160_error")
+  expect_error(disposition_steps(p, campaign_ids = c("x", "2026-02-01")),
+               "must be campaign numbers.*x", class = "s160_error")
+  # a mixed list keeps its ids, and ids match as disposition_records() matches
+  # them ("03" matches nothing there either)
+  ids <- c("3", "x", "03", "2.0")
+  st <- collect_sorted(disposition_steps(p, campaign_ids = ids))
+  rec <- disposition_records(p, campaign_ids = ids)
+  expect_setequal(st$campaign_id, 3)
+  expect_setequal(paste(st$phone, st$campaign_id), paste(rec$phone, rec$campaign_id))
+  expect_equal(nrow(collect_sorted(disposition_steps(p, campaign_ids = "03"))), 0L)
 })
 
 test_that("the date window shapes the path; phones scope it", {
