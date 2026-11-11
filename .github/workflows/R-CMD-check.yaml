@@ -132,3 +132,33 @@ jobs:
             stop(sprintf("Coverage %.1f%% is below 100%% threshold", pct))
           }
         shell: Rscript {0}
+
+  # R-universe also builds and checks the package on Windows, and a failure
+  # there (e.g. a path-separator assumption in a test) never shows up on the
+  # Linux job above. This job runs the same check on Windows before merge.
+  # Lint, coverage and the version gate stay on Linux only.
+  R-CMD-check-windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+      R_KEEP_PKG_SOURCE: yes
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: release
+          use-public-rspm: true
+
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          extra-packages: any::rcmdcheck
+          needs: check
+
+      - uses: r-lib/actions/check-r-package@v2
+        with:
+          args: '"--no-manual"'
+          error-on: '"error"'
