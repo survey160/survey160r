@@ -41,8 +41,10 @@ on prod.}
 are read, so the history covers only them (see Scope).}
 
 \item{date_from, date_to}{Optional inclusive bounds on \code{disposition_date},
-each a \code{Date} or a \code{"YYYY-MM-DD"} string: only campaigns in range
-are read, so the history starts at \code{date_from} (see Scope).}
+each a \code{Date} or a \code{"YYYY-MM-DD"} string (a date-time is
+converted to its America/New_York day, so \code{2026-02-01 02:00 UTC} is
+January 31): only campaigns in range are read, so the history starts at
+\code{date_from} (see Scope).}
 
 \item{terminal}{How to label an unsplit \code{terminated} row (terminated but
 neither refused nor ineligible): \code{"raw"} (default) keeps
