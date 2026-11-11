@@ -37,25 +37,13 @@
 # "10/01/2026" read as year 10), which would otherwise loop over centuries.
 .LIVE_METRICS_EARLIEST <- as.Date("2020-01-01")
 
-# Coerce one optional day bound to a Date. A date-time is read in ET (the files'
-# day boundary), a string only as YYYY-MM-DD; NULL passes through.
+# One optional day bound (.day_bound(): a Date, "YYYY-MM-DD" or a date-time in ET,
+# the files' day boundary), plus the earliest-day guard; NULL passes through.
 .live_metrics_day <- function(x, name, fn) {
-  if (is.null(x)) return(NULL)
-  d <- tryCatch(
-    if (inherits(x, "POSIXt")) {
-      # as.POSIXct first: format() on a POSIXlt ignores `tz`.
-      as.Date(format(as.POSIXct(x), tz = .LIVE_METRICS_TZ))
-    } else if (is.character(x)) {
-      as.Date(x, tryFormats = "%Y-%m-%d")
-    } else if (inherits(x, "Date")) {
-      x
-    } else {
-      NA  # a bare number (20261102) is not a day
-    },
-    error = function(e) NA)
-  if (length(d) != 1L || is.na(d) || d < .LIVE_METRICS_EARLIEST) {
-    stop_s160(sprintf("`%s` must be a single date (YYYY-MM-DD) on or after %s%s.",
-                      name, .LIVE_METRICS_EARLIEST, .not_got(x)), fn = fn)
+  d <- .day_bound(x, name, fn)
+  if (!is.null(d) && d < .LIVE_METRICS_EARLIEST) {
+    stop_s160(sprintf("`%s` (%s) is before %s, the earliest day the live metrics can hold.",
+                      name, format(d), .LIVE_METRICS_EARLIEST), fn = fn)
   }
   d
 }
@@ -121,10 +109,7 @@ live_metrics_pull <- function(date_from = NULL, date_to = NULL,
   env <- match.arg(env)
   to <- .live_metrics_day(date_to, "date_to", fn) %||% .live_metrics_today()
   from <- .live_metrics_day(date_from, "date_from", fn) %||% (to - 30)
-  if (from > to) {
-    stop_s160(sprintf("`date_from` (%s) is after `date_to` (%s).", from, to),
-              fn = fn)
-  }
+  .check_day_range(from, to, fn)
   # A typo'd future year would otherwise request every day up to it.
   if (to > .live_metrics_today()) {
     stop_s160(sprintf("`date_to` (%s) is after today (%s, ET).", to,
@@ -217,6 +202,7 @@ live_metrics_records <- function(x, campaign_ids = NULL, date_from = NULL,
   fn <- "live_metrics_records"
   from <- .live_metrics_day(date_from, "date_from", fn)
   to <- .live_metrics_day(date_to, "date_to", fn)
+  .check_day_range(from, to, fn)
   d <- if (is.data.frame(x)) {
     as.data.frame(x)
   } else {

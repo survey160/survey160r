@@ -129,8 +129,10 @@ test_that("input validation on the dataset path and date bounds", {
   expect_error(disposition_records("/no/such/file.parquet"), "not found")
   p <- .record_base()
   expect_error(disposition_records(p, date_from = c("2026-01-01", "2026-02-01")),
-               "single valid date")
-  expect_error(disposition_records(p, date_to = "not-a-date"), "single valid date")
+               "single date")
+  expect_error(disposition_records(p, date_to = "not-a-date"), "single date")
+  expect_error(disposition_records(p, date_from = "2026-03-01", date_to = "2026-02-01"),
+               "is after `date_to`", class = "s160_error")
 })
 
 test_that("empty projection and no-match yield zero rows; blank phone dropped", {

@@ -63,6 +63,32 @@ test_that("a pattern adds the match flag, positions and dates", {
   expect_equal(m("refused|ineligible+$"), c(FALSE, FALSE, FALSE, FALSE, TRUE))
 })
 
+test_that("campaign ids scope the path and its anchors", {
+  skip_if_no_sequence()
+  p <- write_sequence_parquet()
+  d <- collect_sorted(disposition_paths(p, "^E > C", campaign_ids = c(2, 3)))
+  expect_equal(d$phone, c("2015550101", "2015550102", "2015550103", "2015550104", "2015550105"))
+  expect_equal(d$path, c("EC", "NN", "W", "E", "I"))
+  expect_equal(d$matched, c(TRUE, FALSE, FALSE, FALSE, FALSE))
+  expect_error(disposition_paths(p, date_from = "2026-03-01", date_to = "2026-02-01"),
+               "is after `date_to`", class = "s160_error")
+  # campaign_ids is appended: positional date bounds keep their meaning
+  d <- collect_sorted(disposition_paths(p, NULL, "2015550101", NULL, NULL, "2026-02-01"))
+  expect_equal(d$path, "NE")
+  d <- collect_sorted(disposition_paths(p, NULL, "2015550101", NULL, "2026-02-01"))
+  expect_equal(d$path, "EC")
+  expect_error(disposition_steps(p, campaign_ids = c("x", "2026-02-01")),
+               "must be campaign numbers.*x", class = "s160_error")
+  # a mixed list keeps its ids, and ids match as disposition_records() matches
+  # them ("03" matches nothing there either)
+  ids <- c("3", "x", "03", "2.0")
+  st <- collect_sorted(disposition_steps(p, campaign_ids = ids))
+  rec <- disposition_records(p, campaign_ids = ids)
+  expect_setequal(st$campaign_id, 3)
+  expect_setequal(paste(st$phone, st$campaign_id), paste(rec$phone, rec$campaign_id))
+  expect_equal(nrow(collect_sorted(disposition_steps(p, campaign_ids = "03"))), 0L)
+})
+
 test_that("the date window shapes the path; phones scope it", {
   skip_if_no_sequence()
   p <- write_sequence_parquet()

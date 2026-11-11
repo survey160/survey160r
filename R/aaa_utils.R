@@ -71,3 +71,39 @@ prompt_and_save_renviron <- function(var_name, prompt_msg, secret = FALSE) { # n
   message(sprintf("Saved %s to ~/.Renviron.", var_name))
   value
 } # nocov end
+
+# One optional day bound (date_from, date_to, as_of, ...) as a Date, read the
+# same way by every function that takes one: a Date as itself, a string only as
+# YYYY-MM-DD, a date-time as its day in Eastern time (the day boundary of the
+# disposition and live-metrics data). A bare number or any other spelling
+# ("2026/01/01", "01/10/2026") is an error, not a guess. NULL passes through.
+.DAY_TZ <- "America/New_York"
+.day_bound <- function(x, name, fn = NULL) {
+  if (is.null(x)) return(NULL)
+  d <- tryCatch(
+    if (inherits(x, "Date")) {
+      x
+    } else if (inherits(x, "POSIXt")) {
+      # as.POSIXct first: format() on a POSIXlt ignores `tz`.
+      as.Date(format(as.POSIXct(x), tz = .DAY_TZ))
+    } else if (is.character(x) && length(x) == 1L && grepl("^[0-9]{4}-[0-9]{2}-[0-9]{2}$", x)) {
+      as.Date(x, format = "%Y-%m-%d")
+    } else {
+      NA
+    },
+    error = function(e) NA)
+  if (length(d) != 1L || is.na(d)) {
+    stop_s160(sprintf("`%s` must be a single date (a Date or \"YYYY-MM-DD\")%s.", name, .not_got(x)),
+              fn = fn)
+  }
+  d
+}
+
+# date_from after date_to selects nothing: say so instead of returning no rows.
+.check_day_range <- function(from, to, fn = NULL) {
+  if (!is.null(from) && !is.null(to) && from > to) {
+    stop_s160(sprintf("`date_from` (%s) is after `date_to` (%s).", format(from), format(to)),
+              fn = fn)
+  }
+  invisible(NULL)
+}

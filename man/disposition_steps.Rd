@@ -32,12 +32,14 @@ machine and DuckDB version). \code{0.1} makes full-projection exploration
 ~10x cheaper; the 10\% sample matches the full data to within 0.02 points
 on prod.}
 
-\item{campaign_ids}{Optional vector; keep rows of these campaigns (history
-still covers all campaigns).}
+\item{campaign_ids}{Optional vector of campaign ids: only these campaigns
+are read, so the history covers only them (see Scope).}
 
-\item{date_from, date_to}{Optional \code{Date}/date-string bounds on
-\code{disposition_date} (inclusive); keep rows in range (history still covers
-all campaigns).}
+\item{date_from, date_to}{Optional inclusive bounds on \code{disposition_date},
+each a \code{Date} or a \code{"YYYY-MM-DD"} string (a date-time is
+converted to its America/New_York day, so \code{2026-02-01 02:00 UTC} is
+January 31): only campaigns in range are read, so the history starts at
+\code{date_from} (see Scope).}
 
 \item{columns}{Which history column groups to compute: any of
 \code{"neighbors"} (\code{prev_label}, \code{next_label}, \code{next_date},
@@ -161,11 +163,14 @@ on what changed between them: a switch of \code{survey_mode}, the same
 has four broad values, and \code{carrier} reads Sprint numbers as T-Mobile
 from March 2026 -- a Sprint-to-T-Mobile step is a relabel, not a port.
 
-\strong{Filters.} \code{phones} and \code{sample_frac} keep or drop whole
-phones \emph{before} the history is computed. \code{campaign_ids},
-\code{date_from} and \code{date_to} drop rows \emph{after} it, so a kept row
-still carries its full history (a 2026 row counts the phone's 2025
-non-responses).
+\strong{Scope.} Every filter applies \emph{before} the history is computed,
+as in every other disposition reader: \code{phones} and \code{sample_frac}
+keep or drop whole phones, and \code{campaign_ids}, \code{date_from} and
+\code{date_to} decide which campaigns exist at all -- with
+\code{date_from = "2025-01-01"} a phone's first 2025 campaign is its step 1
+and its history starts there. To keep some rows but give them their full
+history (2026 sends, with every earlier campaign counted), filter the result
+instead: \code{filter(disposition_date >= as.Date("2026-01-01"))}.
 
 \strong{Resources.} The connection uses a 4 GB DuckDB \code{memory_limit} and
 spills to disk past it (a full-projection query can spill ~20 GB, freed when it
@@ -184,9 +189,10 @@ library(dplyr)
 dataset <- disposition_pull()
 steps <- disposition_steps(dataset, sample_frac = 0.1)
 
-# Completion of sends in 2026 by what the number did before (history still spans 2021+)
-disposition_steps(dataset, date_from = "2026-01-01", columns = "history") |>
-  filter(completion_known) |>
+# Completion of sends in 2026 by what the number did before: read every
+# campaign (the history spans 2021+), then keep the 2026 rows
+disposition_steps(dataset, columns = "history") |>
+  filter(disposition_date >= as.Date("2026-01-01"), completion_known) |>
   group_by(history_segment) |>
   summarise(sends = n(), completion = mean(as.integer(
     label \%in\% c("completed", "web_complete")), na.rm = TRUE)) |>
@@ -194,15 +200,17 @@ disposition_steps(dataset, date_from = "2026-01-01", columns = "history") |>
   collect()
 
 # Completion by how many campaigns ago the number last completed
-disposition_steps(dataset, date_from = "2026-01-01", columns = "history") |>
-  filter(completion_known, !is.na(steps_since_complete)) |>
+disposition_steps(dataset, columns = "history") |>
+  filter(disposition_date >= as.Date("2026-01-01"), completion_known,
+         !is.na(steps_since_complete)) |>
   group_by(since = pmin(steps_since_complete, 5L, na.rm = TRUE)) |>
   summarise(sends = n(), completion = mean(as.integer(
     label \%in\% c("completed", "web_complete")), na.rm = TRUE)) |>
   arrange(since) |>
   collect()
 
-# Reply on the next campaign after a no-reply, by channel switch (2025+)
+# Reply on the next campaign after a no-reply, by channel switch (2025+
+# campaigns only)
 disposition_steps(dataset, date_from = "2025-01-01", columns = "neighbors",
                   neighbor_columns = "survey_mode") |>
   filter(label == "non_response", !is.na(next_label)) |>
