@@ -197,10 +197,12 @@
 #' }
 #' @export
 disposition_paths <- function(dataset, pattern = NULL, phones = NULL, sample_frac = NULL,
-                              campaign_ids = NULL, date_from = NULL, date_to = NULL,
+                              date_from = NULL, date_to = NULL,
                               terminal = c("raw", "engaged"),
                               undeliverable_codes = .DISPOSITION_UNDELIVERABLE_CODES,
-                              max_gap_days = NULL) {
+                              max_gap_days = NULL, campaign_ids = NULL) {
+  # campaign_ids is last (added in 0.83.0) so positional calls written before it
+  # keep their meaning; disposition_steps() has it before the dates.
   fn <- "disposition_paths"
   terminal <- match.arg(terminal)
   .disposition_lazy_check(fn)

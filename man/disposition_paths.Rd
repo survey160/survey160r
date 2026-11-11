@@ -9,12 +9,12 @@ disposition_paths(
   pattern = NULL,
   phones = NULL,
   sample_frac = NULL,
-  campaign_ids = NULL,
   date_from = NULL,
   date_to = NULL,
   terminal = c("raw", "engaged"),
   undeliverable_codes = .DISPOSITION_UNDELIVERABLE_CODES,
-  max_gap_days = NULL
+  max_gap_days = NULL,
+  campaign_ids = NULL
 )
 }
 \arguments{
@@ -36,9 +36,6 @@ that fraction of phones (by an md5 of the phone, so the same phones on every
 machine and DuckDB version). \code{0.1} makes full-projection exploration
 ~10x cheaper; the 10\% sample matches the full data to within 0.02 points
 on prod.}
-
-\item{campaign_ids}{Optional vector of campaign ids: only these campaigns
-are read, so the history covers only them (see Scope).}
 
 \item{date_from, date_to}{Optional inclusive bounds on \code{disposition_date},
 each a \code{Date} or a \code{"YYYY-MM-DD"} string (a date-time is
@@ -62,6 +59,9 @@ every no-reply row \code{non_response}, as the summary does.}
 match may not span a gap of more than this many days between two
 consecutive campaigns (see Gap limit). Costs ~8 s more on the full
 projection.}
+
+\item{campaign_ids}{Optional vector of campaign ids: only these campaigns
+are read, so the history covers only them (see Scope).}
 }
 \value{
 A lazy \pkg{dbplyr} table, one row per phone: \code{phone},
