@@ -31,7 +31,7 @@ in the output.}
 the range counts as unknown, with a warning in the output.}
 
 \item{phones}{Character vector of the sample's phone numbers, or \code{NULL}
-(the default) for a forecast from the survey design alone.}
+(the default) for an estimate from the survey design alone.}
 
 \item{dataset}{Path to the disposition Parquet file, e.g. from
 \code{\link{disposition_pull}()}, the sample's history is read from;
@@ -44,19 +44,19 @@ the first, with a warning.}
 }
 \value{
 A one-row data frame: \code{target}; \code{completion_rate},
-  \code{completion_lo50}, \code{completion_lo95} (the forecast and the low
-  ends of its bands); \code{sends_at_forecast}, \code{sends_at_lo50},
+  \code{completion_lo50}, \code{completion_lo95} (the estimate and the low
+  ends of its bands); \code{sends_at_estimate}, \code{sends_at_lo50},
   \code{sends_at_lo95} (the sends the target needs at each rate, rounded
   up; NA where the model has no band); \code{n_phones} (the list's unique
   numbers, NA without one); \code{list_covers} (\code{"95\% band"},
-  \code{"50\% band"}, \code{"forecast"} or \code{"none"}: the lowest rate at
+  \code{"50\% band"}, \code{"estimate"} or \code{"none"}: the lowest rate at
   which the list still reaches the target; NA without a list); and
-  \code{warnings} (the forecast's, plus a note when the list is short of the
-  target at the point forecast).
+  \code{warnings} (the estimate's, plus a note when the list is short of the
+  target at the point estimate).
 }
 \description{
-Reads \code{\link{completion_forecast}} the other way round: given the
-number of completes a client needs, the sends it takes at the forecast
+Reads \code{\link{completion_estimate}} the other way round: given the
+number of completes a client needs, the sends it takes at the estimate
 completion rate and at the low end of the 50\% and 95\% bands, so a quote
 can carry a margin. Without \code{phones} the rate is the survey design's
 alone (quote before a list exists); with a list the rate is the list's and
@@ -78,5 +78,5 @@ completion_sample_size(m, 1200, mode = "T2W", topic = "Brand", loi = 12,
 }
 }
 \seealso{
-\code{\link{completion_forecast}}, \code{\link{completion_model_fit}}
+\code{\link{completion_estimate}}, \code{\link{completion_model_fit}}
 }
