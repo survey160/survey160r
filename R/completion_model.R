@@ -99,14 +99,17 @@
   stats::qlogis(pmin(pmax(p, 1e-4), 1 - 1e-4))
 }
 
-# P(complete | previous three letters, survey mode), one table per calendar
-# year from the second year in the data to the year after the last: the table
-# for year Y is estimated on the known-completion rows dated before Y, so a
+# P(complete | previous three letters, survey mode) and P(reply | ...), one
+# table per calendar year from the second year in the data to the year after
+# the last: the table for year Y is estimated on the rows dated before Y, so a
 # campaign scored with its own year's table never sees its own rows, and the
-# last table (every row) scores a survey planned for after the data ends. Each
-# year has a block per survey mode (sms, t2w: a context completes at a very
-# different rate under a live texter and on the web) and a pooled block
-# (`survey_mode` NA) the lookups fall back to.
+# last table (every row) scores a survey planned for after the data ends.
+# `p_complete` averages the known-completion rows only (NA in a cell with none,
+# which the lookups treat as a missing cell); `p_reply` every row, so a
+# text-to-web external campaign's history counts for it. Each year has a block
+# per survey mode (sms, t2w: a context completes at a very different rate under
+# a live texter and on the web) and a pooled block (`survey_mode` NA) the
+# lookups fall back to.
 .completion_context_tables <- function(con, history_sql, fn = NULL) {
   years <- DBI::dbGetQuery(con, paste0(
     "SELECT min(year(disposition_date)) AS first, max(year(disposition_date)) AS last FROM (",
@@ -116,13 +119,15 @@
   }
   block <- function(mode_col, where) {
     paste0("SELECT y.year, h.context, ", mode_col, " AS survey_mode, ",
-           "avg(CAST(h.letter = 'C' AS DOUBLE)) AS p_complete, CAST(count(*) AS INTEGER) AS n ",
+           "avg(CASE WHEN h.completion_known THEN CAST(h.letter = 'C' AS DOUBLE) END) AS p_complete, ",
+           "avg(CAST(h.letter IN ('E', 'O', 'R', 'C') AS DOUBLE)) AS p_reply, ",
+           "CAST(count(*) AS INTEGER) AS n ",
            "FROM (", history_sql, ") h ",
            "JOIN (SELECT CAST(range AS INTEGER) AS year FROM range(", years$first + 1L, ", ",
-           years$last + 2L, ")) y ON year(h.disposition_date) < y.year ",
-           "WHERE h.completion_known", where, " GROUP BY 1, 2, 3")
+           years$last + 2L, ")) y ON year(h.disposition_date) < y.year", where,
+           " GROUP BY 1, 2, 3")
   }
-  sql <- paste0(block("CAST(h.survey_mode AS VARCHAR)", " AND h.survey_mode IS NOT NULL"),
+  sql <- paste0(block("CAST(h.survey_mode AS VARCHAR)", " WHERE h.survey_mode IS NOT NULL"),
                 " UNION ALL ", block("NULL", ""), " ORDER BY 1, 2, 3")
   out <- DBI::dbGetQuery(con, sql)
   out$year <- as.integer(out$year)
@@ -130,25 +135,30 @@
   out
 }
 
-# P(complete) for each (context, survey mode) on one year's table: the mode's
-# own block, else the pooled block, else the pooled first-contact rate.
-.completion_context_lookup <- function(contexts, year, context, survey_mode) {
+# One probability column (`p_complete`, `p_reply`) for each (context, survey
+# mode) on one year's table: the mode's own block, else the pooled block, else
+# the pooled first-contact rate (a cell whose value is NA counts as missing).
+.completion_context_lookup <- function(contexts, year, context, survey_mode,
+                                       column = "p_complete") {
   ctx <- contexts[contexts$year == year, , drop = FALSE]
   key <- paste(ctx$context, ctx$survey_mode)
-  p <- ctx$p_complete[match(paste(context, survey_mode), key)]
-  pooled <- ctx$p_complete[match(paste(context, NA), key)]
+  values <- ctx[[column]]
+  p <- values[match(paste(context, survey_mode), key)]
+  pooled <- values[match(paste(context, NA), key)]
   p[is.na(p)] <- pooled[is.na(p)]
-  p[is.na(p)] <- ctx$p_complete[match(paste("___", NA), key)]
+  p[is.na(p)] <- values[match(paste("___", NA), key)]
   p
 }
 
-# One row per campaign: dates, counts, the survey dimensions (tracker values
-# resolved to the model's levels) and the sample-history features scored on the
-# context table of the campaign's start year with the lookup order of
-# .completion_context_lookup (a campaign in the first year of data, with no
-# table, gets NA). `years_since_contact` is the mean, over the numbers with a
-# prior contact before the campaign's start (an overlapping campaign's later
-# row does not count), of the years from that contact to the start;
+# One row per campaign: dates, counts (sent, opt-ins, completes, replies,
+# engaged), the survey dimensions (tracker values resolved to the model's
+# levels) and the sample-history features scored on the context table of the
+# campaign's start year with the lookup order of .completion_context_lookup (a
+# campaign in the first year of data, with no table, gets NA): `sample_score`
+# from `p_complete`, `reply_score` from `p_reply`. `years_since_contact` is the
+# mean, over the numbers with a prior contact before the campaign's start (an
+# overlapping campaign's later row does not count), of the years from that
+# contact to the start;
 # `prior_optin_score` the logit of the mean opt-in rate of the campaign
 # each number was last in (campaigns started before this one). Both are NA when
 # no number in the sample was contacted before.
@@ -162,10 +172,13 @@
     "max(h.disposition_date) AS last_date, CAST(count(*) AS INTEGER) AS sent, ",
     "CAST(sum(CAST(h.opted AS INTEGER)) AS INTEGER) AS optins, ",
     "CAST(sum(CAST(h.letter = 'C' AS INTEGER)) AS INTEGER) AS completes, ",
+    "CAST(sum(CAST(h.letter IN ('E', 'O', 'R', 'C') AS INTEGER)) AS INTEGER) AS replies, ",
+    "CAST(sum(CAST(h.letter = 'E' AS INTEGER)) AS INTEGER) AS engaged, ",
     "bool_and(h.completion_known) AS completion_known, ",
     "any_value(h.survey_mode) AS survey_mode, any_value(h.tracker_mode) AS tracker_mode, ",
     "any_value(h.tracker_topic) AS tracker_topic, any_value(h.tracker_loi) AS tracker_loi, ",
     "avg(coalesce(own.p_complete, pooled.p_complete, first.p_complete)) AS mean_p, ",
+    "avg(coalesce(own.p_reply, pooled.p_reply, first.p_reply)) AS mean_p_reply, ",
     "avg(CAST(h.prior_completes > 0 AS DOUBLE)) AS share_prior_completers, ",
     "avg(CAST(h.n_prior >= 3 AND h.prior_replies = 0 AS DOUBLE)) AS share_cold, ",
     "avg(CASE WHEN h.prev_date < c.first_date ",
@@ -186,12 +199,13 @@
   data.frame(
     campaign_id = d$campaign_id, first_date = as.Date(d$first_date),
     last_date = as.Date(d$last_date), year = as.integer(format(as.Date(d$first_date), "%Y")),
-    sent = d$sent, optins = d$optins, completes = d$completes,
-    completion_known = d$completion_known,
+    sent = d$sent, optins = d$optins, completes = d$completes, replies = d$replies,
+    engaged = d$engaged, completion_known = d$completion_known,
     mode = .completion_mode(d$tracker_mode, d$survey_mode),
     topic = .completion_topic(d$tracker_topic),
     loi = suppressWarnings(as.numeric(d$tracker_loi)),
     sample_score = .completion_logit(d$mean_p),
+    reply_score = .completion_logit(d$mean_p_reply),
     share_prior_completers = d$share_prior_completers, share_cold = d$share_cold,
     years_since_contact = d$years_since_contact,
     share_recent_contact = d$share_recent_contact,
@@ -212,19 +226,34 @@
   ifelse(n >= size_break, "over", "under")
 }
 
-# The two fits: formula, the mode levels the model sees and the label print()
-# uses. One shared design (.completion_design) sets the factor levels, so a
-# estimate row builds the same model matrix the fit did.
+# The registry of targets a model can fit, one entry per rate: the label
+# print() uses, the campaign-table `count` the rate divides by sent, an optional
+# `require` column every training campaign must have TRUE, the formula on the
+# logit, the mode levels the model sees and the per-phone `score` it reads (the
+# context-table column and the campaign / sample term it becomes). One shared
+# design (.completion_design) sets the factor levels, so an estimate row builds
+# the same model matrix the fit did. completion_model_fit(targets =) picks the
+# entries to fit; the output columns of completion_estimate() follow them.
+.COMPLETION_DESIGN_TERMS <- paste(
+  "topic + loi_band + %s + share_prior_completers + share_cold + years_since_contact")
 .COMPLETION_MODELS <- list(
   optin = list(
-    label = "opt-in", formula = "logit ~ mode + sample_score + prior_optin_score",
-    modes = .COMPLETION_MODES),
+    label = "opt-in", count = "optins",
+    formula = "logit ~ mode + sample_score + prior_optin_score",
+    modes = .COMPLETION_MODES, score = c(context = "p_complete", term = "sample_score")),
   completion = list(
-    label = "completion",
-    formula = paste(
-      "logit ~ mode + topic + loi_band + sample_score + share_prior_completers + share_cold +",
-      "years_since_contact"),
-    modes = .COMPLETION_MODES[1:2]))
+    label = "completion", count = "completes", require = "completion_known",
+    formula = paste("logit ~ mode +", sprintf(.COMPLETION_DESIGN_TERMS, "sample_score")),
+    modes = .COMPLETION_MODES[1:2], score = c(context = "p_complete", term = "sample_score")),
+  reply = list(
+    label = "reply", count = "replies",
+    formula = paste("logit ~ mode +", sprintf(.COMPLETION_DESIGN_TERMS, "reply_score")),
+    modes = .COMPLETION_MODES, score = c(context = "p_reply", term = "reply_score")),
+  engage = list(
+    label = "engagement", count = "engaged",
+    formula = paste("logit ~ mode +", sprintf(.COMPLETION_DESIGN_TERMS, "reply_score")),
+    modes = .COMPLETION_MODES, score = c(context = "p_reply", term = "reply_score")))
+.COMPLETION_DEFAULT_TARGETS <- c("optin", "completion")
 
 # Band widths on the logit: the 50% and 95% multiplicative bands are
 # p x/÷ exp(z * residual sd).
@@ -232,24 +261,20 @@
 
 # The training rows of one model: campaigns with enough sends, started before
 # `train_until`, settled (last activity `settle_days` before the data end), with
-# a context table for their year (sample_score not NA) and a resolved mode; the
-# completion model also needs known completion and at least one complete (zero
-# completes is an unrecorded campaign), the opt-in model at least one opt-in.
-# A campaign whose mode is not a level of the target model is out.
-# Adds `rate` (the target per sent) and `logit`.
-.completion_fit_rows <- function(ct, target = c("optin", "completion"), train_until, min_sent,
+# a context table for their year (the target's score term not NA), a resolved
+# mode among the target's levels, the target's `require` column TRUE (known
+# completion for the completion model) and at least one of its count (zero
+# completes is an unrecorded campaign). Adds `rate` (the count per sent) and
+# `logit`.
+.completion_fit_rows <- function(ct, target = names(.COMPLETION_MODELS), train_until, min_sent,
                                  settle_days, data_end) {
   target <- match.arg(target)
+  spec <- .COMPLETION_MODELS[[target]]
+  count <- ct[[spec$count]]
   keep <- ct$sent >= min_sent & ct$first_date < train_until &
-    ct$last_date <= data_end - settle_days & !is.na(ct$sample_score) &
-    ct$mode %in% .COMPLETION_MODELS[[target]]$modes
-  if (target == "completion") {
-    keep <- keep & ct$completion_known & ct$completes > 0
-    count <- ct$completes
-  } else {
-    keep <- keep & ct$optins > 0
-    count <- ct$optins
-  }
+    ct$last_date <= data_end - settle_days & !is.na(ct[[spec$score[["term"]]]]) &
+    ct$mode %in% spec$modes & count > 0
+  if (!is.null(spec$require)) keep <- keep & ct[[spec$require]]
   rows <- ct[keep & !is.na(keep), , drop = FALSE]
   rows$rate <- count[keep & !is.na(keep)] / rows$sent
   rows$logit <- .completion_logit(rows$rate)
@@ -333,8 +358,8 @@
 .completion_n_terms <- function(target) {
   spec <- .COMPLETION_MODELS[[target]]
   row <- data.frame(mode = spec$modes[1L], topic = "Brand", loi = 12, sample_score = 0,
-                    share_prior_completers = 0, share_cold = 0, years_since_contact = 0,
-                    prior_optin_score = 0, stringsAsFactors = FALSE)
+                    reply_score = 0, share_prior_completers = 0, share_cold = 0,
+                    years_since_contact = 0, prior_optin_score = 0, stringsAsFactors = FALSE)
   ncol(.completion_model_matrix(spec$formula, .completion_design(row, target)))
 }
 
@@ -387,10 +412,9 @@
   if (nrow(rows) == 0L) {
     stop_s160(sprintf(paste0(
       "no campaign passes the training filters for the %s model (at least %s sends, started ",
-      "before %s, last activity by %s, a context table for its year%s)."),
+      "before %s, last activity by %s, a context table for its year, at least one %s%s)."),
       spec$label, format(min_sent), format(train_until), format(data_end - settle_days),
-      if (target == "completion") ", known completion with at least one complete" else
-        ", at least one opt-in"), fn = fn)
+      spec$label, if (!is.null(spec$require)) " with known completion" else ""), fn = fn)
   }
   means <- .completion_training_means(rows, target)
   fit <- .completion_fit_lm(rows, target, means)
@@ -456,20 +480,26 @@
 
 #' Fit the completion model from the disposition projection
 #'
-#' Fits two campaign-level linear models from the disposition projection: the
-#' opt-in rate per sent and the completion rate per sent, each on the logit
-#' scale, from the campaign's survey design (mode, topic, length of interview
-#' band) and the history of its sample: the sample score (the mean P(complete |
-#' the number's previous three outcomes and the survey mode)), the share with a
-#' prior complete, the share cold (three or more contacts and never a reply)
-#' and the mean years since the numbers' previous contact. The opt-in model
-#' reads mode, the sample score and the mean opt-in rate of the campaign each
-#' number was last in. \code{\link{completion_estimate}} then scores a planned
-#' survey on the same tables.
+#' Fits one campaign-level linear model per target rate from the disposition
+#' projection, each on the logit scale of the rate per sent. The default
+#' \code{targets} are the opt-in rate and the completion rate; \code{"reply"}
+#' (any response: engaged, opted in, refused or completed) and \code{"engage"}
+#' (engaged, the first step of the funnel) can be added, and both are fitted
+#' for text-to-web external surveys too. The completion, reply and engagement
+#' models read the campaign's survey design (mode, topic, length of interview
+#' band) and the history of its sample: the sample score (the mean
+#' P(complete | the number's previous three outcomes and the survey mode) for
+#' completion; the mean P(reply | ...) for reply and engagement), the share
+#' with a prior complete, the share cold (three or more contacts and never a
+#' reply) and the mean years since the numbers' previous contact. The opt-in
+#' model reads mode, the sample score and the mean opt-in rate of the campaign
+#' each number was last in. \code{\link{completion_estimate}} then scores a
+#' planned survey on the same tables.
 #'
 #' The context tables are per calendar year and per survey mode (a live texter
 #' and a web survey complete the same context at very different rates), with a
-#' pooled block each lookup falls back to. The two history features that need
+#' pooled block each lookup falls back to; \code{p_complete} averages the rows
+#' with a known completion, \code{p_reply} every row. The two history features that need
 #' a prior contact (years since contact, the previous campaign's opt-in rate)
 #' take the training mean on a campaign whose sample has none.
 #'
@@ -520,10 +550,13 @@
 #'   by (default 7).
 #' @param size_break Sends at which a campaign counts as a large sample for the
 #'   per-size band sd (default 50000).
+#' @param targets The rates to fit, distinct names among \code{"optin"},
+#'   \code{"completion"}, \code{"reply"} and \code{"engage"} (default the
+#'   first two). The estimate's columns follow the fitted targets.
 #' @param x,object A \code{completion_model}.
 #' @param ... Unused.
 #' @return An object of class \code{completion_model}: a list with
-#'   \code{models} (\code{optin} and \code{completion}, each with the
+#'   \code{models} (one entry per fitted target, each with the
 #'   \code{coefficients} table (\code{term}, \code{estimate},
 #'   \code{std_error}), the \code{formula}, the \code{training_means} the
 #'   estimate's multipliers are centred on (and the fill for a feature a
@@ -535,7 +568,8 @@
 #'   the \code{holdout} metrics (\code{n}, \code{r2_logit}, \code{median_ape},
 #'   \code{within_50}) and \code{counts}), the shared per-year
 #'   \code{contexts} table (\code{year}, \code{context}, \code{survey_mode}
-#'   with NA for the pooled block, \code{p_complete}, \code{n}), the
+#'   with NA for the pooled block, \code{p_complete}, \code{p_reply},
+#'   \code{n}), the
 #'   \code{campaigns} table (\code{campaign_id}, \code{first_date},
 #'   \code{optin_rate}) the estimate reads the previous campaign's opt-in rate
 #'   from, the \code{windows} (\code{data_end}, \code{train_from},
@@ -543,7 +577,7 @@
 #'   \code{min_sent}, \code{settle_days}, \code{size_break} and the package
 #'   \code{version}.
 #'   \code{print()} shows the windows, counts and holdout metrics;
-#'   \code{summary()} returns the coefficients of both models as odds
+#'   \code{summary()} returns the coefficients of every model as odds
 #'   multipliers (one data frame: \code{model}, \code{term},
 #'   \code{odds_multiplier}, \code{std_error}).
 #' @seealso \code{\link{completion_estimate}} (score a planned survey),
@@ -557,9 +591,16 @@
 #' }
 #' @export
 completion_model_fit <- function(dataset, train_until = Sys.Date(), holdout_months = 5,
-                                 min_sent = 2000, settle_days = 7, size_break = 50000) {
+                                 min_sent = 2000, settle_days = 7, size_break = 50000,
+                                 targets = .COMPLETION_DEFAULT_TARGETS) {
   fn <- "completion_model_fit"
   .disposition_lazy_check(fn)
+  if (!is.character(targets) || length(targets) == 0L || anyNA(targets) ||
+        anyDuplicated(targets) || !all(targets %in% names(.COMPLETION_MODELS))) {
+    stop_s160(sprintf("`targets` must be distinct names among %s%s.",
+                      paste(shQuote(names(.COMPLETION_MODELS)), collapse = ", "),
+                      .not_got(targets)), fn = fn)
+  }
   train_until <- .completion_check_date(train_until, "train_until", fn)
   holdout_months <- .completion_check_count(holdout_months, "holdout_months", fn)
   if (holdout_months == 0) {
@@ -577,11 +618,11 @@ completion_model_fit <- function(dataset, train_until = Sys.Date(), holdout_mont
   data_end <- max(ct$last_date, na.rm = TRUE)
   holdout_from <- lubridate::add_with_rollback(
     train_until, lubridate::period(-holdout_months, "months"))
-  models <- lapply(stats::setNames(nm = names(.COMPLETION_MODELS)), function(target) {
+  models <- lapply(stats::setNames(nm = targets), function(target) {
     .completion_fit_model(ct, target, train_until, holdout_from, min_sent, settle_days,
                           data_end, size_break, fn)
   })
-  train_from <- min(models$optin$train_from, models$completion$train_from)
+  train_from <- min(do.call(c, lapply(models, function(m) m$train_from)))
   thin <- unlist(lapply(models, function(m) m$holdout$warning))
   if (length(thin) > 0L) warning(paste(thin, collapse = "\n"), call. = FALSE)
   models <- lapply(models, function(m) {

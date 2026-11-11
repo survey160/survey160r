@@ -6,12 +6,13 @@ test_that("sample size: sends needed at the estimate and at the band's low ends"
   out <- completion_sample_size(f$model, 500, mode = "T2W", topic = "Brand", loi = 12,
                                 start_date = as.Date("2026-11-15"))
   expect_equal(nrow(out), 1L)
-  expect_named(out, c("target", "completion_rate", "completion_lo50", "completion_lo95",
+  expect_named(out, c("target", "rate", "rate_estimate", "rate_lo50", "rate_lo95",
                       "sends_at_estimate", "sends_at_lo50", "sends_at_lo95", "n_phones", "list_covers",
                       "warnings"))
   expect_equal(out$target, 500)
+  expect_equal(out$rate, "completion")
   fc <- completion_estimate(f$model, NULL, "T2W", "Brand", 12, start_date = as.Date("2026-11-15"))
-  expect_equal(out$completion_rate, fc$completion_rate)
+  expect_equal(out$rate_estimate, fc$completion_rate)
   expect_equal(out$sends_at_estimate, ceiling(500 / fc$completion_rate))
   expect_equal(out$sends_at_lo50, ceiling(500 / fc$completion_lo50))
   expect_equal(out$sends_at_lo95, ceiling(500 / fc$completion_lo95))
@@ -35,7 +36,7 @@ test_that("sample size: with a list, says which level the list covers", {
                                 start_date = as.Date("2026-11-15"))
   expect_equal(out$n_phones, n)
   expect_equal(out$list_covers, "95% band")
-  expect_equal(out$completion_rate, fc$completion_rate)
+  expect_equal(out$rate_estimate, fc$completion_rate)
   # a target the list reaches at the 50% low end but not at the 95% one
   t50 <- floor(fc$completion_lo50 * n)
   expect_true(t50 > fc$completion_lo95 * n)
@@ -62,6 +63,10 @@ test_that("sample size: argument checks", {
   expect_error(completion_sample_size(f$model, 10.5, "Live", "Brand", 12), "target")
   expect_error(completion_sample_size(f$model, c(1, 2), "Live", "Brand", 12), "target")
   expect_error(completion_sample_size(f$model, 100, "T2W external", "Brand", 12), "completion")
+  expect_error(completion_sample_size(f$model, 100, "Live", "Brand", 12, rate = "reply"), "rate")
+  expect_error(completion_sample_size(f$model, 100, "Phone", "Brand", 12), "mode")
+  expect_error(completion_sample_size(f$model, 100, "Live", "Brand", 12, rate = c("optin", "completion")),
+               "rate")
   expect_error(completion_sample_size(list(), 100, "Live", "Brand", 12), "completion_model")
   # no band: the band-based sends are NA, the estimate one stands
   m <- f$model
@@ -70,4 +75,18 @@ test_that("sample size: argument checks", {
   out <- completion_sample_size(m, 100, "Live", "Brand", 12, start_date = as.Date("2026-11-15"))
   expect_false(is.na(out$sends_at_estimate))
   expect_true(is.na(out$sends_at_lo50) && is.na(out$sends_at_lo95))
+})
+
+test_that("sample size: rate sizes on another fitted target", {
+  skip_if_no_sequence()
+  f <- fit_fixture_model()
+  out <- completion_sample_size(f$model, 300, "T2W external", "Brand", 12, rate = "optin",
+                                start_date = as.Date("2026-11-15"))
+  fc <- completion_estimate(f$model, NULL, "T2W external", "Brand", 12, start_date = as.Date("2026-11-15"))
+  expect_equal(out$rate, "optin")
+  expect_equal(out$rate_estimate, fc$optin_rate)
+  expect_equal(out$sends_at_estimate, ceiling(300 / fc$optin_rate))
+  # the external mode has no opt-in sd in the fixture: the band sends are NA
+  expect_true(is.na(out$sends_at_lo50) && is.na(out$sends_at_lo95))
+  expect_true(any(grepl("completion is not fitted", out$warnings[[1]])))
 })

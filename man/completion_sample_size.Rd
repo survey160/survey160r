@@ -12,13 +12,15 @@ completion_sample_size(
   loi = NULL,
   phones = NULL,
   dataset = NULL,
-  start_date = Sys.Date()
+  start_date = Sys.Date(),
+  rate = "completion"
 )
 }
 \arguments{
 \item{model}{A \code{completion_model} from \code{\link{completion_model_fit}}.}
 
-\item{target}{The number of completes required (a positive whole number).}
+\item{target}{The number of completes (or of the \code{rate}'s count)
+required: a positive whole number.}
 
 \item{mode}{One of \code{"Live"}, \code{"T2W"}, \code{"T2W external"}.}
 
@@ -41,11 +43,16 @@ required with \code{phones}, unused without.}
 history before it is read, and it picks the context table of its year. A
 year past the data uses the last table; one before the first table uses
 the first, with a warning.}
+
+\item{rate}{The fitted target to size on: \code{"completion"} (default),
+\code{"optin"}, \code{"reply"} or \code{"engage"}, among the model's
+fitted targets.}
 }
 \value{
-A one-row data frame: \code{target}; \code{completion_rate},
-  \code{completion_lo50}, \code{completion_lo95} (the estimate and the low
-  ends of its bands); \code{sends_at_estimate}, \code{sends_at_lo50},
+A one-row data frame: \code{target}; \code{rate} (the target
+  sized on); \code{rate_estimate}, \code{rate_lo50}, \code{rate_lo95}
+  (the estimate and the low ends of its bands);
+  \code{sends_at_estimate}, \code{sends_at_lo50},
   \code{sends_at_lo95} (the sends the target needs at each rate, rounded
   up; NA where the model has no band); \code{n_phones} (the list's unique
   numbers, NA without one); \code{list_covers} (\code{"95\% band"},
@@ -56,13 +63,16 @@ A one-row data frame: \code{target}; \code{completion_rate},
 }
 \description{
 Reads \code{\link{completion_estimate}} the other way round: given the
-number of completes a client needs, the sends it takes at the estimate
+number of completes a client needs, the sends it takes at the estimated
 completion rate and at the low end of the 50\% and 95\% bands, so a quote
-can carry a margin. Without \code{phones} the rate is the survey design's
+can carry a margin. \code{rate} sizes on another fitted target instead
+(\code{"optin"} for a panel recruit that needs a number of opt-ins,
+\code{"reply"} for a live texting capacity plan). Without \code{phones} the rate is the survey design's
 alone (quote before a list exists); with a list the rate is the list's and
 \code{list_covers} says which level the list reaches, so the Survey Manager
 sees whether to ask for more sample. Completion is never recorded for
-text-to-web external surveys, so that mode has no sample size.
+text-to-web external surveys, so that mode has a sample size on the other
+rates only.
 }
 \examples{
 \dontrun{

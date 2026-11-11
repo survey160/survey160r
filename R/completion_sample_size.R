@@ -18,19 +18,27 @@
 #' Sends needed for a target number of completes
 #'
 #' Reads \code{\link{completion_estimate}} the other way round: given the
-#' number of completes a client needs, the sends it takes at the estimate
+#' number of completes a client needs, the sends it takes at the estimated
 #' completion rate and at the low end of the 50\% and 95\% bands, so a quote
-#' can carry a margin. Without \code{phones} the rate is the survey design's
+#' can carry a margin. \code{rate} sizes on another fitted target instead
+#' (\code{"optin"} for a panel recruit that needs a number of opt-ins,
+#' \code{"reply"} for a live texting capacity plan). Without \code{phones} the rate is the survey design's
 #' alone (quote before a list exists); with a list the rate is the list's and
 #' \code{list_covers} says which level the list reaches, so the Survey Manager
 #' sees whether to ask for more sample. Completion is never recorded for
-#' text-to-web external surveys, so that mode has no sample size.
+#' text-to-web external surveys, so that mode has a sample size on the other
+#' rates only.
 #'
 #' @inheritParams completion_estimate
-#' @param target The number of completes required (a positive whole number).
-#' @return A one-row data frame: \code{target}; \code{completion_rate},
-#'   \code{completion_lo50}, \code{completion_lo95} (the estimate and the low
-#'   ends of its bands); \code{sends_at_estimate}, \code{sends_at_lo50},
+#' @param target The number of completes (or of the \code{rate}'s count)
+#'   required: a positive whole number.
+#' @param rate The fitted target to size on: \code{"completion"} (default),
+#'   \code{"optin"}, \code{"reply"} or \code{"engage"}, among the model's
+#'   fitted targets.
+#' @return A one-row data frame: \code{target}; \code{rate} (the target
+#'   sized on); \code{rate_estimate}, \code{rate_lo50}, \code{rate_lo95}
+#'   (the estimate and the low ends of its bands);
+#'   \code{sends_at_estimate}, \code{sends_at_lo50},
 #'   \code{sends_at_lo95} (the sends the target needs at each rate, rounded
 #'   up; NA where the model has no band); \code{n_phones} (the list's unique
 #'   numbers, NA without one); \code{list_covers} (\code{"95\% band"},
@@ -53,7 +61,7 @@
 #' }
 #' @export
 completion_sample_size <- function(model, target, mode, topic = NULL, loi = NULL, phones = NULL,
-                                   dataset = NULL, start_date = Sys.Date()) {
+                                   dataset = NULL, start_date = Sys.Date(), rate = "completion") {
   fn <- "completion_sample_size"
   if (!inherits(model, "completion_model")) {
     stop_s160(sprintf("`model` must be a completion_model from completion_model_fit()%s.",
@@ -61,9 +69,15 @@ completion_sample_size <- function(model, target, mode, topic = NULL, loi = NULL
   }
   target <- .completion_check_count(target, "target", fn)
   if (target == 0) stop_s160("`target` must be a positive whole number, not 0.", fn = fn)
-  if (identical(mode, "T2W external")) {
-    stop_s160(paste0("completion is not recorded for text-to-web external surveys, so there is no ",
-                     "completion rate to size a sample with."), fn = fn)
+  if (!is.character(rate) || length(rate) != 1L || !rate %in% names(model$models)) {
+    stop_s160(sprintf("`rate` must be one of the model's fitted targets (%s)%s.",
+                      paste(shQuote(names(model$models)), collapse = ", "), .not_got(rate)), fn = fn)
+  }
+  spec <- .COMPLETION_MODELS[[rate]]
+  if (is.character(mode) && length(mode) == 1L && mode %in% .COMPLETION_MODES &&
+        !mode %in% spec$modes) {
+    stop_s160(sprintf("%s is not fitted for mode %s, so there is no %s rate to size a sample with.",
+                      spec$label, mode, spec$label), fn = fn)
   }
   fc <- completion_estimate(model, phones, mode, topic, loi, dataset, start_date)
   sends <- function(p) {
@@ -71,19 +85,20 @@ completion_sample_size <- function(model, target, mode, topic = NULL, loi = NULL
     n <- ceiling(target / p)
     if (is.finite(n)) n else NA_real_
   }
-  covers <- .completion_list_covers(fc$n_phones, target, fc$completion_rate, fc$completion_lo50,
-                                    fc$completion_lo95)
+  point <- fc[[paste0(rate, "_rate")]]
+  lo50 <- fc[[paste0(rate, "_lo50")]]
+  lo95 <- fc[[paste0(rate, "_lo95")]]
+  covers <- .completion_list_covers(fc$n_phones, target, point, lo50, lo95)
   warnings <- fc$warnings[[1]]
   if (identical(covers, "none")) {
     warnings <- c(warnings, sprintf(
-      "the list's %s numbers are short of %s completes at the estimated rate (%s needed)",
-      format(fc$n_phones, big.mark = ","), format(target, big.mark = ","),
-      format(sends(fc$completion_rate), big.mark = ",")))
+      "the list's %s numbers are short of %s %s at the estimated rate (%s needed)",
+      format(fc$n_phones, big.mark = ","), format(target, big.mark = ","), spec$count,
+      format(sends(point), big.mark = ",")))
   }
   out <- data.frame(
-    target = target, completion_rate = fc$completion_rate, completion_lo50 = fc$completion_lo50,
-    completion_lo95 = fc$completion_lo95, sends_at_estimate = sends(fc$completion_rate),
-    sends_at_lo50 = sends(fc$completion_lo50), sends_at_lo95 = sends(fc$completion_lo95),
+    target = target, rate = rate, rate_estimate = point, rate_lo50 = lo50, rate_lo95 = lo95,
+    sends_at_estimate = sends(point), sends_at_lo50 = sends(lo50), sends_at_lo95 = sends(lo95),
     n_phones = fc$n_phones, list_covers = covers, stringsAsFactors = FALSE)
   out$warnings <- list(warnings)
   out

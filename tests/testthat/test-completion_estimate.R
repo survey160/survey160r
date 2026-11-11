@@ -4,8 +4,9 @@ estimate_columns <- c(
   "optin_rate", "optin_lo50", "optin_hi50", "optin_lo95", "optin_hi95", "optins",
   "optins_lo95", "optins_hi95", "optins_mean", "completion_rate", "completion_lo50", "completion_hi50",
   "completion_lo95", "completion_hi95", "completes", "completes_lo95", "completes_hi95", "completes_mean",
-  "n_phones", "share_with_history", "share_recent_contact", "sample_score", "years_since_contact",
-  "prior_optin_score", "sample_multiplier", "survey_multiplier", "band_sd", "warnings")
+  "n_phones", "share_with_history", "share_recent_contact", "sample_score", "reply_score",
+  "years_since_contact", "prior_optin_score", "sample_multiplier", "survey_multiplier", "band_sd",
+  "warnings")
 
 test_that("estimate: one row with rate, bands, completes and drivers", {
   skip_if_no_sequence()
@@ -190,7 +191,7 @@ test_that("estimate: external web", {
   expect_equal(out$n_phones, 20L)
   expect_true(is.na(out$completion_rate) && is.na(out$completes_hi95) && is.na(out$survey_multiplier) &&
                 is.na(out$sample_multiplier))
-  expect_true(any(grepl("opt-in only", out$warnings[[1]])))
+  expect_true(any(grepl("completion is not fitted for mode T2W external", out$warnings[[1]])))
   expect_error(completion_estimate(list(), ph, "Live", "Brand", 12, f$path), "completion_model")
   expect_error(completion_estimate(f$model, character(0), "Live", "Brand", 12, f$path), "phones")
   expect_error(completion_estimate(f$model, c("abc", NA), "Live", "Brand", 12, f$path), "phones")
@@ -353,4 +354,43 @@ test_that("estimate: no sample needs no dataset, a sample needs one, external we
                "dataset")
   ext <- completion_estimate(f$model, NULL, "T2W external", "Brand", 12, start_date = as.Date("2026-11-15"))
   expect_true(is.na(ext$completion_rate) && !is.na(ext$optin_rate))
+})
+
+test_that("estimate: the columns follow the fitted targets", {
+  skip_if_no_sequence()
+  p <- write_completion_parquet(completion_records(n_per_campaign = 60L))
+  m <- completion_model_fit(p, train_until = as.Date("2026-10-01"), min_sent = 10,
+                            targets = c("reply", "engage"))
+  r <- completion_records()
+  phones <- unique(r$phone[r$campaign_id %in% 9:10])
+  out <- completion_estimate(m, phones, mode = "T2W external", topic = "Brand", loi = 12,
+                             dataset = p, start_date = as.Date("2026-11-15"))
+  expect_named(out, c(
+    "reply_rate", "reply_lo50", "reply_hi50", "reply_lo95", "reply_hi95", "replies", "replies_lo95",
+    "replies_hi95", "replies_mean", "engage_rate", "engage_lo50", "engage_hi50", "engage_lo95",
+    "engage_hi95", "engaged", "engaged_lo95", "engaged_hi95", "engaged_mean",
+    "n_phones", "share_with_history", "share_recent_contact", "sample_score", "reply_score",
+    "years_since_contact", "prior_optin_score", "sample_multiplier", "survey_multiplier", "band_sd",
+    "warnings"))
+  expect_true(out$reply_rate > 0 && out$reply_rate < 1 && out$engage_rate < out$reply_rate)
+  expect_equal(out$replies, round(out$reply_rate * out$n_phones))
+  expect_true(out$reply_score > -10 && out$reply_score < 0)
+  # no completion model: its drivers and band sd are NA, no completion columns at all
+  expect_true(is.na(out$sample_multiplier) && is.na(out$band_sd))
+  expect_false(any(grepl("completion", names(out))))
+  # the default fit keeps the 0.83.0 columns and adds the reply score
+  f <- fit_fixture_model()
+  d <- completion_estimate(f$model, NULL, "T2W", "Brand", 12, start_date = as.Date("2026-11-15"))
+  expect_named(d, estimate_columns)
+  expect_true(is.na(d$reply_score))
+})
+
+test_that("estimate: a model with no target fitted for the mode gives NA rates and a warning", {
+  skip_if_no_sequence()
+  p <- write_completion_parquet(completion_records(n_per_campaign = 60L))
+  m <- completion_model_fit(p, train_until = as.Date("2026-10-01"), min_sent = 10, targets = "completion")
+  out <- completion_estimate(m, NULL, "T2W external", "Brand", 12, start_date = as.Date("2026-11-15"))
+  expect_true(is.na(out$completion_rate) && is.na(out$band_sd))
+  expect_false("optin_rate" %in% names(out))
+  expect_true(any(grepl("completion is not fitted for mode T2W external", out$warnings[[1]])))
 })

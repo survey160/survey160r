@@ -1,5 +1,33 @@
 # survey160r (development version)
 
+## Completion model: a registry of targets, `targets =`, reply and engagement
+
+* `completion_model_fit(targets =)` picks the rates to fit from a registry
+  (`"optin"`, `"completion"`, `"reply"`, `"engage"`; default the first two,
+  unchanged). Reply (any response) and engagement (engaged, the first funnel
+  step) are fitted for every mode, text-to-web external included, on their own
+  per-phone score (the mean P(reply | previous three outcomes, mode)); the
+  completion score transfers poorly to the reply side of the funnel. In
+  one-month-ahead refits over 2025-2026 they are the best-predicted rates in
+  the funnel (median error 16-17%). Refusal, drop-off and delivery were tried
+  and are not in the registry: the mode median beats a model for them.
+* `completion_estimate()` returns nine columns per fitted target, in the
+  model's order (`reply_rate` ... `replies_mean`, `engage_rate` ...
+  `engaged_mean` beside the opt-in and completion columns), plus
+  `reply_score`. A target not fitted for the mode gives NA columns and the
+  warning "<label> is not fitted for mode <mode>" (completion on a text-to-web
+  external survey, which used to say "opt-in only").
+* `completion_sample_size(rate =)` sizes on another fitted target
+  (`"optin"` for a panel recruit, `"reply"` for a texting capacity plan); the
+  rate columns are now `rate` (the target's name), `rate_estimate`,
+  `rate_lo50` and `rate_lo95` instead of `completion_rate`, `completion_lo50`
+  and `completion_lo95`.
+* The context table carries `p_reply` beside `p_complete`; `p_complete` is
+  now NA (treated as a missing cell) where no row has a known completion
+  instead of the cell being absent, so `n` counts every row. The campaign
+  table adds `replies`, `engaged` and `reply_score`. Sample scores, opt-in
+  and completion estimates are unchanged.
+
 ## Dates and campaigns scope every reader the same way
 
 * **Behaviour change:** `disposition_steps()`' `campaign_ids`, `date_from` and
