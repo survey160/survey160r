@@ -79,8 +79,9 @@ context table of the planned year and mode, the share with a prior
 complete, the share cold, the mean years since the numbers' previous
 contact and the mean opt-in rate of the campaign each was last in), the
 survey design into the model's levels, and every rate the model was fitted
-on is predicted with a 50\% and a 95\% band and an expected count. A sample with no prior contact gets the training mean for the two
-features that need one, with a warning.
+on is predicted with a 50\% and a 95\% band and an expected count. A sample
+with no prior contact gets the training mean for the two features that need
+one, with a warning.
 }
 \details{
 The sample is used exactly as given: the function does not screen it (no

@@ -57,7 +57,7 @@ test_that("`columns` picks the history groups; NULL keeps only identity and labe
   expect_true("run_length" %in% names(only_run))
   expect_false("path_so_far" %in% names(only_run))
   expect_error(disposition_steps(p, columns = "foo"),
-               "`columns` must be NULL or any of neighbors, so_far, run_length, path_so_far, history",
+               "`columns` must be NULL or any of neighbors, so_far, run_length, path_so_far, history, context",
                class = "s160_error")
 })
 
@@ -512,4 +512,24 @@ test_that("neighbor_columns are checked", {
   expect_equal(d$next_date[d$phone == "2015550101"], c("x", "x", NA))
   expect_error(disposition_steps(p, neighbor_columns = "Campaign_ID"), "cannot include Campaign_ID",
                class = "s160_error")
+})
+
+test_that("the context group: the previous three outcomes, newest first, in the coarse letters", {
+  skip_if_no_sequence()
+  p <- write_sequence_parquet()
+  d <- collect_sorted(disposition_steps(p, columns = "context"))
+  expect_false("path_so_far" %in% names(d))
+  expect_equal(d$context[d$phone == "2015550101"], c("___", "N__", "EN_"))
+  expect_equal(d$context[d$phone == "2015550102"], c("___", "X__", "NX_", "NNX"))
+  # terminated reads as engaged, ineligible as refused, web_complete as completed
+  p2 <- write_sequence_parquet(rbind(
+    .sequence_row("2015550109", 1L, "2024-01-01", engaged = 1L, terminated = 1L),
+    .sequence_row("2015550109", 2L, "2024-02-01", engaged = 1L, ineligible = 1L),
+    .sequence_row("2015550109", 3L, "2024-03-01", engaged = 1L, opted_in = 1L, web_complete = 1L),
+    .sequence_row("2015550109", 4L, "2024-04-01"),
+    .sequence_row("2015550109", 5L, "2024-05-01")))
+  d2 <- collect_sorted(disposition_steps(p2, columns = c("context", "path_so_far")))
+  expect_equal(d2$path_so_far, c("T", "TI", "TIW", "TIWN", "TIWNN"))
+  expect_equal(d2$context, c("___", "E__", "RE_", "CRE", "NCR"))
+  expect_true(all(c("context") %in% .DISPOSITION_SEQUENCE_GENERATED))
 })

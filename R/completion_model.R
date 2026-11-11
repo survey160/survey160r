@@ -6,13 +6,15 @@
 # rate. completion_estimate() (completion_estimate.R) scores a planned survey on
 # the same context tables.
 
-# The per-row history: one row per stored (phone, campaign) with the collapsed
-# letter (T -> E, I -> R, W -> C: the model reads terminated as engaged,
-# ineligible as refused and a web complete as a complete), whether the row is an
-# opt-in (letter O or C), the running counts of prior contacts / completes /
-# replies, the previous three letters as `context` (`_` when there is none) and
-# whether the row is the phone's latest, plus the previous row's date and
-# campaign (`prev_date`, `prev_campaign`: NULL on a first contact). The optional tracker columns and
+# The per-row history: one row per stored (phone, campaign), read off the
+# steps table (.disposition_steps_windowed_sql with the neighbors, history and
+# path groups, so the model and disposition_steps() share one definition of a
+# phone's history): the coarse letter (.disposition_coarse_sql: T -> E, I -> R,
+# W -> C), whether the row is an opt-in (letter O or C), the counts of prior
+# contacts / completes / replies, the previous three coarse letters as
+# `context` (.disposition_context_sql; `_` when there is none), whether the row
+# is the phone's latest, and the previous row's date and campaign (`prev_date`,
+# `prev_campaign`: NULL on a first contact). The optional tracker columns and
 # survey_mode come through as NULL when the file lacks them. `phones` scopes the
 # read to a sample (the estimate path); NULL reads every phone (the fit path).
 # `before` (a Date) keeps only rows dated before it: the history a planned
@@ -22,32 +24,25 @@
   pre <- if (!is.null(before)) {
     paste("disposition_date <", DBI::dbQuoteString(con, format(before, "%Y-%m-%d")))
   }
-  base <- .disposition_base_sql(
-    con, source, phones, NULL,
-    .disposition_label_sql(con, source, "raw", .DISPOSITION_UNDELIVERABLE_CODES), pre = pre)
+  windowed <- .disposition_steps_windowed_sql(
+    con, source, phones, NULL, c("neighbors", "prior_counts", "path_so_far"), "raw",
+    .DISPOSITION_UNDELIVERABLE_CODES, pre, neighbor_columns = "campaign_id")
   optional <- function(col) {
     if (col %in% source$cols) paste(q(col), "AS", col) else paste("NULL AS", col)
   }
-  letter <- "replace(replace(replace(s160_code, 'T', 'E'), 'I', 'R'), 'W', 'C')"
-  lettered <- paste0(
-    "SELECT phone, campaign_id, disposition_date, completion_known, ",
+  letter <- .disposition_coarse_sql("s160_code")
+  paste0(
+    "SELECT phone, campaign_id, disposition_date, ",
     paste(vapply(c("survey_mode", "tracker_mode", "tracker_topic", "tracker_loi"), optional,
                  character(1)), collapse = ", "),
-    ", ", letter, " AS letter, ",
-    "CAST(", letter, " = 'C' AS INTEGER) AS s160_complete, ",
-    "CAST(", letter, " IN ('E', 'O', 'R', 'C') AS INTEGER) AS s160_reply, s160_row ",
-    "FROM (", base, ")")
-  lag_letter <- function(k) sprintf("coalesce(lag(letter, %d) OVER w, '_')", k)
-  paste0(
-    "SELECT phone, campaign_id, disposition_date, survey_mode, tracker_mode, tracker_topic, ",
-    "tracker_loi, letter, letter IN ('O', 'C') AS opted, completion_known, ",
-    "CAST(row_number() OVER w - 1 AS INTEGER) AS n_prior, ",
-    "CAST(sum(s160_complete) OVER w - s160_complete AS INTEGER) AS prior_completes, ",
-    "CAST(sum(s160_reply) OVER w - s160_reply AS INTEGER) AS prior_replies, ",
-    lag_letter(1L), " || ", lag_letter(2L), " || ", lag_letter(3L), " AS context, ",
-    "lead(phone) OVER w IS NULL AS is_last, ",
-    "lag(disposition_date) OVER w AS prev_date, lag(campaign_id) OVER w AS prev_campaign ",
-    "FROM (", lettered, ") ", .disposition_sequence_window(source))
+    ", ", letter, " AS letter, ", letter, " IN ('O', 'C') AS opted, completion_known, ",
+    "CAST(step - 1 AS INTEGER) AS n_prior, ",
+    "CAST(s160_comp_sf - CAST(s160_code IN ('C', 'W') AS INTEGER) AS INTEGER) AS prior_completes, ",
+    "CAST(s160_reply_sf - CAST(s160_code NOT IN ('N', 'X') AS INTEGER) AS INTEGER) AS prior_replies, ",
+    .disposition_context_sql(), " AS context, ",
+    "s160_next IS NULL AS is_last, s160_prev_date AS prev_date, ",
+    q("prev_campaign_id"), " AS prev_campaign ",
+    "FROM (", windowed, ")")
 }
 
 # The factor levels the two fits use. The completion model never sees
