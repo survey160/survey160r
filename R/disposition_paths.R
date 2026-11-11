@@ -130,8 +130,9 @@
 #'   \item \code{a >> b}: \code{b} is the very next campaign.
 #'   \item \code{a|b}: either label; \code{a+}, \code{a\{3\}}, \code{a\{3,\}},
 #'     \code{a\{2,4\}}: repeats in a row.
-#'   \item \code{^} / \code{$} at the start / end: the phone's first / most recent
-#'     campaign.
+#'   \item \code{^} / \code{$} at the start / end: the first / most recent
+#'     campaign in the path (the phone's, unless \code{campaign_ids} or the
+#'     dates narrow it).
 #' }
 #' \code{"non_response > completed"} and \code{"N > C"} are the same pattern.
 #' \code{match_start} / \code{match_end} locate the leftmost match: a repeat
@@ -147,12 +148,13 @@
 #' The rule looks at consecutive campaigns, not at the distance from the first
 #' matched step: on prod it finds every phone a strict "within 365 days of the
 #' non-response" rule finds, plus 1-2\% more. \code{^} / \code{$} still mean
-#' the phone's first / most recent campaign; \code{path} and \code{shape} are
+#' the path's first / most recent campaign; \code{path} and \code{shape} are
 #' unchanged.
 #'
-#' \strong{Date window.} Unlike \code{\link{disposition_steps}}, \code{date_from} /
-#' \code{date_to} choose which campaigns form the path (the phone's 2025+ path,
-#' say), so they apply before the path is built.
+#' \strong{Scope.} \code{campaign_ids}, \code{date_from} and \code{date_to}
+#' choose which campaigns form the path (the phone's 2025+ path, or its path
+#' through one client's campaigns), as they scope every other disposition
+#' reader; a phone with no campaign in scope has no row.
 #'
 #' @inheritParams disposition_steps
 #' @param pattern Optional sequence pattern (see Pattern syntax). Adds
@@ -160,8 +162,6 @@
 #'   path, \code{NA} without a match), \code{match_start_date} and
 #'   \code{match_end_date}. Every phone is returned; \code{filter(matched)} keeps
 #'   the matches.
-#' @param date_from,date_to Optional \code{Date}/date-string bounds on
-#'   \code{disposition_date} (inclusive): only campaigns in range form the path.
 #' @param max_gap_days Optional single positive number, with \code{pattern}: a
 #'   match may not span a gap of more than this many days between two
 #'   consecutive campaigns (see Gap limit). Costs ~8 s more on the full
@@ -197,7 +197,7 @@
 #' }
 #' @export
 disposition_paths <- function(dataset, pattern = NULL, phones = NULL, sample_frac = NULL,
-                              date_from = NULL, date_to = NULL,
+                              campaign_ids = NULL, date_from = NULL, date_to = NULL,
                               terminal = c("raw", "engaged"),
                               undeliverable_codes = .DISPOSITION_UNDELIVERABLE_CODES,
                               max_gap_days = NULL) {
@@ -213,10 +213,10 @@ disposition_paths <- function(dataset, pattern = NULL, phones = NULL, sample_fra
 
   con <- .disposition_lazy_con()
   source <- .disposition_lazy_source(con, dataset, fn)
-  window <- .disposition_after_filters(con, source, NULL, date_from, date_to, fn)
+  scope <- .disposition_scope_filters(con, source, campaign_ids, date_from, date_to, fn)
   base <- .disposition_base_sql(con, source, phones, sample_frac,
                                 .disposition_label_sql(con, source, terminal, codes),
-                                pre = window)
+                                pre = scope)
   # Every column is a running aggregate over the ONE ordered window, read at the
   # phone's last row (where nothing follows): a second, unordered
   # PARTITION BY phone window (count / min / max over the whole phone) costs a

@@ -63,6 +63,17 @@ test_that("a pattern adds the match flag, positions and dates", {
   expect_equal(m("refused|ineligible+$"), c(FALSE, FALSE, FALSE, FALSE, TRUE))
 })
 
+test_that("campaign ids scope the path and its anchors", {
+  skip_if_no_sequence()
+  p <- write_sequence_parquet()
+  d <- collect_sorted(disposition_paths(p, "^E > C", campaign_ids = c(2, 3)))
+  expect_equal(d$phone, c("2015550101", "2015550102", "2015550103", "2015550104", "2015550105"))
+  expect_equal(d$path, c("EC", "NN", "W", "E", "I"))
+  expect_equal(d$matched, c(TRUE, FALSE, FALSE, FALSE, FALSE))
+  expect_error(disposition_paths(p, date_from = "2026-03-01", date_to = "2026-02-01"),
+               "is after `date_to`", class = "s160_error")
+})
+
 test_that("the date window shapes the path; phones scope it", {
   skip_if_no_sequence()
   p <- write_sequence_parquet()

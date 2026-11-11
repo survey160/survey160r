@@ -143,17 +143,9 @@
   )
 }
 
-# Coerce one optional date bound to a single Date, rejecting a multi-value or
-# unparseable bound. A length > 1 bound would silently recycle in the >=/<=
-# comparison below and mis-select rows; NULL passes through untouched.
-.disposition_date_bound <- function(x, name, fn = NULL) {
-  if (is.null(x)) return(NULL)
-  d <- tryCatch(as.Date(x), error = function(e) NA)
-  if (length(d) != 1L || is.na(d)) {
-    stop_s160(sprintf("`%s` must be a single valid date%s.", name, .not_got(x)), fn = fn)
-  }
-  d
-}
+# One optional date bound as a single Date (see .day_bound(): the same rules in
+# every function that takes date_from / date_to); NULL passes through.
+.disposition_date_bound <- function(x, name, fn = NULL) .day_bound(x, name, fn)
 
 # Normalize a requested phone vector to the deduped, non-NA digit set used to
 # scope a read: NULL passes through as "no phone filter"; an all-blank/unparseable
@@ -934,8 +926,9 @@
                 fn = fn)
     }
   }
-  date_from <- .disposition_date_bound(date_from, "date_from")
-  date_to <- .disposition_date_bound(date_to, "date_to")
+  date_from <- .disposition_date_bound(date_from, "date_from", fn)
+  date_to <- .disposition_date_bound(date_to, "date_to", fn)
+  .check_day_range(date_from, date_to, fn)
   req <- .disposition_request_phones(phones)
 
   d <- .disposition_filter(data, req, campaign_ids, date_from, date_to)
@@ -1176,8 +1169,9 @@ disposition_summary <- function(x, phones = NULL, campaign_ids = NULL,
 disposition_records <- function(dataset, phones = NULL, campaign_ids = NULL,
                                 date_from = NULL, date_to = NULL,
                                 page = NULL, page_size = NULL) {
-  date_from <- .disposition_date_bound(date_from, "date_from")
-  date_to <- .disposition_date_bound(date_to, "date_to")
+  date_from <- .disposition_date_bound(date_from, "date_from", "disposition_records")
+  date_to <- .disposition_date_bound(date_to, "date_to", "disposition_records")
+  .check_day_range(date_from, date_to, "disposition_records")
   req <- .disposition_request_phones(phones)
 
   filters <- list(campaign_ids = campaign_ids, date_from = date_from, date_to = date_to)
@@ -1370,8 +1364,8 @@ disposition_screen <- function(sample, dataset, phone_col = "phone",
                       .not_got(columns)), fn = fn)
   }
   history <- if ("history" %in% columns) {
-    if (is.null(as_of)) stop_s160("`as_of` must be a single valid date, not NULL.", fn = fn)
-    list(as_of = .disposition_date_bound(as_of, "as_of"),
+    if (is.null(as_of)) stop_s160("`as_of` must be a single date (a Date or \"YYYY-MM-DD\"), not NULL.", fn = fn)
+    list(as_of = .disposition_date_bound(as_of, "as_of", fn),
          undeliverable_codes = .disposition_check_terminal_codes(undeliverable_codes, fn))
   }
   disposition_cols <- c(if ("summary" %in% columns) setdiff(.DISPOSITION_SUMMARY_COLS, "phone"),

@@ -9,6 +9,7 @@ disposition_paths(
   pattern = NULL,
   phones = NULL,
   sample_frac = NULL,
+  campaign_ids = NULL,
   date_from = NULL,
   date_to = NULL,
   terminal = c("raw", "engaged"),
@@ -36,8 +37,12 @@ machine and DuckDB version). \code{0.1} makes full-projection exploration
 ~10x cheaper; the 10\% sample matches the full data to within 0.02 points
 on prod.}
 
-\item{date_from, date_to}{Optional \code{Date}/date-string bounds on
-\code{disposition_date} (inclusive): only campaigns in range form the path.}
+\item{campaign_ids}{Optional vector of campaign ids: only these campaigns
+are read, so the history covers only them (see Scope).}
+
+\item{date_from, date_to}{Optional inclusive bounds on \code{disposition_date},
+each a \code{Date} or a \code{"YYYY-MM-DD"} string: only campaigns in range
+are read, so the history starts at \code{date_from} (see Scope).}
 
 \item{terminal}{How to label an unsplit \code{terminated} row (terminated but
 neither refused nor ineligible): \code{"raw"} (default) keeps
@@ -86,8 +91,9 @@ resources documented there.
   \item \code{a >> b}: \code{b} is the very next campaign.
   \item \code{a|b}: either label; \code{a+}, \code{a\{3\}}, \code{a\{3,\}},
     \code{a\{2,4\}}: repeats in a row.
-  \item \code{^} / \code{$} at the start / end: the phone's first / most recent
-    campaign.
+  \item \code{^} / \code{$} at the start / end: the first / most recent
+    campaign in the path (the phone's, unless \code{campaign_ids} or the
+    dates narrow it).
 }
 \code{"non_response > completed"} and \code{"N > C"} are the same pattern.
 \code{match_start} / \code{match_end} locate the leftmost match: a repeat
@@ -103,12 +109,13 @@ no year-long silence after the non-response. A missing date never breaks.
 The rule looks at consecutive campaigns, not at the distance from the first
 matched step: on prod it finds every phone a strict "within 365 days of the
 non-response" rule finds, plus 1-2\% more. \code{^} / \code{$} still mean
-the phone's first / most recent campaign; \code{path} and \code{shape} are
+the path's first / most recent campaign; \code{path} and \code{shape} are
 unchanged.
 
-\strong{Date window.} Unlike \code{\link{disposition_steps}}, \code{date_from} /
-\code{date_to} choose which campaigns form the path (the phone's 2025+ path,
-say), so they apply before the path is built.
+\strong{Scope.} \code{campaign_ids}, \code{date_from} and \code{date_to}
+choose which campaigns form the path (the phone's 2025+ path, or its path
+through one client's campaigns), as they scope every other disposition
+reader; a phone with no campaign in scope has no row.
 }
 \examples{
 \dontrun{
