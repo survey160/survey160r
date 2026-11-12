@@ -9,6 +9,7 @@
       completion_estimate(model, phones = NULL, mode, topic = NULL, loi = NULL, dataset = NULL, start_date = Sys.Date())
       completion_model_fit(dataset, train_until = Sys.Date(), holdout_months = 5, min_sent = 2000, settle_days = 7, size_break = 50000, targets = .COMPLETION_DEFAULT_TARGETS)
       completion_sample_size(model, target, mode, topic = NULL, loi = NULL, phones = NULL, dataset = NULL, start_date = Sys.Date(), rate = c("completion", "optin", "reply", "engage"))
+      completion_score(model, phones, dataset, mode = NULL, start_date = Sys.Date())
       disposition_funnel(x, by = "carrier", grain = c("day", "all"), rates = TRUE, percent = FALSE)
       disposition_input_columns(available = NULL, population = NULL)
       disposition_paths(dataset, pattern = NULL, phones = NULL, sample_frac = NULL, date_from = NULL, date_to = NULL, terminal = c("raw", "engaged"), undeliverable_codes = .DISPOSITION_UNDELIVERABLE_CODES, max_gap_days = NULL, campaign_ids = NULL)

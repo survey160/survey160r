@@ -135,14 +135,20 @@
 # the pooled first-contact rate (a cell whose value is NA counts as missing).
 .completion_context_lookup <- function(contexts, year, context, survey_mode,
                                        column = "p_complete") {
-  ctx <- contexts[contexts$year == year, , drop = FALSE]
-  key <- paste(ctx$context, ctx$survey_mode)
-  values <- ctx[[column]]
-  p <- values[match(paste(context, survey_mode), key)]
-  pooled <- values[match(paste(context, NA), key)]
-  p[is.na(p)] <- pooled[is.na(p)]
-  p[is.na(p)] <- values[match(paste("___", NA), key)]
-  p
+  contexts[[column]][.completion_context_row(contexts, year, context, survey_mode, column)]
+}
+
+# The row of `contexts` each lookup reads (NA when no cell has the column), so
+# a caller can read another column of the same cell (completion_score()'s
+# `n_context` is the count of the cell its `p_complete` came from).
+.completion_context_row <- function(contexts, year, context, survey_mode, column) {
+  rows <- which(contexts$year == year & !is.na(contexts[[column]]))
+  key <- paste(contexts$context[rows], contexts$survey_mode[rows])
+  row <- rows[match(paste(context, survey_mode), key)]
+  pooled <- rows[match(paste(context, NA), key)]
+  row[is.na(row)] <- pooled[is.na(row)]
+  row[is.na(row)] <- rows[match(paste("___", NA), key)]
+  row
 }
 
 # One row per campaign: dates, counts (sent, opt-ins, completes, replies,

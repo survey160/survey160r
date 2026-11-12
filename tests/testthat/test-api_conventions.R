@@ -24,6 +24,7 @@ test_that("the first argument is the data, under one of the names the convention
 
 test_that("after the second slot every argument has a default, except the listed required options", {
   required_options <- c(completion_estimate = "mode", completion_sample_size = "mode",
+                        completion_score = "dataset",
                         question_timestamps = "question", latency_validate_config = "data")
   bad <- character(0)
   for (f in .exports()) {
