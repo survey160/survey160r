@@ -1,5 +1,27 @@
 # survey160r (development version)
 
+## `completion_score()`: each number's chance of completing
+
+* `completion_score(model, phones, dataset, mode = NULL, start_date = Sys.Date())`
+  returns one row per number in a sample with its history before the planned
+  start (`context`, the previous three outcomes; `n_prior`, `prior_completes`,
+  `prior_replies`, `days_since_contact`) and the context table's `p_complete`
+  and `p_reply`, with `n_context` (the training sends the rate is over). It is
+  the per-phone step `completion_estimate()` averages into `sample_score`, so a
+  list can be ranked or trimmed before it is quoted and estimated again with
+  the same model. Without `mode` the pooled table scores (same ranking as a
+  mode's block, level averaged over modes); with it the mean matches the
+  estimate. Warnings are R warnings here (a start year outside the tables, a
+  context with no row, the text-to-web external mode where `p_complete` is NA).
+* `completion_estimate()` now reads that table and averages it; its output is
+  unchanged (the existing tests are the gate).
+* The disposition-paths article gains "Score a sample by its history": pattern
+  for a specific history, score for which numbers to send to first, and the
+  sort for a trim (`p_complete`, then `prior_replies`, then older contact):
+  on the production data every cut lands inside one context, and inside it
+  only the older history separates numbers.
+
+
 ## Argument conventions, checked
 
 * `completion_sample_size(rate = )` lists its four choices in the signature
