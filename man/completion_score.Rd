@@ -30,9 +30,10 @@ A data frame, one row per unique number, in input order:
   contacted), \code{n_prior} (contacts before the start),
   \code{prior_completes} and \code{prior_replies} (among them),
   \code{days_since_contact} (from the last contact to the start; NA when
-  never contacted), \code{n_context} (the training sends
-  \code{p_complete} is a rate of: its cell's count, through the same
-  fallbacks), \code{p_complete} and \code{p_reply}.
+  never contacted), \code{n_context} (the total training sends
+  in the cell \code{p_complete} came from, through the same fallbacks,
+  including sends whose completion is unknown, so not the denominator of
+  \code{p_complete}), \code{p_complete} and \code{p_reply}.
 }
 \description{
 The per-phone step behind \code{\link{completion_estimate}}: one row per
