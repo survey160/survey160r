@@ -1,5 +1,23 @@
 # survey160r (development version)
 
+## Argument conventions, checked
+
+* `completion_sample_size(rate = )` lists its four choices in the signature
+  (`"completion"`, `"optin"`, `"reply"`, `"engage"`), as `grain`, `terminal` and
+  `env` do elsewhere, and a wrong value names them; a value the model did not fit
+  still errors as before. Behaviour is otherwise unchanged.
+* `latency_validate_config()` given its two arguments the other way round (the
+  data frame first) says so, instead of listing the frame's columns as unknown
+  config keys.
+* The `phones` help on `disposition_summary()` and on `disposition_records()` /
+  `disposition_steps()` / `disposition_paths()` each say how the other behaves:
+  the summary returns every input number, the others only numbers with a row.
+* The argument conventions (first-argument names, the second slot, named
+  options with defaults, new arguments last, choice vectors, `...` only as a
+  pass-through) are written down in `CLAUDE.md` and checked by
+  `tests/testthat/test-api_conventions.R`, including a snapshot of every
+  export's signature so a new argument cannot land anywhere but last unnoticed.
+
 ## One definition of a phone's history: steps, context, lazy plumbing
 
 * `disposition_steps(columns = "context")` adds `context`: the phone's previous

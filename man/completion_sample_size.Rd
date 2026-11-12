@@ -13,7 +13,7 @@ completion_sample_size(
   phones = NULL,
   dataset = NULL,
   start_date = Sys.Date(),
-  rate = "completion"
+  rate = c("completion", "optin", "reply", "engage")
 )
 }
 \arguments{
@@ -44,9 +44,9 @@ history before it is read, and it picks the context table of its year. A
 year past the data uses the last table; one before the first table uses
 the first, with a warning.}
 
-\item{rate}{The fitted target to size on: \code{"completion"} (default),
-\code{"optin"}, \code{"reply"} or \code{"engage"}, among the model's
-fitted targets.}
+\item{rate}{The target to size on: \code{"completion"} (default),
+\code{"optin"}, \code{"reply"} or \code{"engage"}; it must be among the
+model's fitted targets.}
 }
 \value{
 A one-row data frame: \code{target}; \code{rate} (the target

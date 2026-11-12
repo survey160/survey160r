@@ -986,7 +986,12 @@
 #'   \code{\link{disposition_records}} frame that omits it still summarizes
 #'   (disposition dates treated as unknown), but a date bound then errors.
 #' @param phones Optional character vector of phone numbers to screen. When
-#'   supplied, \strong{every} input number is returned -- never-contacted ones
+#'   supplied, \strong{every} valid, distinct input number (blank numbers dropped,
+#'   numbers equal after normalization collapsed) is returned, before
+#'   \code{statuses} filtering and pagination (unlike
+#'   \code{\link{disposition_records}}, \code{\link{disposition_steps}} and
+#'   \code{\link{disposition_paths}}, which keep only the numbers with a
+#'   row) -- never-contacted ones
 #'   with \code{n_campaigns = 0} and
 #'   \code{latest_disposition = "never_contacted"}. \code{NULL} (default)
 #'   summarizes every phone present. Matched digit-normalized (a leading US
@@ -1145,7 +1150,10 @@ disposition_summary <- function(x, phones = NULL, campaign_ids = NULL,
 #'
 #' @param dataset Path to a disposition Parquet file (the read projection), e.g.
 #'   from \code{\link{disposition_pull}}.
-#' @param phones Optional character vector of phone numbers to keep. Matched
+#' @param phones Optional character vector of phone numbers to keep: a number
+#'   with no row is absent from the result (\code{\link{disposition_summary}}
+#'   returns every valid, distinct input number instead, before status filtering
+#'   and pagination). Matched
 #'   digit-normalized (a leading US \code{1} is dropped so 11-digit numbers match
 #'   10-digit ones). \code{NULL} (default) returns every row.
 #' @param campaign_ids Optional vector; keep only rows for these campaigns.
