@@ -332,7 +332,8 @@
 #'   \code{\link{disposition_pull}}.
 #' @param phones Optional character vector of phone numbers; keeps only these
 #'   phones (all of their campaigns), and a number with no campaign has no row
-#'   (\code{\link{disposition_summary}} returns every input number instead).
+#'   (\code{\link{disposition_summary}} returns every valid, distinct input
+#'   number instead, before status filtering and pagination).
 #'   Matched digit-normalized, as the other readers do. \code{character(0)}
 #'   returns no rows.
 #' @param sample_frac Optional number in (0, 1]: keep a deterministic sample of

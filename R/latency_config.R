@@ -150,7 +150,7 @@ latency_validate_config <- function(config, data) {
   # after its columns: the usual cause is the arguments the other way round.
   if (is.data.frame(config)) {
     stop_config(paste0("must be a list (from latency_build_config()), not a data frame: ",
-                       "the arguments are `config`, then `data`."))
+                       "it looks like `config` and `data` were swapped."))
   }
   if (!is.list(config)) {
     stop_config(sprintf("must be a list (from latency_build_config())%s.",

@@ -126,5 +126,5 @@ test_that("validate_config names the argument order when the data frame comes fi
                "config: must be a list \\(from latency_build_config\\(\\)\\), not a data frame: ",
                fixed = FALSE)
   expect_error(latency_validate_config(minimal_synthetic_data(), .minimal_config()),
-               "the arguments are `config`, then `data`")
+               "`config` and `data` were swapped")
 })

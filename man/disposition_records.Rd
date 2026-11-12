@@ -20,7 +20,8 @@ from \code{\link{disposition_pull}}.}
 
 \item{phones}{Optional character vector of phone numbers to keep: a number
 with no row is absent from the result (\code{\link{disposition_summary}}
-returns every input number instead). Matched
+returns every valid, distinct input number instead, before status filtering
+and pagination). Matched
 digit-normalized (a leading US \code{1} is dropped so 11-digit numbers match
 10-digit ones). \code{NULL} (default) returns every row.}
 
