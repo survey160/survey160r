@@ -74,7 +74,7 @@ NA and only \code{p_reply} is scored.
 dataset <- disposition_pull()
 m <- completion_model_fit(dataset)
 sample <- read.csv("client_sample.csv")
-scores <- completion_score(m, sample$phone, dataset, mode = "T2W",
+scores <- completion_score(m, sample$phone, dataset = dataset, mode = "T2W",
                            start_date = "2026-12-01")
 # keep the best four fifths
 ranked <- scores[order(-scores$p_complete, -scores$prior_replies,

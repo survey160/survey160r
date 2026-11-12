@@ -7,7 +7,8 @@
   start (`context`, the previous three outcomes; `n_prior`, `prior_completes`,
   `prior_replies`, `days_since_contact`) and the context table's `p_complete`
   and `p_reply`, with `n_context` (the training sends the rate is over). It is
-  the per-phone step `completion_estimate()` averages into `sample_score`, so a
+  the per-phone step. `completion_estimate()` averages `p_complete` and takes
+  the logit of that mean as `sample_score`, so a
   list can be ranked or trimmed before it is quoted and estimated again with
   the same model. Without `mode` the pooled table scores (same ranking as a
   mode's block, level averaged over modes); with it the mean matches the

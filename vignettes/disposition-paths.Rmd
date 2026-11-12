@@ -148,8 +148,9 @@ kept <- subset(flagged, !(last_three_unanswered %in% TRUE))
 A pattern flags the histories you name; the completion model scores every history at once. `completion_score()` gives each number the completion rate of past sends to numbers with the same previous three outcomes (its `context`, the last three letters of the path), in the planned mode, so a list can be ranked or trimmed before it is quoted:
 
 ```{r}
+dataset <- disposition_pull()   # the pulled data again, not the toy file above
 m <- completion_model_fit(dataset)
-scores <- completion_score(m, my_sample$phone, dataset, mode = "T2W",
+scores <- completion_score(m, my_sample$phone, dataset = dataset, mode = "T2W",
                            start_date = "2026-12-01")
 ranked <- scores[order(-scores$p_complete, -scores$prior_replies,
                        -scores$days_since_contact), ]
