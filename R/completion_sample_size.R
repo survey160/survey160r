@@ -72,12 +72,12 @@ completion_sample_size <- function(model, target, mode, topic = NULL, loi = NULL
   if (target == 0) stop_s160("`target` must be a positive whole number, not 0.", fn = fn)
   choices <- eval(formals(completion_sample_size)$rate)
   rate <- tryCatch(match.arg(rate), error = function(e) {
-    stop_s160(sprintf("`rate` must be one of %s%s.", paste(shQuote(choices), collapse = ", "),
+    stop_s160(sprintf("`rate` must be one of %s%s.", paste0("'", choices, "'", collapse = ", "),
                       .not_got(rate)), fn = fn)
   })
   if (!rate %in% names(model$models)) {
     stop_s160(sprintf("`rate` must be one of the model's fitted targets (%s)%s.",
-                      paste(shQuote(names(model$models)), collapse = ", "), .not_got(rate)), fn = fn)
+                      paste0("'", names(model$models), "'", collapse = ", "), .not_got(rate)), fn = fn)
   }
   spec <- .COMPLETION_MODELS[[rate]]
   if (is.character(mode) && length(mode) == 1L && mode %in% .COMPLETION_MODES &&
