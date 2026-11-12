@@ -20,17 +20,19 @@
   context[seen] <- paste0(letter[seen], substr(h$context[idx[seen]], 1L, 2L))
   days <- rep(NA_real_, length(phones))
   days[seen] <- as.numeric(start_date - as.Date(h$disposition_date[idx[seen]]))
-  lookup <- function(column) {
-    .completion_context_lookup(model$contexts, year, context, survey_mode, column)
-  }
+  # n_context is the count of the cell p_complete came from, through the same
+  # fallbacks (a cell can have a count but no completion rate, when every send
+  # in it had unknown completion)
+  row <- .completion_context_row(model$contexts, year, context, survey_mode, "p_complete")
   data.frame(
     phone = phones, context = context,
     n_prior = ifelse(seen, h$n_prior[idx] + 1L, 0L),
     prior_completes = ifelse(seen, h$prior_completes[idx] + (letter == "C"), 0L),
     prior_replies = ifelse(seen, h$prior_replies[idx] + letter %in% c("E", "O", "R", "C"), 0L),
     days_since_contact = days,
-    n_context = lookup("n"),
-    p_complete = lookup("p_complete"), p_reply = lookup("p_reply"),
+    n_context = model$contexts$n[row],
+    p_complete = model$contexts$p_complete[row],
+    p_reply = .completion_context_lookup(model$contexts, year, context, survey_mode, "p_reply"),
     campaign_id = h$campaign_id[idx],
     stringsAsFactors = FALSE)
 }
@@ -95,8 +97,9 @@
 #'   contacted), \code{n_prior} (contacts before the start),
 #'   \code{prior_completes} and \code{prior_replies} (among them),
 #'   \code{days_since_contact} (from the last contact to the start; NA when
-#'   never contacted), \code{n_context} (the training sends the score is a
-#'   rate of), \code{p_complete} and \code{p_reply}.
+#'   never contacted), \code{n_context} (the training sends
+#'   \code{p_complete} is a rate of: its cell's count, through the same
+#'   fallbacks), \code{p_complete} and \code{p_reply}.
 #' @seealso \code{\link{completion_estimate}} (the list's rate),
 #'   \code{\link{disposition_paths}} (flag a sample by a sequence pattern
 #'   instead), \code{vignette("disposition-paths")}

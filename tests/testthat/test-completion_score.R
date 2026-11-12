@@ -106,3 +106,29 @@ test_that("score: argument errors", {
   expect_error(completion_score(f$model, "2015550001", f$path, mode = "Phone"), "mode")
   expect_error(completion_score(f$model, "2015550001", f$path, start_date = NULL), "start_date")
 })
+
+test_that("score: n_context is the cell p_complete came from, through every fallback", {
+  skip_if_no_sequence()
+  f <- fit_fixture_model()
+  m <- f$model
+  ctx <- m$contexts
+  # the sms cell for "___" in 2026 has a count but no completion rate (as an
+  # external-only cell would): p_complete falls back to the pooled cell, and
+  # n_context must follow it, not report the sms cell's count
+  i <- which(ctx$year == 2026L & ctx$context == "___" & ctx$survey_mode %in% "sms")
+  j <- which(ctx$year == 2026L & ctx$context == "___" & is.na(ctx$survey_mode))
+  expect_length(i, 1L)
+  expect_length(j, 1L)
+  ctx$p_complete[i] <- NA_real_
+  ctx$n[i] <- 10L
+  m$contexts <- ctx
+  out <- completion_score(m, "3015550001", f$path, mode = "Live", start_date = as.Date("2026-11-15"))
+  expect_equal(out$p_complete, ctx$p_complete[j])
+  expect_equal(out$n_context, ctx$n[j])
+  # no cell at all: NA for both
+  m$contexts <- ctx[-c(i, j), ]
+  expect_warning(none <- completion_score(m, "3015550001", f$path, mode = "Live",
+                                          start_date = as.Date("2026-11-15")), "no row")
+  expect_true(is.na(none$p_complete))
+  expect_true(is.na(none$n_context))
+})
