@@ -331,8 +331,10 @@
 #' @param dataset Path to the disposition Parquet file, e.g. from
 #'   \code{\link{disposition_pull}}.
 #' @param phones Optional character vector of phone numbers; keeps only these
-#'   phones (all of their campaigns). Matched digit-normalized, as the other
-#'   readers do. \code{character(0)} returns no rows.
+#'   phones (all of their campaigns), and a number with no campaign has no row
+#'   (\code{\link{disposition_summary}} returns every input number instead).
+#'   Matched digit-normalized, as the other readers do. \code{character(0)}
+#'   returns no rows.
 #' @param sample_frac Optional number in (0, 1]: keep a deterministic sample of
 #'   that fraction of phones (by an md5 of the phone, so the same phones on every
 #'   machine and DuckDB version). \code{0.1} makes full-projection exploration

@@ -146,6 +146,12 @@ latency_validate_config <- function(config, data) {
 # -- the same three checks in the same order, without decoding every timestamp
 # a second time for the flow-order ratio.
 .validate_config_shape <- function(config) {
+  # A data frame is a list, so it would fail below on "unknown keys" named
+  # after its columns: the usual cause is the arguments the other way round.
+  if (is.data.frame(config)) {
+    stop_config(paste0("must be a list (from latency_build_config()), not a data frame: ",
+                       "the arguments are `config`, then `data`."))
+  }
   if (!is.list(config)) {
     stop_config(sprintf("must be a list (from latency_build_config())%s.",
                         .not_got(config)))

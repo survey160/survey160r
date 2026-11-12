@@ -90,3 +90,17 @@ test_that("sample size: rate sizes on another fitted target", {
   expect_true(is.na(out$sends_at_lo50) && is.na(out$sends_at_lo95))
   expect_true(any(grepl("completion is not fitted", out$warnings[[1]])))
 })
+
+test_that("rate's choices are in the signature and a wrong one is named with them", {
+  expect_identical(eval(formals(completion_sample_size)$rate),
+                   c("completion", "optin", "reply", "engage"))
+  expect_setequal(eval(formals(completion_sample_size)$rate), names(.COMPLETION_MODELS))
+  skip_if_no_sequence()
+  f <- fit_fixture_model()
+  expect_error(completion_sample_size(f$model, 100, mode = "Live", rate = "bogus"),
+               "`rate` must be one of 'completion', 'optin', 'reply', 'engage'")
+  # the full choice vector reads as the default, like match.arg()
+  full <- completion_sample_size(f$model, 100, mode = "Live", topic = "Brand", loi = 12,
+                                 rate = c("completion", "optin", "reply", "engage"))
+  expect_identical(full$rate, "completion")
+})

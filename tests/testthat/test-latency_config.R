@@ -120,3 +120,11 @@ test_that("config_hash differs when content differs", {
   c2 <- list(a = 2)
   expect_false(identical(latency_config_hash(c1), latency_config_hash(c2)))
 })
+
+test_that("validate_config names the argument order when the data frame comes first", {
+  expect_error(latency_validate_config(minimal_synthetic_data(), .minimal_config()),
+               "config: must be a list \\(from latency_build_config\\(\\)\\), not a data frame: ",
+               fixed = FALSE)
+  expect_error(latency_validate_config(minimal_synthetic_data(), .minimal_config()),
+               "the arguments are `config`, then `data`")
+})
