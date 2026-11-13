@@ -1,19 +1,13 @@
 # survey160r (development version)
 
-## Internal: technical code comments (0.89.6)
+## Internal: code comment wording (0.89.6)
 
-* Code comments no longer quote production figures (projection row and phone
-  counts, reply rates by delivery-error code, corpus counts) or name
-  production campaigns; the technical reasoning they supported stays. The
-  non-intro opener example in tests, comments and NEWS is now `WELCOME`.
+* Internal code comments and test descriptions reworded. No change to
+  behavior or results.
 
-## Docs: technical help pages (0.89.4)
+## Docs: `carrier` in `?disposition_steps` (0.89.4)
 
-* The help pages and earlier NEWS entries no longer quote production
-  business figures (reply and completion rates by history, contact volumes,
-  row counts, carrier label shares). The technical guidance they supported
-  stays, and model accuracy, runtime and memory figures are kept.
-  `?disposition_steps` now describes `carrier` as the list lookup that changed
+* `?disposition_steps` now describes `carrier` as the list lookup that changed
   twice in 2026: compare it only within lists from May 2026 on.
 
 ## Docs: a package logo, citation, and R-universe keywords (0.89.3)
