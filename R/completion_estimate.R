@@ -355,7 +355,8 @@
 #'   know, a context without a table row, a size band or a mode without an sd,
 #'   a target not fitted for the mode).
 #' @seealso \code{\link{completion_model_fit}},
-#'   \code{\link{completion_sample_size}} (the sends a target needs)
+#'   \code{\link{completion_sample_size}} (the sends a target needs),
+#'   \code{vignette("completion")}
 #' @examples
 #' \dontrun{
 #' dataset <- disposition_pull()

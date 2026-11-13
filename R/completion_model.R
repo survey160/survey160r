@@ -667,7 +667,8 @@
 #'   multipliers (one data frame: \code{model}, \code{term},
 #'   \code{odds_multiplier}, \code{std_error}).
 #' @seealso \code{\link{completion_estimate}} (score a planned survey),
-#'   \code{\link{disposition_paths}} (the history letters)
+#'   \code{\link{disposition_paths}} (the history letters),
+#'   \code{vignette("completion")}
 #' @examples
 #' \dontrun{
 #' dataset <- disposition_pull()

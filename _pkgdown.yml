@@ -52,8 +52,8 @@ reference:
   desc: >
     Screen a phone sample against the disposition dataset -- which numbers have
     been contacted / completed / refused before -- roll it up to funnel rates,
-    follow each number's campaigns in order, estimate a planned survey's rates,
-    and build the dataset from a raw campaign CSV.
+    follow each number's campaigns in order, and build the dataset from a raw
+    campaign CSV.
   contents:
   - disposition_pull
   - disposition_screen
@@ -62,12 +62,18 @@ reference:
   - disposition_funnel
   - disposition_steps
   - disposition_paths
-  - completion_model_fit
-  - completion_estimate
-  - completion_score
-  - completion_sample_size
   - disposition_run
   - disposition_input_columns
+- title: Completion estimates
+  desc: >
+    Fit the completion model from the disposition dataset, then estimate a
+    planned survey's opt-in and completion rates, the sends a target number of
+    completes needs, or each number's chance of completing.
+  contents:
+  - completion_model_fit
+  - completion_estimate
+  - completion_sample_size
+  - completion_score
 - title: Opt-out screening
   desc: >
     Download the current opt-out list and screen a phone sample against it --
@@ -102,6 +108,7 @@ articles:
   contents:
   - disposition
   - disposition-paths
+  - completion
   - opt-out
   - campaign-metrics
   - delivery-errors

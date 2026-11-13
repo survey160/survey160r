@@ -1,0 +1,124 @@
+---
+title: "Completion estimates"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Completion estimates}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+# Every chunk needs the full production projection (a model cannot be fitted
+# on a toy file), so all are shown but not run at build time.
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>", eval = FALSE)
+```
+
+Estimate a planned survey's opt-in and completion rates from its design and its phone sample, size the sample for a target number of completes, and rank the sample's numbers by their chance of completing before you quote. Assumes you have completed First-time setup (the package README, or `?s160_gcs_init` from R): Cloud Storage access to `s160_disposition_prod`, plus `duckdb`, `DBI` and `dbplyr` installed.
+
+## Estimate a planned survey
+
+Fit the model once from the disposition dataset, then estimate each planned survey with it:
+
+```{r}
+library(survey160r)
+s160_gcs_init()   # one browser sign-in, cached
+dataset <- disposition_pull()
+
+options(survey160r.duckdb_memory = "16GB")   # the fit runs out of memory at the default 4 GB
+m <- completion_model_fit(dataset)           # about a minute
+m                                            # training windows and holdout accuracy
+
+sample <- read.csv("client_sample.csv")
+completion_estimate(m, sample$phone, mode = "T2W", topic = "Policy", loi = 12,
+                    dataset = dataset, start_date = "2026-12-01")
+```
+
+The estimate is one row: each fitted rate (`optin_rate`, `completion_rate`) with a 50% and a 95% band (`*_lo50` ... `*_hi95`) and the expected count over the sample (`optins`, `completes`). The model reads two things:
+
+- **The survey design** -- `mode` (`"Live"`, `"T2W"`, `"T2W external"`), `topic` (`"Brand"`, `"Electoral"`, `"Policy"`) and `loi`, the length of interview in minutes. An unknown topic or length is allowed and noted in `warnings`.
+- **The sample's history** -- read from the dataset up to `start_date`: how the numbers did before (the mean completion rate of their recent outcomes, `sample_score`), the share that completed before, the share that never replied to three or more contacts, and how long since they were last contacted.
+
+Quote one campaign with the point estimate and the 50% band. When summing expected completes over many campaigns, use `completes_mean`: the band is skewed, so the mean runs above the point estimate.
+
+### Before the list exists
+
+Leave out `phones` for an estimate from the survey design alone, then estimate again when the list arrives:
+
+```{r}
+completion_estimate(m, mode = "T2W", topic = "Policy", loi = 12, start_date = "2026-12-01")
+```
+
+It is the average for that mode, topic and length, and its error is much wider: on 2025-2026 campaigns the median error was 44-46% of the rate, against 26-27% with the list (60-76% against 31-34% on text-to-web).
+
+## Size the sample for a target
+
+`completion_sample_size()` reads the estimate the other way round: the sends a target number of completes needs at the estimated rate and at the low ends of the bands, so the quote can carry a margin:
+
+```{r}
+# before the list exists: how much sample to ask for
+completion_sample_size(m, 1200, mode = "T2W", topic = "Brand", loi = 12,
+                       start_date = "2026-12-01")
+# when it arrives: does it cover the target?
+completion_sample_size(m, 1200, mode = "T2W", topic = "Brand", loi = 12,
+                       phones = sample$phone, dataset = dataset, start_date = "2026-12-01")
+```
+
+On 2025-2026 campaigns, a sample sized at `sends_at_estimate` reached its target in 48-63% of campaigns, at `sends_at_lo50` in 86-90% on live and 77-79% on text-to-web, and at `sends_at_lo95` in 93-97%. With a list, `list_covers` names the lowest of those levels the list still reaches (`"none"`: ask for more sample). `rate = "optin"` sizes a panel recruit on opt-ins instead.
+
+## Rank or trim a list
+
+`completion_score()` gives each number in the sample its own score, so you can send to the most likely completers first or drop the least likely before quoting:
+
+```{r}
+scores <- completion_score(m, sample$phone, dataset = dataset, mode = "T2W",
+                           start_date = "2026-12-01")
+ranked <- scores[order(-scores$p_complete, -scores$prior_replies,
+                       -scores$days_since_contact), ]
+keep <- head(ranked, ceiling(0.8 * nrow(ranked)))   # the best four fifths
+```
+
+A number's `p_complete` is the completion rate of past sends to numbers with the same previous three outcomes (its `context`, newest first: `"NNN"` is three non-responses, `"___"` never contacted) in the same mode, refined by how many times it completed before (0, 1, 2, 3 or more). The count matters because three outcomes forget: among 2026 numbers whose last three contacts went unanswered, one that had completed earlier completed about ten times as often as one that never had.
+
+- **Sort keys.** Most numbers in a list share a handful of contexts (never contacted, one, two or three non-responses), so a cut usually falls inside one. There, a reply anywhere in the older history and a longer silence since the last contact both raise completion, hence the two secondary keys. The number of past contacts does not.
+- **What a trim buys.** Dropping the lowest fifth of a list raises its completion rate by about a seventh and keeps nine completes in ten.
+- **A ranking, not a forecast.** The scores are group rates: on live lists they have run about 1.3 times the completion actually seen in 2025-2026. Read a list's expected rate from `completion_estimate()`, which can be run again on the trimmed list.
+- **Join back.** `phone` is the 10 bare digits; normalize your sample's numbers the same way before joining the scores to it.
+
+## What you get back
+
+`completion_estimate()` returns one row, with nine columns per fitted rate (shown for completion; `optin_*` follows the same pattern) and the sample's summary:
+
+| Column | Meaning |
+|---|---|
+| `completion_rate` | The point estimate. |
+| `completion_lo50` / `completion_hi50`, `completion_lo95` / `completion_hi95` | The 50% and 95% bands. |
+| `completes`, `completes_lo95` / `completes_hi95`, `completes_mean` | Expected completes over the sample (NA without one). |
+| `n_phones` | Unique numbers in the sample. |
+| `share_with_history`, `share_recent_contact` | Shares of the sample contacted before, and in the 30 days before the start. |
+| `sample_multiplier`, `survey_multiplier` | How much the sample and the survey design each move the completion odds, against a typical campaign. |
+| `warnings` | A list column: unknown levels, no sample, a re-sent list, anything the estimate filled in. |
+
+`completion_score()` returns one row per unique number, in input order:
+
+| Column | Meaning |
+|---|---|
+| `phone` | The 10 bare digits. |
+| `context` | The previous three outcomes, newest first (`"___"` never contacted). |
+| `n_prior`, `prior_completes`, `prior_replies` | Contacts before the start, and the completes and replies among them. |
+| `days_since_contact` | Days from the last contact to the start (NA when never contacted). |
+| `p_complete`, `p_reply` | The number's completion and reply scores. |
+
+`?completion_estimate`, `?completion_sample_size`, `?completion_score` and `?completion_model_fit` have every column.
+
+## Notes
+
+- **The sample is used as given.** None of the functions screen it: remove opted-out, completed or ineligible numbers first (`vignette("opt-out")`, `vignette("disposition")`), or the expected counts are overstated by the share you would remove.
+- **Re-sent lists.** A list mostly contacted in the 30 days before the start gets a warning: such lists completed well below their previous send (about 0.4 times on web in 2025-2026) and were the most frequent large misses. The estimate is not adjusted for it.
+- **The bands are approximate.** Refitted every month over 2025-2026 and scored on the next month's campaigns, the 50% band covered 62-69% of live and 54-62% of text-to-web campaigns, the 95% band 93-94% and 91-92%.
+- **Text-to-web external.** Completion is never recorded for it, so its completion columns and `p_complete` are NA; the opt-in estimate and `p_reply` still stand.
+- **Refit after a refresh.** The model is an ordinary R object (`saveRDS()` it to reuse across sessions); fit it again after `disposition_pull(refresh = TRUE)` so it sees the newest campaigns. `completion_model_fit(train_until = )` refits it as it could have been fitted on a past date, to check an old quote.
+- **Memory.** The fit needs more than DuckDB's default 4 GB on the full dataset (on production data it ran out at 4 and 8 GB), hence the `options()` line above. The estimate, sample size and score read only the sample's rows: about two seconds each for a 100,000-number list, within the default.
+
+## See also
+
+`?completion_model_fit`, `?completion_estimate`, `?completion_sample_size`, `?completion_score`, and `?survey160r` for every function by task. To follow each number's campaigns in order and flag a sample by a specific history (a screen-out followed by a topic switch, "ever completed"), `vignette("disposition-paths")`. To screen a sample on prior contact before estimating it, `vignette("disposition")` and `vignette("opt-out")`.

@@ -149,23 +149,6 @@ kept <- subset(flagged, !(last_three_unanswered %in% TRUE))
 
 `$` anchors the run to the most recent campaign, so this flags numbers whose last three or more contacts got no reply of either kind. A number that was never contacted has no path and joins to `NA`, which the `%in% TRUE` filter keeps. `phones` accepts any formatting (punctuation and a leading US `1` are ignored), but the result is keyed by the bare 10 digits, hence `phone_key`: joining on the sample's own `phone` would leave every formatted number `NA` and pass it unflagged. To screen on counts or on the history segment instead, `disposition_screen()` in `vignette("disposition")` does it without a join.
 
-## Score a sample by its history
-
-A pattern flags the histories you name; the completion model scores every history at once. `completion_score()` gives each number the completion rate of past sends to numbers with the same previous three outcomes (its `context`, newest first, as in the `"context"` group below: `"NNN"` is three non-responses) and the same count of earlier completes (0, 1, 2, 3 or more), in the planned mode, so a list can be ranked or trimmed before it is quoted:
-
-```{r}
-pulled <- disposition_pull()   # the full projection: the toy file above is too small to fit
-options(survey160r.duckdb_memory = "16GB")   # the fit runs out of memory at the default 4 GB
-m <- completion_model_fit(pulled)
-scores <- completion_score(m, my_sample$phone, dataset = pulled, mode = "T2W",
-                           start_date = "2026-12-01")
-ranked <- scores[order(-scores$p_complete, -scores$prior_replies,
-                       -scores$days_since_contact), ]
-keep <- head(ranked, ceiling(0.8 * nrow(ranked)))   # the best four fifths
-```
-
-The count matters because three letters forget: a number that completed once and then went unanswered three times completes about ten times as often as an `NNN` that never completed. Every cut still falls inside one context, since a few contexts (never contacted, one, two or three non-responses) cover most of any list; inside a context a reply anywhere in the older history and a longer silence since the last contact both raise completion, hence the two secondary keys. `completion_estimate()` averages the same table's context rates into the list's rate, so a trimmed list can be estimated again with the same model. Use a pattern when the history you want is specific (a screen-out followed by a topic switch, a gap limit, "ever completed"); use the score when the question is which numbers to send to first.
-
 ## Ask what happens after a step
 
 `disposition_steps()` returns one row per campaign, with the phone's history up to it and its next label. Group the rows by what came before to measure what comes next:
@@ -206,7 +189,7 @@ On production data the first query's `reply_next` falls steadily, from about 7% 
 `columns` picks the history groups (see [What you get back](#what-you-get-back)): `"neighbors"`, `"so_far"`, `"run_length"` and `"path_so_far"` by default, and on request:
 
 - `"history"` -- the prior counts, the `history_segment` and the recency columns, the same ones `disposition_screen(columns = "history")` appends to a sample.
-- `"context"` -- the previous three outcomes, newest first, in six coarse letters (`"CEN"`: a complete, then an engaged before it, then a no-reply). It is the context grouping the completion model behind `completion_estimate()` is keyed by. `group_by(context)` alone does not reproduce its rates: the model also fits each mode (`sms`, `t2w`) separately, trains each year only on earlier years, and leaves out unknown completions.
+- `"context"` -- the previous three outcomes, newest first, in six coarse letters (`"CEN"`: a complete, then an engaged before it, then a no-reply).
 
 Ask only for the groups you use; each costs a few seconds on the full dataset.
 
@@ -311,10 +294,10 @@ The production figures below are from the dataset as of November 2026.
 - **A long gap can join two people's histories.** A number can be reassigned, and the dataset cannot show when: a carrier change between campaigns is not reliable evidence of a list-version change, a port or a reassignment. `max_gap_days` keeps a pattern from matching across a long gap.
 - **Overlapping campaigns.** Two campaigns that fielded at the same time can come out in either order (0.5% of consecutive pairs, all under 30 days apart).
 - **How the labels reconcile with the summary.** On an unfiltered steps table, per phone, `n_campaigns` and the counts of `web_complete` and `refused` labels equal `disposition_summary()`'s, and so does the last step's label (`latest_disposition`), except that a final `undeliverable` step is `non_response` in the summary (`undeliverable_codes = NULL` makes them agree). The other counts differ only where one stored row sets two flags: a row flagged both completed and web complete (about 430,000 since 2024) is one `web_complete` step here and counts in both `n_completed` and `n_web_complete` there, and a row flagged both terminated and refused is one `refused` step here but counts in both there. A `campaign_ids` / `date_from` / `date_to` scope applies to both in the same way, so a scoped steps table reconciles with the equally scoped summary; a `filter()` on the result does not change `n_campaigns`.
-- **Memory.** DuckDB works within 4 GB and spills to disk past it (up to about 20 GB on a full-dataset query, freed when it finishes). `completion_model_fit()` on the full dataset is the exception: it runs out of memory at 4 GB, so give it 16 GB as in the score example. Change it with `options(survey160r.duckdb_memory = "8GB")` or `options(survey160r.duckdb_temp_dir = "/path")`.
+- **Memory.** DuckDB works within 4 GB and spills to disk past it (up to about 20 GB on a full-dataset query, freed when it finishes). Change it with `options(survey160r.duckdb_memory = "8GB")` or `options(survey160r.duckdb_temp_dir = "/path")`.
 - **A path, not a frame.** Both readers take the Parquet path from `disposition_pull()`, never an in-memory frame; write a frame with `nanoparquet::write_parquet()` first, as above. Without `duckdb`, `DBI` and `dbplyr` they stop and say what to install (there is no fallback engine).
 - **Stale cache.** `disposition_pull(refresh = TRUE)` downloads the current dataset.
 
 ## See also
 
-`?disposition_paths`, `?disposition_steps`, `?disposition_pull`, and `?survey160r` for every function by task. To screen a sample on counts or on its contact history, and for funnel rates by any dimension, `vignette("disposition")`. To estimate a planned survey's completion rate from the same dataset, `?completion_estimate`; to rank a sample's numbers by their history, `?completion_score`; for the model behind both, keyed by the `"context"` group, `?completion_model_fit`. For delivery error rates by carrier on ongoing campaigns, `vignette("delivery-errors")`. To screen the sample against the opt-out list, `vignette("opt-out")`; for the fleet funnel by registration or brand, `vignette("campaign-metrics")`.
+`?disposition_paths`, `?disposition_steps`, `?disposition_pull`, and `?survey160r` for every function by task. To screen a sample on counts or on its contact history, and for funnel rates by any dimension, `vignette("disposition")`. To estimate a planned survey's completion rate from the same dataset, or rank a sample's numbers by their chance of completing, `vignette("completion")`. For delivery error rates by carrier on ongoing campaigns, `vignette("delivery-errors")`. To screen the sample against the opt-out list, `vignette("opt-out")`; for the fleet funnel by registration or brand, `vignette("campaign-metrics")`.

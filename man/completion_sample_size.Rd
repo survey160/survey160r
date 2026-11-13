@@ -99,5 +99,6 @@ completion_sample_size(m, 1200, mode = "T2W", topic = "Brand", loi = 12,
 }
 }
 \seealso{
-\code{\link{completion_estimate}}, \code{\link{completion_model_fit}}
+\code{\link{completion_estimate}}, \code{\link{completion_model_fit}},
+  \code{vignette("completion")}
 }

@@ -106,5 +106,5 @@ keep <- head(ranked, ceiling(0.8 * nrow(ranked)))
 \seealso{
 \code{\link{completion_estimate}} (the list's rate),
   \code{\link{disposition_paths}} (flag a sample by a sequence pattern
-  instead), \code{vignette("disposition-paths")}
+  instead), \code{vignette("completion")}
 }
