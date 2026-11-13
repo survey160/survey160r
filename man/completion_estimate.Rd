@@ -107,8 +107,9 @@ completes over many campaigns.
 
 Without \code{phones} the estimate is the survey design's alone: the sample
 terms take the training mean (a typical campaign's mix), \code{sample_score}
-and \code{reply_score} show the means used, \code{sample_multiplier} is 1
-when the completion model is fitted for the mode (else NA),
+and \code{reply_score} show the completion model's training means (the
+first fitted model's when completion was not fitted), \code{sample_multiplier}
+is 1 when the completion model is fitted for the mode (else NA),
 the counts, \code{share_with_history}, \code{share_recent_contact},
 \code{years_since_contact} and \code{prior_optin_score} are NA and a warning
 says so. Its error is much wider: on
