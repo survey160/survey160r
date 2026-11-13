@@ -94,8 +94,9 @@ The bands are multiplicative on the odds: \code{p x/÷ exp(z * sd)} with
 \code{z = 0.674} (50\%) and \code{1.96} (95\%), where \code{sd} is the
 model's residual sd for the survey's mode and the sample's size band (under
 or over the fit's \code{size_break}), the mode's alone when that cell has
-none or no sample is given. They are approximate (about 94\%
-coverage at the nominal 95\% on campaigns from mid 2026). For a text-to-web external
+none or no sample is given. They are approximate (refitted monthly over
+2025-2026 and scored on the next month: 62-69\% live and 54-62\% text-to-web
+at the nominal 50\%, 93-94\% and 91-92\% at the nominal 95\%). For a text-to-web external
 survey completion is never recorded, so the completion columns are NA and
 only the opt-in estimate stands.
 
@@ -105,9 +106,17 @@ Quote one campaign with the median; add the means when summing expected
 completes over many campaigns.
 
 Without \code{phones} the estimate is the survey design's alone: the sample
-terms take the training mean (a typical campaign's mix), the count and
-sample columns are NA and a warning says so. Its error is wider (about a
-third more than with a list on 2026 campaigns); use it to quote before a
+terms take the training mean (a typical campaign's mix), \code{sample_score}
+and \code{reply_score} show the completion model's training means (the
+first fitted model's when completion was not fitted), \code{sample_multiplier}
+is 1 when the completion model is fitted for the mode (else NA),
+the counts, \code{share_with_history}, \code{share_recent_contact},
+\code{years_since_contact} and \code{prior_optin_score} are NA and a warning
+says so. Its error is much wider: on
+2025-2026 campaigns the median error was 44-46\% of the rate against
+26-27\% with the list, about double on text-to-web (60-76\% against
+31-34\%), and it explains almost none of the spread between campaigns; it
+is the mode, topic and length average. Use it to quote before a
 list exists and re-estimate when it arrives. A sample mostly contacted in
 the 30 days before the start is a re-sent list and gets a warning with the
 model's re-send summary: such lists completed well below their previous

@@ -49,7 +49,12 @@ first) in the same survey mode, on the context table of the start's year.
 It is a group rate, not a personal probability: it ranks a list well (on
 the production data, a random complete outranks a random non-complete about
 two times in three inside one list), and a difference between two numbers'
-scores is meaningful only when their contexts differ.
+scores is meaningful only when their contexts differ. Its level is the
+history's, not this year's: on live lists the table has run about 1.3
+times the completion actually seen in 2025-2026 (the fleet completes less
+than it used to), while text-to-web is within 5-25\%. Read the mean of a
+list from \code{completion_estimate()}, whose model carries the current
+level; read the scores as a ranking.
 
 \strong{Trimming a list.} Sort by \code{p_complete}, then
 \code{prior_replies}, then \code{days_since_contact} (older first), and
