@@ -4,7 +4,7 @@
 #
 # The path is built with a WINDOW string_agg over the phone's ordered campaigns,
 # keeping the last row, not with GROUP BY phone + an ordered string_agg: on the
-# production projection (~85M phones) the grouped form exhausts DuckDB's memory
+# full production projection the grouped form exhausts DuckDB's memory
 # even at 8 GB (its ordered aggregate does not spill), while the window form runs
 # in ~8 s at a 4 GB limit with identical output (verified on a 1% sample).
 
@@ -99,7 +99,7 @@
 }
 
 # Collapse runs in a letter path to one letter plus `+` ("NNENN" -> "N+E+N+"):
-# the run-length shape, which brings ~26k distinct prod paths down to ~6.6k.
+# the run-length shape, which collapses many distinct paths into one shape.
 .disposition_shape_sql <- function(expr) {
   for (code in .DISPOSITION_PATH_CODES) {
     expr <- sprintf("regexp_replace(%s, '%s+', '%s+', 'g')", expr, code, code)

@@ -2,14 +2,14 @@
 # summary (summary_aggregate.R) and the disposition transform
 # (disposition_aggregate.R). Both views key their contacted / replied / consent
 # signals on the campaign's opener SET rather than a hardcoded "intro", so a
-# non-intro (FIRSTNET) or bilingual (intro + intro_sp / intro_latinos) campaign is
+# non-intro (WELCOME) or bilingual (intro + intro_sp / intro_latinos) campaign is
 # measured, not dropped -- and because both call these helpers, the two views
 # cannot drift out of alignment.
 
 # The opening question(s) of a flow: the intro-family (grep "^intro(_|$)") of the
 # `questions` vector -- a routed campaign has several (intro + intro_sp /
 # intro_latinos, via v2 initialconditionals) -- else the single first question
-# (e.g. "FIRSTNET"), else "intro" (a minimal export with no discovered opener).
+# (e.g. "WELCOME"), else "intro" (a minimal export with no discovered opener).
 # For a pure-intro campaign the set is exactly {"intro"}, so every downstream
 # signal is byte-identical to the old hardcoded behaviour.
 .opening_questions <- function(questions) {

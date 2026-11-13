@@ -7,8 +7,8 @@
 # disposition analogue of campaign_metrics_summary(): same shape (by / rates /
 # percent, a campaigns count, funnel_rates() for the rates), over the disposition
 # projection instead of the latency one, plus the disposition-only terminal split
-# (n_ineligible / n_refused). data.table does the grouping because the read
-# projection is ~140M rows, where a dplyr group_by does not scale (see the note in
+# (n_ineligible / n_refused). data.table does the grouping because a
+# full projection read is too large for a dplyr group_by to scale (see the note in
 # R/latency_aggregate.R).
 
 # Resolve `x` (an in-memory frame or a Parquet path) to a BASE data frame,
@@ -57,7 +57,7 @@
 #
 # The previous form read each column through `.SD$` inside `j`, which
 # evaluated j in R per group and materialised .SD each time -- fine at
-# thousands of rows, the whole cost at the 140M-row projection.
+# thousands of rows, the whole cost at the full projection.
 .disposition_funnel_counts <- function(data, group_cols) {
   .cid <- .sent1 <- .engaged <- .opted_in <- .completed <- .ineligible <-
     .refused <- .na <- .N <- NULL
@@ -99,7 +99,7 @@
 
 # The same counts as .disposition_funnel_counts(), computed inside the DuckDB
 # scan of a Parquet path, so R only ever holds the grouped result. Reading the
-# production projection (~140M rows) into R to group it peaked near 16 GB; the
+# full production projection into R to group it peaked near 16 GB; the
 # in-scan GROUP BY stays well under 1 GB. Every aggregate mirrors the R form:
 # `campaigns` counts a missing campaign_id as one more distinct value (as
 # uniqueN() does), `n_sent` is the count of `sent = 1`, and a flag's SUM is NULL

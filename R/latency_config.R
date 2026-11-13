@@ -228,7 +228,7 @@ validate_columns_present <- function(config, data) {
   required <- required_timestamp_columns(config$flow$questions)
   # Require the population's referenced columns (the opener-family finalText,
   # discovered per campaign), not a hardcoded id.intro.finalText -- otherwise a
-  # non-intro (FIRSTNET) campaign is rejected here despite having its own opener.
+  # non-intro (WELCOME) campaign is rejected here despite having its own opener.
   pop <- config$filters$population
   if (!is.null(pop) && nzchar(pop)) {
     # A malformed population is surfaced later by population_filter_mask() with a

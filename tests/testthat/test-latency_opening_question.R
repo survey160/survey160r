@@ -2,7 +2,7 @@
 # filter (R/latency_config.R helpers + R/summary_aggregate.R + R/latency_filter.R).
 # Pure-intro campaigns are byte-identical to the pre-fix behaviour (guarded by
 # test-summary_aggregate.R / test-latency_parity_legacy.R / test-latency_config.R);
-# these cover the NON-intro (FIRSTNET) and bilingual (intro + intro_sp) paths.
+# these cover the NON-intro (WELCOME) and bilingual (intro + intro_sp) paths.
 
 TS <- "2026-01-26 15:00:00.000000Z"
 
@@ -18,7 +18,7 @@ test_that(".opening_questions resolves the opener set", {
   expect_equal(.opening_questions(c("intro", "q1", "close")), "intro")
   expect_equal(.opening_questions(c("intro", "intro_sp", "q1")),
                c("intro", "intro_sp"))
-  expect_equal(.opening_questions(c("FIRSTNET", "q1", "close")), "FIRSTNET")
+  expect_equal(.opening_questions(c("WELCOME", "q1", "close")), "WELCOME")
   expect_equal(.opening_questions(character(0)), "intro")   # degenerate -> intro
 })
 
@@ -68,15 +68,15 @@ test_that(".question_timestamp coalesces across the set, null-safe on absent col
   expect_true(all(is.na(ts2)))                 # no batchDate columns -> all NA
 })
 
-test_that("FIRSTNET campaign: config validates and summary counts (no crash)", {
+test_that("WELCOME campaign: config validates and summary counts (no crash)", {
   d <- op_frame(
-    id.FIRSTNET.scriptDate = c(TS, TS, ""),
-    id.FIRSTNET.batchDate  = c(TS, "", ""),
-    id.FIRSTNET.finalText  = c("Yes", "No", "Yes"),
+    id.WELCOME.scriptDate = c(TS, TS, ""),
+    id.WELCOME.batchDate  = c(TS, "", ""),
+    id.WELCOME.finalText  = c("Yes", "No", "Yes"),
     id.close.scriptDate    = c(TS, "", "")
   )
   config <- latency_build_config(1L, d, field_timezone = "America/New_York")
-  expect_equal(config$flow$questions[[1L]], "FIRSTNET")
+  expect_equal(config$flow$questions[[1L]], "WELCOME")
   expect_null(config$filters$population)   # opt-in is routing-based, not a filter
   expect_silent(latency_validate_config(config, d))     # previously hard-errored
   res <- build_summary_frame(d, config, survey_mode = "sms")

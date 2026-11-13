@@ -112,8 +112,7 @@
 #
 # One query counts each cell split by the row's prior completes (0, 1, 2, 3 or
 # more): that split is the `completes` table completion_score() refines a
-# number's rate with (inside `NNN`, a number that completed before completes
-# ten times as often as one that never did), and the context table is its sum.
+# number's rate with, and the context table is its sum.
 # Returns list(contexts, completes).
 .completion_context_tables <- function(con, history_sql, fn = NULL) {
   years <- DBI::dbGetQuery(con, paste0(

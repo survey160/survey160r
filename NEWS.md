@@ -1,5 +1,10 @@
 # survey160r (development version)
 
+## Internal: code comment wording (0.89.6)
+
+* Internal code comments and test descriptions reworded. No change to
+  behavior or results.
+
 ## Docs: no package logo (0.89.5)
 
 * The hex logo added in 0.89.3 is removed from the package, the README and

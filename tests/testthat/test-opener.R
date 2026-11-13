@@ -19,7 +19,7 @@ test_that(".discover_openers resolves the opener set from a frame or raw header"
   d <- hdr_frame("id.intro.scriptDate", "id.intro_latinos.scriptDate",
                  "id.close.scriptDate")
   expect_equal(.discover_openers(d), c("intro", "intro_latinos"))
-  expect_equal(.discover_openers("id.FIRSTNET.scriptDate"), "FIRSTNET")
+  expect_equal(.discover_openers("id.WELCOME.scriptDate"), "WELCOME")
   expect_equal(.discover_openers(character(0)), "intro")            # minimal export
   # raw bracket-form header (as it arrives on disk) resolves identically
   expect_equal(.discover_openers(c("id[intro]scriptDate", "id[intro_sp]scriptDate")),
@@ -79,7 +79,7 @@ test_that("latency and disposition resolve the SAME opener set and population", 
   flows <- list(
     pure_intro  = hdr_frame("id.intro.scriptDate", "id.intro.finalText",
                             "id.close.scriptDate"),
-    firstnet    = hdr_frame("id.FIRSTNET.scriptDate", "id.FIRSTNET.finalText",
+    welcome     = hdr_frame("id.WELCOME.scriptDate", "id.WELCOME.finalText",
                             "id.close.scriptDate"),
     bilingual   = hdr_frame("id.intro.scriptDate", "id.intro.finalText",
                             "id.intro_latinos.scriptDate", "id.intro_latinos.finalText",

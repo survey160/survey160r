@@ -270,7 +270,7 @@ live_metrics_records <- function(x, campaign_ids = NULL, date_from = NULL,
 # Sum the counts per (by, et_date) and add running totals per `by` group in date
 # order: n_sent, n_error and n_<code> for each code, plus a cum_ twin of each.
 # data.table, not dplyr: a high-cardinality `by` (carrier x brand x campaign
-# over a year, ~1M groups) evaluated per group in R took ~13 s; this takes
+# over a year) evaluated per group in R took ~13 s; this takes
 # ~0.4 s. keyby sorts the groups (an NA key is its own group), so the cumsum
 # by group runs in date order and its rows line up with `g`. Counts are double
 # so a long range's running totals cannot overflow an integer.

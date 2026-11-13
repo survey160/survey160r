@@ -16,7 +16,7 @@
 # `sent`/`engaged`/`opted_in` key on the OPENING question SET (every intro-family
 # question, or a single discovered opener) resolved per campaign by the shared
 # .discover_openers() (opener.R), NOT a hardcoded "intro" -- so a campaign whose
-# opener is named "FIRSTNET" / "intro_sp", or a bilingual campaign routing some
+# opener is named "WELCOME" / "intro_sp", or a bilingual campaign routing some
 # recipients to intro and others to intro_sp / intro_latinos, is measured on every
 # branch instead of being silently dropped (it was: routed recipients' flags came
 # up 0). The latency build_summary_frame() view resolves the opener set from the

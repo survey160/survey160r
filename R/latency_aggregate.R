@@ -49,7 +49,7 @@ aggregate_consolidated <- function(frame, config, cfg_hash, run_at,
     as.Date(character(0))
 
   # The per-bucket aggregations run on data.table. On the (n_questions-1) x N
-  # long frame the dplyr group_by()s did not scale -- a ~47M-row frame took
+  # long frame the dplyr group_by()s did not scale -- a large campaign's frame took
   # >15 min and >11 GB of RSS; data.table does the identical work in seconds at
   # a fraction of the peak memory. Convert once here; build_consolidated_scaffold
   # and assemble_consolidated below keep operating on the data.frame `bucketed`
