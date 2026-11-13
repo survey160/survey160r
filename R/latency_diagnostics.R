@@ -6,80 +6,88 @@ build_diagnostics <- function(frame, n_respondents_in, parse_failures,
                               config_hash) {
   n_clamped <- attr(frame, "n_clamped") %||% 0L
   if (nrow(frame) == 0) {
-    return(list(
-      n_respondents_in = n_respondents_in,
-      n_respondents_used = 0L,
-      n_respondents_no_valid_segment = n_respondents_in,
-      n_segments_total = 0L,
-      n_segments_na = 0L,
-      n_segments_na_by_reason = list(parse_failure = 0L,
-                                     missing_endpoint = 0L,
-                                     chain_break = 0L),
-      n_negative_latencies_clamped = n_clamped,
-      parse_failures_per_column = parse_failures,
-      config_hash = config_hash,
-      algorithm_version = .algorithm_version,
-      respondent_summary = list(
-        n_respondents = 0L,
-        pct_clean_at_5min = NA_real_,
-        pct_worst_in_5_to_10 = NA_real_,
-        pct_worst_over_10 = NA_real_
-      )
-    ))
+    return(.empty_diagnostics(n_respondents_in, n_clamped, parse_failures,
+                              config_hash))
   }
-  valid <- !is.na(frame$delta_min)
   # Per-respondent worst (max) valid delta, one value per respondent that has
   # at least one valid segment -- a GForce max in data.table. The dplyr
   # group_by/summarise this replaces evaluated `max(na.rm = TRUE)` per
   # respondent group in R (~6 s on a 2M-row frame; this is ~0.1 s).
   worst <- .worst_delta_by_respondent(frame$respondent_index, frame$delta_min)
   used <- length(worst)
-  total_resp_observed <- length(unique(frame$respondent_index))
-  no_valid <- total_resp_observed - used
-  total_segments <- nrow(frame)
-  na_segments <- sum(!valid)
-
-  # Cascade percentages are over the *measured* respondents (those with at
-  # least one valid Delta), matching respondent_summary$n_respondents = used,
-  # the consolidated cascade (aggregate_worst_cascade), and the legacy-parity
-  # definition. Dividing by total_resp_observed instead would deflate the
-  # buckets by the no-valid-segment fraction and make them sum to < 100%, so
-  # that n_respondents * pct / 100 no longer recovers a respondent count.
-  # When used == 0 the percentages are undefined -> NA (same as the empty-frame
-  # path above).
-  if (used > 0L) {
-    pct_clean <- 100 * mean(worst <= 5)
-    pct_5_10 <- 100 * mean(worst > 5 & worst <= 10)
-    pct_over_10 <- 100 * mean(worst > 10)
-  } else {
-    pct_clean <- NA_real_
-    pct_5_10 <- NA_real_
-    pct_over_10 <- NA_real_
-  }
+  # uniqueN() hashes the integer column once; length(unique()) was over half
+  # of this function's time on a 4.4M-row frame.
+  total_resp_observed <- data.table::uniqueN(frame$respondent_index)
 
   list(
     n_respondents_in = n_respondents_in,
     n_respondents_used = used,
-    n_respondents_no_valid_segment = no_valid,
-    n_segments_total = total_segments,
-    n_segments_na = na_segments,
+    n_respondents_no_valid_segment = total_resp_observed - used,
+    n_segments_total = nrow(frame),
+    n_segments_na = sum(is.na(frame$delta_min)),
     n_segments_na_by_reason = .na_reason_counts(frame$na_reason),
     n_negative_latencies_clamped = n_clamped,
     parse_failures_per_column = parse_failures,
     config_hash = config_hash,
     algorithm_version = .algorithm_version,
-    respondent_summary = list(
-      n_respondents = used,
-      pct_clean_at_5min = pct_clean,
-      pct_worst_in_5_to_10 = pct_5_10,
-      pct_worst_over_10 = pct_over_10
-    )
+    respondent_summary = .respondent_summary(worst)
+  )
+}
+
+# Diagnostics when no respondent reached the latency frame (every row removed
+# by dedupe / date_filter, or an empty input). Nobody was measured, so
+# n_respondents_no_valid_segment is 0: the same base as the non-empty path,
+# where it counts the frame's respondents without a valid segment. Rows the
+# filters removed are n_respondents_in - (used + no_valid) on both paths.
+# Shared by build_diagnostics() and the compact-path
+# .build_diagnostics_streamed() so the two cannot drift.
+.empty_diagnostics <- function(n_in, n_clamped, parse_failures, config_hash) {
+  list(
+    n_respondents_in = n_in,
+    n_respondents_used = 0L,
+    n_respondents_no_valid_segment = 0L,
+    n_segments_total = 0L,
+    n_segments_na = 0L,
+    n_segments_na_by_reason = list(parse_failure = 0L,
+                                   missing_endpoint = 0L,
+                                   chain_break = 0L),
+    n_negative_latencies_clamped = n_clamped,
+    parse_failures_per_column = parse_failures,
+    config_hash = config_hash,
+    algorithm_version = .algorithm_version,
+    respondent_summary = .respondent_summary(numeric(0))
+  )
+}
+
+# respondent_summary from the per-respondent worst deltas. The cascade
+# percentages are over the *measured* respondents (those with at least one
+# valid delta), so n_respondents = length(worst) and the three buckets
+# (<= 5, (5, 10], > 10 minutes) partition it. This matches the consolidated
+# cascade (aggregate_worst_cascade: pct_resp_worst_gt over the bucket's
+# measured respondents, `worst > t`) and the legacy-parity definition; dividing
+# by every observed respondent instead deflates the buckets and makes
+# n_respondents * pct / 100 stop recovering a count. With nobody measured the
+# percentages are undefined -> NA. One copy for both latency paths: the
+# denominator bug this replaces lived in duplicated inline blocks.
+.respondent_summary <- function(worst) {
+  used <- length(worst)
+  if (used == 0L) {
+    return(list(n_respondents = 0L, pct_clean_at_5min = NA_real_,
+                pct_worst_in_5_to_10 = NA_real_, pct_worst_over_10 = NA_real_))
+  }
+  n_over_5 <- sum(worst > 5)
+  n_over_10 <- sum(worst > 10)
+  list(
+    n_respondents = used,
+    pct_clean_at_5min = 100 * ((used - n_over_5) / used),
+    pct_worst_in_5_to_10 = 100 * ((n_over_5 - n_over_10) / used),
+    pct_worst_over_10 = 100 * (n_over_10 / used)
   )
 }
 
 # The per-respondent worst (max) delta over the valid (non-NA) segments only:
 # one unnamed numeric per respondent with >= 1 valid delta, in no particular
-# order (every consumer reduces it with mean() / length()). Shared by
+# order (every consumer reduces it with sum() / length()). Shared by
 # build_diagnostics() and the compact-path .build_diagnostics_streamed().
 .worst_delta_by_respondent <- function(respondent_index, delta_min) {
   r <- d <- NULL

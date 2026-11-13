@@ -24,6 +24,21 @@
   the completion seen since 2025 (read it as a ranking; the estimate carries
   the level).
 
+## Latency diagnostics: respondent counts and summary (0.87.1)
+
+* `diagnostics$n_respondents_no_valid_segment` is now 0 when dedupe and
+  `date_filter` remove every row. It had been `n_respondents_in`, which
+  counted the filtered rows as "no valid segment" in that case only; with one
+  row left it already counted just the respondents that reached the frame.
+  Both latency paths now give the same count.
+* `latency_report()` documents the respondent counts and `respondent_summary`
+  buckets: percentages of the respondents with a valid segment, summing to 100.
+* `build_diagnostics()` counts distinct respondents with `uniqueN()`. That
+  makes it about 2x faster on a 4.4M-row frame, and the output is unchanged.
+  Both latency paths now share one `respondent_summary` helper. New tests
+  check the summary against a per-respondent recount and against the
+  consolidated day cascade.
+
 ## `completion_score()`: each number's chance of completing
 
 * `completion_score(model, phones, dataset, mode = NULL, start_date = Sys.Date())`
