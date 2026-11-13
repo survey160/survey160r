@@ -15,42 +15,21 @@
 # is a first contact (`___`, zero counts). Only rows before `start_date` count
 # (the history the planned survey would see). Scored on the context table of
 # `year` for the planned mode's survey_mode (.completion_context_lookup).
-# `years_since_contact` is the mean over the contacted numbers of the years
+# Reads .completion_score_table() (the table completion_score() exports) and
+# averages it. `years_since_contact` is the mean over the contacted numbers of the years
 # from their latest row to `start_date`; `prior_optin_score` the logit of the
 # mean opt-in rate (from the model's `campaigns` table) of the campaign each
 # was last in. Either is NA when no number qualifies, and the warning says so.
 .completion_sample_features <- function(con, source, phones, model, year, mode, start_date) {
-  sql <- paste0(
-    "SELECT phone, campaign_id, disposition_date, letter, context, n_prior, prior_completes, ",
-    "prior_replies FROM (",
-    .completion_history_sql(con, source, phones, before = start_date), ") WHERE is_last")
-  h <- DBI::dbGetQuery(con, sql)
-  idx <- match(phones, h$phone)
-  seen <- !is.na(idx)
-  letter <- h$letter[idx]
-  context <- rep("___", length(phones))
-  context[seen] <- paste0(letter[seen], substr(h$context[idx[seen]], 1L, 2L))
-  n_prior <- ifelse(seen, h$n_prior[idx] + 1L, 0L)
-  prior_completes <- ifelse(seen, h$prior_completes[idx] + (letter == "C"), 0L)
-  prior_replies <- ifelse(seen, h$prior_replies[idx] + letter %in% c("E", "O", "R", "C"), 0L)
-  p <- .completion_context_lookup(model$contexts, year, context,
-                                  .COMPLETION_SURVEY_MODES[[mode]])
-  p_reply <- .completion_context_lookup(model$contexts, year, context,
-                                        .COMPLETION_SURVEY_MODES[[mode]], "p_reply")
-  days <- as.numeric(start_date - as.Date(h$disposition_date[idx[seen]]))
-  years <- days / 365.25
-  recent <- rep(FALSE, length(phones))
-  recent[seen] <- days <= .COMPLETION_RECENT_DAYS
-  prior_rate <- model$campaigns$optin_rate[match(h$campaign_id[idx[seen]],
+  t <- .completion_score_table(con, source, phones, model, year,
+                               .COMPLETION_SURVEY_MODES[[mode]], start_date)
+  seen <- t$n_prior > 0L
+  recent <- seen & t$days_since_contact <= .COMPLETION_RECENT_DAYS
+  prior_rate <- model$campaigns$optin_rate[match(t$campaign_id[seen],
                                                  model$campaigns$campaign_id)]
   prior_score <- NA_real_
   if (any(!is.na(prior_rate))) prior_score <- .completion_logit(mean(prior_rate, na.rm = TRUE))
-  warnings <- character(0)
-  if (anyNA(p)) {
-    warnings <- sprintf(paste0("%d of %d numbers have a context with no row in the %d table ",
-                               "for mode %s; they are left out of sample_score"),
-                        sum(is.na(p)), length(p), year, mode)
-  }
+  warnings <- .completion_score_no_row(t$p_complete, year, mode)
   if (!any(seen)) {
     warnings <- c(warnings, paste0("no number in the sample has a prior contact: ",
                                    "years_since_contact and prior_optin_score take the training mean"))
@@ -59,11 +38,11 @@
                                    "the model knows: prior_optin_score takes the training mean"))
   }
   list(share_with_history = mean(seen), share_recent_contact = mean(recent),
-       sample_score = .completion_logit(mean(p, na.rm = TRUE)),
-       reply_score = .completion_logit(mean(p_reply, na.rm = TRUE)),
-       share_prior_completers = mean(prior_completes > 0),
-       share_cold = mean(n_prior >= 3 & prior_replies == 0),
-       years_since_contact = if (any(seen)) mean(years) else NA_real_,
+       sample_score = .completion_logit(mean(t$p_complete, na.rm = TRUE)),
+       reply_score = .completion_logit(mean(t$p_reply, na.rm = TRUE)),
+       share_prior_completers = mean(t$prior_completes > 0),
+       share_cold = mean(t$n_prior >= 3 & t$prior_replies == 0),
+       years_since_contact = if (any(seen)) mean(t$days_since_contact[seen] / 365.25) else NA_real_,
        prior_optin_score = prior_score, warnings = warnings)
 }
 

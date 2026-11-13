@@ -1,5 +1,46 @@
 # survey160r (development version)
 
+## `completion_score()`: each number's chance of completing
+
+* `completion_score(model, phones, dataset, mode = NULL, start_date = Sys.Date())`
+  returns one row per number in a sample with its history before the planned
+  start (`context`, the previous three outcomes; `n_prior`, `prior_completes`,
+  `prior_replies`, `days_since_contact`) and the context table's `p_complete`
+  and `p_reply`, with `n_context` (the training sends the rate is over). It is
+  the per-phone step. `completion_estimate()` averages `p_complete` and takes
+  the logit of that mean as `sample_score`, so a
+  list can be ranked or trimmed before it is quoted and estimated again with
+  the same model. Without `mode` the pooled table scores (same ranking as a
+  mode's block, level averaged over modes); with it the mean matches the
+  estimate. Warnings are R warnings here (a start year outside the tables, a
+  context with no row, the text-to-web external mode where `p_complete` is NA).
+* `completion_estimate()` now reads that table and averages it; its output is
+  unchanged (the existing tests are the gate).
+* The disposition-paths article gains "Score a sample by its history": pattern
+  for a specific history, score for which numbers to send to first, and the
+  sort for a trim (`p_complete`, then `prior_replies`, then older contact):
+  on the production data every cut lands inside one context, and inside it
+  only the older history separates numbers.
+
+
+## Argument conventions, checked
+
+* `completion_sample_size(rate = )` lists its four choices in the signature
+  (`"completion"`, `"optin"`, `"reply"`, `"engage"`), as `grain`, `terminal` and
+  `env` do elsewhere, and a wrong value names them; a value the model did not fit
+  still errors as before. Behaviour is otherwise unchanged.
+* `latency_validate_config()` given its two arguments the other way round (the
+  data frame first) says so, instead of listing the frame's columns as unknown
+  config keys.
+* The `phones` help on `disposition_summary()` and on `disposition_records()` /
+  `disposition_steps()` / `disposition_paths()` each say how the other behaves:
+  the summary returns every input number, the others only numbers with a row.
+* The argument conventions (first-argument names, the second slot, named
+  options with defaults, new arguments last, choice vectors, `...` only as a
+  pass-through) are written down in `CLAUDE.md` and checked by
+  `tests/testthat/test-api_conventions.R`, including a snapshot of every
+  export's signature so a new argument cannot land anywhere but last unnoticed.
+
 ## One definition of a phone's history: steps, context, lazy plumbing
 
 * `disposition_steps(columns = "context")` adds `context`: the phone's previous

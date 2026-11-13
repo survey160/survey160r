@@ -52,6 +52,19 @@ Secondary conventions:
 - **Spell names out**; avoid abbreviations (`disposition`, not `disp`/`dispo`; name helpers to match their column, e.g. `opted_in`, not `optin`).
 - **`lintr::object_length_linter` caps names at 30 characters** -- keep helper names under it.
 
+## Argument conventions
+
+Checked by `tests/testthat/test-api_conventions.R` (allowlists and a signature snapshot: a new argument anywhere but last fails it until the snapshot is updated on purpose).
+
+- **The first argument is the data, and its name says what it accepts**: `x` a path *or* an in-memory frame (`disposition_summary`, `disposition_funnel`, the `campaign_metrics_*` / `live_metrics_*` aggregates), `dataset` a path only (the disposition readers, `completion_*`), `data` an in-memory campaign export (`latency_*`, `disposition_run`, `question_*`), `sample` the caller's frame returned with columns appended (`*_screen`), `model` a `completion_model`, `campaign_id` one id.
+- **The second slot is the verb's object** and may be passed by position: `disposition_screen(sample, dataset)`, `latency_run(campaign_id, data)`, `disposition_paths(dataset, pattern)`, `completion_sample_size(model, target)`. The config helpers put the config first (`latency_validate_config(config, data)`) because it is their subject.
+- **Everything after the second slot is named and has a default.** A required option (`mode` on the estimate and the sample size, where a default would be a silent guess; `dataset` on the score, which has nothing to read without it) still sits among the named ones. Docs and examples name every argument past the second.
+- **New arguments go last**, so positional calls written earlier keep their meaning (`disposition_paths(campaign_ids = )`, 0.83.0).
+- **A pure enumeration is a choice vector, consumed by `match.arg()`** (`grain`, `terminal`, `timestamps`, `env`, `rate`), so the levels show in `args()` and a typo fails at the call. An argument that takes a vector of names (`columns`, `by`, `targets`) is a string or vector default validated by hand (`disposition_steps(columns = )` defaults to a set, not a choice). The CSV readers' `timestamps` goes through `.check_timestamps_arg()`, which does what `match.arg()` does on a single value.
+- **`...` is only a pass-through** to another function (`latency_run()` to `latency_build_config()`, the CSV readers to `fread()`), never a function's own options.
+- **Filters share one vocabulary**: `phones`, `campaign_ids`, `date_from`, `date_to`, in that order, on every reader that has them. `as_of` (screen) and `start_date` (estimate, sample size) are both the reference date history is read up to; the fit's is `train_until`.
+- **Exceptions on record**: `funnel_rates()` and `parse_campaign_timestamps()` are shared helpers without a domain prefix (renaming them breaks vignettes for no gain); `target` (a count, sample size) and `targets` (rate names, fit) coexist in the completion family.
+
 ## Public repo & release model
 
 - **This repository is PUBLIC.** Never commit internal Jira keys (`SUR-####`), client names, or secrets. `scripts/leak_check.sh` guards this: the local pre-commit and pre-push hooks scan the diff for internal refs and secret literals, and also check a git-ignored, machine-local `.claude/leak-denylist.txt` (client names). Install the hooks once per clone with `scripts/install-hooks.sh`: pre-commit runs the leak scan plus `make lint`, and pre-push runs the leak scan plus a fast version/NEWS gate (`scripts/version_gate.sh`) -- both kept fast (lint, `R CMD check`, and 100% coverage stay in CI, not the hook) so there is no reason to `--no-verify` past it. The pre-push leak scan is the primary guard (it stops a leak before it reaches the public remote); by design it is local and `--no-verify`-bypassable, so keep it installed and do not bypass it on this repo.

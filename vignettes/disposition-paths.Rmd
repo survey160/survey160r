@@ -149,6 +149,22 @@ kept <- subset(flagged, !(last_three_unanswered %in% TRUE))
 
 `$` anchors the run to the most recent campaign, so this flags numbers whose last three or more contacts got no reply of either kind. A number that was never contacted has no path and joins to `NA`, which the `%in% TRUE` filter keeps. `phones` accepts any formatting (punctuation and a leading US `1` are ignored), but the result is keyed by the bare 10 digits, hence `phone_key`: joining on the sample's own `phone` would leave every formatted number `NA` and pass it unflagged. To screen on counts or on the history segment instead, `disposition_screen()` in `vignette("disposition")` does it without a join.
 
+## Score a sample by its history
+
+A pattern flags the histories you name; the completion model scores every history at once. `completion_score()` gives each number the completion rate of past sends to numbers with the same previous three outcomes (its `context`, the last three letters of the path), in the planned mode, so a list can be ranked or trimmed before it is quoted:
+
+```{r}
+pulled <- disposition_pull()   # the full projection: the toy file above is too small to fit
+m <- completion_model_fit(pulled)
+scores <- completion_score(m, my_sample$phone, dataset = pulled, mode = "T2W",
+                           start_date = "2026-12-01")
+ranked <- scores[order(-scores$p_complete, -scores$prior_replies,
+                       -scores$days_since_contact), ]
+keep <- head(ranked, ceiling(0.8 * nrow(ranked)))   # the best four fifths
+```
+
+Every cut falls inside one context, since a few contexts (never contacted, one, two or three non-responses) cover most of any list; inside a context a reply anywhere in the older history and a longer silence since the last contact both raise completion, hence the two secondary keys. `completion_estimate()` averages the same table into the list's rate, so a trimmed list can be estimated again with the same model. Use a pattern when the history you want is specific (a screen-out followed by a topic switch, a gap limit, "ever completed"); use the score when the question is which numbers to send to first.
+
 ## Ask what happens after a step
 
 `disposition_steps()` returns one row per campaign, with the phone's history up to it and its next label. Group the rows by what came before to measure what comes next:
@@ -300,4 +316,4 @@ The production figures below are from the dataset as of November 2026.
 
 ## See also
 
-`?disposition_paths`, `?disposition_steps`, `?disposition_pull`, and `?survey160r` for every function by task. To screen a sample on counts or on its contact history, and for funnel rates by any dimension, `vignette("disposition")`. To estimate a planned survey's completion rate from the same dataset, `?completion_estimate`; for the model behind it, keyed by the `"context"` group, `?completion_model_fit`. For delivery error rates by carrier on ongoing campaigns, `vignette("delivery-errors")`. To screen the sample against the opt-out list, `vignette("opt-out")`; for the fleet funnel by registration or brand, `vignette("campaign-metrics")`.
+`?disposition_paths`, `?disposition_steps`, `?disposition_pull`, and `?survey160r` for every function by task. To screen a sample on counts or on its contact history, and for funnel rates by any dimension, `vignette("disposition")`. To estimate a planned survey's completion rate from the same dataset, `?completion_estimate`; to rank a sample's numbers by their history, `?completion_score`; for the model behind both, keyed by the `"context"` group, `?completion_model_fit`. For delivery error rates by carrier on ongoing campaigns, `vignette("delivery-errors")`. To screen the sample against the opt-out list, `vignette("opt-out")`; for the fleet funnel by registration or brand, `vignette("campaign-metrics")`.

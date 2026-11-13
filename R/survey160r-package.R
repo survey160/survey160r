@@ -83,10 +83,11 @@
 #'     patterns (no reply, then engaged, then completed;
 #'     \code{vignette("disposition-paths")}).
 #'   \item \code{\link{completion_model_fit}} / \code{\link{completion_estimate}} /
-#'     \code{\link{completion_sample_size}}
+#'     \code{\link{completion_sample_size}} / \code{\link{completion_score}}
 #'     -- fit the opt-in and completion rate models from the dataset, then
-#'     estimate a planned survey's rates from its sample and design, or the
-#'     sends a target number of completes needs.
+#'     estimate a planned survey's rates from its sample and design, the
+#'     sends a target number of completes needs, or each number's chance of
+#'     completing (to rank or trim a sample).
 #'   \item \code{\link{disposition_run}} / \code{\link{disposition_input_columns}}
 #'     -- build the per-respondent rows from one campaign export (the producer
 #'     side of the dataset).

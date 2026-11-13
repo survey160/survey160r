@@ -1,0 +1,3 @@
+# Test fixtures are byte-exact (CRLF/LF and embedded line breaks are what the
+# tests check), so git must never convert their line endings on checkout.
+tests/testthat/fixtures/** -text

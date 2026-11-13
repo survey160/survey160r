@@ -363,7 +363,10 @@ test_that("each connection spills into its own subdirectory, created with its pa
   con <- dbplyr::remote_con(disposition_steps(p))
   spill <- DBI::dbGetQuery(con, "SELECT current_setting('temp_directory') AS d")$d
   expect_true(dir.exists(spill))
-  expect_identical(dirname(normalizePath(spill)), normalizePath(root))
+  expect_identical(
+    normalizePath(dirname(spill), winslash = "/"),
+    normalizePath(root, winslash = "/")
+  )
   expect_match(basename(spill), sprintf("^session-%d-", Sys.getpid()))
   # a new root moves this connection to a fresh subdirectory and drops the old one
   withr::local_options(survey160r.duckdb_temp_dir = file.path(tempdir(), "other-root"))

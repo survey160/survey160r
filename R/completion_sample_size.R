@@ -32,9 +32,9 @@
 #' @inheritParams completion_estimate
 #' @param target The number of completes (or of the \code{rate}'s count)
 #'   required: a positive whole number.
-#' @param rate The fitted target to size on: \code{"completion"} (default),
-#'   \code{"optin"}, \code{"reply"} or \code{"engage"}, among the model's
-#'   fitted targets.
+#' @param rate The target to size on: \code{"completion"} (default),
+#'   \code{"optin"}, \code{"reply"} or \code{"engage"}; it must be among the
+#'   model's fitted targets.
 #' @return A one-row data frame: \code{target}; \code{rate} (the target
 #'   sized on); \code{rate_estimate}, \code{rate_lo50}, \code{rate_lo95}
 #'   (the estimate and the low ends of its bands);
@@ -61,7 +61,8 @@
 #' }
 #' @export
 completion_sample_size <- function(model, target, mode, topic = NULL, loi = NULL, phones = NULL,
-                                   dataset = NULL, start_date = Sys.Date(), rate = "completion") {
+                                   dataset = NULL, start_date = Sys.Date(),
+                                   rate = c("completion", "optin", "reply", "engage")) {
   fn <- "completion_sample_size"
   if (!inherits(model, "completion_model")) {
     stop_s160(sprintf("`model` must be a completion_model from completion_model_fit()%s.",
@@ -69,9 +70,14 @@ completion_sample_size <- function(model, target, mode, topic = NULL, loi = NULL
   }
   target <- .completion_check_count(target, "target", fn)
   if (target == 0) stop_s160("`target` must be a positive whole number, not 0.", fn = fn)
-  if (!is.character(rate) || length(rate) != 1L || !rate %in% names(model$models)) {
+  choices <- eval(formals(completion_sample_size)$rate)
+  rate <- tryCatch(match.arg(rate), error = function(e) {
+    stop_s160(sprintf("`rate` must be one of %s%s.", paste0("'", choices, "'", collapse = ", "),
+                      .not_got(rate)), fn = fn)
+  })
+  if (!rate %in% names(model$models)) {
     stop_s160(sprintf("`rate` must be one of the model's fitted targets (%s)%s.",
-                      paste(shQuote(names(model$models)), collapse = ", "), .not_got(rate)), fn = fn)
+                      paste0("'", names(model$models), "'", collapse = ", "), .not_got(rate)), fn = fn)
   }
   spec <- .COMPLETION_MODELS[[rate]]
   if (is.character(mode) && length(mode) == 1L && mode %in% .COMPLETION_MODES &&
