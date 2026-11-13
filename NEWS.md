@@ -1,5 +1,24 @@
 # survey160r (development version)
 
+## `completion_score()`: the score counts older completes (0.89.0)
+
+* `completion_score()`'s `p_complete` now refines the context rate by the
+  number's `prior_completes` (0, 1, 2, 3 or more): the completion rate of the
+  context cell's past sends with the same count, pulled toward the cell's rate
+  with the weight of 200 sends. Three letters of context hide older completes:
+  in 2026, among numbers whose last three contacts went unanswered (`NNN`), one
+  that completed before completed about ten times as often as one that never
+  did (live 2.3% with one prior complete against 0.22% with none). On 2026
+  lists scored with a model fitted to January 2026 (160 random lists), the
+  median within-list AUC rose from 0.766 to 0.777 on live (better on 89% of
+  lists) and from 0.651 to 0.657 on text-to-web (68%).
+* `completion_model_fit()` stores the split as `completes` (one query: the
+  context table is now its sum, so the fit makes no extra pass). A model
+  fitted before this version scores on the context alone.
+* `completion_estimate()` is unchanged: its `sample_score` averages the
+  context rate, not the refined one (on production data the refinement did
+  not improve the campaign-level estimate).
+
 ## Bands sized on the holdout error (0.88.0)
 
 * `completion_model_fit()`: the band's residual sd per mode and per size band

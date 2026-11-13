@@ -27,12 +27,34 @@ test_that("history sql: letters, prior counts and context per row", {
   expect_true(all(is.na(h$tracker_loi)))
 })
 
+test_that("context tables: the context table is the sum of its prior-completes split", {
+  skip_if_no_sequence()
+  p <- write_completion_parquet(completion_records())
+  con <- .disposition_lazy_con()
+  src <- .disposition_lazy_source(con, p, "test")
+  tabs <- .completion_context_tables(con, .completion_history_sql(con, src))
+  ctx <- tabs$contexts
+  sp <- tabs$completes
+  expect_identical(names(sp), c("year", "context", "survey_mode", "prior_completes", "n_known",
+                                "completes"))
+  expect_true(all(sp$prior_completes %in% 0:3))
+  expect_true(any(sp$prior_completes > 0L))
+  key <- function(x) paste(x$year, x$context, x$survey_mode)
+  known <- tapply(sp$n_known, key(sp), sum)
+  comp <- tapply(sp$completes, key(sp), sum)
+  k <- key(ctx)
+  rate <- ifelse(known[k] > 0, comp[k] / known[k], NA_real_)
+  expect_equal(as.vector(rate), ctx$p_complete)
+  expect_false(anyDuplicated(k) > 0)
+  expect_setequal(k, names(known))
+})
+
 test_that("context tables: one block per year, estimated on earlier years only", {
   skip_if_no_sequence()
   p <- write_completion_parquet(completion_records())
   con <- .disposition_lazy_con()
   src <- .disposition_lazy_source(con, p, "test")
-  ctx <- .completion_context_tables(con, .completion_history_sql(con, src))
+  ctx <- .completion_context_tables(con, .completion_history_sql(con, src))$contexts
   expect_setequal(unique(ctx$year), 2025:2027)
   first <- ctx[ctx$context == "___" & is.na(ctx$survey_mode), ]
   expect_equal(nrow(first), 3L)
@@ -70,7 +92,7 @@ test_that("campaign table: one row per campaign with dimensions and sample featu
   con <- .disposition_lazy_con()
   src <- .disposition_lazy_source(con, p, "test")
   hs <- .completion_history_sql(con, src)
-  ct <- .completion_campaign_table(con, hs, .completion_context_tables(con, hs))
+  ct <- .completion_campaign_table(con, hs, .completion_context_tables(con, hs)$contexts)
   expect_equal(nrow(ct), 25L)
   expect_equal(ct$campaign_id, 1:25)
   expect_equal(ct$sent, rep(40L, 25L))
@@ -100,7 +122,7 @@ test_that("campaign table: one row per campaign with dimensions and sample featu
   # the SQL agrees with the R lookup the estimate uses
   con <- .disposition_lazy_con()
   h <- DBI::dbGetQuery(con, paste("SELECT * FROM (", hs, ") WHERE campaign_id = 6"))
-  ctx <- .completion_context_tables(con, hs)
+  ctx <- .completion_context_tables(con, hs)$contexts
   expect_equal(ct$sample_score[6], .completion_logit(mean(
     .completion_context_lookup(ctx, 2025L, h$context, h$survey_mode))))
   expect_true(any(.completion_context_lookup(ctx, 2025L, h$context, h$survey_mode) !=
@@ -117,7 +139,7 @@ test_that("campaign table: tracker columns absent", {
   con <- .disposition_lazy_con()
   src <- .disposition_lazy_source(con, p, "test")
   hs <- .completion_history_sql(con, src)
-  ct <- .completion_campaign_table(con, hs, .completion_context_tables(con, hs))
+  ct <- .completion_campaign_table(con, hs, .completion_context_tables(con, hs)$contexts)
   expect_equal(ct$mode[ct$campaign_id %in% 1:2], c("Live", "T2W"))
   expect_true(all(ct$topic == "unknown"))
   expect_true(all(is.na(ct$loi)))
@@ -138,7 +160,7 @@ test_that("campaign table: a previous contact after the campaign started does no
   con <- .disposition_lazy_con()
   src <- .disposition_lazy_source(con, p, "test")
   hs <- .completion_history_sql(con, src)
-  ct <- .completion_campaign_table(con, hs, .completion_context_tables(con, hs))
+  ct <- .completion_campaign_table(con, hs, .completion_context_tables(con, hs)$contexts)
   expect_equal(ct$years_since_contact[ct$campaign_id == 3L], 60 / 365.25)
 })
 
@@ -392,7 +414,7 @@ test_that("campaign table: share of the sample contacted in the 30 days before t
   con <- .disposition_lazy_con()
   src <- .disposition_lazy_source(con, p, "test")
   hs <- .completion_history_sql(con, src)
-  ct <- .completion_campaign_table(con, hs, .completion_context_tables(con, hs))
+  ct <- .completion_campaign_table(con, hs, .completion_context_tables(con, hs)$contexts)
   expect_equal(ct$share_recent_contact[ct$campaign_id == 1L], 0)
   expect_equal(ct$share_recent_contact[ct$campaign_id == 3L], 0)
   expect_equal(ct$share_recent_contact[ct$campaign_id == 4L], 2 / 3)
@@ -484,7 +506,7 @@ test_that("context tables and campaign table carry the reply score", {
   con <- .disposition_lazy_con()
   src <- .disposition_lazy_source(con, p, "test")
   history <- .completion_history_sql(con, src)
-  ctx <- .completion_context_tables(con, history)
+  ctx <- .completion_context_tables(con, history)$contexts
   expect_true(all(c("p_complete", "p_reply") %in% names(ctx)))
   expect_true(all(ctx$p_reply >= 0 & ctx$p_reply <= 1))
   # a reply is at least as common as a complete in every block whose rows all have a known completion

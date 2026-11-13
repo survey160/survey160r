@@ -38,7 +38,7 @@
                                    "the model knows: prior_optin_score takes the training mean"))
   }
   list(share_with_history = mean(seen), share_recent_contact = mean(recent),
-       sample_score = .completion_logit(mean(t$p_complete, na.rm = TRUE)),
+       sample_score = .completion_logit(mean(t$p_context, na.rm = TRUE)),
        reply_score = .completion_logit(mean(t$p_reply, na.rm = TRUE)),
        share_prior_completers = mean(t$prior_completes > 0),
        share_cold = mean(t$n_prior >= 3 & t$prior_replies == 0),

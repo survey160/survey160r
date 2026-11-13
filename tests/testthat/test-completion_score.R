@@ -44,16 +44,53 @@ test_that("score: a phone with history is scored on its next context, mode block
   expect_equal(pooled$n_context, .completion_context_lookup(f$model$contexts, 2026L, ctx, NA_character_, "n"))
 })
 
-test_that("score: the estimate's sample_score is the logit of the mean per-phone p_complete", {
+test_that("score: the estimate's sample_score is the logit of the mean context rate", {
   skip_if_no_sequence()
   f <- fit_fixture_model()
+  m <- f$model
   ph <- c("3015550001", unique(completion_records()$phone)[1:25])
-  s <- completion_score(f$model, ph, f$path, mode = "T2W", start_date = as.Date("2026-11-15"))
-  est <- completion_estimate(f$model, ph, "T2W", "Brand", 12, f$path, start_date = as.Date("2026-11-15"))
-  expect_equal(est$sample_score, .completion_logit(mean(s$p_complete)))
+  # a prior-completes split that moves p_complete must not move the estimate
+  m$completes$completes <- m$completes$n_known
+  s <- completion_score(m, ph, f$path, mode = "T2W", start_date = as.Date("2026-11-15"))
+  p_context <- .completion_context_lookup(m$contexts, 2026L, s$context, "t2w")
+  expect_false(isTRUE(all.equal(s$p_complete, p_context)))
+  est <- completion_estimate(m, ph, "T2W", "Brand", 12, f$path, start_date = as.Date("2026-11-15"))
+  expect_equal(est$sample_score, .completion_logit(mean(p_context)))
   expect_equal(est$reply_score, .completion_logit(mean(s$p_reply)))
   expect_equal(est$share_with_history, mean(s$n_prior > 0))
   expect_equal(est$n_phones, nrow(s))
+  expect_equal(est, completion_estimate(f$model, ph, "T2W", "Brand", 12, f$path,
+                                        start_date = as.Date("2026-11-15")))
+})
+
+test_that("score: p_complete is the context rate refined by the number's prior completes", {
+  skip_if_no_sequence()
+  f <- fit_fixture_model()
+  m <- f$model
+  start <- as.Date("2026-11-15")
+  base <- completion_score(m, "2015550001", f$path, mode = "Live", start_date = start)
+  row <- .completion_context_row(m$contexts, 2026L, base$context, "sms", "p_complete")
+  p_context <- m$contexts$p_complete[row]
+  key <- m$completes$year == 2026L & m$completes$context == base$context &
+    m$completes$survey_mode %in% m$contexts$survey_mode[row] &
+    m$completes$prior_completes == min(base$prior_completes, 3L)
+  # the split the number falls in: 30 completes in 300 known sends, shrunk
+  # toward the cell's rate with the weight of 200 sends
+  split <- data.frame(year = 2026L, context = base$context, survey_mode = m$contexts$survey_mode[row],
+                      prior_completes = min(base$prior_completes, 3L), n_known = 300L,
+                      completes = 30L, stringsAsFactors = FALSE)
+  m$completes <- rbind(m$completes[!key, ], split)
+  out <- completion_score(m, "2015550001", f$path, mode = "Live", start_date = start)
+  expect_equal(out$p_complete, (30 + 200 * p_context) / (300 + 200))
+  expect_equal(out$n_context, base$n_context)
+  # a split with no known-completion send, or a model fitted before the split
+  # existed, keeps the context rate
+  m$completes$n_known[nrow(m$completes)] <- 0L
+  expect_equal(completion_score(m, "2015550001", f$path, mode = "Live", start_date = start)$p_complete,
+               p_context)
+  m$completes <- NULL
+  expect_equal(completion_score(m, "2015550001", f$path, mode = "Live", start_date = start)$p_complete,
+               p_context)
 })
 
 test_that("score: history is read up to the planned start only", {

@@ -52,6 +52,10 @@
 .COMPLETION_TOPICS <- c("Brand", "Electoral", "Policy", "unknown")
 .COMPLETION_LOI_BREAKS <- c(0, 5, 10, 15, 20, 31)
 .COMPLETION_LOI_REFERENCE <- "(10,15]"
+# completion_score()'s split of a context cell by prior completes: 0, 1, 2, 3+;
+# and the weight (in sends) that pulls a split's rate toward its cell's.
+.COMPLETION_PRIOR_COMPLETES_CAP <- 3L
+.COMPLETION_SHRINK <- 200
 
 # Mode: the tracker's, falling back to the app's survey_mode (sms -> Live,
 # t2w -> T2W); a text-to-web external survey_mode always wins, since the
@@ -105,6 +109,12 @@
 # per survey mode (sms, t2w: a context completes at a very different rate under
 # a live texter and on the web) and a pooled block (`survey_mode` NA) the
 # lookups fall back to.
+#
+# One query counts each cell split by the row's prior completes (0, 1, 2, 3 or
+# more): that split is the `completes` table completion_score() refines a
+# number's rate with (inside `NNN`, a number that completed before completes
+# ten times as often as one that never did), and the context table is its sum.
+# Returns list(contexts, completes).
 .completion_context_tables <- function(con, history_sql, fn = NULL) {
   years <- DBI::dbGetQuery(con, paste0(
     "SELECT min(year(disposition_date)) AS first, max(year(disposition_date)) AS last FROM (",
@@ -114,20 +124,58 @@
   }
   block <- function(mode_col, where) {
     paste0("SELECT y.year, h.context, ", mode_col, " AS survey_mode, ",
-           "avg(CASE WHEN h.completion_known THEN CAST(h.letter = 'C' AS DOUBLE) END) AS p_complete, ",
-           "avg(CAST(h.letter IN ('E', 'O', 'R', 'C') AS DOUBLE)) AS p_reply, ",
+           "CAST(least(h.prior_completes, ", .COMPLETION_PRIOR_COMPLETES_CAP, ") AS INTEGER) ",
+           "AS prior_completes, ",
+           "CAST(count(*) FILTER (WHERE h.completion_known) AS INTEGER) AS n_known, ",
+           "CAST(count(*) FILTER (WHERE h.completion_known AND h.letter = 'C') AS INTEGER) ",
+           "AS completes, ",
+           "CAST(count(*) FILTER (WHERE h.letter IN ('E', 'O', 'R', 'C')) AS INTEGER) AS replies, ",
            "CAST(count(*) AS INTEGER) AS n ",
            "FROM (", history_sql, ") h ",
            "JOIN (SELECT CAST(range AS INTEGER) AS year FROM range(", years$first + 1L, ", ",
            years$last + 2L, ")) y ON year(h.disposition_date) < y.year", where,
-           " GROUP BY 1, 2, 3")
+           " GROUP BY 1, 2, 3, 4")
   }
   sql <- paste0(block("CAST(h.survey_mode AS VARCHAR)", " WHERE h.survey_mode IS NOT NULL"),
-                " UNION ALL ", block("NULL", ""), " ORDER BY 1, 2, 3")
-  out <- DBI::dbGetQuery(con, sql)
-  out$year <- as.integer(out$year)
-  out$survey_mode <- as.character(out$survey_mode)
-  out
+                " UNION ALL ", block("NULL", ""))
+  fine <- DBI::dbGetQuery(con, sql)
+  fine$year <- as.integer(fine$year)
+  fine$survey_mode <- as.character(fine$survey_mode)
+  fine <- fine[order(fine$year, fine$context, fine$survey_mode, fine$prior_completes,
+                     na.last = TRUE, method = "radix"), ]
+  rownames(fine) <- NULL
+  key <- paste(fine$year, fine$context, fine$survey_mode, sep = "\r")
+  first <- !duplicated(key)
+  sums <- function(col) as.vector(rowsum(fine[[col]], factor(key, levels = unique(key)), reorder = FALSE))
+  n_known <- sums("n_known")
+  contexts <- data.frame(
+    year = fine$year[first], context = fine$context[first], survey_mode = fine$survey_mode[first],
+    p_complete = ifelse(n_known > 0, sums("completes") / n_known, NA_real_),
+    p_reply = sums("replies") / sums("n"), n = as.integer(sums("n")),
+    stringsAsFactors = FALSE)
+  list(contexts = contexts,
+       completes = fine[, c("year", "context", "survey_mode", "prior_completes", "n_known",
+                            "completes")])
+}
+
+# The number's own rate inside its context cell: the cell's rows with the same
+# prior completes (capped at .COMPLETION_PRIOR_COMPLETES_CAP), shrunk toward the
+# context rate `p` with the weight of .COMPLETION_SHRINK sends, so a thin split
+# stays near its cell. `row` is the context-table row `p` came from (its year,
+# context and block are the split's); a model without the table (fitted before
+# 0.89.0), a missing row or a split with no known-completion send keeps `p`.
+.completion_refine <- function(completes, contexts, row, prior_completes, p) {
+  if (is.null(completes)) return(p)
+  pc <- pmin(prior_completes, .COMPLETION_PRIOR_COMPLETES_CAP)
+  key <- function(year, context, mode, pc) paste(year, context, mode, pc, sep = "\r")
+  i <- match(key(contexts$year[row], contexts$context[row], contexts$survey_mode[row], pc),
+             key(completes$year, completes$context, completes$survey_mode,
+                 completes$prior_completes))
+  n <- completes$n_known[i]
+  k <- completes$completes[i]
+  ok <- !is.na(row) & !is.na(p) & !is.na(n) & n > 0
+  p[ok] <- (k[ok] + .COMPLETION_SHRINK * p[ok]) / (n[ok] + .COMPLETION_SHRINK)
+  p
 }
 
 # One probability column (`p_complete`, `p_reply`) for each (context, survey
@@ -600,7 +648,11 @@
 #'   \code{within_50}) and \code{counts}), the shared per-year
 #'   \code{contexts} table (\code{year}, \code{context}, \code{survey_mode}
 #'   with NA for the pooled block, \code{p_complete}, \code{p_reply},
-#'   \code{n}), the
+#'   \code{n}), the \code{completes} table that splits each of its cells by
+#'   the sends' prior completes (\code{year}, \code{context},
+#'   \code{survey_mode}, \code{prior_completes} 0 to 3 with 3 meaning 3 or
+#'   more, \code{n_known} sends with known completion, \code{completes};
+#'   \code{\link{completion_score}} refines a number's rate with it), the
 #'   \code{campaigns} table (\code{campaign_id}, \code{first_date},
 #'   \code{optin_rate}) the estimate reads the previous campaign's opt-in rate
 #'   from, the \code{windows} (\code{data_end}, \code{train_from},
@@ -644,7 +696,8 @@ completion_model_fit <- function(dataset, train_until = Sys.Date(), holdout_mont
   con <- .disposition_lazy_con()
   source <- .disposition_lazy_source(con, dataset, fn)
   history <- .completion_history_sql(con, source, before = train_until)
-  contexts <- .completion_context_tables(con, history, fn)
+  tables <- .completion_context_tables(con, history, fn)
+  contexts <- tables$contexts
   ct <- .completion_campaign_table(con, history, contexts)
   data_end <- max(ct$last_date, na.rm = TRUE)
   holdout_from <- lubridate::add_with_rollback(
@@ -661,7 +714,7 @@ completion_model_fit <- function(dataset, train_until = Sys.Date(), holdout_mont
     m[setdiff(names(m), "train_from")]
   })
   structure(list(
-    models = models, contexts = contexts,
+    models = models, contexts = contexts, completes = tables$completes,
     campaigns = data.frame(campaign_id = ct$campaign_id, first_date = ct$first_date,
                            optin_rate = ct$optins / ct$sent),
     windows = list(data_end = data_end, train_from = train_from, train_until = train_until,

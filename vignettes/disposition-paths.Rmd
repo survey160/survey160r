@@ -151,7 +151,7 @@ kept <- subset(flagged, !(last_three_unanswered %in% TRUE))
 
 ## Score a sample by its history
 
-A pattern flags the histories you name; the completion model scores every history at once. `completion_score()` gives each number the completion rate of past sends to numbers with the same previous three outcomes (its `context`, the last three letters of the path), in the planned mode, so a list can be ranked or trimmed before it is quoted:
+A pattern flags the histories you name; the completion model scores every history at once. `completion_score()` gives each number the completion rate of past sends to numbers with the same previous three outcomes (its `context`, the last three letters of the path) and the same count of earlier completes (0, 1, 2, 3 or more), in the planned mode, so a list can be ranked or trimmed before it is quoted:
 
 ```{r}
 pulled <- disposition_pull()   # the full projection: the toy file above is too small to fit
@@ -163,7 +163,7 @@ ranked <- scores[order(-scores$p_complete, -scores$prior_replies,
 keep <- head(ranked, ceiling(0.8 * nrow(ranked)))   # the best four fifths
 ```
 
-Every cut falls inside one context, since a few contexts (never contacted, one, two or three non-responses) cover most of any list; inside a context a reply anywhere in the older history and a longer silence since the last contact both raise completion, hence the two secondary keys. `completion_estimate()` averages the same table into the list's rate, so a trimmed list can be estimated again with the same model. Use a pattern when the history you want is specific (a screen-out followed by a topic switch, a gap limit, "ever completed"); use the score when the question is which numbers to send to first.
+The count matters because three letters forget: a number that completed once and then went unanswered three times completes about ten times as often as an `NNN` that never completed. Every cut still falls inside one context, since a few contexts (never contacted, one, two or three non-responses) cover most of any list; inside a context a reply anywhere in the older history and a longer silence since the last contact both raise completion, hence the two secondary keys. `completion_estimate()` averages the same table's context rates into the list's rate, so a trimmed list can be estimated again with the same model. Use a pattern when the history you want is specific (a screen-out followed by a topic switch, a gap limit, "ever completed"); use the score when the question is which numbers to send to first.
 
 ## Ask what happens after a step
 
