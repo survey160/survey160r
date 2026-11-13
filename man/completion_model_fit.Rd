@@ -141,11 +141,15 @@ ratio says how much was left. \code{\link{completion_estimate}} flags such
 a sample and quotes the summary.
 
 The fit runs inside DuckDB (\pkg{duckdb}, \pkg{DBI} and \pkg{dbplyr} must be
-installed) and takes about a minute on the full projection.
+installed) and takes about a minute on the full projection. It needs more
+than the default 4 GB of DuckDB memory there (on production data it ran out
+at 4 and 8 GB), so set \code{options(survey160r.duckdb_memory = "16GB")}
+before fitting.
 }
 \examples{
 \dontrun{
 dataset <- disposition_pull()
+options(survey160r.duckdb_memory = "16GB")   # the default 4 GB runs out
 m <- completion_model_fit(dataset)
 m
 summary(m)

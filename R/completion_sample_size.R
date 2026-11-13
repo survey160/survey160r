@@ -59,6 +59,7 @@
 #' @examples
 #' \dontrun{
 #' dataset <- disposition_pull()
+#' options(survey160r.duckdb_memory = "16GB")   # the default 4 GB runs out
 #' m <- completion_model_fit(dataset)
 #' # before the list exists: how much sample to ask for
 #' completion_sample_size(m, 1200, mode = "T2W", topic = "Brand", loi = 12,

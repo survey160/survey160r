@@ -92,6 +92,7 @@ NA and only \code{p_reply} is scored.
 \examples{
 \dontrun{
 dataset <- disposition_pull()
+options(survey160r.duckdb_memory = "16GB")   # the default 4 GB runs out
 m <- completion_model_fit(dataset)
 sample <- read.csv("client_sample.csv")
 scores <- completion_score(m, sample$phone, dataset = dataset, mode = "T2W",
