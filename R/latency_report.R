@@ -61,6 +61,19 @@ UNIVERSAL_THRESHOLDS_MIN <- c(1L, 3L, 5L, 10L)
 #'   rows when \code{compact = TRUE}), \code{diagnostics} (counts and breakdowns
 #'   per spec section 3.3), and
 #'   \code{meta} (algorithm_version, config_hash, run_at_utc).
+#'
+#'   In \code{diagnostics}, \code{n_respondents_in} counts the rows after the
+#'   population filter; \code{n_respondents_used} the respondents with at least
+#'   one valid segment latency; and \code{n_respondents_no_valid_segment} the
+#'   respondents that survived dedupe and \code{date_filter} without one, so
+#'   \code{n_respondents_in - n_respondents_used -
+#'   n_respondents_no_valid_segment} is the rows those two filters removed.
+#'   \code{respondent_summary} buckets each used respondent by their worst
+#'   (largest) segment latency: \code{pct_clean_at_5min} (at most 5 minutes),
+#'   \code{pct_worst_in_5_to_10} (over 5, at most 10) and
+#'   \code{pct_worst_over_10}. The three are percentages of
+#'   \code{n_respondents} (= \code{n_respondents_used}) and sum to 100; they
+#'   are \code{NA} when no respondent has a valid segment.
 #' @examples
 #' data <- data.frame(
 #'   campaignid = c(1L, 1L),

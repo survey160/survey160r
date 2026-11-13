@@ -182,43 +182,15 @@
   n_clamped <- attr(kept, "n_clamped") %||% 0L
   # Full frame is empty iff no segments or no respondents.
   if (n_seg <= 0L || n_frame == 0L) {
-    return(list(
-      n_respondents_in = n_in,
-      n_respondents_used = 0L,
-      n_respondents_no_valid_segment = n_in,
-      n_segments_total = 0L,
-      n_segments_na = 0L,
-      n_segments_na_by_reason = list(parse_failure = 0L,
-                                     missing_endpoint = 0L,
-                                     chain_break = 0L),
-      n_negative_latencies_clamped = n_clamped,
-      parse_failures_per_column = parse_failures,
-      config_hash = config_hash,
-      algorithm_version = .algorithm_version,
-      respondent_summary = list(n_respondents = 0L,
-                                pct_clean_at_5min = NA_real_,
-                                pct_worst_in_5_to_10 = NA_real_,
-                                pct_worst_over_10 = NA_real_)
-    ))
+    return(.empty_diagnostics(n_in, n_clamped, parse_failures, config_hash))
   }
-  valid <- !is.na(kept$delta_min)
   worst <- .worst_delta_by_respondent(kept$respondent_index, kept$delta_min)
   used <- length(worst)
-  n_valid <- sum(valid)
   total_segments <- n_seg * n_frame
-  na_segments <- total_segments - n_valid
+  na_segments <- total_segments - sum(!is.na(kept$delta_min))
   by_reason <- .na_reason_counts(kept$na_reason)
   by_reason$parse_failure <- sum(na_date$na_parse) + by_reason$parse_failure
   by_reason$missing_endpoint <- sum(na_date$na_missing) + by_reason$missing_endpoint
-  if (used > 0L) {
-    pct_clean <- 100 * mean(worst <= 5)
-    pct_5_10 <- 100 * mean(worst > 5 & worst <= 10)
-    pct_over_10 <- 100 * mean(worst > 10)
-  } else {
-    pct_clean <- NA_real_
-    pct_5_10 <- NA_real_
-    pct_over_10 <- NA_real_
-  }
   list(
     n_respondents_in = n_in,
     n_respondents_used = used,
@@ -230,11 +202,6 @@
     parse_failures_per_column = parse_failures,
     config_hash = config_hash,
     algorithm_version = .algorithm_version,
-    respondent_summary = list(
-      n_respondents = used,
-      pct_clean_at_5min = pct_clean,
-      pct_worst_in_5_to_10 = pct_5_10,
-      pct_worst_over_10 = pct_over_10
-    )
+    respondent_summary = .respondent_summary(worst)
   )
 }
