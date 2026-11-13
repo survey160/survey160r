@@ -63,7 +63,7 @@ Checked by `tests/testthat/test-api_conventions.R` (allowlists and a signature s
 - **A pure enumeration is a choice vector, consumed by `match.arg()`** (`grain`, `terminal`, `timestamps`, `env`, `rate`), so the levels show in `args()` and a typo fails at the call. An argument that takes a vector of names (`columns`, `by`, `targets`) is a string or vector default validated by hand (`disposition_steps(columns = )` defaults to a set, not a choice). The CSV readers' `timestamps` goes through `.check_timestamps_arg()`, which does what `match.arg()` does on a single value.
 - **`...` is only a pass-through** to another function (`latency_run()` to `latency_build_config()`, the CSV readers to `fread()`), never a function's own options.
 - **Filters share one vocabulary**: `phones`, `campaign_ids`, `date_from`, `date_to`, in that order, on every reader that has them. `as_of` (screen) and `start_date` (estimate, sample size) are both the reference date history is read up to; the fit's is `train_until`.
-- **Exceptions on record**: `funnel_rates()` and `parse_campaign_timestamps()` are shared helpers without a domain prefix (renaming them breaks vignettes for no gain); `target` (a count, sample size) and `targets` (rate names, fit) coexist in the completion family.
+- **Exceptions on record**: `funnel_rates()` and `parse_campaign_timestamps()` are shared helpers without a domain prefix (renaming them breaks callers' scripts for no gain); `target` (a count, sample size) and `targets` (rate names, fit) coexist in the completion family.
 
 ## Public repo & release model
 
@@ -73,7 +73,7 @@ Checked by `tests/testthat/test-api_conventions.R` (allowlists and a signature s
 ## Workflow
 
 - Releases are documented in `RELEASING.md`. Distribution is R-universe (auto-rebuild from `main`); tags are historical anchors only.
-- README and article-vignette writing follows `writing-style.md` (how-to register for a single R-competent Survey Manager, one shared article structure, terminology).
+- README and help-page writing follows `writing-style.md` (how-to register for a single R-competent Survey Manager, terminology). Public docs stay technical: no production business figures (reply or completion rates, volumes, recipient-behavior findings).
 
 ## Verifying changes
 

@@ -102,14 +102,3 @@ reference:
   - live_metrics_records
   - live_metrics_error_rates
 
-articles:
-- title: Guides
-  navbar: ~
-  contents:
-  - disposition
-  - disposition-paths
-  - completion-estimate
-  - opt-out
-  - campaign-metrics
-  - delivery-errors
-  - latency

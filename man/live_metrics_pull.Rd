@@ -61,6 +61,5 @@ live_metrics_error_rates(paths)            # by carrier and day
 }
 \seealso{
 \code{\link{live_metrics_error_rates}},
-  \code{\link{live_metrics_records}}, \code{\link{s160_gcs_init}},
-  \code{vignette("delivery-errors")}
+  \code{\link{live_metrics_records}}, \code{\link{s160_gcs_init}}
 }

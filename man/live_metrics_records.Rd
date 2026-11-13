@@ -48,5 +48,5 @@ live_metrics_records(cells)
 }
 \seealso{
 \code{\link{live_metrics_pull}},
-  \code{\link{live_metrics_error_rates}}, \code{vignette("delivery-errors")}
+  \code{\link{live_metrics_error_rates}}
 }

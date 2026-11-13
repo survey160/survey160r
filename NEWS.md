@@ -1,5 +1,14 @@
 # survey160r (development version)
 
+## Docs: technical help pages (0.89.4)
+
+* The help pages and earlier NEWS entries no longer quote production
+  business figures (reply and completion rates by history, contact volumes,
+  row counts, carrier label shares). The technical guidance they supported
+  stays, and model accuracy, runtime and memory figures are kept.
+  `?disposition_steps` now describes `carrier` as the list lookup that changed
+  twice in 2026: compare it only within lists from May 2026 on.
+
 ## Docs: a package logo, citation, and R-universe keywords (0.89.3)
 
 * The package has a hex logo (`man/figures/logo.png`), shown on the README
@@ -8,25 +17,17 @@
 * `DESCRIPTION` lists the R-universe documentation site in `URL` and adds
   search keywords (`X-schema.org-keywords`), which R-universe shows as topics.
 
-## Docs: a completion estimates article (0.89.2)
+## Docs: Completion estimates in the README and reference index (0.89.2)
 
-* New `vignette("completion-estimate")`: fit the completion model, estimate a planned
-  survey (with or without its list), size the sample for a target, and rank
-  or trim a list with `completion_score()`, with how far to trust the bands.
-  The README gains a Completion estimates section, the reference index a
-  Completion estimates group, and the `completion_*` help pages link the
-  article.
-* `vignette("disposition-paths")` now covers the paths and steps readers
-  only: its score section moved to the new article.
+* The README gains a Completion estimates section and the reference index a
+  Completion estimates group.
 
 ## Docs: the completion fit's memory (0.89.1)
 
-* `?completion_model_fit` and `vignette("disposition-paths")` now say the fit
-  needs more than the default 4 GB of DuckDB memory on the full projection
-  (it ran out at 4 and 8 GB on production data) and set
-  `options(survey160r.duckdb_memory = "16GB")` in their examples. The article's
-  score section also describes `context` as the previous three outcomes,
-  newest first, rather than the path's last three letters.
+* `?completion_model_fit` now says the fit needs more than the default 4 GB
+  of DuckDB memory on the full projection (it ran out at 4 and 8 GB on
+  production data), and the `completion_*` examples set
+  `options(survey160r.duckdb_memory = "16GB")`.
 
 ## `completion_score()`: the score counts older completes (0.89.0)
 
@@ -34,9 +35,8 @@
   number's `prior_completes` (0, 1, 2, 3 or more): the completion rate of the
   context cell's past sends with the same count, pulled toward the cell's rate
   with the weight of 200 sends. Three letters of context hide older completes:
-  in 2026, among numbers whose last three contacts went unanswered (`NNN`), one
-  that completed before completed about ten times as often as one that never
-  did (live 2.3% with one prior complete against 0.22% with none). On 2026
+  numbers with the same last three outcomes differ when one of them completed
+  earlier. On 2026
   lists scored with a model fitted to January 2026 (160 random lists), the
   median within-list AUC rose from 0.766 to 0.777 on live (better on 89% of
   lists) and from 0.651 to 0.657 on text-to-web (68%).
@@ -102,11 +102,6 @@
   context with no row, the text-to-web external mode where `p_complete` is NA).
 * `completion_estimate()` now reads that table and averages it; its output is
   unchanged (the existing tests are the gate).
-* The disposition-paths article gains "Score a sample by its history": pattern
-  for a specific history, score for which numbers to send to first, and the
-  sort for a trim (`p_complete`, then `prior_replies`, then older contact):
-  on the production data every cut lands inside one context, and inside it
-  only the older history separates numbers.
 
 
 ## Argument conventions, checked
@@ -181,8 +176,8 @@
   `date_from = "2025-01-01"` a phone's first 2025 campaign is its step 1.
   Before, they dropped rows after a full-history computation. For some rows with
   their full history, read every campaign and `filter()` the result
-  (`filter(disposition_date >= as.Date("2026-01-01"))`); the examples and
-  `vignette("disposition-paths")` do so. A scoped steps table now reconciles
+  (`filter(disposition_date >= as.Date("2026-01-01"))`); the examples do
+  so. A scoped steps table now reconciles
   with the equally scoped summary.
 * `disposition_paths()` gains `campaign_ids` (a path through chosen campaigns);
   `^` / `$` are documented as the first / last campaign in the path. It is the
@@ -211,27 +206,13 @@
   `"estimate"`.
 * Documentation and messages say estimate where they said forecast.
 
-## Carrier notes
+## Delivery error rates docs
 
-* `vignette("disposition-paths")` and `vignette("disposition")` say that
-  `carrier` comes from three versions of the list data (only lists from May 2026
-  on match the delivery codes), so a carrier change between campaigns is not
-  evidence of a ported or reused number, and a carrier funnel over earlier
-  periods mixes versions.
-
-## Delivery error rates article
-
-* `vignette("delivery-errors")` gains "Find the day a block started" (the daily
-  code rate against a threshold, then by `et_hour`), puts "Daily or cumulative"
-  before the tasks that depend on it, prints the fleet rates as readable
-  percentages, plots the daily 4780 rate against its running rate, and says
-  plainly that the error rates are per recipient by latest code (a retried
-  rejection drops out).
-* The notes and `?live_metrics_pull` say only prod is written on a schedule (dev
+* `?live_metrics_pull` says only prod is written on a schedule (dev
   has a file only for days its job was run by hand); `?live_metrics_records`
   says `"(unknown)"` carrier or brand reads as `NA`;
   `?live_metrics_error_rates` warns that with `et_hour` in `by` the running
-  totals run per hour. Every live-metrics help page links the article.
+  totals run per hour.
 * README: a troubleshooting row for "no file for today" and the last two days
   changing between pulls. The package site calls the counts hour-by-hour, not
   hourly (the files are rewritten at 4pm and 9pm ET).
@@ -260,25 +241,17 @@
   the sample's cell when it has one (small samples spread about twice as much).
   The campaign table carries `share_recent_contact`.
 
-## Disposition paths article
+## Disposition paths in the README
 
-* New article, `vignette("disposition-paths")`: read each number's path, match
-  a sequence pattern, flag a sample by its history, measure what happens after
-  a step, compare consecutive campaigns, limit the gap between them, and the
-  caveats of the production data. Its examples run on a small temp-file
-  dataset, so their output is real. The sequence section of
-  `vignette("disposition")` now points to it.
 * The README gains a "Disposition paths" section, and its area list, task
   table, sections and Documentation list share one order: disposition,
   disposition paths, opt-out, campaign metrics, delivery errors, latency, raw
-  data access. The package site's article menu follows it.
+  data access.
 * `disposition_funnel()` is listed in the package site's reference index.
 * `?survey160r` names disposition paths and delivery error rates, renames
   "Campaign exports" to "Raw data access", and says how `live_metrics_pull()`
   caches.
 * `?disposition_pull` gives the download as nearly 1 GB, not a few hundred MB.
-* `vignette("opt-out")` gains a runnable screen against a temp-file list, and
-  every article's See also links each related article.
 * The `disposition_steps()` examples pass `na.rm = TRUE` to `mean()` and
   `pmin()`, so they no longer warn.
 
@@ -294,11 +267,6 @@
 * `disposition_paths(max_gap_days =)`: with a `pattern`, a match may not span a
   gap of more than that many days between two consecutive campaigns. `path`,
   `shape` and the match positions keep counting campaigns.
-* The disposition article gains caveats for sequence questions (right
-  censoring, refusals before 2025, client/topic coverage, the 2026 Sprint
-  relabel, number reuse) and how the step labels reconcile with
-  `disposition_summary()`, plus channel-switch, same-topic and gap-limit
-  examples.
 
 ## Completion forecast
 
@@ -350,10 +318,7 @@
   as in `disposition_funnel()`. Counts are per recipient, once per campaign:
   each recipient is counted on their first send day under their delivery code
   as of the day's last rewrite. `s160_datasets()` lists the new `live_metrics` dataset (prod, dev).
-* New article `vignette("delivery-errors")` ("Delivery error rates by carrier"):
-  pull a range of days, rates by carrier, fleet-wide, by brand or campaign,
-  T-Mobile 4780 split out, daily vs cumulative, and plotting a cumulative rate.
-  `vignette("campaign-metrics")` points to it; the README gains a "Delivery error rates" section.
+* The README gains a "Delivery error rates" section.
 * survey160r now needs nanoparquet 0.5.1 or later, the first release that reads
   the empty (zero-row) Parquet files arrow writes, such as a live-metrics day
   with no sends.
@@ -402,21 +367,17 @@
   such step before this one; `0` when it was the previous campaign) and
   `days_since_reply`, `days_since_complete`, `days_since_undeliverable`
   (`disposition_date` minus that step's); `NA` until the event has happened.
-  On the 2026 production rows campaigns, not days, are what predicts the next
-  outcome (a number completes 20% of the time when its previous campaign was a
-  complete, 13% / 10% / 8% / 5% after one / two / three / four unanswered
-  campaigns in between, 3% after five), while the calendar matters mainly for
-  undeliverables, which start replying again after about two years. The `history` group now builds the letter path for the
+  The `history` group now builds the letter path for the
   recency columns, which adds about four seconds on the full production projection
   (10 s to 14 s for the 2026 rows); a second window layer keyed on `step`
   was tried and cost twice that, the sort being the whole price.
-* 0.77.1: the help page, article and this entry say "recency columns"
+* 0.77.1: the help page and this entry say "recency columns"
   rather than "clocks" for the `steps_since_*` / `days_since_*` columns; no
   column or behaviour changed.
 
 ## Documentation and developer experience
 
-Twenty rounds over the README, the articles and the function help, written for
+Twenty rounds over the README and the function help, written for
 a Survey Manager who scripts against the exports. No behaviour changed.
 
 * **README**: a "Which function do I need?" task table replaces the overview
@@ -426,11 +387,10 @@ a Survey Manager who scripts against the exports. No behaviour changed.
 * `campaign_metrics_pull()` points at `campaign_metrics_summary()` /
   `campaign_metrics_records()` instead of "your Parquet reader of choice" (the
   raw file multi-counts); `s160_datasets()` documents the `campaign_metrics`
-  dataset; the campaign-metrics article is listed on the package site.
+  dataset.
 * **Setup from inside R**: `?s160_gcs_init` and `?s160_api_auth` gain a "Before
   you start" section (what to get from your team lead, the bucket grant behind a
-  403, a browser that does not open, starting over); every article's intro
-  points at it, so a `vignette()` reader is not sent to the README.
+  403, a browser that does not open, starting over).
 * **Runnable examples**: `?disposition_screen` and `?opt_out_screen` screen a
   sample against a tiny temp Parquet, so the appended columns and the keep
   filter run from the help page; the `*_pull()` call stays in `\dontrun{}`.
@@ -438,16 +398,15 @@ a Survey Manager who scripts against the exports. No behaviour changed.
   the pulls, missing `duckdb` / `DBI` / `dbplyr`, memory ballooning without
   `duckdb`, a stale cache hit) and a recipe to list and clear the dataset cache;
   `?survey160r` gains a "Local cache" section.
-* `latency_run()` / the latency article call out that `field_timezone` defaults
-  to `"UTC"`; the disposition article names the `statuses` / date filters on
-  the lookups; `disposition_pull()` says what its path is ready for and what the
+* `latency_run()` calls out that `field_timezone` defaults to `"UTC"`;
+  `disposition_pull()` says what its path is ready for and what the
   first pull costs; `writing-style.md` records the README and runnable-example
   conventions.
 
 ## Performance
 
 Outputs are identical to the previous version (checked on synthetic campaigns
-and on the production projection, ~165M rows); only the work behind them
+and on the production projection); only the work behind them
 changed.
 
 * A phone screen of the production projection (`disposition_summary(path,
@@ -504,7 +463,7 @@ answer, later engaged, then completed" -- which the per-phone counts of
   session-wide connection with a 4 GB memory limit that spills to disk past
   it (`options(survey160r.duckdb_memory, survey160r.duckdb_temp_dir)`); each
   session spills into its own subdirectory, removed when the session ends. On
-  the production projection (~165M rows) a full-scan aggregate takes 15-25 s
+  the production projection a full-scan aggregate takes 15-25 s
   at 5.5-7.5 GB of process memory; `phones =` or `sample_frac =` (a
   reproducible md5 sample of numbers) take seconds. They need `duckdb`, `DBI`
   and `dbplyr` (`dbplyr` is a new Suggests); an interactive session is offered
@@ -518,8 +477,6 @@ answer, later engaged, then completed" -- which the per-phone counts of
   "engaged"` relabels unsplit terminals, which dominate the data since August
   2026. `completion_known` / `n_unknown_completion` mark text-to-web external
   campaigns, whose completes are never reported.
-* The disposition vignette gains "Follow numbers over time", and now dates
-  the projection from April 2021 (it said mid-2023).
 * CI installs dependencies as P3M Linux binaries: a cold run (new container
   image, empty package cache) takes ~5 minutes instead of ~50, most of which
   was compiling duckdb from source.
@@ -586,9 +543,6 @@ dispatch on the new condition classes instead.
 
 ## Documentation
 
-* New article, `vignette("campaign-metrics")`: summarize the campaign-metrics
-  funnel by dimension, work with the cells directly, and what you get back.
-
 * The package help page (`?survey160r`) is now listed in the manual's help
   index (it was marked internal) and groups every exported function by task:
   first-time setup, campaign exports, latency, disposition, opt-out, campaign
@@ -598,8 +552,6 @@ dispatch on the new condition classes instead.
   the alphabetical help index reads as a list of tasks.
 * The package `Description` covers the whole surface (disposition, opt-out and
   campaign metrics), not only latency.
-* The articles share one structure: task sections, then "What you get back",
-  "Notes" and "See also", each linking the others.
 * The disposition docs (`?disposition_pull`, `?disposition_summary`) no
   longer call `disposition_all.parquet` phone-sorted: it is a consolidated
   concat of the per-campaign files, so a phone lookup scans the whole file.
@@ -626,7 +578,7 @@ dispatch on the new condition classes instead.
 
 The Parquet-path readers now push their work into the DuckDB scan (when
 duckdb is installed), so only the result reaches R. Outputs are identical to
-the previous version (checked on the production projection, ~141M rows):
+the previous version (checked on the production projection):
 
 * `disposition_funnel(path)` groups and counts inside the scan: 12 s / ~16 GB
   peak on the production projection -> 0.6 s / ~0.1 GB. It previously could not
@@ -878,8 +830,8 @@ gated on byte-identical results). On a 200k-respondent, 12-question export
   inside the Parquet scan.** With the `duckdb` package installed (new in Suggests,
   used automatically), `disposition_screen()` -- and `disposition_summary()` /
   `disposition_records()` when given `phones` -- read only the sample's rows
-  instead of loading the whole projection. On the production projection (~140M
-  rows) a 10k-phone screen drops from ~150 s and ~26 GB peak RAM to ~2 s (~4-5 s
+  instead of loading the whole projection. On the production projection a
+  10k-phone screen drops from ~150 s and ~26 GB peak RAM to ~2 s (~4-5 s
   on a 4-core laptop) and ~0.6 GB; a 200k-phone screen from ~200 s to ~3 s, still under 1 GB. Results are
   identical; a 4-core, 4 GB-capped run screens 200k phones in ~6 s where the old
   code was killed for running out of memory. Without `duckdb` the readers fall back to the whole-file
@@ -980,8 +932,8 @@ gated on byte-identical results). On a 200k-respondent, 12-question export
 
 ## Documentation
 
-* **Articles and README refreshed for the current disposition reader surface.**
-  The disposition guide, the README, and the opt-out guide now document the
+* **README refreshed for the current disposition reader surface.**
+  The README now documents the
   `n_*` status counts (which replaced the removed `ever_*` booleans), the
   `refused` / `ineligible` terminal split, `best_disposition`, and the populated
   `disposition_date` (the "beta / all-`NA` date" caveats are gone). The
@@ -991,7 +943,7 @@ gated on byte-identical results). On a 200k-respondent, 12-question export
 
 * **Reference pages corrected.** `disposition_records()`'s documented return
   schema now lists `registration_id` (added to the stored schema in 0.54.0). The
-  `disposition_screen()` example and the disposition guide now screen on all
+  `disposition_screen()` example now screens on all
   three hard stops (`n_terminated` / `n_refused` / `n_ineligible`) rather than
   `n_terminated` alone: on the production projection the three are set
   independently, so a `n_terminated`-only filter could keep a refuser. A stray
@@ -1318,8 +1270,7 @@ gated on byte-identical results). On a 200k-respondent, 12-question export
 
 ## Improvements
 
-* **New Opt-out screening guide.** `vignette("opt-out")` (and a matching README
-  section) walks through pulling the opt-out list and screening a sample with
+* **New Opt-out screening README section.** It walks through pulling the opt-out list and screening a sample with
   `opt_out_pull()` + `opt_out_screen()`, including chaining with disposition
   screening and filtering once.
 
@@ -1527,7 +1478,7 @@ gated on byte-identical results). On a 200k-respondent, 12-question export
   `.reached_close()`), so the union of every language's completers is counted,
   matching the app's `phonelist.complete`. Verified against production: two
   campaigns' `close` + `close_sp` scriptDates summed to the exact database
-  `closed` count (214 and 61). A single-close campaign is unchanged.
+  `closed` count. A single-close campaign is unchanged.
   `disposition_input_columns()` now projects the close family so a pruned read
   keeps `close_sp`.
 
@@ -1538,10 +1489,9 @@ gated on byte-identical results). On a 200k-respondent, 12-question export
   vanished under the `contacted_only` default, and (b) a bilingual campaign that
   routes recipients to `intro` **and** `intro_sp` / `intro_latinos` (via the v2
   `initialconditionals`) counted only the `intro` branch and dropped the rest.
-  Verified in prod: an 873-send `FIRSTNET` campaign emitted zero rows (47 such
-  single-opener campaigns exist), and a live 39,849-send campaign counted only
-  17,415 of its recipients (22,434 on `intro_latinos` were dropped; 72 mixed
-  campaigns exist). The opening question is now resolved per campaign as a **set**
+  Verified in prod: a single-opener `FIRSTNET` campaign emitted zero rows, and
+  a live bilingual campaign counted only part of its recipients (those on
+  `intro_latinos` were dropped). The opening question is now resolved per campaign as a **set**
   -- every intro-family question present (`id.intro` / `id.intro_*`), or a single
   discovered opener (e.g. `FIRSTNET`) when there is no intro family -- and a
   recipient is contacted if they received **any** of them; `opt_in` is the
@@ -1653,46 +1603,31 @@ gated on byte-identical results). On a 200k-respondent, 12-question export
 
 ## Documentation
 
-* **Rewrote the two vignettes as task-oriented how-to guides.**
-  `vignette("latency")` and `vignette("disposition")` now share one structure
-  (task -> variations -> what you get back -> notes -> see also), address a
-  single R-competent Survey Manager, and follow a new documentation style guide
-  (`writing-style.md`). The `_pkgdown.yml` reference index is reordered to match
-  the README (raw data access -> latency -> disposition).
+* **A documentation style guide** (`writing-style.md`) for a single
+  R-competent Survey Manager. The `_pkgdown.yml` reference index is reordered
+  to match the README (raw data access -> latency -> disposition).
 
 * **README onboarding and troubleshooting.** Added an access checklist to
   First-time setup (client secret, bucket grant, API keys), an R-universe
   version-lag note to Installation, a "try it without credentials" example, a
   "new here?" signpost, and a symptom -> cause -> fix Troubleshooting table
   (403, not-initialized, stale cache, missing function, wrong-argument, empty
-  date filter). The disposition guide now states the pull's download size/time
-  and how to refresh a stale cache.
+  date filter).
 
 * **Dropped the "Survey Manager" audience framing.** The whole package is for
   Survey Managers, so singling out one surface as *the* Survey-Manager surface
-  was redundant -- the label is removed from the README, both vignettes, the
+  was redundant -- the label is removed from the README, the
   package help, and code comments, and the per-section audience tags in
   `?survey160r` are dropped (`Disposition screening` / `Latency analysis`, no
   parenthetical). The README also reorders the three surfaces to raw data access
-  -> latency -> disposition and links the two guides as clickable relative paths
-  so they render on GitHub. Credential prompts now say "your team lead" instead
+  -> latency -> disposition. Credential prompts now say "your team lead" instead
   of "your survey manager." Reference docs (`@param` / `@return`) describe the
   argument or value rather than naming a person, per the R convention.
 
-* **Docs restructure: vignettes + a slimmer README.** The latency and
-  disposition walkthroughs moved out of the README into full-length articles --
-  `vignette("latency")` and `vignette("disposition")`, rendered as Articles on
-  the R-universe package site -- and the README is now an overview + install +
-  disposition quick start + raw-data-access + setup, pointing at the guides.
-  Adds `knitr` / `rmarkdown` (Suggests) and `VignetteBuilder: knitr`, plus a
+* **Docs restructure: a slimmer README.** The README is now an overview +
+  install + disposition quick start + raw-data-access + setup, plus a
   `_pkgdown.yml` grouping the function reference by family (disposition /
-  latency / raw access). Along the way the latency "Result shape" table was
-  corrected -- it had drifted to ~14 of the 30 consolidated columns, omitting
-  `survey_mode`, the delta distribution, the NA diagnostics, and the `n_texted`
-  / `n_engaged` / `n_consented` / `n_completed` / `n_ineligible` summary block --
-  and the two raw-data-access sections were consolidated. The disposition
-  vignette's runnable example (`disposition_summary()` on a frame) executes at
-  build time.
+  latency / raw access). The two raw-data-access sections were consolidated.
 
 * **Package-level help (`?survey160r`).** A new overview page orients a reader to
   the three layers -- disposition screening, latency

@@ -606,10 +606,8 @@
 #'
 #' Each model also keeps a re-send summary: how many training campaigns of each
 #' mode had a sample mostly (over half) contacted in the 30 days before their
-#' start, and the median ratio of their actual rate to the fitted one. A list
-#' sent again within days completes well below its previous send (about 0.4
-#' times on web in 2025 to 2026, about 0.9 on live) and such campaigns were
-#' the most frequent large misses; the sample terms carry part of that, the
+#' start, and the median ratio of their actual rate to the fitted one. Such
+#' campaigns were the most frequent large misses; the sample terms carry part of that, the
 #' ratio says how much was left. \code{\link{completion_estimate}} flags such
 #' a sample and quotes the summary.
 #'
@@ -667,8 +665,7 @@
 #'   multipliers (one data frame: \code{model}, \code{term},
 #'   \code{odds_multiplier}, \code{std_error}).
 #' @seealso \code{\link{completion_estimate}} (score a planned survey),
-#'   \code{\link{disposition_paths}} (the history letters),
-#'   \code{vignette("completion-estimate")}
+#'   \code{\link{disposition_paths}} (the history letters)
 #' @examples
 #' \dontrun{
 #' dataset <- disposition_pull()
