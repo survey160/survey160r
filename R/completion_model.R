@@ -364,6 +364,22 @@
   ncol(.completion_model_matrix(spec$formula, .completion_design(row, target)))
 }
 
+# The band's sd from the two fits: the holdout sd (the out-of-sample error the
+# band claims to be) when its cell scored at least
+# .COMPLETION_HOLDOUT_MIN_CAMPAIGNS campaigns, else the larger of the in-sample
+# and holdout sds (a thin cell borrows the in-sample spread); NA when either is
+# NA. On the production data the in-sample sd over every training year runs
+# half again above the recent out-of-sample sd on live campaigns, so the larger
+# of the two over-widened their bands (rolling 2025-26: the 50% band covered
+# 82%); the holdout sd covers 61-67% / 93-94% at the nominal 50% / 95%.
+.COMPLETION_HOLDOUT_MIN_CAMPAIGNS <- 10L
+.completion_band_sd_rule <- function(in_sample, holdout, n_holdout) {
+  out <- ifelse(is.na(in_sample) | is.na(holdout), NA_real_, pmax(in_sample, holdout))
+  use <- !is.na(holdout) & !is.na(n_holdout) & n_holdout >= .COMPLETION_HOLDOUT_MIN_CAMPAIGNS
+  out[use] <- holdout[use]
+  out
+}
+
 # Residual sd per mode: NA when fewer than 2 rows of that mode.
 .completion_sd_by_mode <- function(residuals, mode, modes) {
   vapply(modes, function(m) {
@@ -452,13 +468,13 @@
       "estimates carry no bands. Use a longer `holdout_months` or a later `train_until`."),
       spec$label, format(holdout_from), nrow(score), nrow(hold_rows), min_fit)
   }
-  residual_sd <- ifelse(is.na(in_sample_sd) | is.na(holdout_sd), NA_real_,
-                        pmax(in_sample_sd, holdout_sd))
+  holdout_n <- vapply(spec$modes, function(m) sum(!is.na(score$mode) & score$mode == m), integer(1))
+  residual_sd <- .completion_band_sd_rule(in_sample_sd, holdout_sd, holdout_n)
   names(residual_sd) <- spec$modes
-  # the same rule per (mode, size band): the larger of the two sds, NA when either is
+  # the same rule per (mode, size band)
   residual_sd_size <- in_sample_size
-  residual_sd_size$sd <- ifelse(is.na(in_sample_size$sd) | is.na(holdout_size$sd), NA_real_,
-                                pmax(in_sample_size$sd, holdout_size$sd))
+  residual_sd_size$sd <- .completion_band_sd_rule(in_sample_size$sd, holdout_size$sd,
+                                                  holdout_size$n)
   list(coefficients = .completion_coefficients(fit), formula = spec$formula,
        training_means = means, residual_sd = residual_sd, residual_sd_size = residual_sd_size,
        resend = resend, holdout = holdout,
@@ -518,13 +534,17 @@
 #' is scored on the campaigns in between (the second fit needs at least one
 #' campaign per model term and two to score, else the metrics and the sd are
 #' NA with a warning). The band's residual sd is per mode
-#' and per model: the larger of the shipped fit's in-sample sd and the holdout
-#' sd for that mode. The same sd is also kept per mode and sample-size band
+#' and per model: the holdout sd for that mode (the out-of-sample error the
+#' band describes) when the holdout window scored at least ten campaigns of
+#' it, else the larger of the shipped fit's in-sample sd and the holdout sd.
+#' The same sd is also kept per mode and sample-size band
 #' (sends under or at least \code{size_break}; campaigns under 50,000 sends
 #' spread about twice as much as larger ones), and the estimate uses the band
-#' of its sample when that cell has one. Residuals are skewed and the fleet
-#' drifts, so the bands are approximate: on campaigns from mid 2026 the nominal
-#' 95\% band covered about 94\% and the 50\% band about 70\%.
+#' of its sample when that cell has one. Residuals are heavy-tailed and the
+#' fleet drifts, so the bands are approximate: refitted every month over
+#' 2025-2026 and scored on the next month's campaigns, the nominal 50\% band
+#' covered 61-67\% on live and 52-53\% on text-to-web, the 95\% band 93-94\%
+#' and 90-92\%.
 #'
 #' Each model also keeps a re-send summary: how many training campaigns of each
 #' mode had a sample mostly (over half) contacted in the 30 days before their

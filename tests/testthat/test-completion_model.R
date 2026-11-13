@@ -542,3 +542,30 @@ test_that("fit: targets selects the models", {
   expect_error(completion_model_fit(p, targets = character(0)), "targets")
   expect_error(completion_model_fit(p, targets = c("optin", "optin")), "targets")
 })
+
+test_that("band sd rule: the holdout sd when its cell has enough campaigns, else the larger of the two", {
+  in_sample <- c(Live = 0.6, T2W = 0.5, X = 0.4, Y = NA, Z = 0.3)
+  holdout <- c(Live = 0.4, T2W = 0.7, X = 0.9, Y = 0.2, Z = NA)
+  n <- c(Live = 10L, T2W = 10L, X = 9L, Y = 10L, Z = 0L)
+  expect_equal(.completion_band_sd_rule(in_sample, holdout, n),
+               c(Live = 0.4, T2W = 0.7, X = 0.9, Y = 0.2, Z = NA))
+  expect_equal(.COMPLETION_HOLDOUT_MIN_CAMPAIGNS, 10L)
+})
+
+test_that("fit: the band sd rule sees the holdout campaign counts per mode and per size cell", {
+  skip_if_no_sequence()
+  seen <- new_capture()
+  seen$n <- list()
+  local_mocked_bindings(.completion_band_sd_rule = function(in_sample, holdout, n_holdout) {
+    seen$n <- c(seen$n, list(n_holdout))
+    ifelse(is.na(in_sample) | is.na(holdout), NA_real_, pmax(in_sample, holdout))
+  })
+  m <- completion_model_fit(write_completion_parquet(completion_records(n_per_campaign = 60L)),
+                            train_until = as.Date("2026-10-01"), min_sent = 10,
+                            targets = "completion")
+  expect_length(seen$n, 2L)
+  expect_named(seen$n[[1L]], c("Live", "T2W"))
+  expect_equal(sum(seen$n[[1L]]), m$models$completion$holdout$n)
+  expect_equal(sum(seen$n[[2L]]), m$models$completion$holdout$n)
+  expect_length(seen$n[[2L]], 4L)
+})

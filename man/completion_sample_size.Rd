@@ -74,6 +74,16 @@ sees whether to ask for more sample. Completion is never recorded for
 text-to-web external surveys, so that mode has a sample size on the other
 rates only.
 }
+\details{
+How much margin each level buys, on 2025-2026 campaigns scored with the
+model as fitted at their start: a sample sized at the point estimate
+reached the target in 48-63\% of campaigns; at \code{sends_at_lo50} (about
+1.3 times the point estimate on live, 1.4-1.5 on text-to-web) in 86-89\%
+on live and 72-80\% on text-to-web; at \code{sends_at_lo95} (about 2.1
+times on live, 2.8-3 on text-to-web) in 95-100\%. The text-to-web spread is
+wider and heavier-tailed, so its 50\% level is a coin flip plus a little,
+not three in four.
+}
 \examples{
 \dontrun{
 dataset <- disposition_pull()
