@@ -1,4 +1,4 @@
-# survey160r <img src="man/figures/logo.png" align="right" height="139" alt="survey160r logo" />
+# survey160r
 
 [![R-CMD-check](https://github.com/survey160/survey160r/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/survey160/survey160r/actions/workflows/R-CMD-check.yaml)
 [![R-universe](https://survey160.r-universe.dev/badges/survey160r)](https://survey160.r-universe.dev/survey160r)
