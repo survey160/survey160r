@@ -216,6 +216,7 @@ lazy \pkg{dbplyr} tables that DuckDB computes on \code{collect()}.
 \seealso{
 Useful links:
 \itemize{
+  \item \url{https://survey160.r-universe.dev/survey160r}
   \item \url{https://github.com/survey160/survey160r}
   \item Report bugs at \url{https://github.com/survey160/survey160r/issues}
 }

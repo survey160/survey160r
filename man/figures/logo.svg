@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="518" height="600" viewBox="0 0 518 600">
+  <polygon points="259,6 512,152 512,448 259,594 6,448 6,152" fill="#14324f" stroke="#2bb3a3" stroke-width="12" stroke-linejoin="round"/>
+  <!-- chat bubble -->
+  <path d="M139 150 h240 a34 34 0 0 1 34 34 v118 a34 34 0 0 1 -34 34 h-150 l-58 50 v-50 h-32 a34 34 0 0 1 -34 -34 v-118 a34 34 0 0 1 34 -34 z" fill="#ffffff"/>
+  <!-- bar chart inside bubble -->
+  <rect x="170" y="252" width="40" height="56" rx="5" fill="#2bb3a3"/>
+  <rect x="236" y="214" width="40" height="94" rx="5" fill="#2bb3a3"/>
+  <rect x="302" y="182" width="40" height="126" rx="5" fill="#14324f"/>
+  <text x="259" y="470" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-weight="700" font-size="72" fill="#ffffff">survey160r</text>
+</svg>

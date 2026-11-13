@@ -1,0 +1,9 @@
+bibentry(
+  bibtype = "Manual",
+  title = "{survey160r}: R Client for Survey160 Data",
+  author = person("Lennon", "Shimokawa"),
+  organization = "Survey160",
+  year = sub("-.*", "", if (!is.null(meta$Date)) meta$Date else sub(" .*", "", meta$Packaged)),
+  note = paste("R package version", meta$Version),
+  url = "https://survey160.r-universe.dev/survey160r"
+)

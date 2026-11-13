@@ -1,5 +1,13 @@
 # survey160r (development version)
 
+## Docs: a package logo, citation, and R-universe keywords (0.89.3)
+
+* The package has a hex logo (`man/figures/logo.png`), shown on the README
+  and the R-universe page.
+* `citation("survey160r")` returns a citation for the package.
+* `DESCRIPTION` lists the R-universe documentation site in `URL` and adds
+  search keywords (`X-schema.org-keywords`), which R-universe shows as topics.
+
 ## Docs: a completion estimates article (0.89.2)
 
 * New `vignette("completion-estimate")`: fit the completion model, estimate a planned
