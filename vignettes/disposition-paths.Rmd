@@ -205,7 +205,7 @@ On production data the first query's `reply_next` falls steadily, from about 7% 
 `columns` picks the history groups (see [What you get back](#what-you-get-back)): `"neighbors"`, `"so_far"`, `"run_length"` and `"path_so_far"` by default, and on request:
 
 - `"history"` -- the prior counts, the `history_segment` and the recency columns, the same ones `disposition_screen(columns = "history")` appends to a sample.
-- `"context"` -- the previous three outcomes, newest first, in six coarse letters (`"CEN"`: a complete, then an engaged before it, then a no-reply). It is the cell the completion model behind `completion_estimate()` is keyed by, so `group_by(context)` reproduces its rates on a newer dataset.
+- `"context"` -- the previous three outcomes, newest first, in six coarse letters (`"CEN"`: a complete, then an engaged before it, then a no-reply). It is the context grouping the completion model behind `completion_estimate()` is keyed by. `group_by(context)` alone does not reproduce its rates: the model also fits each mode (`sms`, `t2w`) separately, trains each year only on earlier years, and leaves out unknown completions.
 
 Ask only for the groups you use; each costs a few seconds on the full dataset.
 
