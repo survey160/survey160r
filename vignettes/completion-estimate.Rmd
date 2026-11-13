@@ -28,7 +28,7 @@ options(survey160r.duckdb_memory = "16GB")   # the fit runs out of memory at the
 m <- completion_model_fit(dataset)           # about a minute
 m                                            # training windows and holdout accuracy
 
-sample <- read.csv("client_sample.csv")
+sample <- read.csv("client_sample.csv", colClasses = c(phone = "character"))
 completion_estimate(m, sample$phone, mode = "T2W", topic = "Policy", loi = 12,
                     dataset = dataset, start_date = "2026-12-01")
 ```

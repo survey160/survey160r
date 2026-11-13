@@ -125,7 +125,7 @@ dataset <- disposition_pull()
 options(survey160r.duckdb_memory = "16GB")   # the fit runs out of memory at the default 4 GB
 m <- completion_model_fit(dataset)           # about a minute
 
-my_sample <- read.csv("client_sample.csv")
+my_sample <- read.csv("client_sample.csv", colClasses = c(phone = "character"))
 completion_estimate(m, my_sample$phone, mode = "T2W", topic = "Policy", loi = 12,
                     dataset = dataset, start_date = "2026-12-01")           # rates with 50% / 95% bands
 completion_sample_size(m, 1200, mode = "T2W", topic = "Policy", loi = 12)   # sends for 1,200 completes
