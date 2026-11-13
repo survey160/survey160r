@@ -44,9 +44,6 @@ Suggests:
     mockery,
     withr,
     lintr,
-    covr,
-    knitr,
-    rmarkdown
-VignetteBuilder: knitr
+    covr
 Config/testthat/edition: 3
 RoxygenNote: 7.3.3

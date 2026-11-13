@@ -93,8 +93,7 @@
 #' @return A character vector of local Parquet paths, named by ET day
 #'   (\code{"YYYY-MM-DD"}), for the days that have a file.
 #' @seealso \code{\link{live_metrics_error_rates}},
-#'   \code{\link{live_metrics_records}}, \code{\link{s160_gcs_init}},
-#'   \code{vignette("delivery-errors")}
+#'   \code{\link{live_metrics_records}}, \code{\link{s160_gcs_init}}
 #' @examples
 #' \dontrun{
 #' s160_gcs_init()
@@ -189,7 +188,7 @@ live_metrics_pull <- function(date_from = NULL, date_to = NULL,
 #'   \code{"(unknown)"} \code{carrier} or \code{brand} is \code{NA}; a frame without \code{n_engaged} gets it as
 #'   \code{NA} (no rate uses it).
 #' @seealso \code{\link{live_metrics_pull}},
-#'   \code{\link{live_metrics_error_rates}}, \code{vignette("delivery-errors")}
+#'   \code{\link{live_metrics_error_rates}}
 #' @examples
 #' cells <- data.frame(
 #'   et_date = as.Date("2026-11-01"), et_hour = 10L, carrier = "T-Mobile",
@@ -325,8 +324,7 @@ live_metrics_records <- function(x, campaign_ids = NULL, date_from = NULL,
 #'   \code{n_c}, \code{rate_c}, \code{cum_c} and \code{cum_rate_c}. Counts are
 #'   double. A missing \code{by} value (e.g. an unknown carrier) is \code{NA}
 #'   and groups as its own row.
-#' @seealso \code{\link{live_metrics_pull}}, \code{\link{live_metrics_records}},
-#'   \code{vignette("delivery-errors")}
+#' @seealso \code{\link{live_metrics_pull}}, \code{\link{live_metrics_records}}
 #' @examples
 #' cells <- data.frame(
 #'   et_date = as.Date(c("2026-11-01", "2026-11-01", "2026-11-02")),

@@ -1,6 +1,6 @@
 # survey160r documentation style
 
-How to write the README and the article vignettes (`vignettes/*.Rmd`) so they read as one voice and respect the reader's time.
+How to write the README and the function help (`?fn`, from roxygen) so they read as one voice and respect the reader's time.
 
 ## Audience
 
@@ -9,28 +9,11 @@ One reader: a **Survey Manager who is competent with R** and already writes scri
 Two consequences:
 
 - **Assume R fluency.** Do not narrate `library()`, `<-`, or `data.frame()`. Explain what is specific to survey160r, not what any R user already knows.
-- **They have a task, not a lesson.** Write **how-to guides**, not tutorials.
+- **They have a task, not a lesson.** Write how-to guidance, not tutorials: open with the goal, get to runnable code fast, prefer short imperative steps to narrative paragraphs.
 
-## Register: how-to, not tutorial
+## Public and technical
 
-Articles are **task-oriented how-to guides** (Diataxis sense): the reader arrives with a goal and wants the recipe. So:
-
-- Open with the goal in one or two sentences. No motivational preamble.
-- Get to runnable code fast -- the first code block should be copy-and-go.
-- Prefer short imperative steps to narrative paragraphs.
-- Stay scannable: task-named headings, code first, one idea per section.
-- Reference (exhaustive argument/column detail) is not the article's job -- see below.
-
-## Shared structure
-
-Every article follows the same skeleton, so knowing one means knowing them all:
-
-1. **Intro** -- 1-2 sentences: the task the guide covers, and that it assumes First-time setup, phrased "(the package README, or `?s160_gcs_init` from R)" so a reader inside `vignette()` has an in-R path to it.
-2. **## \<Primary task\>** -- the main recipe, code first (e.g. "Screen a sample", "Build a report").
-3. **## \<Secondary task\>** (one or more) -- common variations.
-4. **## What you get back** -- the result shape; a compact, task-relevant column table.
-5. **## Notes** -- gotchas, beta limits, performance.
-6. **## See also** -- `?function` links, then every related article as `vignette("name")`.
+The repository and its documentation are public. Describe how the package works -- arguments, results, runtime, memory, model accuracy, data-quality caveats in qualitative form -- never what the production data says about the business: no reply or completion rates by history, contact volumes, row counts, or findings about recipient behavior. Use toy values in examples.
 
 ## Voice and terminology
 
@@ -38,28 +21,24 @@ Every article follows the same skeleton, so knowing one means knowing them all:
 - Person words match the code: **caller** = whoever invokes a function; **user** = the person using the package; **config author** = whoever writes a config. Never "analyst" or "the Survey-Manager surface".
 - Spell names out (`disposition`, not `disp`).
 
-## Code in articles
-
-- **Terse comments, not narration.** A trailing `# one browser sign-in, cached` beats a sentence.
-- **Runnable vs illustrative.** Chunks needing auth or network are `eval = FALSE` (shown, not run). Prefer a runnable chunk where the inputs allow -- a pure operation on a small in-memory frame (e.g. `disposition_summary()` on a data frame) -- so at least some shown output is real. Latency legitimately has none (its inputs are a real campaign CSV). A reader that needs a Parquet path (the opt-out list, the sequence readers) runs on a tiny frame written to `tempfile(fileext = ".parquet")`, as in the `?fn` examples below. Never present fabricated output as if it ran.
-- **NA-safe idioms.** Filter with `!((n_completed > 0 | n_web_complete > 0) %in% TRUE)`, never `!(n_completed > 0 | n_web_complete > 0)` -- the latter silently drops all-`NA` blank-phone rows.
-- Canonical example values: campaign id `1234`; fictional phone numbers only (`555` / `999` ranges), never real PII.
-
 ## README
 
-The README is the landing page on GitHub and the package site. It opens with the area list (followed by a one-line "New here?" pointer), then **"Which function do I need?"**: a task -> call -> guide table, one row per thing a Survey Manager comes to do, in the words they would use ("drop numbers that opted out"), not the function's words. Each area then gets a section with one copy-and-go block and a link to its article; keep the sections parallel (every area has one, in the order of the table). Troubleshooting is a symptom -> cause -> fix table; add a row whenever a support question repeats.
+The README is the landing page on GitHub and the package site. It opens with the area list (followed by a one-line "New here?" pointer), then **"Which function do I need?"**: a task -> call -> section table, one row per thing a Survey Manager comes to do, in the words they would use ("drop numbers that opted out"), not the function's words. Each area then gets a section with one copy-and-go block and a pointer to the help pages that cover it; keep the sections parallel (every area has one, in the order of the table). Troubleshooting is a symptom -> cause -> fix table; add a row whenever a support question repeats.
 
 ## Examples in `?fn`
 
 Prefer a runnable `@examples` block over `\dontrun{}` alone. A reader that takes a dataset path can still run: write a tiny frame to `tempfile(fileext = ".parquet")` with `nanoparquet::write_parquet()` (an Import, so no extra dependency) and screen against that, then keep the real `*_pull()` call in a `\dontrun{}` tail. Say in a comment that the temp file stands in for the pull.
 
+- **Terse comments, not narration.** A trailing `# one browser sign-in, cached` beats a sentence.
+- **NA-safe idioms.** Filter with `!((n_completed > 0 | n_web_complete > 0) %in% TRUE)`, never `!(n_completed > 0 | n_web_complete > 0)` -- the latter silently drops all-`NA` blank-phone rows.
+- Canonical example values: campaign id `1234`; fictional phone numbers only (`555` / `999` ranges), never real PII. Never present fabricated output as if it ran.
+
 ## Reference lives in `?fn`
 
-Exhaustive argument and column detail belongs in the function help, not the article. An article shows only the columns the reader uses for the task and links to `?function` for the rest. (Today the full result-shape and appended-column tables still live in the articles; move them into the `@return` roxygen when that is expanded, and the articles link instead.)
+Exhaustive argument and column detail belongs in the function help: `@param` for every argument, `@return` for the result shape. The README shows only what the reader needs for the task and links to `?function` for the rest.
 
 ## Mechanics
 
 - Sentence-case headings, no trailing period.
 - `--` for a parenthetical aside (renders as an en-dash); never the em-dash character.
-- Put wide example output in a plain fenced block, not an R chunk, so lintr's line-length rule does not trip.
-- Cross-link functions as `disposition_screen()` (pkgdown auto-links) and articles as `vignette("disposition")`. The README links articles by path (`vignettes/disposition.Rmd`), with the `vignette()` call in parentheses for readers in R.
+- Cross-link functions as `disposition_screen()` (pkgdown auto-links) and help pages as `?disposition_screen`.

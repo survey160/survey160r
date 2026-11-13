@@ -298,7 +298,7 @@
 #' \code{tracker_client} on some recent rows), \code{tracker_topic} has four
 #' broad values, and \code{carrier} comes from each list's lookup, which
 #' changed twice in 2026: compare it across campaigns only within lists from
-#' May 2026 on (\code{vignette("disposition-paths")}).
+#' May 2026 on.
 #'
 #' \strong{Scope.} Every filter applies \emph{before} the history is computed,
 #' as in every other disposition reader: \code{phones} and \code{sample_frac}
@@ -383,8 +383,7 @@
 #'   \code{survey_mode}, \code{carrier}, \code{error}, \code{tracker_*}, ...).
 #' @seealso \code{\link{disposition_paths}} (one row per phone),
 #'   \code{\link{disposition_summary}} (per-phone counts),
-#'   \code{\link{disposition_records}} (the stored rows),
-#'   \code{vignette("disposition-paths")} (worked examples)
+#'   \code{\link{disposition_records}} (the stored rows)
 #' @examples
 #' \dontrun{
 #' library(dplyr)

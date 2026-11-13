@@ -13,12 +13,8 @@ survey160r produces: \strong{latency} reports, \strong{disposition} and
 \strong{opt-out} screening of phone samples, each number's \strong{disposition
 paths}, \strong{completion estimates}, \strong{campaign metrics}, and
 \strong{delivery error rates}.
-Every function, grouped by task, is listed below. The articles
-(\code{vignette("disposition")}, \code{vignette("disposition-paths")},
-\code{vignette("completion-estimate")},
-\code{vignette("opt-out")}, \code{vignette("campaign-metrics")},
-\code{vignette("delivery-errors")}, \code{vignette("latency")})
-walk through each task.
+Every function, grouped by task, is listed below; each function's help
+page has the details and examples.
 }
 \section{First-time setup}{
 
@@ -58,7 +54,7 @@ Read a campaign's raw results:
 \section{Latency analysis}{
 
 Turn a campaign export into a recipient-latency report
-(\code{vignette("latency")}):
+:
 \itemize{
   \item \code{\link{latency_run}} -- build the config from the export and
     run the report; \code{\link{latency_report}} runs it on a config you
@@ -80,7 +76,7 @@ Turn a campaign export into a recipient-latency report
 \section{Disposition screening}{
 
 Screen a phone sample on prior contact, and measure the funnel across
-recipients (\code{vignette("disposition")}):
+recipients:
 \itemize{
   \item \code{\link{disposition_pull}} -- download the disposition dataset
     (cached locally).
@@ -94,14 +90,13 @@ recipients (\code{vignette("disposition")}):
   \item \code{\link{disposition_steps}} / \code{\link{disposition_paths}} --
     each number's campaigns in time order: per-campaign history (what
     happened after k non-responses) or one path per phone with sequence
-    patterns (no reply, then engaged, then completed;
-    \code{vignette("disposition-paths")}).
+    patterns (no reply, then engaged, then completed).
   \item \code{\link{completion_model_fit}} / \code{\link{completion_estimate}} /
     \code{\link{completion_sample_size}} / \code{\link{completion_score}}
     -- fit the opt-in and completion rate models from the dataset, then
     estimate a planned survey's rates from its sample and design, the
     sends a target number of completes needs, or each number's chance of
-    completing (to rank or trim a sample; \code{vignette("completion-estimate")}).
+    completing (to rank or trim a sample).
   \item \code{\link{disposition_run}} / \code{\link{disposition_input_columns}}
     -- build the per-respondent rows from one campaign export (the producer
     side of the dataset).
@@ -110,7 +105,7 @@ recipients (\code{vignette("disposition")}):
 
 \section{Opt-out screening}{
 
-Flag opted-out numbers in a phone sample (\code{vignette("opt-out")}):
+Flag opted-out numbers in a phone sample:
 \itemize{
   \item \code{\link{opt_out_pull}} -- download the opt-out list (cached
     locally).
@@ -123,7 +118,7 @@ Flag opted-out numbers in a phone sample (\code{vignette("opt-out")}):
 
 Work with the consolidated per-campaign metrics projection -- funnel counts
 and Project Tracker dimensions per campaign, date, and hour
-(\code{vignette("campaign-metrics")}):
+:
 \itemize{
   \item \code{\link{campaign_metrics_pull}} -- download the projection
     (cached locally).
@@ -139,8 +134,7 @@ and Project Tracker dimensions per campaign, date, and hour
 \section{Live delivery metrics}{
 
 Follow delivery errors across every campaign in the live phone lists, from the
-hour-by-hour fleet-wide counts (one file per ET day;
-\code{vignette("delivery-errors")}):
+hour-by-hour fleet-wide counts (one file per ET day):
 \itemize{
   \item \code{\link{live_metrics_pull}} -- download a range of days (a
     finished day is cached; recent days are re-fetched).
@@ -168,8 +162,8 @@ later calls, saying how old the copy is (\dQuote{Using cached disposition
 projection (3 days old): ...}). A cache hit needs no sign-in and never checks
 Cloud Storage, so pass \code{refresh = TRUE} for today's data, or
 \code{dest =} to keep a copy elsewhere. \code{\link{live_metrics_pull}} caches
-a day only once it is final and fetches recent days again on every pull (see
-\code{vignette("delivery-errors")}). Remove the directory to start clean.
+a day only once it is final and fetches recent days again on every pull.
+Remove the directory to start clean.
 }
 
 \section{Errors and messages}{
