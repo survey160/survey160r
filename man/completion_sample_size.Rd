@@ -81,8 +81,8 @@ reached the target in 48-63\% of campaigns; at \code{sends_at_lo50} (about
 1.3 times the point estimate on live, 1.4-1.5 on text-to-web) in 86-90\%
 on live and 77-79\% on text-to-web; at \code{sends_at_lo95} (about 2.1-2.4
 times on live, about 3 on text-to-web) in 93-97\%. The text-to-web spread is
-wider and heavier-tailed, so its 50\% level is a coin flip plus a little,
-not three in four.
+wider and heavier-tailed, so each of its levels buys a little less than the
+live one at a higher cost.
 }
 \examples{
 \dontrun{
