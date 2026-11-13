@@ -1,5 +1,14 @@
 # survey160r (development version)
 
+## Docs: the completion fit's memory (0.89.1)
+
+* `?completion_model_fit` and `vignette("disposition-paths")` now say the fit
+  needs more than the default 4 GB of DuckDB memory on the full projection
+  (it ran out at 4 and 8 GB on production data) and set
+  `options(survey160r.duckdb_memory = "16GB")` in their examples. The article's
+  score section also describes `context` as the previous three outcomes,
+  newest first, rather than the path's last three letters.
+
 ## `completion_score()`: the score counts older completes (0.89.0)
 
 * `completion_score()`'s `p_complete` now refines the context rate by the

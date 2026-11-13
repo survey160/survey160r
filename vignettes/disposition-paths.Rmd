@@ -151,10 +151,11 @@ kept <- subset(flagged, !(last_three_unanswered %in% TRUE))
 
 ## Score a sample by its history
 
-A pattern flags the histories you name; the completion model scores every history at once. `completion_score()` gives each number the completion rate of past sends to numbers with the same previous three outcomes (its `context`, the last three letters of the path) and the same count of earlier completes (0, 1, 2, 3 or more), in the planned mode, so a list can be ranked or trimmed before it is quoted:
+A pattern flags the histories you name; the completion model scores every history at once. `completion_score()` gives each number the completion rate of past sends to numbers with the same previous three outcomes (its `context`, newest first, as in the `"context"` group below: `"NNN"` is three non-responses) and the same count of earlier completes (0, 1, 2, 3 or more), in the planned mode, so a list can be ranked or trimmed before it is quoted:
 
 ```{r}
 pulled <- disposition_pull()   # the full projection: the toy file above is too small to fit
+options(survey160r.duckdb_memory = "16GB")   # the fit runs out of memory at the default 4 GB
 m <- completion_model_fit(pulled)
 scores <- completion_score(m, my_sample$phone, dataset = pulled, mode = "T2W",
                            start_date = "2026-12-01")
@@ -310,7 +311,7 @@ The production figures below are from the dataset as of November 2026.
 - **A long gap can join two people's histories.** A number can be reassigned, and the dataset cannot show when: a carrier change between campaigns is not reliable evidence of a list-version change, a port or a reassignment. `max_gap_days` keeps a pattern from matching across a long gap.
 - **Overlapping campaigns.** Two campaigns that fielded at the same time can come out in either order (0.5% of consecutive pairs, all under 30 days apart).
 - **How the labels reconcile with the summary.** On an unfiltered steps table, per phone, `n_campaigns` and the counts of `web_complete` and `refused` labels equal `disposition_summary()`'s, and so does the last step's label (`latest_disposition`), except that a final `undeliverable` step is `non_response` in the summary (`undeliverable_codes = NULL` makes them agree). The other counts differ only where one stored row sets two flags: a row flagged both completed and web complete (about 430,000 since 2024) is one `web_complete` step here and counts in both `n_completed` and `n_web_complete` there, and a row flagged both terminated and refused is one `refused` step here but counts in both there. A `campaign_ids` / `date_from` / `date_to` scope applies to both in the same way, so a scoped steps table reconciles with the equally scoped summary; a `filter()` on the result does not change `n_campaigns`.
-- **Memory.** DuckDB works within 4 GB and spills to disk past it (up to about 20 GB on a full-dataset query, freed when it finishes). Change it with `options(survey160r.duckdb_memory = "8GB")` or `options(survey160r.duckdb_temp_dir = "/path")`.
+- **Memory.** DuckDB works within 4 GB and spills to disk past it (up to about 20 GB on a full-dataset query, freed when it finishes). `completion_model_fit()` on the full dataset is the exception: it runs out of memory at 4 GB, so give it 16 GB as in the score example. Change it with `options(survey160r.duckdb_memory = "8GB")` or `options(survey160r.duckdb_temp_dir = "/path")`.
 - **A path, not a frame.** Both readers take the Parquet path from `disposition_pull()`, never an in-memory frame; write a frame with `nanoparquet::write_parquet()` first, as above. Without `duckdb`, `DBI` and `dbplyr` they stop and say what to install (there is no fallback engine).
 - **Stale cache.** `disposition_pull(refresh = TRUE)` downloads the current dataset.
 
