@@ -1,6 +1,6 @@
 Package: survey160r
 Title: R Client for Survey160 Data
-Version: 0.89.2
+Version: 0.89.3
 Authors@R: c(
     person("Lennon", "Shimokawa", email = "lshimokawa@survey160.com", role = c("aut", "cre"))
     )
@@ -12,9 +12,13 @@ Description: Access Survey160 campaign data from R. Reads campaign
     counts and rates. Results are in-memory data frames; persistence and
     fleet orchestration live in consumer projects.
 License: MIT + file LICENSE
-URL: https://github.com/survey160/survey160r
+URL: https://survey160.r-universe.dev/survey160r,
+    https://github.com/survey160/survey160r
 BugReports: https://github.com/survey160/survey160r/issues
 Encoding: UTF-8
+X-schema.org-keywords: survey160, survey-research, sms-surveys,
+    text-to-web, polling, phone-sample, disposition, opt-out,
+    response-rates, google-cloud-storage
 Depends:
     R (>= 4.1)
 Imports:
