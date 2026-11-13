@@ -10,7 +10,7 @@ R package for accessing Survey160 campaign data, across these areas:
 - **[Completion estimates](vignettes/completion-estimate.Rmd)** -- estimate a planned survey's opt-in and completion rates from its design and sample, size the sample for a target number of completes, and rank or trim a list by each number's chance of completing.
 - **[Opt-out screening](vignettes/opt-out.Rmd)** -- screen a phone sample against the opt-out list, flagging numbers that have opted out before you field.
 - **[Campaign metrics](vignettes/campaign-metrics.Rmd)** -- download the consolidated per-campaign metrics + recipient-latency projection (`campaign_all.parquet`) with `campaign_metrics_pull()`, read it into analysis-ready cells with `campaign_metrics_records()`, and roll those up to funnel counts and rates by any project dimension with `campaign_metrics_summary()`.
-- **[Delivery error rates](vignettes/delivery-errors.Rmd)** -- download the hour-by-hour, fleet-wide live delivery counts (one file per ET day) with `live_metrics_pull()` and roll them up with `live_metrics_error_rates()` to daily and cumulative delivery error rates by carrier, brand, or campaign, with T-Mobile 4780 split out.
+- **[Delivery errors](vignettes/delivery-errors.Rmd)** -- download the hour-by-hour, fleet-wide live delivery counts (one file per ET day) with `live_metrics_pull()` and roll them up with `live_metrics_error_rates()` to daily and cumulative delivery error rates by carrier, brand, or campaign, with T-Mobile 4780 split out.
 - **[Latency analysis](vignettes/latency.Rmd)** -- compute a per-campaign recipient-latency report from a raw campaign CSV, as an in-memory R object.
 - **[Raw data access](#raw-data-access)** -- read campaign results from Google Cloud Storage (`s160_gcs_*`) and trigger fresh exports via the API (`s160_api_*`).
 
@@ -29,7 +29,7 @@ R package for accessing Survey160 campaign data, across these areas:
 | Rank or trim a sample by each number's chance of completing, before quoting | `completion_model_fit()` then `completion_score(m, my_sample$phone, dataset = dataset, mode = "T2W")`, then sort on `p_complete` | [Completion estimates](#completion-estimates) |
 | Drop numbers that opted out | `opt_out_pull()` then `opt_out_screen(my_sample, optout)`, then `subset()` on the appended `opted_out` | [Opt-out screening](#opt-out-screening) |
 | Funnel rates across the fleet by registration, brand, client, or mode | `campaign_metrics_pull()` then `campaign_metrics_summary(path, by = )` | [Campaign metrics](#campaign-metrics) |
-| Delivery error rates by carrier and day, daily and cumulative, across every ongoing campaign | `live_metrics_pull()` then `live_metrics_error_rates(paths)` | [Delivery error rates](#delivery-error-rates) |
+| Delivery error rates by carrier and day, daily and cumulative, across every ongoing campaign | `live_metrics_pull()` then `live_metrics_error_rates(paths)` | [Delivery errors](#delivery-errors) |
 | See how fast each message followed the last one in a campaign | `latency_run(campaign_id, data)` | [Latency analysis](#latency-analysis) |
 | How many recipients reached each question | `question_funnel(data, c("intro", "q1", "close"))` | [Latency analysis](#latency-analysis) |
 | Read a campaign's last export | `s160_gcs_campaign_results_read(campaign_id)` | [Raw data access](#raw-data-access) |
@@ -166,7 +166,7 @@ campaign_metrics_summary(path, by = c("brand", "mode"), percent = TRUE)
 
 The projection holds counts, not phone numbers, so there is no screen here. To scope a rollup (a date window, a set of campaigns), read the cells with `campaign_metrics_records()`, filter, and pass the frame to `campaign_metrics_summary()`; never sum the raw Parquet yourself, it repeats each count across latency rows. Full walkthrough in the **[campaign-metrics guide](vignettes/campaign-metrics.Rmd)** (`vignette("campaign-metrics")` once installed).
 
-## Delivery error rates
+## Delivery errors
 
 Follow delivery error rates by carrier, day by day and cumulatively, across every ongoing campaign. Pull a range of ET days, then roll them up:
 
@@ -283,7 +283,7 @@ again. Get these from your team lead.
 
 ## Documentation
 
-- **Guides (articles):** [Disposition screening](vignettes/disposition.Rmd), [Disposition paths](vignettes/disposition-paths.Rmd), [Completion estimates](vignettes/completion-estimate.Rmd), [Opt-out screening](vignettes/opt-out.Rmd), [Campaign metrics](vignettes/campaign-metrics.Rmd), [Delivery error rates by carrier](vignettes/delivery-errors.Rmd), and [Latency analysis](vignettes/latency.Rmd) -- also rendered as Articles on the [package site](https://survey160.r-universe.dev/survey160r). In R: `vignette("disposition")` / `vignette("disposition-paths")` / `vignette("completion-estimate")` / `vignette("opt-out")` / `vignette("campaign-metrics")` / `vignette("delivery-errors")` / `vignette("latency")`.
+- **Guides (articles):** [Disposition screening](vignettes/disposition.Rmd), [Disposition paths](vignettes/disposition-paths.Rmd), [Completion estimates](vignettes/completion-estimate.Rmd), [Opt-out screening](vignettes/opt-out.Rmd), [Campaign metrics](vignettes/campaign-metrics.Rmd), [Delivery errors](vignettes/delivery-errors.Rmd), and [Latency analysis](vignettes/latency.Rmd) -- also rendered as Articles on the [package site](https://survey160.r-universe.dev/survey160r). In R: `vignette("disposition")` / `vignette("disposition-paths")` / `vignette("completion-estimate")` / `vignette("opt-out")` / `vignette("campaign-metrics")` / `vignette("delivery-errors")` / `vignette("latency")`.
 - **Function reference:** `?survey160r` (every function by task, the local cache, and the error classes), or `help(package = "survey160r")`. Setup from inside R: `?s160_gcs_init` and `?s160_api_auth`.
 - **Changelog:** `NEWS.md` (or `news(package = "survey160r")` after install). Cutting a release: [`RELEASING.md`](RELEASING.md). Project conventions and agent context: `CLAUDE.md`.
 

@@ -63,7 +63,7 @@ The rates come from `funnel_rates()`, the one definition `campaign_metrics_summa
 funnel_rates(data.frame(n_sent = 2000, n_engaged = 180, n_opted_in = 90, n_completed = 35))
 ```
 
-## Delivery error rates by carrier
+## Delivery errors
 
 Daily and cumulative delivery error rates by carrier, with T-Mobile 4780 split out, come from a separate dataset, the live delivery metrics: see `vignette("delivery-errors")`.
 

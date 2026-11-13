@@ -1,8 +1,8 @@
 ---
-title: "Delivery error rates by carrier"
+title: "Delivery errors"
 output: rmarkdown::html_vignette
 vignette: >
-  %\VignetteIndexEntry{Delivery error rates by carrier}
+  %\VignetteIndexEntry{Delivery errors}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---
