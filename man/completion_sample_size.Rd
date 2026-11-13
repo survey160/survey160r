@@ -93,11 +93,12 @@ m <- completion_model_fit(dataset)
 completion_sample_size(m, 1200, mode = "T2W", topic = "Brand", loi = 12,
                        start_date = "2026-12-01")
 # when it arrives: does it cover the target?
-sample <- read.csv("client_sample.csv")
+my_sample <- read.csv("client_sample.csv", colClasses = c(phone = "character"))
 completion_sample_size(m, 1200, mode = "T2W", topic = "Brand", loi = 12,
-                       phones = sample$phone, dataset = dataset, start_date = "2026-12-01")
+                       phones = my_sample$phone, dataset = dataset, start_date = "2026-12-01")
 }
 }
 \seealso{
-\code{\link{completion_estimate}}, \code{\link{completion_model_fit}}
+\code{\link{completion_estimate}}, \code{\link{completion_model_fit}},
+  \code{vignette("completion-estimate")}
 }

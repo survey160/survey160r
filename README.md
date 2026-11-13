@@ -7,6 +7,7 @@ R package for accessing Survey160 campaign data, across these areas:
 
 - **[Disposition screening](vignettes/disposition.Rmd)** -- screen a phone sample against every recipient Survey160 has contacted, dropping numbers already completed, refused, or screened out before you field; roll the same dataset up to funnel rates by carrier or mode.
 - **[Disposition paths](vignettes/disposition-paths.Rmd)** -- follow each number's campaigns in order and match sequences (no reply, then engaged, then completed), or measure what happens after a given step.
+- **[Completion estimates](vignettes/completion-estimate.Rmd)** -- estimate a planned survey's opt-in and completion rates from its design and sample, size the sample for a target number of completes, and rank or trim a list by each number's chance of completing.
 - **[Opt-out screening](vignettes/opt-out.Rmd)** -- screen a phone sample against the opt-out list, flagging numbers that have opted out before you field.
 - **[Campaign metrics](vignettes/campaign-metrics.Rmd)** -- download the consolidated per-campaign metrics + recipient-latency projection (`campaign_all.parquet`) with `campaign_metrics_pull()`, read it into analysis-ready cells with `campaign_metrics_records()`, and roll those up to funnel counts and rates by any project dimension with `campaign_metrics_summary()`.
 - **[Delivery error rates](vignettes/delivery-errors.Rmd)** -- download the hour-by-hour, fleet-wide live delivery counts (one file per ET day) with `live_metrics_pull()` and roll them up with `live_metrics_error_rates()` to daily and cumulative delivery error rates by carrier, brand, or campaign, with T-Mobile 4780 split out.
@@ -24,8 +25,8 @@ R package for accessing Survey160 campaign data, across these areas:
 | Look up a few numbers' contact history | `disposition_summary(dataset, phones = )` (one row per phone) / `disposition_records(dataset, phones = )` (one row per campaign) | [Disposition screening](#disposition-screening) |
 | Funnel rates by carrier, mode, topic, or campaign | `disposition_funnel(dataset, by = "carrier")` | [Disposition screening](#disposition-screening) |
 | Follow what each number did campaign after campaign | `disposition_paths()` (one path per phone) / `disposition_steps()` (one row per campaign) | [Disposition paths](#disposition-paths) |
-| Estimate a planned survey's opt-in and completion rates (reply and engagement on request) from its sample and design, or the sends a target number of completes needs | `completion_model_fit()` (fit from the projection) / `completion_estimate()` (score one survey, with or without a list) / `completion_sample_size()` (sends for a target) | `?completion_estimate` |
-| Rank or trim a sample by each number's chance of completing, before quoting | `completion_model_fit()` then `completion_score(m, my_sample$phone, dataset = dataset, mode = "T2W")`, then sort on `p_complete` | [Disposition paths](#disposition-paths) |
+| Estimate a planned survey's opt-in and completion rates (reply and engagement on request) from its sample and design, or the sends a target number of completes needs | `completion_model_fit()` (fit from the projection) / `completion_estimate()` (score one survey, with or without a list) / `completion_sample_size()` (sends for a target) | [Completion estimates](#completion-estimates) |
+| Rank or trim a sample by each number's chance of completing, before quoting | `completion_model_fit()` then `completion_score(m, my_sample$phone, dataset = dataset, mode = "T2W")`, then sort on `p_complete` | [Completion estimates](#completion-estimates) |
 | Drop numbers that opted out | `opt_out_pull()` then `opt_out_screen(my_sample, optout)`, then `subset()` on the appended `opted_out` | [Opt-out screening](#opt-out-screening) |
 | Funnel rates across the fleet by registration, brand, client, or mode | `campaign_metrics_pull()` then `campaign_metrics_summary(path, by = )` | [Campaign metrics](#campaign-metrics) |
 | Delivery error rates by carrier and day, daily and cumulative, across every ongoing campaign | `live_metrics_pull()` then `live_metrics_error_rates(paths)` | [Delivery error rates](#delivery-error-rates) |
@@ -111,6 +112,27 @@ disposition_paths(dataset, "N > E|O > C|W") |> filter(matched) |> count() |> col
 ```
 
 Both need `duckdb`, `DBI` and `dbplyr` (see [Installation](#installation)) and return a lazy table: aggregate with `dplyr` verbs, then `collect()`. Full walkthrough -- the pattern syntax, flagging a sample by its history, comparing consecutive campaigns, the gap limit, and the caveats of the production data -- in the **[disposition-paths guide](vignettes/disposition-paths.Rmd)** (`vignette("disposition-paths")` once installed).
+
+## Completion estimates
+
+Estimate a planned survey's opt-in and completion rates from the same dataset, before you quote. Fit the model once, then estimate, size or rank each sample:
+
+```r
+library(survey160r)
+s160_gcs_init()   # one-time browser sign-in (cached)
+
+dataset <- disposition_pull()
+options(survey160r.duckdb_memory = "16GB")   # the fit runs out of memory at the default 4 GB
+m <- completion_model_fit(dataset)           # about a minute
+
+my_sample <- read.csv("client_sample.csv", colClasses = c(phone = "character"))
+completion_estimate(m, my_sample$phone, mode = "T2W", topic = "Policy", loi = 12,
+                    dataset = dataset, start_date = "2026-12-01")           # rates with 50% / 95% bands
+completion_sample_size(m, 1200, mode = "T2W", topic = "Policy", loi = 12)   # sends for 1,200 completes
+scores <- completion_score(m, my_sample$phone, dataset = dataset, mode = "T2W")  # one score per number
+```
+
+Full walkthrough -- the design-only estimate, sizing with a margin, ranking and trimming a list, and how far to trust the bands -- in the **[completion guide](vignettes/completion-estimate.Rmd)** (`vignette("completion-estimate")` once installed).
 
 ## Opt-out screening
 
@@ -261,7 +283,7 @@ again. Get these from your team lead.
 
 ## Documentation
 
-- **Guides (articles):** [Disposition screening](vignettes/disposition.Rmd), [Disposition paths](vignettes/disposition-paths.Rmd), [Opt-out screening](vignettes/opt-out.Rmd), [Campaign metrics](vignettes/campaign-metrics.Rmd), [Delivery error rates by carrier](vignettes/delivery-errors.Rmd), and [Latency analysis](vignettes/latency.Rmd) -- also rendered as Articles on the [package site](https://survey160.r-universe.dev/survey160r). In R: `vignette("disposition")` / `vignette("disposition-paths")` / `vignette("opt-out")` / `vignette("campaign-metrics")` / `vignette("delivery-errors")` / `vignette("latency")`.
+- **Guides (articles):** [Disposition screening](vignettes/disposition.Rmd), [Disposition paths](vignettes/disposition-paths.Rmd), [Completion estimates](vignettes/completion-estimate.Rmd), [Opt-out screening](vignettes/opt-out.Rmd), [Campaign metrics](vignettes/campaign-metrics.Rmd), [Delivery error rates by carrier](vignettes/delivery-errors.Rmd), and [Latency analysis](vignettes/latency.Rmd) -- also rendered as Articles on the [package site](https://survey160.r-universe.dev/survey160r). In R: `vignette("disposition")` / `vignette("disposition-paths")` / `vignette("completion-estimate")` / `vignette("opt-out")` / `vignette("campaign-metrics")` / `vignette("delivery-errors")` / `vignette("latency")`.
 - **Function reference:** `?survey160r` (every function by task, the local cache, and the error classes), or `help(package = "survey160r")`. Setup from inside R: `?s160_gcs_init` and `?s160_api_auth`.
 - **Changelog:** `NEWS.md` (or `news(package = "survey160r")` after install). Cutting a release: [`RELEASING.md`](RELEASING.md). Project conventions and agent context: `CLAUDE.md`.
 

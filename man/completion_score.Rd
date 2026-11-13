@@ -94,8 +94,8 @@ NA and only \code{p_reply} is scored.
 dataset <- disposition_pull()
 options(survey160r.duckdb_memory = "16GB")   # the default 4 GB runs out
 m <- completion_model_fit(dataset)
-sample <- read.csv("client_sample.csv")
-scores <- completion_score(m, sample$phone, dataset = dataset, mode = "T2W",
+my_sample <- read.csv("client_sample.csv", colClasses = c(phone = "character"))
+scores <- completion_score(m, my_sample$phone, dataset = dataset, mode = "T2W",
                            start_date = "2026-12-01")
 # keep the best four fifths
 ranked <- scores[order(-scores$p_complete, -scores$prior_replies,
@@ -106,5 +106,5 @@ keep <- head(ranked, ceiling(0.8 * nrow(ranked)))
 \seealso{
 \code{\link{completion_estimate}} (the list's rate),
   \code{\link{disposition_paths}} (flag a sample by a sequence pattern
-  instead), \code{vignette("disposition-paths")}
+  instead), \code{vignette("completion-estimate")}
 }

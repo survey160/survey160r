@@ -128,12 +128,13 @@ send and were the most frequent large misses (see
 dataset <- disposition_pull()
 options(survey160r.duckdb_memory = "16GB")   # the default 4 GB runs out
 m <- completion_model_fit(dataset)
-sample <- read.csv("client_sample.csv")
-completion_estimate(m, sample$phone, mode = "T2W", topic = "Policy", loi = 12,
+my_sample <- read.csv("client_sample.csv", colClasses = c(phone = "character"))
+completion_estimate(m, my_sample$phone, mode = "T2W", topic = "Policy", loi = 12,
                     dataset = dataset, start_date = "2026-12-01")
 }
 }
 \seealso{
 \code{\link{completion_model_fit}},
-  \code{\link{completion_sample_size}} (the sends a target needs)
+  \code{\link{completion_sample_size}} (the sends a target needs),
+  \code{vignette("completion-estimate")}
 }
