@@ -7,7 +7,7 @@ R package for accessing Survey160 campaign data, across these areas:
 
 - **[Disposition screening](vignettes/disposition.Rmd)** -- screen a phone sample against every recipient Survey160 has contacted, dropping numbers already completed, refused, or screened out before you field; roll the same dataset up to funnel rates by carrier or mode.
 - **[Disposition paths](vignettes/disposition-paths.Rmd)** -- follow each number's campaigns in order and match sequences (no reply, then engaged, then completed), or measure what happens after a given step.
-- **[Completion estimates](vignettes/completion.Rmd)** -- estimate a planned survey's opt-in and completion rates from its design and sample, size the sample for a target number of completes, and rank or trim a list by each number's chance of completing.
+- **[Completion estimates](vignettes/completion-estimate.Rmd)** -- estimate a planned survey's opt-in and completion rates from its design and sample, size the sample for a target number of completes, and rank or trim a list by each number's chance of completing.
 - **[Opt-out screening](vignettes/opt-out.Rmd)** -- screen a phone sample against the opt-out list, flagging numbers that have opted out before you field.
 - **[Campaign metrics](vignettes/campaign-metrics.Rmd)** -- download the consolidated per-campaign metrics + recipient-latency projection (`campaign_all.parquet`) with `campaign_metrics_pull()`, read it into analysis-ready cells with `campaign_metrics_records()`, and roll those up to funnel counts and rates by any project dimension with `campaign_metrics_summary()`.
 - **[Delivery error rates](vignettes/delivery-errors.Rmd)** -- download the hour-by-hour, fleet-wide live delivery counts (one file per ET day) with `live_metrics_pull()` and roll them up with `live_metrics_error_rates()` to daily and cumulative delivery error rates by carrier, brand, or campaign, with T-Mobile 4780 split out.
@@ -132,7 +132,7 @@ completion_sample_size(m, 1200, mode = "T2W", topic = "Policy", loi = 12)   # se
 scores <- completion_score(m, my_sample$phone, dataset = dataset, mode = "T2W")  # one score per number
 ```
 
-Full walkthrough -- the design-only estimate, sizing with a margin, ranking and trimming a list, and how far to trust the bands -- in the **[completion guide](vignettes/completion.Rmd)** (`vignette("completion")` once installed).
+Full walkthrough -- the design-only estimate, sizing with a margin, ranking and trimming a list, and how far to trust the bands -- in the **[completion guide](vignettes/completion-estimate.Rmd)** (`vignette("completion-estimate")` once installed).
 
 ## Opt-out screening
 
@@ -283,7 +283,7 @@ again. Get these from your team lead.
 
 ## Documentation
 
-- **Guides (articles):** [Disposition screening](vignettes/disposition.Rmd), [Disposition paths](vignettes/disposition-paths.Rmd), [Completion estimates](vignettes/completion.Rmd), [Opt-out screening](vignettes/opt-out.Rmd), [Campaign metrics](vignettes/campaign-metrics.Rmd), [Delivery error rates by carrier](vignettes/delivery-errors.Rmd), and [Latency analysis](vignettes/latency.Rmd) -- also rendered as Articles on the [package site](https://survey160.r-universe.dev/survey160r). In R: `vignette("disposition")` / `vignette("disposition-paths")` / `vignette("completion")` / `vignette("opt-out")` / `vignette("campaign-metrics")` / `vignette("delivery-errors")` / `vignette("latency")`.
+- **Guides (articles):** [Disposition screening](vignettes/disposition.Rmd), [Disposition paths](vignettes/disposition-paths.Rmd), [Completion estimates](vignettes/completion-estimate.Rmd), [Opt-out screening](vignettes/opt-out.Rmd), [Campaign metrics](vignettes/campaign-metrics.Rmd), [Delivery error rates by carrier](vignettes/delivery-errors.Rmd), and [Latency analysis](vignettes/latency.Rmd) -- also rendered as Articles on the [package site](https://survey160.r-universe.dev/survey160r). In R: `vignette("disposition")` / `vignette("disposition-paths")` / `vignette("completion-estimate")` / `vignette("opt-out")` / `vignette("campaign-metrics")` / `vignette("delivery-errors")` / `vignette("latency")`.
 - **Function reference:** `?survey160r` (every function by task, the local cache, and the error classes), or `help(package = "survey160r")`. Setup from inside R: `?s160_gcs_init` and `?s160_api_auth`.
 - **Changelog:** `NEWS.md` (or `news(package = "survey160r")` after install). Cutting a release: [`RELEASING.md`](RELEASING.md). Project conventions and agent context: `CLAUDE.md`.
 

@@ -56,7 +56,7 @@
 #'   \code{warnings} (the estimate's, plus a note when the list is short of the
 #'   target at the point estimate).
 #' @seealso \code{\link{completion_estimate}}, \code{\link{completion_model_fit}},
-#'   \code{vignette("completion")}
+#'   \code{vignette("completion-estimate")}
 #' @examples
 #' \dontrun{
 #' dataset <- disposition_pull()

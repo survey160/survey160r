@@ -127,7 +127,7 @@
 #'   \code{prior_completes}) and \code{p_reply} (the context rate).
 #' @seealso \code{\link{completion_estimate}} (the list's rate),
 #'   \code{\link{disposition_paths}} (flag a sample by a sequence pattern
-#'   instead), \code{vignette("completion")}
+#'   instead), \code{vignette("completion-estimate")}
 #' @examples
 #' \dontrun{
 #' dataset <- disposition_pull()

@@ -2,7 +2,7 @@
 
 ## Docs: a completion estimates article (0.89.2)
 
-* New `vignette("completion")`: fit the completion model, estimate a planned
+* New `vignette("completion-estimate")`: fit the completion model, estimate a planned
   survey (with or without its list), size the sample for a target, and rank
   or trim a list with `completion_score()`, with how far to trust the bands.
   The README gains a Completion estimates section, the reference index a

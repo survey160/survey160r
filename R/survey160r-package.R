@@ -10,7 +10,7 @@
 #' \strong{delivery error rates}.
 #' Every function, grouped by task, is listed below. The articles
 #' (\code{vignette("disposition")}, \code{vignette("disposition-paths")},
-#' \code{vignette("completion")},
+#' \code{vignette("completion-estimate")},
 #' \code{vignette("opt-out")}, \code{vignette("campaign-metrics")},
 #' \code{vignette("delivery-errors")}, \code{vignette("latency")})
 #' walk through each task.
@@ -89,7 +89,7 @@
 #'     -- fit the opt-in and completion rate models from the dataset, then
 #'     estimate a planned survey's rates from its sample and design, the
 #'     sends a target number of completes needs, or each number's chance of
-#'     completing (to rank or trim a sample; \code{vignette("completion")}).
+#'     completing (to rank or trim a sample; \code{vignette("completion-estimate")}).
 #'   \item \code{\link{disposition_run}} / \code{\link{disposition_input_columns}}
 #'     -- build the per-respondent rows from one campaign export (the producer
 #'     side of the dataset).

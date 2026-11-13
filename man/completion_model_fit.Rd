@@ -158,5 +158,5 @@ summary(m)
 \seealso{
 \code{\link{completion_estimate}} (score a planned survey),
   \code{\link{disposition_paths}} (the history letters),
-  \code{vignette("completion")}
+  \code{vignette("completion-estimate")}
 }

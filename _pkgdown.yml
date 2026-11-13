@@ -108,7 +108,7 @@ articles:
   contents:
   - disposition
   - disposition-paths
-  - completion
+  - completion-estimate
   - opt-out
   - campaign-metrics
   - delivery-errors

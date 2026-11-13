@@ -668,7 +668,7 @@
 #'   \code{odds_multiplier}, \code{std_error}).
 #' @seealso \code{\link{completion_estimate}} (score a planned survey),
 #'   \code{\link{disposition_paths}} (the history letters),
-#'   \code{vignette("completion")}
+#'   \code{vignette("completion-estimate")}
 #' @examples
 #' \dontrun{
 #' dataset <- disposition_pull()

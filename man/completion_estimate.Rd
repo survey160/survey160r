@@ -136,5 +136,5 @@ completion_estimate(m, sample$phone, mode = "T2W", topic = "Policy", loi = 12,
 \seealso{
 \code{\link{completion_model_fit}},
   \code{\link{completion_sample_size}} (the sends a target needs),
-  \code{vignette("completion")}
+  \code{vignette("completion-estimate")}
 }

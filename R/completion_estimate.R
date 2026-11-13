@@ -356,7 +356,7 @@
 #'   a target not fitted for the mode).
 #' @seealso \code{\link{completion_model_fit}},
 #'   \code{\link{completion_sample_size}} (the sends a target needs),
-#'   \code{vignette("completion")}
+#'   \code{vignette("completion-estimate")}
 #' @examples
 #' \dontrun{
 #' dataset <- disposition_pull()
