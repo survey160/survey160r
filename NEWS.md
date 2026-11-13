@@ -1,5 +1,10 @@
 # survey160r (development version)
 
+## Docs: no package logo (0.89.5)
+
+* The hex logo added in 0.89.3 is removed from the package, the README and
+  the R-universe page.
+
 ## Docs: technical help pages (0.89.4)
 
 * The help pages and earlier NEWS entries no longer quote production
