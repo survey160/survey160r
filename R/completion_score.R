@@ -65,9 +65,9 @@
 #' year, and is then refined by its \code{prior_completes} (0, 1, 2, 3 or
 #' more): the rate of that cell's sends with the same count, pulled toward the
 #' cell's rate with the weight of 200 sends, so a thin count stays near its
-#' cell. Older completes matter: in 2026, among numbers whose last three
-#' contacts went unanswered, one that completed earlier completed about ten
-#' times as often as one that never did. A model fitted before 0.89.0 has no
+#' cell. Older completes matter: two numbers with the same last three
+#' outcomes differ when one of them completed earlier. A model fitted before
+#' 0.89.0 has no
 #' such split and scores on the context alone.
 #'
 #' It is a group rate, not a personal probability: it ranks a list well (on
@@ -78,8 +78,8 @@
 #' and a difference between two numbers' scores is meaningful only when their
 #' cells differ. Its level is the
 #' history's, not this year's: on live lists the table has run about 1.3
-#' times the completion actually seen in 2025-2026 (the fleet completes less
-#' than it used to), while text-to-web is within 5-25\%. Read the mean of a
+#' times the completion actually seen in 2025-2026, while text-to-web is
+#' within 5-25\%. Read the mean of a
 #' list from \code{completion_estimate()}, whose model carries the current
 #' level; read the scores as a ranking.
 #'

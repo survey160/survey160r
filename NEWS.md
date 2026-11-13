@@ -1,5 +1,14 @@
 # survey160r (development version)
 
+## Docs: technical articles and help pages (0.89.4)
+
+* The articles, the help pages and earlier NEWS entries no longer quote
+  production business figures (reply and completion rates by history,
+  contact volumes, row counts, carrier label shares). The technical guidance
+  they supported stays, and model accuracy, runtime and memory figures are
+  kept. `?disposition_steps` now describes `carrier` as the list lookup that
+  changed twice in 2026, matching the disposition-paths article.
+
 ## Docs: a package logo, citation, and R-universe keywords (0.89.3)
 
 * The package has a hex logo (`man/figures/logo.png`), shown on the README
@@ -34,9 +43,8 @@
   number's `prior_completes` (0, 1, 2, 3 or more): the completion rate of the
   context cell's past sends with the same count, pulled toward the cell's rate
   with the weight of 200 sends. Three letters of context hide older completes:
-  in 2026, among numbers whose last three contacts went unanswered (`NNN`), one
-  that completed before completed about ten times as often as one that never
-  did (live 2.3% with one prior complete against 0.22% with none). On 2026
+  numbers with the same last three outcomes differ when one of them completed
+  earlier. On 2026
   lists scored with a model fitted to January 2026 (160 random lists), the
   median within-list AUC rose from 0.766 to 0.777 on live (better on 89% of
   lists) and from 0.651 to 0.657 on text-to-web (68%).
@@ -402,11 +410,7 @@
   such step before this one; `0` when it was the previous campaign) and
   `days_since_reply`, `days_since_complete`, `days_since_undeliverable`
   (`disposition_date` minus that step's); `NA` until the event has happened.
-  On the 2026 production rows campaigns, not days, are what predicts the next
-  outcome (a number completes 20% of the time when its previous campaign was a
-  complete, 13% / 10% / 8% / 5% after one / two / three / four unanswered
-  campaigns in between, 3% after five), while the calendar matters mainly for
-  undeliverables, which start replying again after about two years. The `history` group now builds the letter path for the
+  The `history` group now builds the letter path for the
   recency columns, which adds about four seconds on the full production projection
   (10 s to 14 s for the 2026 rows); a second window layer keyed on `step`
   was tried and cost twice that, the sort being the whole price.
@@ -447,7 +451,7 @@ a Survey Manager who scripts against the exports. No behaviour changed.
 ## Performance
 
 Outputs are identical to the previous version (checked on synthetic campaigns
-and on the production projection, ~165M rows); only the work behind them
+and on the production projection); only the work behind them
 changed.
 
 * A phone screen of the production projection (`disposition_summary(path,
@@ -504,7 +508,7 @@ answer, later engaged, then completed" -- which the per-phone counts of
   session-wide connection with a 4 GB memory limit that spills to disk past
   it (`options(survey160r.duckdb_memory, survey160r.duckdb_temp_dir)`); each
   session spills into its own subdirectory, removed when the session ends. On
-  the production projection (~165M rows) a full-scan aggregate takes 15-25 s
+  the production projection a full-scan aggregate takes 15-25 s
   at 5.5-7.5 GB of process memory; `phones =` or `sample_frac =` (a
   reproducible md5 sample of numbers) take seconds. They need `duckdb`, `DBI`
   and `dbplyr` (`dbplyr` is a new Suggests); an interactive session is offered
@@ -626,7 +630,7 @@ dispatch on the new condition classes instead.
 
 The Parquet-path readers now push their work into the DuckDB scan (when
 duckdb is installed), so only the result reaches R. Outputs are identical to
-the previous version (checked on the production projection, ~141M rows):
+the previous version (checked on the production projection):
 
 * `disposition_funnel(path)` groups and counts inside the scan: 12 s / ~16 GB
   peak on the production projection -> 0.6 s / ~0.1 GB. It previously could not
@@ -878,8 +882,8 @@ gated on byte-identical results). On a 200k-respondent, 12-question export
   inside the Parquet scan.** With the `duckdb` package installed (new in Suggests,
   used automatically), `disposition_screen()` -- and `disposition_summary()` /
   `disposition_records()` when given `phones` -- read only the sample's rows
-  instead of loading the whole projection. On the production projection (~140M
-  rows) a 10k-phone screen drops from ~150 s and ~26 GB peak RAM to ~2 s (~4-5 s
+  instead of loading the whole projection. On the production projection a
+  10k-phone screen drops from ~150 s and ~26 GB peak RAM to ~2 s (~4-5 s
   on a 4-core laptop) and ~0.6 GB; a 200k-phone screen from ~200 s to ~3 s, still under 1 GB. Results are
   identical; a 4-core, 4 GB-capped run screens 200k phones in ~6 s where the old
   code was killed for running out of memory. Without `duckdb` the readers fall back to the whole-file
@@ -1527,7 +1531,7 @@ gated on byte-identical results). On a 200k-respondent, 12-question export
   `.reached_close()`), so the union of every language's completers is counted,
   matching the app's `phonelist.complete`. Verified against production: two
   campaigns' `close` + `close_sp` scriptDates summed to the exact database
-  `closed` count (214 and 61). A single-close campaign is unchanged.
+  `closed` count. A single-close campaign is unchanged.
   `disposition_input_columns()` now projects the close family so a pruned read
   keeps `close_sp`.
 

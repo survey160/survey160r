@@ -1237,12 +1237,7 @@ disposition_records <- function(dataset, phones = NULL, campaign_ids = NULL,
 #' happened. They are the columns \code{\link{disposition_steps}(columns =
 #' "history")} carries per step, with the same names and definitions, computed
 #' here as of the campaign that would come next, so a rule measured on the steps
-#' table applies to a sample unchanged. On the 2026 production rows the
-#' segments complete at about 17\% (\code{completer_2_plus}), 9\%
-#' (\code{completer_1}), 1.1\% (\code{replied}), 0.55\% (\code{first_contact}),
-#' 0.33\% (\code{unanswered_1_2}) and 0.17\% (\code{unanswered_3_plus}) of
-#' sends, and a number rejected by the carrier (\code{undeliverable}) starts
-#' replying again only after about two years; the usual rule drops
+#' table applies to a sample unchanged. A common rule drops
 #' \code{unanswered_3_plus} and a recent undeliverable and sends the completers
 #' first (see Examples). A campaign's letter follows
 #' \code{\link{disposition_steps}}: a no-reply row whose \code{error} is one of
@@ -1293,8 +1288,8 @@ disposition_records <- function(dataset, phones = NULL, campaign_ids = NULL,
 #' @section Memory:
 #' With the \pkg{duckdb} package installed (Suggests; used automatically), the
 #' sample's phone match runs inside the Parquet scan, so only the sample's rows
-#' are read into R: screening the full production projection (over a hundred
-#' million rows) takes seconds and well under 1 GB of RAM. Without it, reading a
+#' are read into R: screening the full production projection takes seconds
+#' and well under 1 GB of RAM. Without it, reading a
 #' large projection (over 100 MB) on the default \code{"auto"} engine would load
 #' the whole file into R (tens of GB), so survey160r instead offers \pkg{duckdb}:
 #' an interactive session prompts to install it, a non-interactive one stops with

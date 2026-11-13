@@ -239,7 +239,7 @@
 #' \strong{A lazy table.} The result is a \pkg{dbplyr} table that DuckDB
 #' computes when you \code{collect()} (or print) it, not a data frame: the history
 #' columns are window functions over every campaign a phone has, which on the
-#' production projection (~165M rows) only fit inside DuckDB. Aggregate before
+#' production projection only fit inside DuckDB. Aggregate before
 #' you \code{collect()} -- the full table is about 16 GB in R -- or scope it with
 #' \code{phones} / \code{sample_frac}. Rows come back unordered; \code{arrange()}
 #' when order matters. All tables share one session-wide DuckDB connection (see
@@ -266,12 +266,9 @@
 #' \code{prior_unanswered} (the rest, so \code{step - 1 - prior_replies}) -- and
 #' \code{history_segment}, the first of: \code{first_contact} (step 1),
 #' \code{completer_2_plus}, \code{completer_1}, \code{replied} (replied before,
-#' never completed), \code{unanswered_3_plus}, \code{unanswered_1_2}. On the 2026
-#' production rows the segments complete at about 17\%, 9\%, 1.1\%, 0.55\%
-#' (first contact), 0.17\% and 0.33\% of sends, so \code{unanswered_3_plus} and
-#' a previous \code{undeliverable} are the usual suppression rule and the
-#' completers the usual priority; group by it to reproduce those rates on a
-#' newer projection.
+#' never completed), \code{unanswered_3_plus}, \code{unanswered_1_2}. A common
+#' rule suppresses \code{unanswered_3_plus} and a recent \code{undeliverable}
+#' and sends the completers first; group by the segment to measure its rates.
 #'
 #' \strong{Recency.} The same group carries how long ago the phone last did
 #' something, counted both in campaigns and in days: \code{steps_since_reply},
@@ -280,13 +277,7 @@
 #' \code{0} means the previous campaign was one) and \code{days_since_reply},
 #' \code{days_since_complete}, \code{days_since_undeliverable} (this step's
 #' \code{disposition_date} minus that campaign's). All \code{NA} until the
-#' event has happened. On the 2026 production rows campaigns, not days, are
-#' what predicts the next outcome: a number completes 20\% of the
-#' time when its previous campaign was a complete, 13\% / 10\% / 8\% / 5\%
-#' after one / two / three / four unanswered campaigns in between and 3\% after
-#' five, whatever the calendar gap; after an undeliverable the next reply rate
-#' climbs from 0.3\% within a week to 3.4\% past two years, so
-#' \code{days_since_undeliverable} is the one day count worth a rule.
+#' event has happened.
 #'
 #' \strong{Context.} With \code{columns = "context"} each row carries
 #' \code{context}: the phone's previous three outcomes, newest first, as three
@@ -302,11 +293,12 @@
 #' \strong{Neighbor columns.} \code{neighbor_columns} carries any stored
 #' column across to the previous and next campaign, for transitions that depend
 #' on what changed between them: a switch of \code{survey_mode}, the same
-#' \code{tracker_client} or \code{tracker_topic} again. On prod
+#' \code{tracker_client} or \code{tracker_topic} again.
 #' \code{tracker_client} / \code{tracker_topic} are empty before 2024 (and
-#' \code{tracker_client} on about a fifth of 2026 rows), \code{tracker_topic}
-#' has four broad values, and \code{carrier} reads Sprint numbers as T-Mobile
-#' from March 2026 -- a Sprint-to-T-Mobile step is a relabel, not a port.
+#' \code{tracker_client} on some recent rows), \code{tracker_topic} has four
+#' broad values, and \code{carrier} comes from each list's lookup, which
+#' changed twice in 2026: compare it across campaigns only within lists from
+#' May 2026 on (\code{vignette("disposition-paths")}).
 #'
 #' \strong{Scope.} Every filter applies \emph{before} the history is computed,
 #' as in every other disposition reader: \code{phones} and \code{sample_frac}
@@ -323,7 +315,7 @@
 #' \code{options(survey160r.duckdb_temp_dir = "/path")} to change either (a new
 #' spill directory applies only before the session's first spill; each session
 #' spills into its own subdirectory, removed when the session ends). Measured on
-#' the production projection (~165M rows): a full-scan aggregate in ~16 s at
+#' the production projection: a full-scan aggregate in ~16 s at
 #' ~5.5 GB of process memory; a phone-scoped table (up to millions of phones) in
 #' 1-5 s. Each distinct \code{phones} vector stays registered on the connection
 #' for the session, so later operations on the table keep working.
