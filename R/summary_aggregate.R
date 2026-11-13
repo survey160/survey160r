@@ -83,7 +83,7 @@ build_summary_frame <- function(data, config, survey_mode = "sms",
   # Parse the timestamps summary needs, keyed on the OPENING question set (not a
   # hardcoded "intro") -- .question_timestamp coalesces each recipient's opener
   # send/reply across the intro-family / discovered opener, so a non-intro
-  # (FIRSTNET) or bilingual (intro + intro_sp) campaign is measured, not dropped.
+  # (WELCOME) or bilingual (intro + intro_sp) campaign is measured, not dropped.
   # Null-safe per column, so this also replaces the old unguarded read that
   # crashed on an absent id.intro.scriptDate.
   openers <- .opening_questions(config$flow$questions)

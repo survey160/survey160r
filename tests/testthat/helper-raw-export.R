@@ -4,16 +4,16 @@
 # readers (fread and the read.csv fallback), the header munging and the
 # timestamp decoding run on the same shape they meet in production.
 #
-# The shape is taken from a profile of the 1,468 exports in the historical
+# The shape is taken from a profile of the exports in the historical
 # backfill corpus (no real value is copied -- every phone, name and text here
 # is made up):
 #   * every field is double-quoted, header included; LF line endings, with
-#     ~9% of files CRLF (`eol = "\r\n"`);
+#     some files CRLF (`eol = "\r\n"`);
 #   * leading columns campaignid, phone, userid, status, attempts,
 #     outgoing_phone, ms_sid, status_disposition, error_code, web_complete,
 #     text_complete, then 11 `id[<q>]<field>` columns per question;
 #   * the panel's own columns are appended after the flow, and nearly every
-#     file repeats `phone` there (1464 of 1468), many repeat `userid` too --
+#     file repeats `phone` there, many repeat `userid` too --
 #     the readers make them phone.1 / userid.1;
 #   * `status` mixes words (limbo, open, closed, terminated, assigned) with
 #     carrier error codes (4720, 4753, ...); `error_code` holds a code, "",

@@ -18,13 +18,12 @@
 #
 # Fast path: a plain 10-digit string is already normalized (nothing to strip, no
 # country code), so only the other rows pay for gsub(). On a projection-sized
-# vector (~140M phones, nearly all clean) that is ~5x faster with the exact same
-# result.
+# vector (nearly all clean) that is ~5x faster with the exact same result.
 .normalize_phone <- function(x) {
   x <- as.character(x)
   # useBytes: the test is "exactly ten ASCII digits", which bytewise matching
   # decides identically (a multibyte character is never a digit byte) without
-  # the per-string encoding validation -- measurably cheaper at 100M+ phones.
+  # the per-string encoding validation -- measurably cheaper at projection scale.
   # As a byte-length test plus a search for any non-digit byte (which stops at
   # the first one) rather than one anchored "exactly ten digits" match: the
   # same set, slightly cheaper. An NA counts as two bytes (keepNA = FALSE)

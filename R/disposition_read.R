@@ -442,7 +442,7 @@
 
 # Column names + whether DuckDB wrote the file, from ONE footer parse. nanoparquet
 # 0.5.x's metadata readers cost time and memory in proportion to the row count
-# (~9 s / ~19 GB peak each on the ~140M-row production projection), so the
+# (~9 s / ~19 GB peak each on the full production projection), so the
 # readers take both facts from a single read_parquet_metadata() call instead of
 # read_parquet_info() + read_parquet_schema().
 .disposition_parquet_meta <- function(dataset) {
@@ -464,7 +464,7 @@
 # integers under `col_select` on its OWN writes -- returning uninitialized memory
 # (0 / 1 / garbage, nondeterministic) instead of NA, which silently corrupts a
 # projected read of e.g. `completed` (NA on t2w_external rows). `col_select` is a
-# real memory win on the projection (~3.3 vs ~5.5 GB at ~38M rows); the full read is
+# real memory win on the projection (~3.3 vs ~5.5 GB on a large read); the full read is
 # the correctness fallback for fixtures / unknown writers. The intersect keeps a
 # column-short/legacy projection returning only what is present, so the rollup's
 # own missing-column guards still fire. Drop the branch once nanoparquet fixes the
@@ -725,7 +725,7 @@
 # NA (R matches an NA id; SQL IN never does). A date bound is pushed only for a
 # DATE column and a bound that parses (an invalid one errors in R as before),
 # widened to whole days. Without these the filtered read held the whole
-# projection in R (~141M rows) to keep one campaign or one week.
+# projection in R to keep one campaign or one week.
 .disposition_scan_where <- function(con, schema, filters) {
   type_of <- function(col) schema$column_type[match(col, schema$column_name)]
   where <- character(0)

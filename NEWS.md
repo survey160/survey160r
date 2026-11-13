@@ -1,5 +1,12 @@
 # survey160r (development version)
 
+## Internal: technical code comments (0.89.6)
+
+* Code comments no longer quote production figures (projection row and phone
+  counts, reply rates by delivery-error code, corpus counts) or name
+  production campaigns; the technical reasoning they supported stays. The
+  non-intro opener example in tests, comments and NEWS is now `WELCOME`.
+
 ## Docs: technical help pages (0.89.4)
 
 * The help pages and earlier NEWS entries no longer quote production
@@ -1485,15 +1492,15 @@ gated on byte-identical results). On a 200k-respondent, 12-question export
 * **`disposition_run()` no longer drops or under-counts campaigns whose opening
   question is not named `intro`.** `started` / `engaged` / `opt_in` keyed on
   hardcoded `id.intro.*` columns, so (a) a campaign whose sole opening question
-  is named otherwise (e.g. `FIRSTNET`, `intro_sp`) produced all-zero flags and
+  is named otherwise (e.g. `WELCOME`, `intro_sp`) produced all-zero flags and
   vanished under the `contacted_only` default, and (b) a bilingual campaign that
   routes recipients to `intro` **and** `intro_sp` / `intro_latinos` (via the v2
   `initialconditionals`) counted only the `intro` branch and dropped the rest.
-  Verified in prod: a single-opener `FIRSTNET` campaign emitted zero rows, and
+  Verified in prod: a single-opener `WELCOME` campaign emitted zero rows, and
   a live bilingual campaign counted only part of its recipients (those on
   `intro_latinos` were dropped). The opening question is now resolved per campaign as a **set**
   -- every intro-family question present (`id.intro` / `id.intro_*`), or a single
-  discovered opener (e.g. `FIRSTNET`) when there is no intro family -- and a
+  discovered opener (e.g. `WELCOME`) when there is no intro family -- and a
   recipient is contacted if they received **any** of them; `opt_in` is the
   disjunction over the set's `finalText` columns. `disposition_input_columns()`
   returns every opener's columns (leading with them). Behaviour is byte-identical
@@ -1503,13 +1510,13 @@ gated on byte-identical results). On a 200k-respondent, 12-question export
 * **Latency view: campaigns whose opening question is not named `intro` are no
   longer dropped or under-counted.** `build_summary_frame()` and the config /
   validation / funnel-filter surface hardcoded `id.intro.*`, so a campaign whose
-  opener is named otherwise (e.g. `FIRSTNET`) **hard-errored** at
+  opener is named otherwise (e.g. `WELCOME`) **hard-errored** at
   `latency_validate_config()` (required `id.intro.finalText`), and a bilingual
   campaign that routes recipients to `intro` **and** `intro_sp` / `intro_latinos`
   (via the v2 `initialconditionals`) counted only the `intro` branch. The opening
   question is now resolved per campaign as a **set** -- every intro-family question
   present (`id.intro` / `id.intro_*`), or a single discovered opener (e.g.
-  `FIRSTNET`) -- and `n_texted` / `n_engaged` / `n_consented` / the ineligible
+  `WELCOME`) -- and `n_texted` / `n_engaged` / `n_consented` / the ineligible
   anchor / the dedupe + date filters key on it (`latency_build_config()` builds
   the opt-in population as a disjunction over the openers' `finalText`;
   `validate_columns_present()` requires the population's columns, not a hardcoded

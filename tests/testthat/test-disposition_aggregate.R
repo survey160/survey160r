@@ -151,7 +151,7 @@ test_that("t2w_external campaign: completed is NA for every row", {
 })
 
 test_that("a t2w web completion counts as opt-in without a close scriptDate", {
-  # Real prod case (t2w campaigns whose web link sits in the intro): the recipient
+  # A t2w campaign whose web link sits in the intro: the recipient
   # completes on the web with NO downstream close step firing, so routing sees no
   # continuation. The completion is the only opt-in evidence -- a completion IS an
   # opt-in, so opted_in must be >= completed (funnel monotonicity). r1 completed on
@@ -712,15 +712,15 @@ test_that("disposition_run meta is NA when data carries no provenance", {
 
 # --- opening-question fallback (non-intro campaigns) ------------------------
 
-test_that("non-intro opener (FIRSTNET) is measured, not silently dropped", {
-  # A campaign whose first question is "FIRSTNET", not "intro". Before the
+test_that("non-intro opener (WELCOME) is measured, not silently dropped", {
+  # A campaign whose first question is "WELCOME", not "intro". Before the
   # opening-question fallback every flag came up 0 and contacted_only dropped
-  # the whole campaign (873-send campaign 2085 vanished in prod). r3 never texted.
+  # the whole campaign. r3 never texted.
   d <- disp_frame(
     phone = c("+15559001", "+15559002", "+15559003"),
-    id.FIRSTNET.scriptDate = c(TS, TS, ""),
-    id.FIRSTNET.batchDate  = c(TS, "", ""),      # only r1 replied
-    id.FIRSTNET.finalText  = c("Yes", "No", "Yes"),
+    id.WELCOME.scriptDate = c(TS, TS, ""),
+    id.WELCOME.batchDate  = c(TS, "", ""),      # only r1 replied
+    id.WELCOME.finalText  = c("Yes", "No", "Yes"),
     id.close.scriptDate    = c(TS, "", "")
   )
   res <- disposition_run(1234, d, contacted_only = FALSE)$consolidated
@@ -737,7 +737,7 @@ test_that("non-intro opener (FIRSTNET) is measured, not silently dropped", {
 })
 
 test_that("intro_latinos opener is detected (opener name varies)", {
-  # Real prod case: campaign 2420's opener is "intro_latinos", not "intro".
+  # A campaign whose opener is "intro_latinos", not "intro".
   # r1 consented -> routed forward to the close; r2 did not.
   d <- disp_frame(
     phone = c("+15559101", "+15559102"),
@@ -751,7 +751,7 @@ test_that("intro_latinos opener is detected (opener name varies)", {
 })
 
 test_that("mixed campaign counts BOTH opener branches (intro + intro_sp)", {
-  # Bilingual routing (prod: CA MIHA): r1 got the English intro, r2 the Spanish
+  # Bilingual routing: r1 got the English intro, r2 the Spanish
   # intro_sp -- both are opening sends, so both are contacted, each replies on and
   # consents via its own branch. (Before this change only the intro branch counted.)
   d <- disp_frame(
@@ -804,15 +804,15 @@ test_that("mixed opted_in is decided by routing, not by a finalText column", {
 })
 
 test_that("disposition_input_columns discovers a non-intro opener from `available`", {
-  header <- c("phone", "id.FIRSTNET.scriptDate", "id.FIRSTNET.batchDate",
-              "id.FIRSTNET.finalText", "id.close.scriptDate", "userid")
+  header <- c("phone", "id.WELCOME.scriptDate", "id.WELCOME.batchDate",
+              "id.WELCOME.finalText", "id.close.scriptDate", "userid")
   cols <- disposition_input_columns(available = header)
-  expect_contains(cols, c("id.FIRSTNET.scriptDate", "id.FIRSTNET.batchDate"))
-  expect_false("id.FIRSTNET.finalText" %in% cols)  # routing opt-in reads no finalText
+  expect_contains(cols, c("id.WELCOME.scriptDate", "id.WELCOME.batchDate"))
+  expect_false("id.WELCOME.finalText" %in% cols)  # routing opt-in reads no finalText
   # The opener columns lead, so a reordered projection keeps the opener before a
   # later question (close) -- otherwise latency_discover_questions() would pick
   # close as the "first" question and the masks would key off the wrong column.
-  expect_lt(match("id.FIRSTNET.scriptDate", cols),
+  expect_lt(match("id.WELCOME.scriptDate", cols),
             match("id.close.scriptDate", cols))
   expect_false("id.intro.scriptDate" %in% cols)   # no intro hardcoding remains
   expect_false("userid" %in% cols)
@@ -824,9 +824,9 @@ test_that("disposition_input_columns: projected read matches full for a non-intr
   # between the projected and full frames (which would break this equivalence).
   full <- disp_frame(
     phone = c("+15559201", "+15559202"),
-    id.FIRSTNET.scriptDate = c(TS, TS),
-    id.FIRSTNET.batchDate = c(TS, TS),
-    id.FIRSTNET.finalText = c("Yes", "No"),
+    id.WELCOME.scriptDate = c(TS, TS),
+    id.WELCOME.batchDate = c(TS, TS),
+    id.WELCOME.finalText = c("Yes", "No"),
     id.close.scriptDate = c(TS, ""),
     userid = c("a", "b")                          # ignored by disposition_run
   )

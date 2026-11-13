@@ -7,7 +7,7 @@
 #
 # Both return a LAZY dbplyr table on one session-wide DuckDB connection instead of
 # a data frame. The history columns are window functions over every campaign a
-# phone has, so on the production projection (~165M rows, ~85M phones) they only
+# phone has, so on the full production projection they only
 # fit when DuckDB computes them -- spilling to disk past `memory_limit` -- and R
 # receives just what the caller collect()s. Measured on prod (4 GB limit): a
 # full-scan steps aggregate in ~10 s, paths in ~8 s, <= 5.5 GB RSS and up to
@@ -22,10 +22,9 @@
 #     same precedence as the summary's latest/best disposition
 #     (.disposition_derive_category), plus `undeliverable`: no reply and a
 #     delivery-error code in `undeliverable_codes`. A hard carrier rejection is
-#     not a non-response -- on prod the next campaign gets a reply 0.7% of the
-#     time after one of those codes vs 5.9% after a plain non-response, while
-#     softer codes (4740, 4405, 4780) reply at or above the plain rate, so the
-#     default list holds only the hard ones.
+#     not a non-response: a reply rarely follows one of those codes, while
+#     softer codes (4740, 4405, 4780) are followed by replies as often as a plain
+#     non-response, so the default list holds only the hard ones.
 #   * The path alphabet is one letter per label (.DISPOSITION_PATH_CODES).
 
 # One letter per label, in funnel order. `undeliverable` sits beside
@@ -34,8 +33,8 @@
                              opted_in = "O", terminated = "T", ineligible = "I",
                              refused = "R", completed = "C", web_complete = "W")
 
-# Carrier delivery-error codes that mean the number could not be reached (no
-# reply follows: 0.7-1.7% next-campaign reply on prod vs 5.9% for no error).
+# Carrier delivery-error codes that mean the number could not be reached (a
+# reply rarely follows them).
 .DISPOSITION_UNDELIVERABLE_CODES <- c("4700", "4701", "4702", "4720", "4750", "4753")
 
 # Stored columns the sequence readers cannot do without; the rest of the funnel
