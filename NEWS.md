@@ -1542,10 +1542,9 @@ gated on byte-identical results). On a 200k-respondent, 12-question export
   vanished under the `contacted_only` default, and (b) a bilingual campaign that
   routes recipients to `intro` **and** `intro_sp` / `intro_latinos` (via the v2
   `initialconditionals`) counted only the `intro` branch and dropped the rest.
-  Verified in prod: an 873-send `FIRSTNET` campaign emitted zero rows (47 such
-  single-opener campaigns exist), and a live 39,849-send campaign counted only
-  17,415 of its recipients (22,434 on `intro_latinos` were dropped; 72 mixed
-  campaigns exist). The opening question is now resolved per campaign as a **set**
+  Verified in prod: a single-opener `FIRSTNET` campaign emitted zero rows, and
+  a live bilingual campaign counted only part of its recipients (those on
+  `intro_latinos` were dropped). The opening question is now resolved per campaign as a **set**
   -- every intro-family question present (`id.intro` / `id.intro_*`), or a single
   discovered opener (e.g. `FIRSTNET`) when there is no intro family -- and a
   recipient is contacted if they received **any** of them; `opt_in` is the
