@@ -292,8 +292,10 @@
 #'
 #' Without \code{phones} the estimate is the survey design's alone: the sample
 #' terms take the training mean (a typical campaign's mix), \code{sample_score}
-#' and \code{reply_score} show the means used, the counts and the other sample
-#' columns are NA and a warning says so. Its error is much wider: on
+#' and \code{reply_score} show the means used, \code{sample_multiplier} is 1,
+#' the counts, \code{share_with_history}, \code{share_recent_contact},
+#' \code{years_since_contact} and \code{prior_optin_score} are NA and a warning
+#' says so. Its error is much wider: on
 #' 2025-2026 campaigns the median error was 44-46\% of the rate against
 #' 26-27\% with the list, about double on text-to-web (60-76\% against
 #' 31-34\%), and it explains almost none of the spread between campaigns; it
