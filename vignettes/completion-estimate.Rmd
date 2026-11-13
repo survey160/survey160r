@@ -28,15 +28,15 @@ options(survey160r.duckdb_memory = "16GB")   # the fit runs out of memory at the
 m <- completion_model_fit(dataset)           # about a minute
 m                                            # training windows and holdout accuracy
 
-sample <- read.csv("client_sample.csv", colClasses = c(phone = "character"))
-completion_estimate(m, sample$phone, mode = "T2W", topic = "Policy", loi = 12,
+my_sample <- read.csv("client_sample.csv", colClasses = c(phone = "character"))
+completion_estimate(m, my_sample$phone, mode = "T2W", topic = "Policy", loi = 12,
                     dataset = dataset, start_date = "2026-12-01")
 ```
 
-The estimate is one row: each fitted rate (`optin_rate`, `completion_rate`) with a 50% and a 95% band (`*_lo50` ... `*_hi95`) and the expected count over the sample (`optins`, `completes`). The model reads two things:
+The estimate is one row: each fitted rate (`optin_rate`, `completion_rate`) with a 50% and a 95% band (`*_lo50` ... `*_hi95`) and the expected count over the sample (`optins`, `completes`). The sample's history is read from the dataset up to `start_date`. The two rates read different inputs:
 
-- **The survey design** -- `mode` (`"Live"`, `"T2W"`, `"T2W external"`), `topic` (`"Brand"`, `"Electoral"`, `"Policy"`) and `loi`, the length of interview in minutes. An unknown topic or length is allowed and noted in `warnings`.
-- **The sample's history** -- read from the dataset up to `start_date`: how the numbers did before (the mean completion rate of their recent outcomes, `sample_score`), the share that completed before, the share that never replied to three or more contacts, and how long since they were last contacted.
+- **Completion** reads the survey design -- `mode` (`"Live"`, `"T2W"`, `"T2W external"`), `topic` (`"Brand"`, `"Electoral"`, `"Policy"`) and `loi`, the length of interview in minutes -- and the sample's history: how the numbers did before (the mean completion rate of their recent outcomes, `sample_score`), the share that completed before, the share that never replied to three or more contacts, and how long since they were last contacted. An unknown topic or length is allowed and noted in `warnings`.
+- **Opt-in** reads only `mode`, the same `sample_score`, and the opt-in rate of the campaign each number was last in: `topic` and `loi` do not move it.
 
 Quote one campaign with the point estimate and the 50% band. When summing expected completes over many campaigns, use `completes_mean`: the band is skewed, so the mean runs above the point estimate.
 
@@ -60,17 +60,17 @@ completion_sample_size(m, 1200, mode = "T2W", topic = "Brand", loi = 12,
                        start_date = "2026-12-01")
 # when it arrives: does it cover the target?
 completion_sample_size(m, 1200, mode = "T2W", topic = "Brand", loi = 12,
-                       phones = sample$phone, dataset = dataset, start_date = "2026-12-01")
+                       phones = my_sample$phone, dataset = dataset, start_date = "2026-12-01")
 ```
 
-On 2025-2026 campaigns, a sample sized at `sends_at_estimate` reached its target in 48-63% of campaigns, at `sends_at_lo50` in 86-90% on live and 77-79% on text-to-web, and at `sends_at_lo95` in 93-97%. With a list, `list_covers` names the lowest of those levels the list still reaches (`"none"`: ask for more sample). `rate = "optin"` sizes a panel recruit on opt-ins instead.
+On 2025-2026 campaigns, a sample sized at `sends_at_estimate` reached its target in 48-63% of campaigns, at `sends_at_lo50` in 86-90% on live and 77-79% on text-to-web, and at `sends_at_lo95` in 93-97%. With a list, `list_covers` names the largest margin the list covers: `"95% band"` when it reaches the target even at the 95% band's low rate, then `"50% band"`, then `"estimate"`, and `"none"` when it falls short even at the estimate (ask for more sample). `rate = "optin"` sizes a panel recruit on opt-ins instead.
 
 ## Rank or trim a list
 
 `completion_score()` gives each number in the sample its own score, so you can send to the most likely completers first or drop the least likely before quoting:
 
 ```{r}
-scores <- completion_score(m, sample$phone, dataset = dataset, mode = "T2W",
+scores <- completion_score(m, my_sample$phone, dataset = dataset, mode = "T2W",
                            start_date = "2026-12-01")
 ranked <- scores[order(-scores$p_complete, -scores$prior_replies,
                        -scores$days_since_contact), ]
@@ -82,11 +82,12 @@ A number's `p_complete` is the completion rate of past sends to numbers with the
 - **Sort keys.** Most numbers in a list share a handful of contexts (never contacted, one, two or three non-responses), so a cut usually falls inside one. There, a reply anywhere in the older history and a longer silence since the last contact both raise completion, hence the two secondary keys. The number of past contacts does not.
 - **What a trim buys.** Dropping the lowest fifth of a list raises its completion rate by about a seventh and keeps nine completes in ten.
 - **A ranking, not a forecast.** The scores are group rates: on live lists they have run about 1.3 times the completion actually seen in 2025-2026. Read a list's expected rate from `completion_estimate()`, which can be run again on the trimmed list.
+- **Not a `group_by(context)`.** Grouping `disposition_steps(columns = "context")` by `context` does not reproduce `p_complete`: the model fits each mode (`sms`, `t2w`) separately, builds each year's table only from earlier years, leaves out sends whose completion is unknown, and then refines by prior completes.
 - **Join back.** `phone` is the 10 bare digits; normalize your sample's numbers the same way before joining the scores to it.
 
 ## What you get back
 
-`completion_estimate()` returns one row, with nine columns per fitted rate (shown for completion; `optin_*` follows the same pattern) and the sample's summary:
+`completion_estimate()` returns one row, with nine columns per fitted rate and the sample's summary. Shown for completion; opt-in has the same nine as `optin_rate`, `optin_lo50` ... `optin_hi95` and the counts `optins`, `optins_lo95`, `optins_hi95`, `optins_mean`:
 
 | Column | Meaning |
 |---|---|
@@ -121,4 +122,4 @@ A number's `p_complete` is the completion rate of past sends to numbers with the
 
 ## See also
 
-`?completion_model_fit`, `?completion_estimate`, `?completion_sample_size`, `?completion_score`, and `?survey160r` for every function by task. To follow each number's campaigns in order and flag a sample by a specific history (a screen-out followed by a topic switch, "ever completed"), `vignette("disposition-paths")`. To screen a sample on prior contact before estimating it, `vignette("disposition")` and `vignette("opt-out")`.
+`?completion_model_fit`, `?completion_estimate`, `?completion_sample_size`, `?completion_score`, and `?survey160r` for every function by task. To follow each number's campaigns in order and flag a sample by a specific history (a screen-out followed by a topic switch, "ever completed"), `vignette("disposition-paths")`. To screen a sample on prior contact before estimating it, `vignette("disposition")` and `vignette("opt-out")`; for the fleet funnel by registration or brand, `vignette("campaign-metrics")`; for delivery error rates by carrier, `vignette("delivery-errors")`; for recipient latency within a campaign, `vignette("latency")`.
