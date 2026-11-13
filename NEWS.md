@@ -1,6 +1,6 @@
 # survey160r (development version)
 
-## `completion_score()`: the score counts older completes
+## `completion_score()`: the score counts older completes (0.89.0)
 
 * `completion_score()`'s `p_complete` now refines the context rate by the
   number's `prior_completes` (0, 1, 2, 3 or more): the completion rate of the
@@ -18,6 +18,30 @@
 * `completion_estimate()` is unchanged: its `sample_score` averages the
   context rate, not the refined one (on production data the refinement did
   not improve the campaign-level estimate).
+
+## Bands sized on the holdout error (0.88.0)
+
+* `completion_model_fit()`: the band's residual sd per mode and per size band
+  is now the holdout root mean square error (the second fit, stopped
+  `holdout_months` earlier, scored on the campaigns in between; a window that
+  runs above or below the fit counts as error, not as a shift to centre away)
+  whenever that cell scored at least ten campaigns, and the larger of the
+  in-sample sd and that holdout error only for a thinner cell. The in-sample sd runs over every training year and on live campaigns
+  it is half again above the recent out-of-sample error, so the previous
+  "larger of the two" rule over-widened live bands: refitted monthly over
+  2025-2026 and scored on the next month, the nominal 50% band covered 82% on
+  live; it now covers 62-69% (text-to-web 54-62%), and the 95% band
+  93-94% / 91-92%. For a live survey `completion_sample_size()`'s
+  `sends_at_lo95` falls from about 3 times the point estimate to 2.1-2.4,
+  with the same 95-97% chance of reaching the target. Estimates on text-to-web
+  surveys and all point estimates are unchanged.
+* Help corrected and extended from the same 2025-2026 scoring: the
+  design-only estimate's error is 44-46% of the rate against 26-27% with a
+  list (not "about a third more"), and about double on text-to-web; how often
+  a sample sized at each `completion_sample_size()` level reached its target;
+  and `completion_score()`'s `p_complete` on live lists runs about 1.3 times
+  the completion seen since 2025 (read it as a ranking; the estimate carries
+  the level).
 
 ## Latency diagnostics: respondent counts and summary (0.87.1)
 

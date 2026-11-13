@@ -53,7 +53,7 @@ more): the rate of that cell's sends with the same count, pulled toward the
 cell's rate with the weight of 200 sends, so a thin count stays near its
 cell. Older completes matter: in 2026, among numbers whose last three
 contacts went unanswered, one that completed earlier completed about ten
-times as often as one that never did. A model fitted before 0.88.0 has no
+times as often as one that never did. A model fitted before 0.89.0 has no
 such split and scores on the context alone.
 
 It is a group rate, not a personal probability: it ranks a list well (on
@@ -62,7 +62,12 @@ two times in three inside one list; on 2026 lists the prior-completes step
 raised that from 0.77 to 0.78 for live and kept it near 0.65 for
 text-to-web),
 and a difference between two numbers' scores is meaningful only when their
-cells differ.
+cells differ. Its level is the
+history's, not this year's: on live lists the table has run about 1.3
+times the completion actually seen in 2025-2026 (the fleet completes less
+than it used to), while text-to-web is within 5-25\%. Read the mean of a
+list from \code{completion_estimate()}, whose model carries the current
+level; read the scores as a ranking.
 
 \strong{Trimming a list.} Sort by \code{p_complete}, then
 \code{prior_replies}, then \code{days_since_contact} (older first), and
