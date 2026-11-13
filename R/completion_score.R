@@ -1,12 +1,16 @@
 # completion_score(): the per-phone step of completion_estimate(), exported.
 # One row per phone with its history before the planned start and the context
-# table's P(complete) / P(reply); the estimate averages this table.
+# table's P(complete) (refined by prior completes) / P(reply); the estimate
+# averages the context rate of this table.
 
 # The per-phone table: every requested phone (normalized, unique) in input
 # order, with its last row before `start_date` from the history SQL. A phone
-# with no row is a first contact (`___`). `survey_mode` is the table block to
+# with no row is a first contact (`___`). `p_context` is the context cell's
+# rate (the estimate averages it); `p_complete` refines it by the number's
+# prior completes (.completion_refine). `survey_mode` is the table block to
 # read (NA: pooled). `campaign_id` (the last campaign) is kept for the
-# estimate's provenance term and dropped by completion_score().
+# estimate's provenance term and dropped by completion_score(), as is
+# `p_context`.
 .completion_score_table <- function(con, source, phones, model, year, survey_mode, start_date) {
   sql <- paste0(
     "SELECT phone, campaign_id, disposition_date, letter, context, n_prior, prior_completes, ",
@@ -24,16 +28,18 @@
   # fallbacks (a cell can have a count but no completion rate, when every send
   # in it had unknown completion)
   row <- .completion_context_row(model$contexts, year, context, survey_mode, "p_complete")
+  prior_completes <- ifelse(seen, h$prior_completes[idx] + (letter == "C"), 0L)
+  p_context <- model$contexts$p_complete[row]
   data.frame(
     phone = phones, context = context,
     n_prior = ifelse(seen, h$n_prior[idx] + 1L, 0L),
-    prior_completes = ifelse(seen, h$prior_completes[idx] + (letter == "C"), 0L),
+    prior_completes = prior_completes,
     prior_replies = ifelse(seen, h$prior_replies[idx] + letter %in% c("E", "O", "R", "C"), 0L),
     days_since_contact = days,
     n_context = model$contexts$n[row],
-    p_complete = model$contexts$p_complete[row],
+    p_complete = .completion_refine(model$completes, model$contexts, row, prior_completes, p_context),
     p_reply = .completion_context_lookup(model$contexts, year, context, survey_mode, "p_reply"),
-    campaign_id = h$campaign_id[idx],
+    campaign_id = h$campaign_id[idx], p_context = p_context,
     stringsAsFactors = FALSE)
 }
 
@@ -50,20 +56,31 @@
 #' number with its history before the planned start and the fitted model's
 #' P(complete) and P(reply) for that history, so a list can be ranked or
 #' trimmed before it is quoted. The estimate's \code{sample_score} is the
-#' logit of the mean \code{p_complete} over this table.
+#' logit of the mean context rate over this table (\code{p_complete} before
+#' the prior-completes step below), so the estimate does not change with it.
 #'
-#' A number's score is the completion rate of every past send to a number
-#' with the same \code{context} (its previous three outcomes, most recent
-#' first) in the same survey mode, on the context table of the start's year.
+#' A number's score starts from the completion rate of every past send to a
+#' number with the same \code{context} (its previous three outcomes, most
+#' recent first) in the same survey mode, on the context table of the start's
+#' year, and is then refined by its \code{prior_completes} (0, 1, 2, 3 or
+#' more): the rate of that cell's sends with the same count, pulled toward the
+#' cell's rate with the weight of 200 sends, so a thin count stays near its
+#' cell. Older completes matter: in 2026, among numbers whose last three
+#' contacts went unanswered, one that completed earlier completed about ten
+#' times as often as one that never did. A model fitted before 0.88.0 has no
+#' such split and scores on the context alone.
+#'
 #' It is a group rate, not a personal probability: it ranks a list well (on
 #' the production data, a random complete outranks a random non-complete about
-#' two times in three inside one list), and a difference between two numbers'
-#' scores is meaningful only when their contexts differ.
+#' two times in three inside one list; on 2026 lists the prior-completes step
+#' raised that from 0.76 to 0.77 for live and kept it at 0.65 for text-to-web),
+#' and a difference between two numbers' scores is meaningful only when their
+#' cells differ.
 #'
 #' \strong{Trimming a list.} Sort by \code{p_complete}, then
 #' \code{prior_replies}, then \code{days_since_contact} (older first), and
-#' keep the top. Every cut falls inside one context (most numbers share a
-#' handful of them), and inside a context only the older history separates
+#' keep the top. Every cut falls inside one cell (most numbers share a
+#' handful of them), and inside a cell only the older history separates
 #' numbers: a reply anywhere before the last three contacts, and a longer
 #' silence since the last contact, both raise completion. The contact count
 #' does not. Dropping the lowest fifth of a list raises its completion rate
@@ -100,7 +117,8 @@
 #'   never contacted), \code{n_context} (the total training sends
 #'   in the cell \code{p_complete} came from, through the same fallbacks,
 #'   including sends whose completion is unknown, so not the denominator of
-#'   \code{p_complete}), \code{p_complete} and \code{p_reply}.
+#'   \code{p_complete}), \code{p_complete} (the context rate refined by
+#'   \code{prior_completes}) and \code{p_reply} (the context rate).
 #' @seealso \code{\link{completion_estimate}} (the list's rate),
 #'   \code{\link{disposition_paths}} (flag a sample by a sequence pattern
 #'   instead), \code{vignette("disposition-paths")}
@@ -141,6 +159,7 @@ completion_score <- function(model, phones, dataset, mode = NULL, start_date = S
   source <- .disposition_lazy_source(con, dataset, fn)
   out <- .completion_score_table(con, source, req, model, year$year, survey_mode, start_date)
   out$campaign_id <- NULL
+  out$p_context <- NULL
   warnings <- c(year$warning,
                 .completion_score_no_row(out$p_complete, year$year, mode %||% "pooled"))
   if (identical(mode, "T2W external")) {

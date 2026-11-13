@@ -33,28 +33,40 @@ A data frame, one row per unique number, in input order:
   never contacted), \code{n_context} (the total training sends
   in the cell \code{p_complete} came from, through the same fallbacks,
   including sends whose completion is unknown, so not the denominator of
-  \code{p_complete}), \code{p_complete} and \code{p_reply}.
+  \code{p_complete}), \code{p_complete} (the context rate refined by
+  \code{prior_completes}) and \code{p_reply} (the context rate).
 }
 \description{
 The per-phone step behind \code{\link{completion_estimate}}: one row per
 number with its history before the planned start and the fitted model's
 P(complete) and P(reply) for that history, so a list can be ranked or
 trimmed before it is quoted. The estimate's \code{sample_score} is the
-logit of the mean \code{p_complete} over this table.
+logit of the mean context rate over this table (\code{p_complete} before
+the prior-completes step below), so the estimate does not change with it.
 }
 \details{
-A number's score is the completion rate of every past send to a number
-with the same \code{context} (its previous three outcomes, most recent
-first) in the same survey mode, on the context table of the start's year.
+A number's score starts from the completion rate of every past send to a
+number with the same \code{context} (its previous three outcomes, most
+recent first) in the same survey mode, on the context table of the start's
+year, and is then refined by its \code{prior_completes} (0, 1, 2, 3 or
+more): the rate of that cell's sends with the same count, pulled toward the
+cell's rate with the weight of 200 sends, so a thin count stays near its
+cell. Older completes matter: in 2026, among numbers whose last three
+contacts went unanswered, one that completed earlier completed about ten
+times as often as one that never did. A model fitted before 0.88.0 has no
+such split and scores on the context alone.
+
 It is a group rate, not a personal probability: it ranks a list well (on
 the production data, a random complete outranks a random non-complete about
-two times in three inside one list), and a difference between two numbers'
-scores is meaningful only when their contexts differ.
+two times in three inside one list; on 2026 lists the prior-completes step
+raised that from 0.76 to 0.77 for live and kept it at 0.65 for text-to-web),
+and a difference between two numbers' scores is meaningful only when their
+cells differ.
 
 \strong{Trimming a list.} Sort by \code{p_complete}, then
 \code{prior_replies}, then \code{days_since_contact} (older first), and
-keep the top. Every cut falls inside one context (most numbers share a
-handful of them), and inside a context only the older history separates
+keep the top. Every cut falls inside one cell (most numbers share a
+handful of them), and inside a cell only the older history separates
 numbers: a reply anywhere before the last three contacts, and a longer
 silence since the last contact, both raise completion. The contact count
 does not. Dropping the lowest fifth of a list raises its completion rate

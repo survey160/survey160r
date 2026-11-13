@@ -63,7 +63,11 @@ An object of class \code{completion_model}: a list with
   \code{within_50}) and \code{counts}), the shared per-year
   \code{contexts} table (\code{year}, \code{context}, \code{survey_mode}
   with NA for the pooled block, \code{p_complete}, \code{p_reply},
-  \code{n}), the
+  \code{n}), the \code{completes} table that splits each of its cells by
+  the sends' prior completes (\code{year}, \code{context},
+  \code{survey_mode}, \code{prior_completes} 0 to 3 with 3 meaning 3 or
+  more, \code{n_known} sends with known completion, \code{completes};
+  \code{\link{completion_score}} refines a number's rate with it), the
   \code{campaigns} table (\code{campaign_id}, \code{first_date},
   \code{optin_rate}) the estimate reads the previous campaign's opt-in rate
   from, the \code{windows} (\code{data_end}, \code{train_from},
