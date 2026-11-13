@@ -9,9 +9,9 @@
   in 2026, among numbers whose last three contacts went unanswered (`NNN`), one
   that completed before completed about ten times as often as one that never
   did (live 2.3% with one prior complete against 0.22% with none). On 2026
-  lists scored with a model fitted to January 2026, the median within-list AUC
-  rose from 0.756 to 0.770 on live (better on 92% of lists) and from 0.648 to
-  0.651 on text-to-web.
+  lists scored with a model fitted to January 2026 (160 random lists), the
+  median within-list AUC rose from 0.766 to 0.777 on live (better on 89% of
+  lists) and from 0.651 to 0.657 on text-to-web (68%).
 * `completion_model_fit()` stores the split as `completes` (one query: the
   context table is now its sum, so the fit makes no extra pass). A model
   fitted before this version scores on the context alone.

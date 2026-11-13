@@ -73,7 +73,8 @@
 #' It is a group rate, not a personal probability: it ranks a list well (on
 #' the production data, a random complete outranks a random non-complete about
 #' two times in three inside one list; on 2026 lists the prior-completes step
-#' raised that from 0.76 to 0.77 for live and kept it at 0.65 for text-to-web),
+#' raised that from 0.77 to 0.78 for live and kept it near 0.65 for
+#' text-to-web),
 #' and a difference between two numbers' scores is meaningful only when their
 #' cells differ.
 #'
