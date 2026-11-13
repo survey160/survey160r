@@ -10,13 +10,9 @@
 * The hex logo added in 0.89.3 is removed from the package, the README and
   the R-universe page.
 
-## Docs: technical help pages (0.89.4)
+## Docs: `carrier` in `?disposition_steps` (0.89.4)
 
-* The help pages and earlier NEWS entries no longer quote production
-  business figures (reply and completion rates by history, contact volumes,
-  row counts, carrier label shares). The technical guidance they supported
-  stays, and model accuracy, runtime and memory figures are kept.
-  `?disposition_steps` now describes `carrier` as the list lookup that changed
+* `?disposition_steps` now describes `carrier` as the list lookup that changed
   twice in 2026: compare it only within lists from May 2026 on.
 
 ## Docs: a package logo, citation, and R-universe keywords (0.89.3)
@@ -1495,15 +1491,15 @@ gated on byte-identical results). On a 200k-respondent, 12-question export
 * **`disposition_run()` no longer drops or under-counts campaigns whose opening
   question is not named `intro`.** `started` / `engaged` / `opt_in` keyed on
   hardcoded `id.intro.*` columns, so (a) a campaign whose sole opening question
-  is named otherwise (e.g. `FIRSTNET`, `intro_sp`) produced all-zero flags and
+  is named otherwise (e.g. `WELCOME`, `intro_sp`) produced all-zero flags and
   vanished under the `contacted_only` default, and (b) a bilingual campaign that
   routes recipients to `intro` **and** `intro_sp` / `intro_latinos` (via the v2
   `initialconditionals`) counted only the `intro` branch and dropped the rest.
-  Verified in prod: a single-opener `FIRSTNET` campaign emitted zero rows, and
+  Verified in prod: a single-opener `WELCOME` campaign emitted zero rows, and
   a live bilingual campaign counted only part of its recipients (those on
   `intro_latinos` were dropped). The opening question is now resolved per campaign as a **set**
   -- every intro-family question present (`id.intro` / `id.intro_*`), or a single
-  discovered opener (e.g. `FIRSTNET`) when there is no intro family -- and a
+  discovered opener (e.g. `WELCOME`) when there is no intro family -- and a
   recipient is contacted if they received **any** of them; `opt_in` is the
   disjunction over the set's `finalText` columns. `disposition_input_columns()`
   returns every opener's columns (leading with them). Behaviour is byte-identical
@@ -1513,13 +1509,13 @@ gated on byte-identical results). On a 200k-respondent, 12-question export
 * **Latency view: campaigns whose opening question is not named `intro` are no
   longer dropped or under-counted.** `build_summary_frame()` and the config /
   validation / funnel-filter surface hardcoded `id.intro.*`, so a campaign whose
-  opener is named otherwise (e.g. `FIRSTNET`) **hard-errored** at
+  opener is named otherwise (e.g. `WELCOME`) **hard-errored** at
   `latency_validate_config()` (required `id.intro.finalText`), and a bilingual
   campaign that routes recipients to `intro` **and** `intro_sp` / `intro_latinos`
   (via the v2 `initialconditionals`) counted only the `intro` branch. The opening
   question is now resolved per campaign as a **set** -- every intro-family question
   present (`id.intro` / `id.intro_*`), or a single discovered opener (e.g.
-  `FIRSTNET`) -- and `n_texted` / `n_engaged` / `n_consented` / the ineligible
+  `WELCOME`) -- and `n_texted` / `n_engaged` / `n_consented` / the ineligible
   anchor / the dedupe + date filters key on it (`latency_build_config()` builds
   the opt-in population as a disjunction over the openers' `finalText`;
   `validate_columns_present()` requires the population's columns, not a hardcoded
