@@ -569,3 +569,13 @@ test_that("fit: the band sd rule sees the holdout campaign counts per mode and p
   expect_equal(sum(seen$n[[2L]]), m$models$completion$holdout$n)
   expect_length(seen$n[[2L]], 4L)
 })
+
+test_that("holdout spread is the root mean square of the residuals, not the centred sd", {
+  r <- c(1, 1, 1, -2, 0)
+  mode <- c("a", "a", "a", "b", "b")
+  expect_equal(.completion_sd_by_mode(r, mode, c("a", "b"), rms = TRUE), c(a = 1, b = sqrt(2)))
+  expect_equal(.completion_sd_by_mode(r, mode, c("a", "b")), c(a = 0, b = stats::sd(c(-2, 0))))
+  cells <- .completion_sd_by_size(r, mode, c(1, 1, 1, 100, 100), c("a", "b"), 50, rms = TRUE)
+  expect_equal(cells$sd[cells$mode == "a" & cells$size == "under"], 1)
+  expect_equal(cells$sd[cells$mode == "b" & cells$size == "over"], sqrt(2))
+})

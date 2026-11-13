@@ -114,17 +114,18 @@ the bands come from a second fit that stops \code{holdout_months} earlier and
 is scored on the campaigns in between (the second fit needs at least one
 campaign per model term and two to score, else the metrics and the sd are
 NA with a warning). The band's residual sd is per mode
-and per model: the holdout sd for that mode (the out-of-sample error the
-band describes) when the holdout window scored at least ten campaigns of
-it, else the larger of the shipped fit's in-sample sd and the holdout sd.
+and per model: the holdout root mean square error for that mode (the
+out-of-sample error the band describes, a biased window included) when the
+holdout window scored at least ten campaigns of it, else the larger of the
+shipped fit's in-sample sd and that holdout error.
 The same sd is also kept per mode and sample-size band
 (sends under or at least \code{size_break}; campaigns under 50,000 sends
 spread about twice as much as larger ones), and the estimate uses the band
 of its sample when that cell has one. Residuals are heavy-tailed and the
 fleet drifts, so the bands are approximate: refitted every month over
 2025-2026 and scored on the next month's campaigns, the nominal 50\% band
-covered 61-67\% on live and 52-53\% on text-to-web, the 95\% band 93-94\%
-and 90-92\%.
+covered 62-69\% on live and 54-62\% on text-to-web, the 95\% band 93-94\%
+and 91-92\%.
 
 Each model also keeps a re-send summary: how many training campaigns of each
 mode had a sample mostly (over half) contacted in the 30 days before their

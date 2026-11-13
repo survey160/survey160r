@@ -280,8 +280,8 @@
 #' model's residual sd for the survey's mode and the sample's size band (under
 #' or over the fit's \code{size_break}), the mode's alone when that cell has
 #' none or no sample is given. They are approximate (refitted monthly over
-#' 2025-2026 and scored on the next month: 61-67\% live and 52-53\% text-to-web
-#' at the nominal 50\%, 93-94\% and 90-92\% at the nominal 95\%). For a text-to-web external
+#' 2025-2026 and scored on the next month: 62-69\% live and 54-62\% text-to-web
+#' at the nominal 50\%, 93-94\% and 91-92\% at the nominal 95\%). For a text-to-web external
 #' survey completion is never recorded, so the completion columns are NA and
 #' only the opt-in estimate stands.
 #'
