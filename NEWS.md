@@ -1,5 +1,10 @@
 # survey160r (development version)
 
+## Docs: the Survey160 logo (0.89.7)
+
+* The package uses the Survey160 logo (`man/figures/logo.png`), shown on the
+  README and the R-universe page.
+
 ## Internal: code comment wording (0.89.6)
 
 * Internal code comments and test descriptions reworded. No change to
