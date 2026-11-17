@@ -268,6 +268,18 @@ test_that("fit: filters follow the spec", {
   expect_equal(rows$campaign_id, c(4L, 6L))
 })
 
+test_that("fit: no campaign passing a target's filters is an error naming its required column", {
+  ct <- data.frame(
+    campaign_id = 1L, first_date = as.Date("2025-03-01"), last_date = as.Date("2025-03-02"),
+    year = 2025L, sent = 5L, optins = 3L, completes = 2L, completion_known = TRUE,
+    mode = "Live", topic = "Brand", loi = 12, sample_score = -4,
+    share_prior_completers = 0, share_cold = 0, stringsAsFactors = FALSE)
+  expect_error(.completion_fit_model(ct, "completion", train_until = as.Date("2026-10-01"),
+                                     holdout_from = as.Date("2026-07-01"), min_sent = 10,
+                                     settle_days = 7, data_end = as.Date("2026-09-04"), fn = "f"),
+               "at least one completion with known completion)", fixed = TRUE)
+})
+
 test_that("fit: a mode outside the model's levels drops from that fit", {
   ct <- data.frame(
     campaign_id = 1:2, first_date = as.Date(c("2025-03-01", "2025-04-01")),

@@ -582,6 +582,20 @@ test_that("results times out when GCS never updates", {
   )
 })
 
+test_that("results times out when the export file never appears", {
+  stub_api_base()
+  stub_no_sleep()
+  stub_gcs_base()
+  local_mocked_bindings(
+    get_gcs_file_updated = function(campaign_id, filename, ...) NULL,
+    s160_api_request = function(method, path, body = NULL, ...) list(status = "processing")
+  )
+  expect_error(
+    suppressMessages(s160_api_campaign_results(1980, timeout = 0.2, poll_interval = 0.1)),
+    "moves past the current (absent) file", fixed = TRUE
+  )
+})
+
 test_that("results errors when API not authenticated", {
   stub_gcs_base()
   expect_error(s160_api_campaign_results(1980), "Run s160_api_auth")
