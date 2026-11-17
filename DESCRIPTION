@@ -1,6 +1,6 @@
 Package: survey160r
 Title: R Client for Survey160 Data
-Version: 0.89.7
+Version: 0.89.8
 Date: 2026-11-13
 Authors@R: c(
     person("Lennon", "Shimokawa", email = "lshimokawa@survey160.com", role = c("aut", "cre"))
@@ -27,7 +27,7 @@ Imports:
     googleAuthR,
     gargle,
     httr,
-    jsonlite,
+    jsonlite (>= 1.8.8),
     lubridate,
     digest,
     dplyr,
