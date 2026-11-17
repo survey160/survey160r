@@ -294,6 +294,11 @@ test_that("estimate: a sample over the size break with no sd in that band falls 
   expect_equal(big$n_phones, 50000L)
   expect_equal(big$band_sd, m$models$completion$residual_sd[["Live"]])
   expect_true(any(grepl("50,000", big$warnings[[1]]) & grepl("mode", big$warnings[[1]])))
+  # an under-break sample with no sd in its band also falls back, and says so
+  m$models$completion$residual_sd_size$sd[sz$mode == "Live" & sz$size == "under"] <- NA_real_
+  small <- completion_estimate(m, ph, "Live", "Brand", 12, f$path, start_date = as.Date("2026-11-15"))
+  expect_equal(small$band_sd, m$models$completion$residual_sd[["Live"]])
+  expect_true(any(grepl("samples under 50,000 sends", small$warnings[[1]], fixed = TRUE)))
 })
 
 test_that("estimate: a re-sent sample is flagged", {

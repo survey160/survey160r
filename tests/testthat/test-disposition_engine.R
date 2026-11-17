@@ -185,6 +185,11 @@ test_that("without duckdb, auto falls back to nanoparquet and a forced duckdb er
     fixed = TRUE))
 })
 
+test_that("a forced duckdb with one package absent names that package", {
+  local_mocked_bindings(requireNamespace = function(package, ...) package == "DBI", .package = "base")
+  with_engine("duckdb", expect_error(.disposition_engine(), "but duckdb is not installed", fixed = TRUE))
+})
+
 # A recorder for rlang::check_installed(), so the offer branch never tries a real
 # install: it just captures the packages asked for and the reason.
 stub_check_installed <- function(cap, env = parent.frame()) {

@@ -1,5 +1,11 @@
 # survey160r (development version)
 
+## Dependencies: jsonlite floor (0.89.8)
+
+* `jsonlite` now requires version 1.8.8 or later. Older versions bundle a
+  yajl parser with a known memory-leak vulnerability (RSEC-2023-3).
+* CI actions are pinned to commit SHAs, and `actions/checkout` moves to v7.
+
 ## Docs: the Survey160 logo (0.89.7)
 
 * The package uses the Survey160 logo (`man/figures/logo.png`), shown on the

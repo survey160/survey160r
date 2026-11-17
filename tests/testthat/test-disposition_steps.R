@@ -186,6 +186,11 @@ test_that("campaign and date filters scope the history, as in the other readers"
   d <- collect_sorted(disposition_steps(write_sequence_parquet(rows), campaign_ids = 3,
                                         phones = "2015550101"))
   expect_equal(d$path_so_far, "C")
+  # a VARCHAR id column is matched as text
+  rows$campaign_id <- as.character(sequence_records()$campaign_id)
+  d <- collect_sorted(disposition_steps(write_sequence_parquet(rows), campaign_ids = "3",
+                                        phones = "2015550101"))
+  expect_equal(d$path_so_far, "C")
   expect_error(disposition_steps(p, date_from = "2026-03-01", date_to = "2026-02-01"),
                "is after `date_to`", class = "s160_error")
   expect_error(disposition_steps(p, campaign_ids = c(1, NA)), "`campaign_ids` must be a vector",
