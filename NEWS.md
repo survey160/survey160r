@@ -1,5 +1,15 @@
 # survey160r (development version)
 
+## Docs: a guided tour of the sequence readers (0.89.9)
+
+* The package ships `inst/scripts/disposition-paths-tour.R`, a step-by-step
+  script that walks through `disposition_paths()` and `disposition_steps()`:
+  path shapes, patterns (`>`, `>>`, alternatives, repeats, `^` / `$`
+  anchors), the gap limit, scoping by date or campaign, flagging a sample,
+  and the history, recency and pattern columns of `disposition_steps()`. Open
+  a copy with `system.file("scripts", "disposition-paths-tour.R", package =
+  "survey160r")`; the README's Disposition paths section shows how.
+
 ## Dependencies: jsonlite floor (0.89.8)
 
 * `jsonlite` now requires version 1.8.8 or later. Older versions bundle a

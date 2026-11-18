@@ -113,6 +113,14 @@ disposition_paths(dataset, "N > E|O > C|W") |> filter(matched) |> count() |> col
 
 Both need `duckdb`, `DBI` and `dbplyr` (see [Installation](#installation)) and return a lazy table: aggregate with `dplyr` verbs, then `collect()`. The pattern syntax, the history columns and the gap limit are in `?disposition_paths` and `?disposition_steps`.
 
+For a guided, step-by-step tour of both (patterns, repeats, anchors, the gap limit, scoping, flagging a sample, history segments), copy the tour script that ships with the package and run it section by section:
+
+```r
+file.copy(system.file("scripts", "disposition-paths-tour.R", package = "survey160r"),
+          "disposition-paths-tour.R")
+file.edit("disposition-paths-tour.R")
+```
+
 ## Completion estimates
 
 Estimate a planned survey's opt-in and completion rates from the same dataset, before you quote. Fit the model once, then estimate, size or rank each sample:
