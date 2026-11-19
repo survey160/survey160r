@@ -427,15 +427,20 @@ expect_engine_parity <- function(expr, env = parent.frame()) {
 # value to every later caller. `build` runs on the first call for `key`; R's
 # copy-on-modify keeps one test's edits to the value out of the next test's
 # copy. A fixture that is a file path points at a file the tests must only read.
-# The RNG state the build left behind is stored and put back on every later
-# call, so a test that draws random numbers after fetching the fixture sees the
-# same stream whether the fixture was built or reused.
+# A build that moves the RNG (a seeded builder such as completion_records())
+# has the state it left behind stored and put back on every later call, so a
+# test that draws random numbers after fetching the fixture sees the same
+# stream whether the fixture was built or reused. A build that leaves the RNG
+# alone (the constant sequence fixtures) leaves the caller's state alone on
+# reuse too.
 .fixture_cache <- new.env(parent = emptyenv())
 cached_fixture <- function(key, build) {
   hit <- .fixture_cache[[key]]
   if (is.null(hit)) {
+    before <- globalenv()[[".Random.seed"]]
     value <- build()
-    hit <- list(value = value, seed = globalenv()[[".Random.seed"]])
+    after <- globalenv()[[".Random.seed"]]
+    hit <- list(value = value, seed = if (!identical(before, after)) after)
     .fixture_cache[[key]] <- hit
   } else if (!is.null(hit$seed)) {
     assign(".Random.seed", hit$seed, envir = globalenv())
