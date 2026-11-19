@@ -1,5 +1,16 @@
 # survey160r (development version)
 
+## Internal: a faster test suite; `latency_report()` on small campaigns (0.89.9)
+
+* `latency_report()` (and `latency_run()`) no longer run a full garbage
+  collection between aggregation passes on a small campaign (under 100,000
+  respondent-by-segment rows), where the collection was most of the run time
+  and reclaimed nothing of note. Results are unchanged; a large campaign
+  collects as before.
+* The test suite runs its files in parallel, builds its shared fixtures once
+  per process, and `make verify` runs tests, lint and coverage at the same
+  time. No change to what is tested.
+
 ## Dependencies: jsonlite floor (0.89.8)
 
 * `jsonlite` now requires version 1.8.8 or later. Older versions bundle a
