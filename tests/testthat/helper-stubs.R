@@ -365,6 +365,34 @@ write_opt_out_parquet <- function(rows) {
 
 # --- Disposition read engines ------------------------------------------------
 
+# The engine-parity fixture (test-disposition_engine.R, test-disposition_scan.R),
+# exercising every rollup edge: phone formats (11-digit, punctuated,
+# blank, NA), an NA campaign id, a duplicate row, NA flags and dates, blank and
+# real error codes, and the full record schema.
+.engine_fixture <- function() {
+  d <- data.frame(
+    phone = c("2015550101", "12015550101", "(201) 555-0102", "2015550102", "",
+              NA, "2015550103", "2015550103", "2015550104", "2015550104"),
+    campaign_id = c(10L, 11L, 10L, NA, 10L, 10L, 12L, 12L, 10L, 11L),
+    sent = 1L,
+    engaged = c(1L, 1L, 0L, 1L, 1L, 1L, NA, NA, 1L, 1L),
+    opted_in = c(1L, 0L, 0L, 1L, 0L, 0L, 0L, 0L, 1L, 0L),
+    completed = c(1L, NA, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L),
+    web_complete = 0L,
+    refused = c(0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 1L),
+    ineligible = c(0L, 0L, 1L, 0L, 0L, 0L, 0L, 0L, 0L, 0L),
+    terminated = c(0L, 0L, 1L, 0L, 0L, 0L, 0L, 0L, 0L, 1L),
+    error = c(NA, "30007", " ", "", NA, NA, "4720", "4720", NA, NA),
+    carrier = c("verizon", NA, "att", "att", NA, NA, "tmobile", "tmobile", NA, NA),
+    survey_mode = "t2w",
+    tracker_loi = c(5.5, NA, 5.5, 5.5, NA, NA, 7, 7, 5.5, 5.5),
+    tracker_n_questions = 12L,
+    disposition_date = as.Date("2026-03-01") + c(0L, 5L, 0L, NA, 0L, 0L, 2L, 2L, 1L, 1L),
+    stringsAsFactors = FALSE
+  )
+  write_disposition_parquet(d)
+}
+
 # Run `expr` under one disposition read engine ("duckdb" or "nanoparquet").
 with_engine <- function(engine, expr) {
   withr::with_options(list(survey160r.disposition_engine = engine), expr)
