@@ -22,11 +22,16 @@ synthetic_config <- function() {
 
 # Force the read.csv fallback in fast_read_csv / s160_csv_header by making
 # requireNamespace("data.table") report FALSE for the duration of a test.
+#
+# The real function is captured before the rebind: `base::requireNamespace`
+# inside the mock would resolve to the mock itself and recurse without end on
+# any other package (a parallel test worker asks for one while the mock is live).
 stub_no_data_table <- function(env = parent.frame()) {
+  real_require_namespace <- base::requireNamespace
   testthat::local_mocked_bindings(
     requireNamespace = function(package, ...) {
       if (identical(package, "data.table")) FALSE
-      else base::requireNamespace(package, ...)
+      else real_require_namespace(package, ...)
     },
     .package = "base",
     .env = env

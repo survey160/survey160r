@@ -46,4 +46,5 @@ Suggests:
     lintr,
     covr
 Config/testthat/edition: 3
+Config/testthat/parallel: true
 RoxygenNote: 7.3.3
