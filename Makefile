@@ -26,7 +26,7 @@ test:
 
 # One test file, package loaded once: `make test-file FILE=tests/testthat/test-latency_run.R`
 test-file:
-	Rscript -e 'pkgload::load_all(".", quiet = TRUE); testthat::test_file("$(FILE)")'
+	Rscript -e 'pkgload::load_all(".", quiet = TRUE); testthat::test_file("$(FILE)", stop_on_failure = TRUE)'
 
 # lintr's cache keeps the lints of unchanged expressions (every configured
 # linter works one expression or file at a time, so a cached result cannot go

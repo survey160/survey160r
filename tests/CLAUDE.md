@@ -28,7 +28,7 @@ tests/
 
 `make verify` from the package root is the canonical gate — it runs the tests, `lintr::lint_package()` and `covr::package_coverage()` at the same time (`scripts/verify.R`), so it takes as long as its slowest phase. Prefer it over ad-hoc invocations.
 
-Test files run in parallel workers (`Config/testthat/parallel: true` in `DESCRIPTION`), each worker a separate R process that sources the helpers and `setup.R` itself. `TESTTHAT_CPUS` sets the number of workers: `make test` and `make coverage` use the cores up to 8, CI uses 4, and testthat alone starts 2. `make test TESTTHAT_CPUS=1` or `TESTTHAT_PARALLEL=false` runs the files one after another, which is the way to read per-test timings (a parallel run does not report them). `Config/testthat/start-first` lists the slowest files so a worker picks them up first; add a new file there when it takes over a second.
+Test files run in parallel workers (`Config/testthat/parallel: true` in `DESCRIPTION`), each worker a separate R process, reused for several files, that sources the helpers and `setup.R` itself. `TESTTHAT_CPUS` sets the number of workers: `make test` and `make coverage` use the cores up to 8, CI uses 4, and testthat alone starts 2. `make test TESTTHAT_CPUS=1` or `TESTTHAT_PARALLEL=false` runs the files one after another, which is the way to read per-test timings (a parallel run does not report them). `Config/testthat/start-first` lists the slowest files so a worker picks them up first; add a new file there when it takes over a second.
 
 `make check` runs the full `R CMD check` (used at release time).
 
@@ -42,7 +42,7 @@ testthat::test_file("tests/testthat/test-latency_run.R")
 
 ## Keeping the suite fast
 
-- **A file stands alone.** Files run in separate processes in no fixed order: no state set in one file (an option, a mock, a cache, a temp file) reaches another.
+- **A file stands alone.** Files run in no fixed order, and a worker process is reused for several files, so options, loaded packages and global state can persist between them. Each file restores whatever it changes (an option, a mock, a cache, a temp file) and must not depend on execution order.
 - **Build an expensive read-only fixture once**: `cached_fixture(key, build)` (helper-stubs.R) runs `build` on the first call in a process and returns the same value afterwards, restoring the RNG state the build left so later random draws do not depend on whether the fixture was built or reused. `fit_fixture_model()`, `completion_records()`, `sequence_records()` and the default `write_sequence_parquet()` use it. A cached path points at a file tests only read; pass your own rows to get a fresh file to change.
 - **A mock of a base function captures the real one first** (`real <- base::requireNamespace` outside the mock). `base::fn()` inside the mock resolves to the mock itself and recurses without end, and a parallel worker calls base functions a serial run never does while the mock is live.
 - **`setup.R` answers `OlsonNames()` from one listing per process**: duckdb checks the session time zone against it on every connection, and each call re-reads the time zone database directory.
