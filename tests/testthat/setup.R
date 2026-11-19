@@ -10,3 +10,23 @@ withr::local_options(
   rlib_warning_verbosity = "verbose",
   .local_envir = testthat::teardown_env()
 )
+
+# One time zone listing per test process. duckdb checks the session time zone
+# against OlsonNames() on every connection it opens, OlsonNames() re-reads the
+# time zone database directory on every call (a few milliseconds), and the
+# disposition readers open a connection per call -- several hundred over the
+# suite. The listing cannot change while the tests run, so the default call is
+# answered from the first result; a call with arguments goes to the real one.
+local({
+  real_olson_names <- base::OlsonNames
+  listing <- NULL
+  testthat::local_mocked_bindings(
+    OlsonNames = function(...) {
+      if (...length() > 0L) return(real_olson_names(...))
+      if (is.null(listing)) listing <<- real_olson_names()
+      listing
+    },
+    .package = "base",
+    .env = testthat::teardown_env()
+  )
+})
