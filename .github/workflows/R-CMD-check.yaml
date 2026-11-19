@@ -35,6 +35,9 @@ jobs:
       R_KEEP_PKG_SOURCE: yes
       # Parallel compilation for any package that still builds from source.
       MAKEFLAGS: -j4
+      # Test files run in parallel workers (Config/testthat/parallel); testthat
+      # starts 2 unless told otherwise, and the runner has 4 cores.
+      TESTTHAT_CPUS: 4
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -144,6 +147,7 @@ jobs:
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
       R_KEEP_PKG_SOURCE: yes
+      TESTTHAT_CPUS: 4
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
