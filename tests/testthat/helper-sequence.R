@@ -31,7 +31,9 @@ skip_if_no_sequence <- function() {
 #   0103  stored with a leading 1; two campaigns on one date -> campaign_id order: O, W
 #   0104  t2w_external engaged (completed NA, completion unknown), then a missing date (last)
 #   0105  R -> I, stored out of date order
-sequence_records <- function() {
+sequence_records <- function() cached_fixture("sequence_records", .sequence_records)
+
+.sequence_records <- function() {
   rbind(
     .sequence_row("2015550101", 1L, "2026-01-01"),
     .sequence_row("2015550101", 2L, "2026-02-01", engaged = 1L),
@@ -51,7 +53,15 @@ sequence_records <- function() {
   )
 }
 
-write_sequence_parquet <- function(rows = sequence_records()) write_disposition_parquet(rows)
+# The default rows are written once per test process (a read-only file, like
+# every cached_fixture() path); a test's own rows get a fresh file.
+write_sequence_parquet <- function(rows = NULL) {
+  if (is.null(rows)) {
+    return(cached_fixture("sequence_parquet",
+                          function() write_disposition_parquet(sequence_records())))
+  }
+  write_disposition_parquet(rows)
+}
 
 # Collect a lazy sequence table into a base data frame sorted by phone (then step).
 collect_sorted <- function(tbl) {
