@@ -389,3 +389,23 @@ expect_engine_parity <- function(expr, env = parent.frame()) {
   nano <- with_engine("nanoparquet", eval(expr, env))
   testthat::expect_identical(duck, nano)
 }
+
+# Build an expensive, read-only fixture once per test process and hand the same
+# value to every later caller. `build` runs on the first call for `key`; R's
+# copy-on-modify keeps one test's edits to the value out of the next test's
+# copy. A fixture that is a file path points at a file the tests must only read.
+# The RNG state the build left behind is stored and put back on every later
+# call, so a test that draws random numbers after fetching the fixture sees the
+# same stream whether the fixture was built or reused.
+.fixture_cache <- new.env(parent = emptyenv())
+cached_fixture <- function(key, build) {
+  hit <- .fixture_cache[[key]]
+  if (is.null(hit)) {
+    value <- build()
+    hit <- list(value = value, seed = globalenv()[[".Random.seed"]])
+    .fixture_cache[[key]] <- hit
+  } else if (!is.null(hit$seed)) {
+    assign(".Random.seed", hit$seed, envir = globalenv())
+  }
+  hit$value
+}
