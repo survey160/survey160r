@@ -219,7 +219,8 @@ latency_report <- function(data, config, run_at = NULL, compact = FALSE) {
   # it lands at (date=NA, hour=NA) -- the hour pass emits it and we drop it
   # (`!is.na(hour_local)`), leaving that unknown-time bucket to the day pass only.
   #
-  # The gc() calls reclaim each pass's transient grouped frames before the next
+  # The .reclaim_memory() calls (a gc() on a large frame, nothing on a small
+  # one) reclaim each pass's transient grouped frames before the next
   # allocates its own (output-neutral). `data`/`parse_failed_mask` and their
   # wrappers `parsed`/`pair` are dropped once the frame exists so the full-width
   # input is not resident alongside it; `parse_failures` survives separately.
@@ -235,7 +236,7 @@ latency_report <- function(data, config, run_at = NULL, compact = FALSE) {
     na_date <- streamed$na_date
     rm(list = intersect(c("data", "parse_failed_mask", "parsed", "pair"),
                         ls(all.names = FALSE)))
-    invisible(gc(verbose = FALSE))
+    .reclaim_memory(as.numeric(n_frame) * n_seg)
 
     grains <- .two_grain_consolidated(frame, config, cfg_hash, run_at,
                                       src_csv_hash, survey_mode,
@@ -263,7 +264,7 @@ latency_report <- function(data, config, run_at = NULL, compact = FALSE) {
     frame <- build_latency_frame(data, config, parse_failed_mask)
     rm(list = intersect(c("data", "parse_failed_mask", "parsed", "pair"),
                         ls(all.names = FALSE)))
-    invisible(gc(verbose = FALSE))
+    .reclaim_memory(nrow(frame))
 
     grains <- .two_grain_consolidated(frame, config, cfg_hash, run_at,
                                       src_csv_hash, survey_mode,
@@ -309,10 +310,10 @@ latency_report <- function(data, config, run_at = NULL, compact = FALSE) {
 # 0-23; the NA-hour bucket is dropped here, the day pass owns it) and the day
 # rollup (hour_local nulled on the frame, so the per-respondent cascade is
 # recomputed at day grain rather than summed from hours). `hour` / `day` are
-# the (summary, ineligible, refusal) frame triples at each grain. The gc()
-# between the passes reclaims the hour pass's transient grouped frames before
-# the day pass allocates its own (output-neutral). Shared by the full and
-# compact paths of latency_report().
+# the (summary, ineligible, refusal) frame triples at each grain. The
+# .reclaim_memory() between the passes reclaims the hour pass's transient
+# grouped frames before the day pass allocates its own (output-neutral). Shared
+# by the full and compact paths of latency_report().
 .two_grain_consolidated <- function(frame, config, cfg_hash, run_at,
                                     src_csv_hash, survey_mode, hour, day) {
   hour_grain <- aggregate_consolidated(frame, config, cfg_hash, run_at,
@@ -322,7 +323,7 @@ latency_report <- function(data, config, run_at = NULL, compact = FALSE) {
                                        refusal_frame = hour[[3L]],
                                        survey_mode = survey_mode)
   hour_grain <- hour_grain[!is.na(hour_grain$hour_local), , drop = FALSE]
-  invisible(gc(verbose = FALSE))
+  .reclaim_memory(nrow(frame))
   day_frame <- frame
   if (nrow(day_frame) > 0L) day_frame$hour_local <- NA_integer_
   day_grain <- aggregate_consolidated(day_frame, config, cfg_hash, run_at,

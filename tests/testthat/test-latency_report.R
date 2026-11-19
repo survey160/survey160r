@@ -472,3 +472,13 @@ test_that("consolidated declares the new columns with the right types when laten
   # Schema-6 no-dual-emit contract: the renamed-away legacy names are absent.
   expect_false(any(c("n_texted", "n_consented") %in% names(cons)))
 })
+
+test_that(".reclaim_memory collects only for a frame large enough to matter", {
+  calls <- new_capture()
+  calls$n <- 0L
+  local_mocked_bindings(gc = function(...) calls$n <- calls$n + 1L, .package = "base")
+  expect_null(.reclaim_memory(.gc_min_rows - 1L))
+  expect_identical(calls$n, 0L)
+  expect_null(.reclaim_memory(.gc_min_rows))
+  expect_identical(calls$n, 1L)
+})

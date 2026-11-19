@@ -11,6 +11,18 @@
 # Null-coalescing operator. Used package-wide.
 `%||%` <- function(a, b) if (is.null(a)) b else a
 
+# Explicit gc() between the big aggregation passes, for frames large enough for
+# it to matter. A full collection costs tens of milliseconds whatever the frame
+# size (it walks the whole session heap), which is most of latency_report()'s
+# run time on a small campaign and buys nothing there: the transient frames it
+# would reclaim are a few kilobytes. `n_rows` is the long (respondent x
+# segment) row count the pass just worked on.
+.gc_min_rows <- 100000L
+.reclaim_memory <- function(n_rows) {
+  if (n_rows >= .gc_min_rows) gc(verbose = FALSE)
+  invisible(NULL)
+}
+
 # Digit-normalize a phone for matching: strip non-digits, then drop a leading US
 # country code so an 11-digit "1NXXNXXXXXX" matches a stored 10-digit number.
 # Blank/NA -> NA. Shared by every screen (disposition_screen, opt_out_screen) so
