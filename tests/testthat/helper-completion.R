@@ -13,7 +13,7 @@
 
 completion_records <- function(n_per_campaign = 40L, seed = 1L) {
   cached_fixture(sprintf("completion_records/%d/%d", n_per_campaign, seed),
-                 function() .completion_records(n_per_campaign, seed))
+                 function() .completion_records(n_per_campaign, seed), seeded = TRUE)
 }
 
 .completion_records <- function(n_per_campaign, seed) {
@@ -69,5 +69,5 @@ fit_fixture_model <- function() {
     p <- write_completion_parquet(completion_records(n_per_campaign = 60L))
     list(path = p,
          model = completion_model_fit(p, train_until = as.Date("2026-10-01"), min_sent = 10))
-  })
+  }, seeded = TRUE)
 }
