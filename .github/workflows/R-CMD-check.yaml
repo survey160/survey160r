@@ -79,28 +79,27 @@ jobs:
 
       - uses: r-lib/actions/setup-r-dependencies@f9a764fea8d5c63df6ef9a5c7795bf7deb5d7e05  # v2
         with:
-          extra-packages: any::rcmdcheck, any::lintr, any::covr, any::cyclocomp
+          extra-packages: any::rcmdcheck, any::lintr, any::covr, any::cyclocomp, any::callr
           needs: check
 
       - name: Install package
         run: R CMD INSTALL .
-
-      - name: Lint
-        run: |
-          lints <- lintr::lint_package()
-          if (length(lints) > 0L) {
-            print(lints)
-            quit(status = 1)
-          }
-        shell: Rscript {0}
 
       - uses: r-lib/actions/check-r-package@f9a764fea8d5c63df6ef9a5c7795bf7deb5d7e05  # v2
         with:
           args: '"--no-manual"'
           error-on: '"warning"'
 
-      - name: Test coverage
+      # Lint runs in a background R process while coverage runs the tests, so
+      # the step takes as long as the slower of the two rather than their sum.
+      # Both results are reported before either fails the step.
+      - name: Lint and test coverage
         run: |
+          lint <- callr::r_bg(function() {
+            lints <- lintr::lint_package()
+            list(n = length(lints), text = utils::capture.output(print(lints)))
+          })
+
           cov <- covr::package_coverage()
           pct <- covr::percent_coverage(cov)
 
@@ -131,8 +130,16 @@ jobs:
           # Also print to log
           cat(sprintf("Coverage: %.1f%%\n", pct))
 
+          lint$wait()
+          lints <- lint$get_result()
+          if (lints$n > 0L) cat(lints$text, sep = "\n")
+          cat(sprintf("Lints: %d\n", lints$n))
+
           if (pct < 100) {
             stop(sprintf("Coverage %.1f%% is below 100%% threshold", pct))
+          }
+          if (lints$n > 0L) {
+            stop(sprintf("%d lint(s)", lints$n))
           }
         shell: Rscript {0}
 
