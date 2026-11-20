@@ -22,11 +22,16 @@ synthetic_config <- function() {
 
 # Force the read.csv fallback in fast_read_csv / s160_csv_header by making
 # requireNamespace("data.table") report FALSE for the duration of a test.
+#
+# The real function is captured before the rebind: `base::requireNamespace`
+# inside the mock would resolve to the mock itself and recurse without end on
+# any other package (a parallel test worker asks for one while the mock is live).
 stub_no_data_table <- function(env = parent.frame()) {
+  real_require_namespace <- base::requireNamespace
   testthat::local_mocked_bindings(
     requireNamespace = function(package, ...) {
       if (identical(package, "data.table")) FALSE
-      else base::requireNamespace(package, ...)
+      else real_require_namespace(package, ...)
     },
     .package = "base",
     .env = env
@@ -360,6 +365,34 @@ write_opt_out_parquet <- function(rows) {
 
 # --- Disposition read engines ------------------------------------------------
 
+# The engine-parity fixture (test-disposition_engine.R, test-disposition_scan.R),
+# exercising every rollup edge: phone formats (11-digit, punctuated,
+# blank, NA), an NA campaign id, a duplicate row, NA flags and dates, blank and
+# real error codes, and the full record schema.
+.engine_fixture <- function() {
+  d <- data.frame(
+    phone = c("2015550101", "12015550101", "(201) 555-0102", "2015550102", "",
+              NA, "2015550103", "2015550103", "2015550104", "2015550104"),
+    campaign_id = c(10L, 11L, 10L, NA, 10L, 10L, 12L, 12L, 10L, 11L),
+    sent = 1L,
+    engaged = c(1L, 1L, 0L, 1L, 1L, 1L, NA, NA, 1L, 1L),
+    opted_in = c(1L, 0L, 0L, 1L, 0L, 0L, 0L, 0L, 1L, 0L),
+    completed = c(1L, NA, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L),
+    web_complete = 0L,
+    refused = c(0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 1L),
+    ineligible = c(0L, 0L, 1L, 0L, 0L, 0L, 0L, 0L, 0L, 0L),
+    terminated = c(0L, 0L, 1L, 0L, 0L, 0L, 0L, 0L, 0L, 1L),
+    error = c(NA, "30007", " ", "", NA, NA, "4720", "4720", NA, NA),
+    carrier = c("verizon", NA, "att", "att", NA, NA, "tmobile", "tmobile", NA, NA),
+    survey_mode = "t2w",
+    tracker_loi = c(5.5, NA, 5.5, 5.5, NA, NA, 7, 7, 5.5, 5.5),
+    tracker_n_questions = 12L,
+    disposition_date = as.Date("2026-03-01") + c(0L, 5L, 0L, NA, 0L, 0L, 2L, 2L, 1L, 1L),
+    stringsAsFactors = FALSE
+  )
+  write_disposition_parquet(d)
+}
+
 # Run `expr` under one disposition read engine ("duckdb" or "nanoparquet").
 with_engine <- function(engine, expr) {
   withr::with_options(list(survey160r.disposition_engine = engine), expr)
@@ -388,4 +421,29 @@ expect_engine_parity <- function(expr, env = parent.frame()) {
   duck <- with_engine("duckdb", eval(expr, env))
   nano <- with_engine("nanoparquet", eval(expr, env))
   testthat::expect_identical(duck, nano)
+}
+
+# Build an expensive, read-only fixture once per test process and hand the same
+# value to every later caller. `build` runs on the first call for `key`; R's
+# copy-on-modify keeps one test's edits to the value out of the next test's
+# copy. A fixture that is a file path points at a file the tests must only read.
+# A builder that sets the RNG seed (completion_records()) is declared with
+# `seeded = TRUE`: the state it left behind is stored and put back on every
+# later call, so a test that draws random numbers after fetching the fixture
+# sees the same stream whether the fixture was built or reused. The flag is
+# explicit because comparing the state before and after the build cannot tell
+# a seeded builder from a constant one when the caller already sat on the
+# state the builder ends in. Without it (the constant sequence fixtures) a
+# reuse leaves the caller's state alone.
+.fixture_cache <- new.env(parent = emptyenv())
+cached_fixture <- function(key, build, seeded = FALSE) {
+  hit <- .fixture_cache[[key]]
+  if (is.null(hit)) {
+    value <- build()
+    hit <- list(value = value, seed = if (seeded) globalenv()[[".Random.seed"]])
+    .fixture_cache[[key]] <- hit
+  } else if (!is.null(hit$seed)) {
+    assign(".Random.seed", hit$seed, envir = globalenv())
+  }
+  hit$value
 }

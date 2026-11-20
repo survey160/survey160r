@@ -1,6 +1,6 @@
 Package: survey160r
 Title: R Client for Survey160 Data
-Version: 0.89.8
+Version: 0.89.9
 Date: 2026-11-13
 Authors@R: c(
     person("Lennon", "Shimokawa", email = "lshimokawa@survey160.com", role = c("aut", "cre"))
@@ -46,4 +46,8 @@ Suggests:
     lintr,
     covr
 Config/testthat/edition: 3
+Config/testthat/parallel: true
+Config/testthat/start-first: disposition_scan, disposition_steps, completion_model,
+    disposition_read, disposition_engine, completion_estimate, synthetic_parity,
+    disposition_paths
 RoxygenNote: 7.3.3

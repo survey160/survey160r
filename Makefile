@@ -1,8 +1,15 @@
 all: check install
 
-# Fast pre-commit gate: tests + lint + coverage in a single R session.
-# Cuts ~10-15s of repeated cold startup vs running the three targets
-# individually. Heavyweight gate is `make check` (R CMD check, ~30-60s).
+# Test files run in parallel workers (Config/testthat/parallel in DESCRIPTION).
+# testthat starts 2 unless told otherwise; `make test` and `make coverage` use
+# the cores, up to 8 (past that the suite stops getting faster).
+# `make test TESTTHAT_CPUS=1` runs the files one after another.
+TESTTHAT_CPUS ?= $(shell n=$$(nproc 2>/dev/null || echo 2); if [ "$$n" -gt 8 ]; then n=8; fi; echo $$n)
+
+# Fast pre-commit gate: tests + lint + coverage, the three at the same time
+# (scripts/verify.R), so it takes as long as its slowest phase. It picks its
+# own worker count (tests and coverage share the cores) unless TESTTHAT_CPUS
+# is set in the environment. Heavyweight gate is `make check` (R CMD check).
 verify:
 	Rscript scripts/verify.R
 
@@ -15,17 +22,21 @@ install:
 	R CMD INSTALL .
 
 test:
-	Rscript -e 'testthat::test_local()'
+	TESTTHAT_CPUS=$(TESTTHAT_CPUS) Rscript -e 'testthat::test_local()'
 
 # One test file, package loaded once: `make test-file FILE=tests/testthat/test-latency_run.R`
 test-file:
-	Rscript -e 'pkgload::load_all(".", quiet = TRUE); testthat::test_file("$(FILE)")'
+	Rscript -e 'pkgload::load_all(".", quiet = TRUE); testthat::test_file("$(FILE)", stop_on_failure = TRUE)'
 
+# lintr's cache keeps the lints of unchanged expressions (every configured
+# linter works one expression or file at a time, so a cached result cannot go
+# stale). `make lint LINT_CACHE=FALSE` lints from scratch, as CI does.
+LINT_CACHE ?= TRUE
 lint:
-	Rscript -e 'l <- lintr::lint_package(); if (length(l) > 0L) { print(l); quit(status = 1) }'
+	Rscript -e 'l <- lintr::lint_package(cache = $(LINT_CACHE)); if (length(l) > 0L) { print(l); quit(status = 1) }'
 
 coverage:
-	Rscript -e 'cov <- covr::package_coverage(); print(cov); pct <- covr::percent_coverage(cov); if (pct < 100) stop(sprintf("Coverage %.1f%% is below 100%% threshold", pct))'
+	TESTTHAT_CPUS=$(TESTTHAT_CPUS) Rscript -e 'cov <- covr::package_coverage(); print(cov); pct <- covr::percent_coverage(cov); if (pct < 100) stop(sprintf("Coverage %.1f%% is below 100%% threshold", pct))'
 
 e2e:
 	Rscript e2e.R
